@@ -10,5 +10,5 @@ go mod tidy
 ### usage
 
 ```bash
-got run server.go
+got run main.go
 ```
