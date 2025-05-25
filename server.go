@@ -11,98 +11,93 @@ import (
 	"sync"           // For concurrency control (mutexes)
 	"time"           // For time handling and intervals
 
-	// For warnings, similar to Python's warn
 	"github.com/gorilla/websocket" // Gorilla WebSocket library for plain WebSockets
 )
 
 // --- Game Constants ---
 const (
-	SERVER_HOST          = "0.0.0.0"             // The server will listen on all network interfaces
-	SERVER_PORT          = 5000                  // Server port
-	WORLD_WIDTH          = 1600                  // Game world width
-	WORLD_HEIGHT         = 1600                  // Game world height
-	OBJECT_SIZE          = 50                    // Size of game objects (players, obstacles)
-	MAZE_CELL_WORLD_SIZE = WORLD_WIDTH / 32      // Size of a maze cell for A* (1600 / 32 = 50)
-	GAME_TICK_INTERVAL   = 50 * time.Millisecond // Game update interval (20 FPS)
+	SERVER_HOST          = "0.0.0.0"             // Server listens on all network interfaces
+	SERVER_PORT          = 5000                  // Default server port
+	WORLD_WIDTH          = 1600                  // Game world width in pixels
+	WORLD_HEIGHT         = 1600                  // Game world height in pixels
+	OBJECT_SIZE          = 50                    // Size of game objects (players, obstacles) in pixels
+	MAZE_CELL_WORLD_SIZE = WORLD_WIDTH / 32      // Size of a maze cell for A* pathfinding (50x50 pixels)
+	GAME_TICK_INTERVAL   = 50 * time.Millisecond // Game state update interval (20 frames per second)
+
+	// WebSocket heartbeat settings to detect disconnected clients
+	PING_INTERVAL = 10 * time.Second // Frequency of sending ping messages
+	PONG_WAIT     = 60 * time.Second // Time to wait for a pong response before considering client disconnected
 )
 
-// --- Colors (simplified for server representation) ---
-// Clients will interpret these RGB values in their own rendering system.
+// --- Colors (simplified RGB representation for server) ---
+// Clients interpret these values for rendering.
 type Color struct {
 	R, G, B, A uint8
 }
 
 var (
-	BLUE     = Color{0, 0, 255, 255}  // Blue color for players
-	DARKGRAY = Color{80, 80, 80, 255} // Dark gray color for obstacles
+	BLUE     = Color{0, 0, 255, 255}  // Color for player objects
+	DARKGRAY = Color{80, 80, 80, 255} // Color for obstacle objects
 )
 
-// --- GameObject ---
-// GameObject represents any entity in the game world.
+// --- GameObject (Represents any entity in the game world) ---
 type GameObject struct {
-	ID         string  `json:"obj_id"`      // Unique object identifier
-	X          float64 `json:"x"`           // X position in world coordinates
-	Y          float64 `json:"y"`           // Y position in world coordinates
-	Color      Color   `json:"color"`       // Object color
-	IsObstacle bool    `json:"is_obstacle"` // Indicates if the object is an obstacle (non-movable)
-	Speed      float64 `json:"speed"`       // Movement speed (pixels per second)
+	ID         string  `json:"obj_id"`      // Unique identifier for the object
+	X          float64 `json:"x"`           // X-coordinate in world space
+	Y          float64 `json:"y"`           // Y-coordinate in world space
+	Color      Color   `json:"color"`       // Visual color of the object
+	IsObstacle bool    `json:"is_obstacle"` // True if the object blocks movement (e.g., a wall)
+	Speed      float64 `json:"speed"`       // Movement speed in pixels per second
 
-	// Fields related to pathfinding (path to follow)
-	Path      []struct{ X, Y float64 } `json:"path"`       // The current path as a series of (X, Y) points
-	PathIndex int                      `json:"path_index"` // Current index in the path
+	// Pathfinding related fields
+	Path      []struct{ X, Y float64 } `json:"path"`       // Current path as a slice of world coordinates
+	PathIndex int                      `json:"path_index"` // Current index in the path being followed
 }
 
-// UpdatePosition updates the object's position, moving it along its path.
+// UpdatePosition moves the object along its current path based on elapsed time.
 func (obj *GameObject) UpdatePosition(deltaTime float64) {
-	// If no path or path finished, reset the path.
+	// If path is empty or finished, reset path and stop movement.
 	if len(obj.Path) == 0 || obj.PathIndex >= len(obj.Path) {
 		obj.Path = []struct{ X, Y float64 }{}
 		obj.PathIndex = 0
 		return
 	}
 
-	targetPoint := obj.Path[obj.PathIndex] // Current target point in the path
-	targetWorldX := targetPoint.X
-	targetWorldY := targetPoint.Y
+	targetPoint := obj.Path[obj.PathIndex] // The current target point in the path
+	dx := targetPoint.X - obj.X
+	dy := targetPoint.Y - obj.Y
+	distance := math.Sqrt(dx*dx + dy*dy) // Distance to the target point
 
-	// Calculate distance to the target point
-	dx := targetWorldX - obj.X
-	dy := targetWorldY - obj.Y
-	distance := math.Sqrt(dx*dx + dy*dy)
-
-	moveDistance := obj.Speed * deltaTime // Distance the object can move in this frame
+	moveDistance := obj.Speed * deltaTime // Distance object can cover in this frame
 
 	if distance < moveDistance {
-		// If distance is less than moveDistance, it means the target point is reached or overshot.
-		// Move exactly to the target point and advance to the next point in the path.
-		obj.X = targetWorldX
-		obj.Y = targetWorldY
+		// If close enough, snap to the target point and advance to the next path segment.
+		obj.X = targetPoint.X
+		obj.Y = targetPoint.Y
 		obj.PathIndex++
 	} else {
-		// If not yet at the target point, move towards it.
-		directionX := dx / distance // Normalized X component of direction
-		directionY := dy / distance // Normalized Y component of direction
+		// Move towards the target point.
+		directionX := dx / distance // Normalized X direction
+		directionY := dy / distance // Normalized Y direction
 		obj.X += directionX * moveDistance
 		obj.Y += directionY * moveDistance
 	}
 }
 
-// --- GameState ---
-// GameState manages the overall game world state, including objects and the grid.
-// It also handles the A* pathfinding logic.
+// --- GameState (Manages the overall game world state) ---
 type GameState struct {
-	mu             sync.RWMutex           // Read-write mutex for safe concurrent access
-	Objects        map[string]*GameObject // Map of game objects (ID -> GameObject)
-	GridCellsX     int                    // Number of cells in the X axis of the conceptual grid
-	GridCellsY     int                    // Number of cells in the Y axis of the conceptual grid
-	Grid           [][]*GameObject        // Conceptual grid for object placement
-	MazeCellsX     int                    // Number of cells in the X axis of the simplified maze (for A*)
-	MazeCellsY     int                    // Number of cells in the Y axis of the simplified maze (for A*)
-	SimplifiedMaze [][]int                // Simplified maze for A* (0: walkable, 1: obstacle)
+	mu             sync.RWMutex           // Mutex for concurrent access to game objects and maze
+	Objects        map[string]*GameObject // All game objects, indexed by ID
+	GridCellsX     int                    // Number of conceptual grid cells horizontally
+	GridCellsY     int                    // Number of conceptual grid cells vertically
+	Grid           [][]*GameObject        // Conceptual grid for quick object lookup by position
+	MazeCellsX     int                    // Number of A* maze cells horizontally
+	MazeCellsY     int                    // Number of A* maze cells vertically
+	SimplifiedMaze [][]int                // Simplified maze (0: walkable, 1: obstacle) for A*
 	rng            *rand.Rand             // Random number generator for positions
 }
 
-// NewGameState initializes a new GameState.
+// NewGameState initializes a new GameState with default dimensions and an empty world.
 func NewGameState() *GameState {
 	gs := &GameState{
 		Objects:    make(map[string]*GameObject),
@@ -110,72 +105,68 @@ func NewGameState() *GameState {
 		GridCellsY: WORLD_HEIGHT / OBJECT_SIZE,
 		MazeCellsX: WORLD_WIDTH / MAZE_CELL_WORLD_SIZE,
 		MazeCellsY: WORLD_HEIGHT / MAZE_CELL_WORLD_SIZE,
-		rng:        rand.New(rand.NewSource(time.Now().UnixNano())), // Initialize RNG with time-based seed
+		rng:        rand.New(rand.NewSource(time.Now().UnixNano())), // Seed RNG with current time
 	}
 
-	// Initialize the conceptual grid
+	// Initialize the conceptual grid for object placement.
 	gs.Grid = make([][]*GameObject, gs.GridCellsY)
 	for i := range gs.Grid {
 		gs.Grid[i] = make([]*GameObject, gs.GridCellsX)
 	}
 
-	// Initialize the simplified maze for A*
+	// Initialize the simplified maze for A* pathfinding.
 	gs.SimplifiedMaze = make([][]int, gs.MazeCellsY)
 	for i := range gs.SimplifiedMaze {
 		gs.SimplifiedMaze[i] = make([]int, gs.MazeCellsX)
 	}
 
-	// buildSimplifiedMaze() is now called after initial obstacles are added in GameServer.addInitialObstacles()
+	// The maze is built after initial obstacles are added in GameServer.addInitialObstacles().
 	return gs
 }
 
-// worldToGridCoords converts world coordinates to grid cell indices.
+// worldToGridCoords converts world coordinates to conceptual grid indices.
 func (gs *GameState) worldToGridCoords(worldX, worldY float64) (int, int) {
-	gridX := int(worldX / OBJECT_SIZE)
-	gridY := int(worldY / OBJECT_SIZE)
-	return gridX, gridY
+	return int(worldX / OBJECT_SIZE), int(worldY / OBJECT_SIZE)
 }
 
-// worldToMazeCoords converts world coordinates to 32x32 maze coordinates.
+// worldToMazeCoords converts world coordinates to A* maze indices.
 func (gs *GameState) worldToMazeCoords(worldX, worldY float64) (int, int) {
-	mazeX := int(worldX / MAZE_CELL_WORLD_SIZE)
-	mazeY := int(worldY / MAZE_CELL_WORLD_SIZE)
-	return mazeX, mazeY
+	return int(worldX / MAZE_CELL_WORLD_SIZE), int(worldY / MAZE_CELL_WORLD_SIZE)
 }
 
-// mazeToWorldCoords converts maze coordinates to world coordinates (center of the 50x50 cell).
+// mazeToWorldCoords converts A* maze indices to world coordinates (center of the cell).
 func (gs *GameState) mazeToWorldCoords(mazeX, mazeY int) (float64, float64) {
-	worldX := float64(mazeX*MAZE_CELL_WORLD_SIZE) + OBJECT_SIZE/2
-	worldY := float64(mazeY*MAZE_CELL_WORLD_SIZE) + OBJECT_SIZE/2
-	return worldX, worldY
+	return float64(mazeX*MAZE_CELL_WORLD_SIZE) + OBJECT_SIZE/2,
+		float64(mazeY*MAZE_CELL_WORLD_SIZE) + OBJECT_SIZE/2
 }
 
-// buildSimplifiedMaze populates the 32x32 simplified maze based on obstacle objects.
-// A cell is an obstacle (1) if any part of it is occupied by an obstacle GameObject.
+// buildSimplifiedMaze populates the A* maze based on current obstacle GameObjects.
+// This should only be called when static obstacles are added, removed, or modified.
 func (gs *GameState) buildSimplifiedMaze() {
-	gs.mu.Lock() // Exclusive lock for writing to the maze
+	gs.mu.Lock() // Acquire write lock for maze modification
 	defer gs.mu.Unlock()
 
-	// Reset the maze
+	// Reset all maze cells to walkable (0).
 	for y := range gs.SimplifiedMaze {
 		for x := range gs.SimplifiedMaze[y] {
 			gs.SimplifiedMaze[y][x] = 0
 		}
 	}
 
+	// Mark cells occupied by obstacles as unwalkable (1).
 	for _, obj := range gs.Objects {
 		if obj.IsObstacle {
-			// Determine the maze cells this obstacle covers
+			// Determine the range of maze cells this obstacle covers.
 			mazeStartX, mazeStartY := gs.worldToMazeCoords(obj.X, obj.Y)
 			mazeEndX, mazeEndY := gs.worldToMazeCoords(obj.X+OBJECT_SIZE-1, obj.Y+OBJECT_SIZE-1)
 
-			// Ensure coordinates are within maze bounds before marking
+			// Clamp coordinates to ensure they are within maze bounds.
 			mazeStartX = int(math.Max(0, math.Min(float64(mazeStartX), float64(gs.MazeCellsX-1))))
 			mazeStartY = int(math.Max(0, math.Min(float64(mazeStartY), float64(gs.MazeCellsY-1))))
 			mazeEndX = int(math.Max(0, math.Min(float64(mazeEndX), float64(gs.MazeCellsX-1))))
 			mazeEndY = int(math.Max(0, math.Min(float64(mazeEndY), float64(gs.MazeCellsY-1))))
 
-			// Mark all covered maze cells as obstacles
+			// Mark all covered cells as obstacles.
 			for y := mazeStartY; y <= mazeEndY; y++ {
 				for x := mazeStartX; x <= mazeEndX; x++ {
 					gs.SimplifiedMaze[y][x] = 1
@@ -186,30 +177,30 @@ func (gs *GameState) buildSimplifiedMaze() {
 	log.Println("Simplified maze rebuilt successfully.")
 }
 
-// AddObject adds an object to the game state.
-// buildSimplifiedMaze() is NOT called here to avoid deadlocks during bulk additions.
-// It should be explicitly called after a batch of additions or modifications.
+// AddObject adds a GameObject to the game state.
 func (gs *GameState) AddObject(obj *GameObject) {
-	gs.mu.Lock()
+	gs.mu.Lock() // Acquire write lock for Objects map and Grid
 	defer gs.mu.Unlock()
 
 	if _, exists := gs.Objects[obj.ID]; exists {
-		log.Printf("WARNING: Object with ID %s already exists.\n", obj.ID)
+		log.Printf("WARNING: Object with ID %s already exists, cannot add.\n", obj.ID)
 		return
 	}
 	gs.Objects[obj.ID] = obj
 
+	// Update conceptual grid reference for the new object.
 	gridX, gridY := gs.worldToGridCoords(obj.X, obj.Y)
 	if gridX >= 0 && gridX < gs.GridCellsX && gridY >= 0 && gridY < gs.GridCellsY {
 		gs.Grid[gridY][gridX] = obj
 	}
-	// REMOVED: gs.buildSimplifiedMaze() from here to prevent deadlock
+	// Note: buildSimplifiedMaze() is NOT called here to prevent deadlocks and
+	// because player objects (IsObstacle=false) do not affect the maze.
 	log.Printf("Object added: %s at (%.0f, %.0f)", obj.ID, obj.X, obj.Y)
 }
 
-// RemoveObject removes an object from the game state.
+// RemoveObject removes a GameObject from the game state by its ID.
 func (gs *GameState) RemoveObject(objID string) {
-	gs.mu.Lock()
+	gs.mu.Lock() // Acquire write lock for Objects map and Grid
 	defer gs.mu.Unlock()
 
 	obj, exists := gs.Objects[objID]
@@ -219,17 +210,18 @@ func (gs *GameState) RemoveObject(objID string) {
 	}
 	delete(gs.Objects, objID)
 
+	// Clear old conceptual grid reference.
 	gridX, gridY := gs.worldToGridCoords(obj.X, obj.Y)
 	if gridX >= 0 && gridX < gs.GridCellsX && gridY >= 0 && gridY < gs.GridCellsY && gs.Grid[gridY][gridX] == obj {
 		gs.Grid[gridY][gridX] = nil
 	}
-	gs.buildSimplifiedMaze() // Rebuild maze after removal
+	// Note: buildSimplifiedMaze() is NOT called here for the same reasons as AddObject.
 	log.Printf("Object removed: %s\n", objID)
 }
 
-// UpdateObjectPosition updates an object's position in the game state.
+// UpdateObjectPosition updates a GameObject's position in the game state.
 func (gs *GameState) UpdateObjectPosition(objID string, newX, newY float64) {
-	gs.mu.Lock()
+	gs.mu.Lock() // Acquire write lock for Objects map and Grid
 	defer gs.mu.Unlock()
 
 	obj, exists := gs.Objects[objID]
@@ -238,39 +230,38 @@ func (gs *GameState) UpdateObjectPosition(objID string, newX, newY float64) {
 		return
 	}
 
-	// Clear old conceptual grid cell reference
+	// Clear old conceptual grid cell reference.
 	oldGridX, oldGridY := gs.worldToGridCoords(obj.X, obj.Y)
 	if oldGridX >= 0 && oldGridX < gs.GridCellsX && oldGridY >= 0 && oldGridY < gs.GridCellsY && gs.Grid[oldGridY][oldGridX] == obj {
 		gs.Grid[oldGridY][oldGridX] = nil
 	}
 
-	// Update object position
+	// Update object's position.
 	obj.X = newX
 	obj.Y = newY
 
-	// Set new conceptual grid cell reference
+	// Set new conceptual grid cell reference.
 	newGridX, newGridY := gs.worldToGridCoords(newX, newY)
 	if newGridX >= 0 && newGridX < gs.GridCellsX && newGridY >= 0 && newGridY < gs.GridCellsY {
 		gs.Grid[newGridY][newGridX] = obj
 	}
-	gs.buildSimplifiedMaze() // Rebuild maze if position changed (might affect obstacle map)
+	// Note: buildSimplifiedMaze() is NOT called here for the same reasons as AddObject.
 	log.Printf("Object %s updated to (%.0f, %.0f)\n", objID, newX, newY)
 }
 
-// GetRandomAvailablePosition finds a random available (non-obstacle) position for a new object.
-// Returns world coordinates (top-left corner of the 50x50 cell).
+// GetRandomAvailablePosition finds a random empty and walkable position for a new object.
 func (gs *GameState) GetRandomAvailablePosition() (float64, float64, error) {
-	gs.mu.RLock() // Read lock to read maze and grid
+	gs.mu.RLock() // Acquire read lock for maze and grid
 	defer gs.mu.RUnlock()
 
 	availableCells := []struct{ X, Y float64 }{}
 	for y := 0; y < gs.GridCellsY; y++ {
 		for x := 0; x < gs.GridCellsX; x++ {
-			if gs.Grid[y][x] == nil { // Cell is empty in the conceptual grid
-				// Check if this cell is part of an obstacle in the simplified maze
+			// Check if conceptual grid cell is empty AND corresponding maze cell is walkable.
+			if gs.Grid[y][x] == nil {
 				mazeX, mazeY := gs.worldToMazeCoords(float64(x*OBJECT_SIZE), float64(y*OBJECT_SIZE))
-				// Ensure mazeX and mazeY are within bounds before accessing SimplifiedMaze
-				if mazeX >= 0 && mazeX < gs.MazeCellsX && mazeY >= 0 && mazeY < gs.MazeCellsY && gs.SimplifiedMaze[mazeY][mazeX] == 0 { // It's a walkable maze cell
+				// Ensure maze coordinates are within bounds before checking SimplifiedMaze.
+				if mazeX >= 0 && mazeX < gs.MazeCellsX && mazeY >= 0 && mazeY < gs.MazeCellsY && gs.SimplifiedMaze[mazeY][mazeX] == 0 {
 					availableCells = append(availableCells, struct{ X, Y float64 }{X: float64(x * OBJECT_SIZE), Y: float64(y * OBJECT_SIZE)})
 				}
 			}
@@ -280,30 +271,30 @@ func (gs *GameState) GetRandomAvailablePosition() (float64, float64, error) {
 	if len(availableCells) == 0 {
 		return 0, 0, fmt.Errorf("no available positions found on the grid")
 	}
-	// Use the GameState's RNG instance
+	// Select a random available cell using the GameState's RNG.
 	randomIndex := gs.rng.Intn(len(availableCells))
 	return availableCells[randomIndex].X, availableCells[randomIndex].Y, nil
 }
 
-// --- A* Pathfinding (Custom Implementation with Diagonal Movement) ---
+// --- A* Pathfinding (Custom Implementation) ---
 
-// AStarNode represents a node in the A* algorithm.
+// AStarNode represents a node in the A* algorithm's search space.
 type AStarNode struct {
-	X, Y   int        // Node coordinates in the maze grid
-	G      float64    // Cost from the start node to this node
+	X, Y   int        // Coordinates in the maze grid
+	G      float64    // Cost from start node to this node
 	H      float64    // Heuristic cost from this node to the end node
 	F      float64    // Total estimated cost (G + H)
-	Parent *AStarNode // Parent node for path reconstruction
-	Index  int        // Index in the priority queue (required for container/heap)
+	Parent *AStarNode // Reference to the parent node for path reconstruction
+	Index  int        // Index in the priority queue (required by container/heap)
 }
 
-// PriorityQueue implements heap.Interface for AStarNode.
+// PriorityQueue implements heap.Interface for AStarNode to manage the open set.
 type PriorityQueue []*AStarNode
 
 func (pq PriorityQueue) Len() int { return len(pq) }
 
 func (pq PriorityQueue) Less(i, j int) bool {
-	// We want Pop to give us the lowest F-score (highest priority)
+	// Lower F-score means higher priority (min-heap).
 	return pq[i].F < pq[j].F
 }
 
@@ -325,29 +316,30 @@ func (pq *PriorityQueue) Pop() interface{} {
 	n := len(old)
 	node := old[n-1]
 	old[n-1] = nil  // Avoid memory leaks
-	node.Index = -1 // For safety
+	node.Index = -1 // Mark as removed
 	*pq = old[0 : n-1]
 	return node
 }
 
-// heuristic calculates the squared Euclidean distance for A*.
-// This heuristic is admissible and consistent for grid-based movement with varying costs.
+// heuristic calculates the squared Euclidean distance between two AStarNodes.
+// This is an admissible and consistent heuristic for grid-based movement.
 func heuristic(a, b *AStarNode) float64 {
 	dx := float64(a.X - b.X)
 	dy := float64(a.Y - b.Y)
-	return (dx * dx) + (dy * dy) // Squared Euclidean distance
+	return (dx * dx) + (dy * dy)
 }
 
-// FindPath calculates an A* path between two world coordinates using a custom implementation.
-// It supports diagonal movement.
+// FindPath calculates an A* path between two world coordinates.
+// It converts world coordinates to maze coordinates, performs A* search,
+// and converts the resulting path back to world coordinates.
 func (gs *GameState) FindPath(startWorldX, startWorldY, endWorldX, endWorldY float64) ([]struct{ X, Y float64 }, error) {
-	gs.mu.RLock() // Read lock to read the maze
+	gs.mu.RLock() // Acquire read lock for maze access during pathfinding
 	defer gs.mu.RUnlock()
 
 	startMazeX, startMazeY := gs.worldToMazeCoords(startWorldX, startWorldY)
 	endMazeX, endMazeY := gs.worldToMazeCoords(endWorldX, endWorldY)
 
-	// Ensure start and end are within maze bounds and are walkable.
+	// Validate start and end positions: must be within maze bounds and walkable.
 	if !(startMazeX >= 0 && startMazeX < gs.MazeCellsX &&
 		startMazeY >= 0 && startMazeY < gs.MazeCellsY &&
 		gs.SimplifiedMaze[startMazeY][startMazeX] == 0) {
@@ -359,27 +351,26 @@ func (gs *GameState) FindPath(startWorldX, startWorldY, endWorldX, endWorldY flo
 		return nil, fmt.Errorf("end position (maze: %d,%d) is invalid or an obstacle", endMazeX, endMazeY)
 	}
 
-	log.Printf("Finding path from maze (%d,%d) to (%d,%d) with custom A*...\n", startMazeX, startMazeY, endMazeX, endMazeY)
+	log.Printf("Pathfinding: from maze (%d,%d) to (%d,%d)...\n", startMazeX, startMazeY, endMazeX, endMazeY)
 
-	startNode := &AStarNode{X: startMazeX, Y: startMazeY}
+	startNode := &AStarNode{X: startMazeX, Y: startMazeY, G: 0}
 	endNode := &AStarNode{X: endMazeX, Y: endMazeY}
 
-	// Initialize start node's heuristic and total cost
 	startNode.H = heuristic(startNode, endNode)
 	startNode.F = startNode.G + startNode.H
 
 	openSet := make(PriorityQueue, 0)
 	heap.Push(&openSet, startNode)
 
-	// gScore: cost from start to current node
-	// cameFrom: for path reconstruction
+	// gScore stores the cost from start to a node.
 	gScore := make(map[string]float64)
 	gScore[fmt.Sprintf("%d,%d", startNode.X, startNode.Y)] = 0
 
+	// cameFrom stores the path reconstruction chain.
 	cameFrom := make(map[string]*AStarNode)
 
-	// Directions for 8-way movement (including diagonals)
-	// Costs: 1.0 for cardinal, math.Sqrt2 for diagonal
+	// Directions for 8-way movement (cardinal and diagonal).
+	// Costs: 1.0 for cardinal, sqrt(2) for diagonal.
 	neighborsDirs := []struct {
 		dx, dy int
 		cost   float64
@@ -394,169 +385,222 @@ func (gs *GameState) FindPath(startWorldX, startWorldY, endWorldX, endWorldY flo
 		{-1, -1, math.Sqrt2}, // Up-Left
 	}
 
-	// Safety break: max iterations to prevent infinite loops on complex/unpathable mazes
-	maxIterations := (gs.MazeCellsX * gs.MazeCellsY * 2) // A heuristic for max iterations
-	outerIterations := 0
+	// Safety break to prevent infinite loops in unpathable or complex mazes.
+	maxIterations := (gs.MazeCellsX * gs.MazeCellsY * 2)
+	iterations := 0
 
 	for openSet.Len() > 0 {
-		outerIterations++
-		if outerIterations > maxIterations {
-			warn("Pathfinding: giving up, too many iterations.")
-			// Return the path found so far to the closest node, if any
-			// For simplicity, returning nil here if we can't reach the end within limits.
-			// A more advanced implementation might return a partial path to the closest reachable node.
+		iterations++
+		if iterations > maxIterations {
+			log.Printf("WARNING: Pathfinding aborted due to too many iterations. No path found within limits.")
 			return nil, fmt.Errorf("pathfinding aborted: too many iterations")
 		}
 
 		current := heap.Pop(&openSet).(*AStarNode)
 		currentKey := fmt.Sprintf("%d,%d", current.X, current.Y)
 
-		// Found the goal
+		// If the goal is reached, reconstruct and return the path.
 		if current.X == endMazeX && current.Y == endMazeY {
-			// Reconstruct path
 			pathMaze := []struct{ X, Y int }{}
 			for current != nil {
 				pathMaze = append([]struct{ X, Y int }{{X: current.X, Y: current.Y}}, pathMaze...)
 				current = cameFrom[fmt.Sprintf("%d,%d", current.X, current.Y)]
 			}
 
-			// Convert maze path back to world coordinates (center of cells for smoother movement)
+			// Convert maze coordinates path to world coordinates.
 			pathWorld := make([]struct{ X, Y float64 }, len(pathMaze))
 			for i, p := range pathMaze {
 				pathWorld[i].X, pathWorld[i].Y = gs.mazeToWorldCoords(p.X, p.Y)
 			}
-			log.Printf("Path found with %d steps.\n", len(pathWorld))
+			log.Printf("Pathfinding: Path found with %d steps.\n", len(pathWorld))
 			return pathWorld, nil
 		}
 
+		// Explore neighbors of the current node.
 		for _, dir := range neighborsDirs {
 			neighborX, neighborY := current.X+dir.dx, current.Y+dir.dy
 			neighborKey := fmt.Sprintf("%d,%d", neighborX, neighborY)
 
-			// Check bounds and if it's an obstacle
+			// Check if neighbor is within bounds and not an obstacle.
 			if neighborX < 0 || neighborX >= gs.MazeCellsX ||
 				neighborY < 0 || neighborY >= gs.MazeCellsY ||
 				gs.SimplifiedMaze[neighborY][neighborX] == 1 {
-				continue // Invalid or obstacle
+				continue // Skip invalid or obstructed neighbors
 			}
 
 			tentativeGScore := gScore[currentKey] + dir.cost
 
-			// If this path to neighbor is better than any previous one.
+			// If this path to neighbor is better than any previous one, update it.
 			if val, ok := gScore[neighborKey]; !ok || tentativeGScore < val {
 				newNode := &AStarNode{X: neighborX, Y: neighborY}
 				cameFrom[neighborKey] = current
 				gScore[neighborKey] = tentativeGScore
 				newNode.G = tentativeGScore
-				newNode.H = heuristic(newNode, endNode) // Use endNode directly
+				newNode.H = heuristic(newNode, endNode)
 				newNode.F = newNode.G + newNode.H
 
-				// Check if the neighbor is already in the open set; if so, update its priority
+				// Add or update neighbor in the open set.
 				foundInOpenSet := false
-				for i, node := range openSet { // Iterate over the priority queue to find the node
+				for i, node := range openSet {
 					if node.X == newNode.X && node.Y == newNode.Y {
-						if newNode.F < node.F {
+						if newNode.F < node.F { // If new path is better, update priority
 							openSet[i] = newNode
-							heap.Fix(&openSet, i) // Update priority in the heap
+							heap.Fix(&openSet, i) // Re-heapify after update
 						}
 						foundInOpenSet = true
 						break
 					}
 				}
 				if !foundInOpenSet {
-					heap.Push(&openSet, newNode)
+					heap.Push(&openSet, newNode) // Add new node to open set
 				}
 			}
 		}
 	}
 
-	warn("Pathfinding: Couldn't get a path to destination.")
+	log.Printf("Pathfinding: No path found to destination.")
 	return nil, fmt.Errorf("no path found")
 }
 
-// warn is a simple helper function for warnings, similar to Python's warnings.warn
-func warn(message string) {
-	log.Printf("WARNING: %s\n", message)
-}
-
-// --- WebSocketClient ---
-// WebSocketClient represents a single client connected via WebSocket.
+// --- WebSocketClient (Represents a single connected client) ---
 type WebSocketClient struct {
 	conn     *websocket.Conn // The raw WebSocket connection
 	send     chan []byte     // Channel for outgoing messages to this client
-	playerID string          // The player ID associated with this client
+	playerID string          // The unique player ID associated with this client
+	done     chan struct{}   // Signal channel for goroutine termination
 }
 
-// readPump pumps messages from the websocket connection to the hub.
+// readPump continuously reads messages from the WebSocket connection.
+// It handles disconnection detection and signals the writePump to terminate.
 func (c *WebSocketClient) readPump(server *GameServer) {
+	// Ensure connection is closed and client unregistered when this goroutine exits.
 	defer func() {
-		server.unregisterClient(c)
-		c.conn.Close()
+		server.unregisterClient(c) // Unregister the client from the server's active list
+		close(c.done)              // Signal the writePump to terminate
+		c.conn.Close()             // Close the underlying WebSocket connection
 	}()
+
+	// Set a read deadline and a pong handler for heartbeat.
+	c.conn.SetReadDeadline(time.Now().Add(PONG_WAIT))
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(PONG_WAIT)) // Extend deadline on pong
+		return nil
+	})
+
 	for {
-		_, message, err := c.conn.ReadMessage()
+		_, message, err := c.conn.ReadMessage() // Read messages
 		if err != nil {
+			// Log unexpected close errors, indicating a client disconnection.
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-				log.Printf("Error reading message from client %s: %v", c.playerID, err)
+				log.Printf("Client %s: Unexpected WebSocket close error: %v", c.playerID, err)
+			} else {
+				log.Printf("Client %s: WebSocket read error (non-unexpected close): %v", c.playerID, err)
 			}
-			break
+			break // Exit loop on any read error, triggering defer
 		}
-		// Handle incoming JSON messages from the client
+		// Pass the received message to the server's message handler for processing.
 		server.handleClientMessage(c, message)
 	}
 }
 
-// writePump pumps messages from the hub to the websocket connection.
+// writePump continuously sends messages from the 'send' channel to the WebSocket connection.
+// It also sends periodic pings for heartbeat and terminates gracefully on signal.
 func (c *WebSocketClient) writePump() {
+	ticker := time.NewTicker(PING_INTERVAL) // Ticker for sending periodic pings
 	defer func() {
-		c.conn.Close()
+		ticker.Stop()  // Stop the ticker on exit
+		c.conn.Close() // Ensure connection is closed on exit
 	}()
-	for message := range c.send {
-		err := c.conn.WriteMessage(websocket.TextMessage, message)
-		if err != nil {
-			log.Printf("Error writing message to client %s: %v", c.playerID, err)
-			return
+
+	for {
+		select {
+		case message, ok := <-c.send:
+			// Attempt to send a message from the 'send' channel.
+			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second)) // Set write deadline
+			if !ok {
+				// The 'send' channel was closed, indicating client unregistration.
+				// Send a normal close message to the client before exiting.
+				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return // Terminate goroutine
+			}
+
+			// Get a new writer for the WebSocket message.
+			w, err := c.conn.NextWriter(websocket.TextMessage)
+			if err != nil {
+				log.Printf("Client %s: Error getting WebSocket writer: %v", c.playerID, err)
+				return // Terminate goroutine on writer error
+			}
+			w.Write(message) // Write the message
+
+			// If there are more messages in the buffer, write them immediately.
+			n := len(c.send)
+			for i := 0; i < n; i++ {
+				w.Write(<-c.send)
+			}
+
+			// Close the writer to flush the message.
+			if err := w.Close(); err != nil {
+				log.Printf("Client %s: Error closing WebSocket writer: %v", c.playerID, err)
+				return // Terminate goroutine on close error
+			}
+		case <-ticker.C:
+			// Send a ping message on ticker tick.
+			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second)) // Set write deadline for ping
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Printf("Client %s: Error sending ping: %v", c.playerID, err)
+				return // Terminate goroutine on ping error
+			}
+		case <-c.done:
+			// Received termination signal from readPump.
+			log.Printf("Client %s: writePump received done signal, terminating.", c.playerID)
+			// Attempt to send a normal close message before exiting.
+			err := c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			if err != nil {
+				log.Printf("Client %s: Error sending final close message: %v", c.playerID, err)
+			}
+			return // Terminate goroutine
 		}
 	}
 }
 
-// --- GameServer ---
-// GameServer encapsulates the WebSocket server logic and game state management.
+// --- GameServer (Manages WebSocket connections and game state) ---
 type GameServer struct {
-	upgrader       websocket.Upgrader        // WebSocket upgrader for HTTP connections
-	gameState      *GameState                // Current game state
-	clients        map[*WebSocketClient]bool // Registered clients
-	register       chan *WebSocketClient     // Channel for registering new clients
-	unregister     chan *WebSocketClient     // Channel for unregistering clients
-	playerCounter  int                       // Counter for assigning unique player IDs
-	lastUpdateTime time.Time                 // Last time the game state was updated
-	clientsMutex   sync.RWMutex              // Mutex to protect the clients map
+	upgrader         websocket.Upgrader          // WebSocket upgrader for HTTP requests
+	gameState        *GameState                  // The central game state
+	clients          map[*WebSocketClient]bool   // Set of active WebSocketClient connections
+	playerIDToClient map[string]*WebSocketClient // Map from player ID to WebSocketClient for quick lookup
+	register         chan *WebSocketClient       // Channel for new client registrations
+	unregister       chan *WebSocketClient       // Channel for client unregistrations
+	playerCounter    int                         // Counter for assigning unique player IDs
+	lastUpdateTime   time.Time                   // Timestamp of the last game state update
+	clientsMutex     sync.RWMutex                // Mutex protecting 'clients' and 'playerIDToClient' maps
 }
 
-// NewGameServer initializes a new GameServer.
+// NewGameServer initializes a new GameServer instance.
 func NewGameServer() *GameServer {
 	server := &GameServer{
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 			CheckOrigin: func(r *http.Request) bool {
-				// Allow all origins for development. Restrict this in production.
+				// Allow all origins for development. RESTRICT THIS IN PRODUCTION!
 				return true
 			},
 		},
-		gameState:     NewGameState(),
-		clients:       make(map[*WebSocketClient]bool),
-		register:      make(chan *WebSocketClient),
-		unregister:    make(chan *WebSocketClient),
-		playerCounter: 0,
-		clientsMutex:  sync.RWMutex{},
+		gameState:        NewGameState(),
+		clients:          make(map[*WebSocketClient]bool),
+		playerIDToClient: make(map[string]*WebSocketClient), // Initialize the new map
+		register:         make(chan *WebSocketClient),
+		unregister:       make(chan *WebSocketClient),
+		playerCounter:    0,
+		clientsMutex:     sync.RWMutex{},
 	}
 
-	server.addInitialObstacles() // Add some initial obstacles to the world
+	server.addInitialObstacles() // Populate the world with static obstacles
 	return server
 }
 
-// addInitialObstacles adds some static obstacles to the game world.
+// addInitialObstacles places predefined static obstacles in the game world.
 func (gs *GameServer) addInitialObstacles() {
 	obstaclePositions := []struct{ X, Y float64 }{
 		{200, 200}, {250, 200}, {300, 200},
@@ -582,104 +626,123 @@ func (gs *GameServer) addInitialObstacles() {
 			Speed:      0, // Obstacles do not move
 		}
 		gs.gameState.AddObject(obstacle)
-		log.Printf("Object added: %s at (%.0f, %.0f)", obstacleID, pos.X, pos.Y)
+		log.Printf("Added obstacle: %s at (%.0f, %.0f)", obstacleID, pos.X, pos.Y)
 	}
-	log.Printf("Added %d initial obstacles.\n", len(obstaclePositions))
-	gs.gameState.buildSimplifiedMaze() // Build the maze once after adding all initial obstacles
+	log.Printf("Added %d initial obstacles.", len(obstaclePositions))
+	gs.gameState.buildSimplifiedMaze() // Build the A* maze once after all static obstacles are added.
 }
 
-// handleWebSocketConnection handles new WebSocket upgrade requests.
+// handleWebSocketConnection upgrades HTTP requests to WebSocket connections.
 func (gs *GameServer) handleWebSocketConnection(w http.ResponseWriter, r *http.Request) {
 	conn, err := gs.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("WebSocket upgrade failed: %v\n", err)
+		log.Printf("WebSocket upgrade failed: %v", err)
 		return
 	}
 
+	// Assign a unique player ID and create a new WebSocketClient.
 	gs.clientsMutex.Lock()
 	gs.playerCounter++
 	playerID := fmt.Sprintf("player_%d", gs.playerCounter)
+	client := &WebSocketClient{conn: conn, send: make(chan []byte, 256), playerID: playerID, done: make(chan struct{})}
+	gs.clients[client] = true              // Add to set of active clients
+	gs.playerIDToClient[playerID] = client // Map player ID to client
 	gs.clientsMutex.Unlock()
 
-	client := &WebSocketClient{conn: conn, send: make(chan []byte, 256), playerID: playerID}
-	gs.register <- client // Register the new client
+	gs.register <- client // Signal the GameServer's main loop to register this client
 
-	// Assign player object and send initial state
+	// Find a random available position for the new player.
 	posX, posY, err := gs.gameState.GetRandomAvailablePosition()
 	if err != nil {
-		log.Printf("ERROR: Could not find available position for new player %s. Closing client connection. Error: %v\n", playerID, err)
-		conn.Close()
+		log.Printf("ERROR: No available position for new player %s. Closing connection. Error: %v", playerID, err)
+		conn.Close() // Close connection if no position is found
 		return
 	}
 
+	// Create and add the player's GameObject to the game state.
 	playerObj := &GameObject{
 		ID:         playerID,
 		X:          posX,
 		Y:          posY,
 		Color:      BLUE,
 		IsObstacle: false,
-		Speed:      200, // Player speed
+		Speed:      200, // Player movement speed
 	}
-	gs.gameState.AddObject(playerObj) // Add the player object to the game state
-	// Note: buildSimplifiedMaze() is NOT called here, as players are not obstacles.
+	gs.gameState.AddObject(playerObj)
 
-	// Send player_assigned event
+	// Verify the player object was successfully added to the game state.
+	gs.gameState.mu.RLock()
+	_, objAdded := gs.gameState.Objects[playerID]
+	gs.gameState.mu.RUnlock()
+	if !objAdded {
+		log.Printf("CRITICAL ERROR: Player object %s was not added to game state. Disconnecting client %s.", playerID, conn.RemoteAddr().String())
+		conn.Close()
+		return
+	}
+
+	// Send the 'player_assigned' message directly and synchronously to the client.
+	// This ensures the client receives its ID before any other async updates.
 	playerAssignedMsg, _ := json.Marshal(map[string]interface{}{
 		"type":      "player_assigned",
 		"player_id": playerID,
 		"x":         posX,
 		"y":         posY,
 	})
-	client.send <- playerAssignedMsg
-	log.Printf("Player %s assigned to new client.\n", playerID)
-
-	// Start read and write "pumps" for the client
-	go client.writePump()
-	go client.readPump(gs) // Pass the server to readPump to handle messages
-}
-
-// registerClient adds a new client to the server's active client list.
-func (gs *GameServer) registerClient(client *WebSocketClient) {
-	gs.clientsMutex.Lock()
-	gs.clients[client] = true
-	gs.clientsMutex.Unlock()
-	log.Printf("Client %s registered.\n", client.playerID)
-	gs.sendFullGameState() // Send full game state to all clients after a new one connects
-}
-
-// unregisterClient removes a client from the server's active client list.
-func (gs *GameServer) unregisterClient(client *WebSocketClient) {
-	gs.clientsMutex.Lock()
-	if _, ok := gs.clients[client]; ok {
-		delete(gs.clients, client)
-		close(client.send)
-		gs.clientsMutex.Unlock() // Unlock before calling RemoveObject
-		gs.gameState.RemoveObject(client.playerID)
-		gs.sendFullGameState() // Send full game state to all clients after a client disconnects
-	} else {
-		gs.clientsMutex.Unlock()
+	err = conn.WriteMessage(websocket.TextMessage, playerAssignedMsg)
+	if err != nil {
+		log.Printf("ERROR: Failed to send player_assigned message to client %s: %v. Disconnecting.", playerID, err)
+		conn.Close()
+		return
 	}
-	log.Printf("Client %s unregistered.\n", client.playerID)
+	log.Printf("Player %s assigned to client %s.", playerID, conn.RemoteAddr().String())
+
+	// Start read and write goroutines for the client.
+	go client.writePump()
+	go client.readPump(gs) // Pass GameServer to readPump for message handling
 }
 
-// clientMessage represents the generic structure of messages coming from the client.
+// registerClient adds a new WebSocketClient to the server's active client lists.
+func (gs *GameServer) registerClient(client *WebSocketClient) {
+	// The client is already added to maps in handleWebSocketConnection under mutex.
+	// This channel is primarily for signaling the main server loop about new clients.
+	log.Printf("Client %s (ID: %s) fully registered.", client.conn.RemoteAddr().String(), client.playerID)
+	gs.sendFullGameState() // Broadcast full state to all clients, including the new one.
+}
+
+// unregisterClient removes a WebSocketClient from the server's active client lists.
+// It also cleans up the associated GameObject.
+func (gs *GameServer) unregisterClient(client *WebSocketClient) {
+	gs.clientsMutex.Lock() // Acquire lock for client maps
+	if _, ok := gs.clients[client]; ok {
+		delete(gs.clients, client)                   // Remove from active clients set
+		delete(gs.playerIDToClient, client.playerID) // Remove from player ID map
+		close(client.send)                           // Close the client's send channel to signal writePump termination
+	}
+	gs.clientsMutex.Unlock() // Release lock
+
+	// Remove the player's GameObject from the game state.
+	gs.gameState.RemoveObject(client.playerID)
+	log.Printf("Client %s (ID: %s) unregistered and player object removed.", client.conn.RemoteAddr().String(), client.playerID)
+	gs.sendFullGameState() // Broadcast updated state to remaining clients.
+}
+
+// clientMessage represents the generic structure of messages from the client.
 type clientMessage struct {
-	Type string `json:"type"` // "event_name"
-	// The Data field will be deserialized based on Type
-	Data json.RawMessage `json:"data"`
+	Type string          `json:"type"` // Type of message (e.g., "client_move_request")
+	Data json.RawMessage `json:"data"` // Raw JSON payload, to be unmarshaled based on Type
 }
 
 // clientMoveRequestData represents the specific data for a "client_move_request" message.
 type clientMoveRequestData struct {
-	TargetX float64 `json:"target_x"`
-	TargetY float64 `json:"target_y"`
+	TargetX float64 `json:"target_x"` // Target X-coordinate for movement
+	TargetY float64 `json:"target_y"` // Target Y-coordinate for movement
 }
 
-// handleClientMessage processes incoming JSON messages from a client.
+// handleClientMessage processes incoming JSON messages from a specific client.
 func (gs *GameServer) handleClientMessage(client *WebSocketClient, message []byte) {
 	var msg clientMessage
 	if err := json.Unmarshal(message, &msg); err != nil {
-		log.Printf("ERROR: Failed to unmarshal incoming message from client %s: %v\n", client.playerID, err)
+		log.Printf("Client %s: ERROR unmarshaling incoming message: %v", client.playerID, err)
 		return
 	}
 
@@ -687,118 +750,138 @@ func (gs *GameServer) handleClientMessage(client *WebSocketClient, message []byt
 	case "client_move_request":
 		var moveData clientMoveRequestData
 		if err := json.Unmarshal(msg.Data, &moveData); err != nil {
-			log.Printf("ERROR: Failed to unmarshal move request data from client %s: %v\n", client.playerID, err)
+			log.Printf("Client %s: ERROR unmarshaling move request data: %v", client.playerID, err)
 			return
 		}
 		gs.processClientMoveRequest(client, moveData)
 	default:
-		log.Printf("WARNING: Unknown message type '%s' from client %s\n", msg.Type, client.playerID)
+		log.Printf("Client %s: WARNING unknown message type '%s'.", msg.Type, client.playerID)
 	}
 }
 
-// processClientMoveRequest handles the logic for a client's move request.
+// processClientMoveRequest handles the logic for a client's movement request.
 func (gs *GameServer) processClientMoveRequest(client *WebSocketClient, data clientMoveRequestData) {
-	gs.gameState.mu.RLock() // Read lock to get player object
+	gs.gameState.mu.RLock() // Acquire read lock to access player object safely
 	playerObj, objExists := gs.gameState.Objects[client.playerID]
-	gs.gameState.mu.RUnlock()
+	gs.gameState.mu.RUnlock() // Release read lock
 
 	if !objExists {
-		log.Printf("ERROR: Player object %s not found for move request.\n", client.playerID)
-		// Optionally, send an error message back to the client
+		log.Printf("ERROR: Player object %s not found for move request.", client.playerID)
+		errMsg, _ := json.Marshal(map[string]string{"type": "message", "text": "Your player object was not found on the server."})
+		select {
+		case client.send <- errMsg: // Attempt to send error message back to client
+		default:
+			log.Printf("WARNING: Failed to send error message to client %s (send channel full).", client.playerID)
+		}
 		return
 	}
 
-	// Find the path using A*
+	// Calculate path using A* pathfinding.
 	path, err := gs.gameState.FindPath(playerObj.X, playerObj.Y, data.TargetX, data.TargetY)
 	if err != nil {
-		log.Printf("WARNING: No path found for player %s from (%.0f,%.0f) to (%.0f,%.0f). Error: %v\n", client.playerID, playerObj.X, playerObj.Y, data.TargetX, data.TargetY, err)
-		// Send an error message back to the client
+		log.Printf("WARNING: No path found for player %s from (%.0f,%.0f) to (%.0f,%.0f). Error: %v", client.playerID, playerObj.X, playerObj.Y, data.TargetX, data.TargetY, err)
 		errMsg, _ := json.Marshal(map[string]string{"type": "message", "text": "No path found to that location!"})
-		client.send <- errMsg
+		select {
+		case client.send <- errMsg: // Attempt to send error message back to client
+		default:
+			log.Printf("WARNING: Failed to send error message to client %s (send channel full).", client.playerID)
+		}
 		return
 	}
 
-	gs.gameState.mu.Lock() // Write lock to update player object's path
+	// Update player object's path in the game state.
+	gs.gameState.mu.Lock() // Acquire write lock for player object modification
 	playerObj.Path = path
 	playerObj.PathIndex = 0
-	gs.gameState.mu.Unlock()
-	log.Printf("Calculated path for %s: %d steps.\n", client.playerID, len(path))
+	gs.gameState.mu.Unlock() // Release write lock
+	log.Printf("Calculated path for %s: %d steps.", client.playerID, len(path))
 
-	// Send player_path_update event to the specific client
+	// Send 'player_path_update' event to the specific client.
 	pathUpdateMsg, _ := json.Marshal(map[string]interface{}{
 		"type":      "player_path_update",
 		"player_id": client.playerID,
 		"path":      path,
 	})
-	client.send <- pathUpdateMsg
+	select {
+	case client.send <- pathUpdateMsg:
+	default:
+		log.Printf("WARNING: Failed to send player_path_update to client %s (send channel full).", client.playerID)
+	}
 }
 
-// broadcastGameStateLoop periodically broadcasts the full game state to all connected clients.
+// broadcastGameStateLoop periodically updates game object positions and broadcasts the full game state.
 func (gs *GameServer) broadcastGameStateLoop() {
 	gs.lastUpdateTime = time.Now()
-	ticker := time.NewTicker(GAME_TICK_INTERVAL) // Create a ticker for the update interval
-	defer ticker.Stop()                          // Ensure the ticker stops when the function exits
+	ticker := time.NewTicker(GAME_TICK_INTERVAL) // Set up game tick interval
+	defer ticker.Stop()                          // Ensure ticker is stopped when goroutine exits
 
-	for range ticker.C { // Loop that runs on each game "tick"
-		deltaTime := time.Since(gs.lastUpdateTime).Seconds() // Calculate elapsed time since last update
+	for range ticker.C { // Loop runs on each game tick
+		deltaTime := time.Since(gs.lastUpdateTime).Seconds() // Calculate time since last update
 		gs.lastUpdateTime = time.Now()
 
-		gs.gameState.mu.Lock() // Lock game state to update objects
+		gs.gameState.mu.Lock() // Acquire write lock for game state objects
 		for _, obj := range gs.gameState.Objects {
-			if !obj.IsObstacle { // Only update non-obstacle objects (players)
+			if !obj.IsObstacle { // Only update positions of non-obstacle objects (players)
 				obj.UpdatePosition(deltaTime)
-				// If the player reached the end of their path, clear it
+				// If player reached end of path, clear it.
 				if len(obj.Path) > 0 && obj.PathIndex >= len(obj.Path) {
 					obj.Path = []struct{ X, Y float64 }{}
 					obj.PathIndex = 0
-					log.Printf("Player %s reached destination.\n", obj.ID)
+					log.Printf("Player %s reached destination.", obj.ID)
 				}
 			}
 		}
-		gs.gameState.mu.Unlock() // Unlock game state
+		gs.gameState.mu.Unlock() // Release write lock
 
-		gs.sendFullGameState() // Send the full game state to all clients
+		gs.sendFullGameState() // Broadcast the updated state to all clients
 	}
 }
 
-// sendFullGameState sends the current game state to all connected clients.
-func (gs *GameServer) sendFullGameState() { // Moved to GameServer
-	gs.gameState.mu.RLock() // Read lock to read game state
+// sendFullGameState marshals the current game state and sends it to all connected clients.
+func (gs *GameServer) sendFullGameState() {
+	gs.gameState.mu.RLock() // Acquire read lock to read game state objects
 	defer gs.gameState.mu.RUnlock()
 
-	// Create a serializable representation of game objects
+	// Create a serializable copy of game objects.
 	serializableObjects := make(map[string]GameObject)
 	for id, obj := range gs.gameState.Objects {
-		serializableObjects[id] = *obj // Dereference to copy the struct
+		serializableObjects[id] = *obj // Dereference to copy the struct value
 	}
 
-	// Prepare message for broadcast
+	// Prepare the 'game_state_update' message.
 	broadcastMsg, err := json.Marshal(map[string]interface{}{
 		"type":    "game_state_update",
 		"objects": serializableObjects,
 	})
 	if err != nil {
-		log.Printf("ERROR: Failed to marshal game state for broadcast: %v\n", err)
+		log.Printf("ERROR: Failed to marshal game state for broadcast: %v", err)
 		return
 	}
 
-	gs.clientsMutex.RLock() // Read lock to iterate over clients
+	gs.clientsMutex.RLock() // Acquire read lock for clients map
+	// Create a temporary slice of clients to iterate over, preventing map modification during iteration issues.
+	clientsToBroadcast := make([]*WebSocketClient, 0, len(gs.clients))
 	for client := range gs.clients {
+		clientsToBroadcast = append(clientsToBroadcast, client)
+	}
+	gs.clientsMutex.RUnlock() // Release read lock
+
+	// Send the broadcast message to each client.
+	for _, client := range clientsToBroadcast {
 		select {
 		case client.send <- broadcastMsg:
-			// Message sent successfully
+			// Message sent successfully to client's send channel.
 		default:
-			// Client's send buffer is full, or client is unresponsive
-			log.Printf("WARNING: Client %s send buffer full, unregistering.\n", client.playerID)
-			gs.unregisterClient(client) // Unregister the problematic client
+			// Client's send buffer is full, indicating a potential issue or slow client.
+			log.Printf("WARNING: Client %s send buffer full, attempting to unregister.", client.playerID)
+			gs.unregister <- client // Signal unregistration to main server loop
 		}
 	}
-	gs.clientsMutex.RUnlock()
 }
 
-// Run starts the WebSocket server and the main game loop.
+// Run starts the WebSocket server and the main game loop goroutines.
 func (gs *GameServer) Run() {
-	// Start the client management goroutine
+	// Start a goroutine to handle client registration and unregistration requests.
 	go func() {
 		for {
 			select {
@@ -810,19 +893,22 @@ func (gs *GameServer) Run() {
 		}
 	}()
 
-	go gs.broadcastGameStateLoop() // Start the game state broadcast in a goroutine
+	// Start the game state broadcast loop in a separate goroutine.
+	go gs.broadcastGameStateLoop()
 
-	http.HandleFunc("/ws", gs.handleWebSocketConnection) // WebSocket endpoint
+	// Register the WebSocket endpoint.
+	http.HandleFunc("/ws", gs.handleWebSocketConnection)
+	// Simple HTTP handler for the root path.
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Go Plain WebSocket Game Server Running. Connect to /ws for game."))
 	})
 
-	log.Printf("Starting Plain WebSocket server on http://%s:%d\n", SERVER_HOST, SERVER_PORT)
-	// Start the HTTP server and block main execution until a fatal error occurs
+	log.Printf("Starting Plain WebSocket server on http://%s:%d", SERVER_HOST, SERVER_PORT)
+	// Start the HTTP server. This call blocks until a fatal error occurs.
 	log.Fatal(http.ListenAndServe(fmt.Sprintf("%s:%d", SERVER_HOST, SERVER_PORT), nil))
 }
 
 func main() {
-	server := NewGameServer() // Create a new server instance
+	server := NewGameServer() // Create a new instance of the game server
 	server.Run()              // Start the server
 }
