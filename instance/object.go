@@ -14,8 +14,9 @@ type InstanceObject struct {
 	Speed      float64 `json:"speed"`       // Movement speed in pixels per second
 
 	// Pathfinding related fields
-	Path      []struct{ X, Y float64 } `json:"path"`       // Current path as a slice of world coordinates
-	PathIndex int                      `json:"path_index"` // Current index in the path being followed
+	Path       []struct{ X, Y float64 } `json:"path"`        // Current path as a slice of world coordinates
+	PathIndex  int                      `json:"path_index"`  // Current index in the path being followed
+	ObjectType string                   `json:"object_type"` // Unique identifier for the object
 }
 
 // UpdatePosition moves the object along its current path based on elapsed time.

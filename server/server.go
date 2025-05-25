@@ -74,6 +74,7 @@ func (is *InstanceServer) addInitialObstacles() {
 			Color:      instance.DARKGRAY, // Use Color from instance package
 			IsObstacle: true,
 			Speed:      0, // Obstacles do not move
+			ObjectType: "wall",
 		}
 		is.instanceState.AddObject(obstacle)
 		log.Printf("Added obstacle: %s at (%.0f, %.0f)", obstacleID, pos.X, pos.Y)
@@ -117,6 +118,7 @@ func (is *InstanceServer) handleWebSocketConnection(w http.ResponseWriter, r *ht
 		Color:      instance.BLUE, // Use Color
 		IsObstacle: false,
 		Speed:      200, // Player movement speed
+		ObjectType: "player",
 	}
 	is.instanceState.AddObject(playerObj)
 
