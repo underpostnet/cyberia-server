@@ -20,4 +20,6 @@ type Color struct {
 var (
 	BLUE     = Color{0, 0, 255, 255}  // Color for player objects
 	DARKGRAY = Color{80, 80, 80, 255} // Color for obstacle objects
+	RED      = Color{255, 0, 0, 255}  // Color for obstacle objects
+	YELLOW   = Color{255, 255, 0, 255}
 )

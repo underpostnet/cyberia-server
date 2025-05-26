@@ -71,7 +71,7 @@ func (is *InstanceServer) addInitialObstacles() {
 			ID:         obstacleID,
 			X:          pos.X,
 			Y:          pos.Y,
-			Color:      instance.DARKGRAY, // Use Color from instance package
+			Color:      instance.RED, // Use Color from instance package
 			IsObstacle: true,
 			Speed:      0, // Obstacles do not move
 			ObjectType: "wall",
