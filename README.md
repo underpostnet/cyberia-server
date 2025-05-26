@@ -51,7 +51,7 @@ The project is organized into the following key packages:
 1.  **Clone the repository:**
 
     ```bash
-    git clone <your-repo-url>/cyberia-server.git
+    git clone https://github.com/underpostnet/cyberia-server.git
     cd cyberia-server
     ```
 
@@ -110,7 +110,6 @@ Clients connect to the server via WebSockets at `ws://<server-ip>:5000/ws`.
         "path": null,
         "path_index": 0
       }
-      // ... other objects
     }
   }
   ```
