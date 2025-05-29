@@ -5,27 +5,27 @@ import (
 	"log"
 	"net/http"
 
-	"cyberia-server/server" // Updated import path
+	"cyberia-server/server"
 )
 
 const (
-	SERVER_HOST = "0.0.0.0" // Server listens on all network interfaces
-	SERVER_PORT = 5000      // Default server port
+	SERVER_HOST = "0.0.0.0"
+	SERVER_PORT = 5000
 )
 
 func main() {
-	// Create a new instance of the InstanceServer.
-	// This server manages WebSocket connections and the instance state.
-	instanceServer := server.NewInstanceServer()
+	// Create a new instance of the NetworkStateServer.
+	// This server manages WebSocket connections and the network state.
+	networkStateServer := server.NewNetworkStateServer()
 
-	// Start the InstanceServer's main loop and WebSocket handling in a goroutine.
+	// Start the NetworkStateServer's main loop and WebSocket handling in a goroutine.
 	// The Run method will set up HTTP handlers and start listening.
-	go instanceServer.Run()
+	go networkStateServer.Run()
 
 	// Register a simple HTTP handler for the root path.
 	// This is useful for checking if the server is alive.
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Go Plain WebSocket Instance Server Running. Connect to /ws for instance."))
+		w.Write([]byte("Go Plain WebSocket Network State Server Running. Connect to /ws for network state."))
 	})
 
 	log.Printf("Starting HTTP server on http://%s:%d\n", SERVER_HOST, SERVER_PORT)

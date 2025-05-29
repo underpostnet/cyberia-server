@@ -1,140 +1,40 @@
-# cyberia-server
+# Cyberia Server
 
-`cyberia-server` is a Go-based backend server for a massively multiplayer online (MMO) instance. It uses WebSockets for real-time communication, manages the instance world's state, and incorporates A\* pathfinding for object movement.
+`cyberia-server` is a Go-based server for a real-time multiplayer online (MMO) instance. It facilitates low-latency client communication via WebSockets, manages a dynamic game world state, and employs an A\* pathfinding algorithm for intelligent object movement.
 
-## Features
+## Core Features
 
-- **Real-time Communication:** Uses WebSockets for client interaction.
+- **Real-time Communication:** Utilizes WebSockets for efficient, persistent client connections.
+- **Dynamic Network State:** Manages all in-game entities (players, obstacles, temporary objects) within a shared, synchronized world state.
+- **Pathfinding:** Implements the A\* algorithm for robust and efficient object navigation.
+- **Concurrent Operations:** Designed to handle multiple clients and concurrent world updates leveraging Go's goroutines and concurrency primitives.
 
-- **Instance World:** Manages all objects (players, obstacles) within a single instance.
+## Architecture
 
-- **Pathfinding:** Objects navigate the world using the A\* algorithm.
+The server's architecture is modular, primarily organized into the following Go packages:
 
-- **Concurrent Operations:** Handles many clients and instance updates efficiently with Go's goroutines.
-
-## Project Structure
-
-The project is organized into the following key packages:
-
-- `main.go`: The server's entry point.
-
-- `server/`: Contains WebSocket server logic and client communication.
-
-  - `server.go`: Defines the core `InstanceServer`.
-
-  - `client.go`: Manages individual `WebSocketClient` connections.
-
-  - `handlers.go`: Processes incoming client messages.
-
-- `instance/`: Manages the instance world's state.
-
-  - `state.go`: Defines the `InstanceState` and its world manipulation methods.
-
-  - `object.go`: Defines the `InstanceObject` (entities in the world).
-
-  - `constants.go`: Stores instance-specific constants.
-
-- `pathfinding/`: Implements the A\* pathfinding algorithm.
-
-  - `astar.go`: Contains the A\* algorithm logic.
+- **`server/`**: Manages WebSocket connections, client lifecycle, and message handling.
+- **`network_state/`**: Defines and manages the core game world state, including network objects, the grid, and the simplified maze for pathfinding.
+- **`pathfinding/`**: Provides the A\* algorithm implementation for calculating optimal paths within the game world.
 
 ## Getting Started
 
 ### Prerequisites
 
-- Go (version 1.18 or higher recommended)
+- Go (version 1.18+ recommended)
 
-- `go.mod` for dependency management (handled by `go run` or `go build`)
+### Building and Running
 
-### Running the Server
-
-1.  **Clone the repository:**
+1.  **Build the executable:**
 
     ```bash
-    git clone https://github.com/underpostnet/cyberia-server.git
-    cd cyberia-server
+    go build -o cyberia-server .
     ```
 
 2.  **Run the server:**
 
     ```bash
-    go run main.go
+    ./cyberia-server
     ```
 
-    The server will start on `http://0.0.0.0:5000` and listen for WebSocket connections on `ws://0.0.0.0:5000/ws`.
-
-## Usage
-
-Clients connect to the server via WebSockets at `ws://<server-ip>:5000/ws`.
-
-### Client-Server Communication
-
-- **Client Sends `client_move_request`:**
-
-  ```json
-  {
-    "type": "client_move_request",
-    "data": {
-      "target_x": 123.45,
-      "target_y": 678.9
-    }
-  }
-  ```
-
-- **Server Broadcasts `instance_state_update`:**
-
-  ```json
-  {
-    "type": "instance_state_update",
-    "objects": {
-      "player_1": {
-        "obj_id": "player_1",
-        "x": 100.0,
-        "y": 150.0,
-        "color": { "R": 0, "G": 0, "B": 255, "A": 255 },
-        "is_obstacle": false,
-        "speed": 200,
-        "path": [
-          { "X": 100, "Y": 200 },
-          { "X": 150, "Y": 250 }
-        ],
-        "path_index": 0
-      },
-      "obstacle_0": {
-        "obj_id": "obstacle_0",
-        "x": 200.0,
-        "y": 200.0,
-        "color": { "R": 80, "G": 80, "B": 80, "A": 255 },
-        "is_obstacle": true,
-        "speed": 0,
-        "path": null,
-        "path_index": 0
-      }
-    }
-  }
-  ```
-
-- **Server Sends `player_assigned` (on connect):**
-
-  ```json
-  {
-    "type": "player_assigned",
-    "player_id": "player_1",
-    "x": 500.0,
-    "y": 500.0
-  }
-  ```
-
-- **Server Sends `player_path_update` (to specific client):**
-
-  ```json
-  {
-    "type": "player_path_update",
-    "player_id": "player_1",
-    "path": [
-      { "X": 100, "Y": 200 },
-      { "X": 150, "Y": 250 },
-      { "X": 200, "Y": 300 }
-    ]
-  }
-  ```
+    The server will typically listen for WebSocket connections on `ws://0.0.0.0:5000/ws`.
