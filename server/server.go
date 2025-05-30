@@ -51,20 +51,59 @@ func NewNetworkStateServer() *NetworkStateServer {
 
 // addInitialNetworkObjects places predefined static obstacles in the network state world.
 func (ns *NetworkStateServer) addInitialNetworkObjects() {
-	obstaclePositions := []struct{ X, Y float64 }{
-		{200, 200}, {250, 200}, {300, 200},
-		{200, 250}, {300, 250},
-		{200, 300}, {250, 300}, {300, 300},
-		{700, 700}, {750, 700}, {800, 700},
-		{700, 750}, {800, 750},
-		{700, 800}, {750, 800}, {800, 800},
-		{100, 500}, {150, 500}, {200, 500},
-		{500, 100}, {500, 150}, {500, 200},
-		{1000, 1000}, {1050, 1000}, {1100, 1000},
-		{1000, 1050}, {1100, 1050},
-		{1000, 1100}, {1050, 1100}, {1100, 1100},
+	// Use constants from network_state package
+	worldWidth := network_state.WORLD_WIDTH
+	worldHeight := network_state.WORLD_HEIGHT
+	networkObjectSize := network_state.NETWORK_OBJECT_SIZE
+
+	wallCoords := []struct{ X, Y float64 }{}
+	seenCoords := make(map[struct{ X, Y float64 }]bool)
+
+	gridCellsX := worldWidth / networkObjectSize
+	gridCellsY := worldHeight / networkObjectSize
+	gridCenterX := int(gridCellsX / 2)
+	gridCenterY := int(gridCellsY / 2)
+
+	// Define the rectangular obstacle mounds in grid coordinates (start_x, start_y, width, height)
+	obstacleMoundsGrid := [][]int{
+		{gridCenterX - 15, gridCenterY - 10, 6, 8},
+		{gridCenterX + 9, gridCenterY - 10, 6, 8},
+		{gridCenterX - 3, gridCenterY - 18, 6, 8},
+		{gridCenterX - 3, gridCenterY + 10, 6, 8},
+		{gridCenterX - 12, gridCenterY - 2, 4, 4},
+		{gridCenterX + 8, gridCenterY - 2, 4, 4},
+		{gridCenterX - 2, gridCenterY - 12, 4, 4},
+		{gridCenterX - 2, gridCenterY + 8, 4, 4},
+		{gridCenterX - 20, gridCenterY - 20, 3, 3},
+		{gridCenterX + 17, gridCenterY - 20, 3, 3},
+		{gridCenterX - 20, gridCenterY + 17, 3, 3},
+		{gridCenterX + 17, gridCenterY + 17, 3, 3},
+		{gridCenterX - 8, gridCenterY - 8, 2, 2},
+		{gridCenterX + 6, gridCenterY + 6, 2, 2},
 	}
-	for i, pos := range obstaclePositions {
+
+	for _, mound := range obstacleMoundsGrid {
+		startXGrid, startYGrid, widthGrid, heightGrid := mound[0], mound[1], mound[2], mound[3]
+		for yOffset := 0; yOffset < heightGrid; yOffset++ {
+			for xOffset := 0; xOffset < widthGrid; xOffset++ {
+				gridX := startXGrid + xOffset
+				gridY := startYGrid + yOffset
+
+				if gridX >= 0 && gridX < int(gridCellsX) && gridY >= 0 && gridY < int(gridCellsY) {
+					worldX := float64(gridX * networkObjectSize)
+					worldY := float64(gridY * networkObjectSize)
+					coord := struct{ X, Y float64 }{X: worldX, Y: worldY}
+
+					if _, seen := seenCoords[coord]; !seen {
+						wallCoords = append(wallCoords, coord)
+						seenCoords[coord] = true
+					}
+				}
+			}
+		}
+	}
+
+	for i, pos := range wallCoords {
 		obstacleID := fmt.Sprintf("obstacle_%d", i)
 		obstacle := network_state.NewNetworkObject(
 			obstacleID,
@@ -77,7 +116,7 @@ func (ns *NetworkStateServer) addInitialNetworkObjects() {
 		ns.networkState.AddNetworkObject(obstacle)
 		log.Printf("Added obstacle: %s at (%.0f, %.0f)", obstacleID, pos.X, pos.Y)
 	}
-	log.Printf("Added %d initial obstacles.", len(obstaclePositions))
+	log.Printf("Added %d initial obstacles.", len(wallCoords))
 	ns.networkState.BuildSimplifiedMaze()
 }
 
@@ -203,7 +242,7 @@ func (ns *NetworkStateServer) sendFullNetworkState() {
 
 	broadcastMsg, err := json.Marshal(map[string]interface{}{
 		"type":            "network_state_update",
-		"network_objects": serializableObjects, // Changed "objects" to "network_objects"
+		"network_objects": serializableObjects,
 	})
 	if err != nil {
 		log.Printf("ERROR: Failed to marshal network state for broadcast: %v", err)
