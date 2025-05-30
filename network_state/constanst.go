@@ -4,8 +4,8 @@ import "time"
 
 // Network State Constants
 const (
-	WORLD_WIDTH                 = 1600                  // Network state world width in pixels
-	WORLD_HEIGHT                = 1600                  // Network state world height in pixels
+	WORLD_WIDTH                 = 3000                  // Network state world width in pixels
+	WORLD_HEIGHT                = 3000                  // Network state world height in pixels
 	NETWORK_OBJECT_SIZE         = 50                    // Size of network objects (players, obstacles) in pixels
 	MAZE_CELL_WORLD_SIZE        = 50                    // Size of a maze cell for A* pathfinding (50x50 pixels)
 	NETWORK_STATE_TICK_INTERVAL = 50 * time.Millisecond // Network state update interval (20 frames per second)
