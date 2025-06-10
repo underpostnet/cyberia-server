@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"log"
+	"time" // New: Import time for timestamps
 
 	"cyberia-server/pathfinding"
 	// Updated import path
@@ -18,6 +19,12 @@ type clientMessage struct {
 type clientMoveRequestData struct {
 	TargetX float64 `json:"target_x"`
 	TargetY float64 `json:"target_y"`
+}
+
+// clientChatMessageData represents the specific data for a "client_chat_message" message.
+type clientChatMessageData struct {
+	RoomID string `json:"room_id"`
+	Text   string `json:"text"`
 }
 
 // handleClientMessage processes incoming JSON messages from a specific client.
@@ -36,6 +43,13 @@ func (ns *NetworkStateServer) handleClientMessage(client *WebSocketClient, messa
 			return
 		}
 		ns.processClientMoveRequest(client, moveData)
+	case "client_chat_message": // New: Handle chat messages
+		var chatData clientChatMessageData
+		if err := json.Unmarshal(msg.Data, &chatData); err != nil {
+			log.Printf("Client %s: ERROR unmarshaling chat message data: %v", client.playerID, err)
+			return
+		}
+		ns.processClientChatMessage(client, chatData)
 	default:
 		log.Printf("Client %s: WARNING unknown message type '%s'.", msg.Type, client.playerID)
 	}
@@ -90,4 +104,29 @@ func (ns *NetworkStateServer) processClientMoveRequest(client *WebSocketClient, 
 	default:
 		log.Printf("WARNING: Failed to send player_path_update to client %s (send channel full).", client.playerID)
 	}
+}
+
+// processClientChatMessage handles a client's chat message request.
+func (ns *NetworkStateServer) processClientChatMessage(client *WebSocketClient, data clientChatMessageData) {
+	// Validate room ID and message content
+	if data.RoomID == "" || data.Text == "" {
+		log.Printf("Client %s: Invalid chat message (empty room ID or text).", client.playerID)
+		return
+	}
+
+	// Create a new ChatMessage
+	message := ChatMessage{
+		Sender:    client.playerID,
+		Text:      data.Text,
+		Timestamp: time.Now().Format("15:04"), // Format: HH:MM
+	}
+
+	ns.chatRoomsMutex.Lock()
+	ns.chatRooms[data.RoomID] = append(ns.chatRooms[data.RoomID], message)
+	ns.chatRoomsMutex.Unlock()
+
+	log.Printf("Client %s sent chat message to room %s: %s", client.playerID, data.RoomID, data.Text)
+
+	// Broadcast the message to all clients
+	ns.sendChatMessageToClients(data.RoomID, message)
 }

@@ -13,6 +13,13 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// ChatMessage represents a single chat message.
+type ChatMessage struct {
+	Sender    string `json:"sender"`
+	Text      string `json:"text"`
+	Timestamp string `json:"time"`
+}
+
 // NetworkStateServer manages WebSocket connections and the network state.
 type NetworkStateServer struct {
 	upgrader         websocket.Upgrader
@@ -24,6 +31,8 @@ type NetworkStateServer struct {
 	playerCounter    int
 	lastUpdateTime   time.Time
 	clientsMutex     sync.RWMutex
+	chatRooms        map[string][]ChatMessage // New: Stores chat messages per room
+	chatRoomsMutex   sync.RWMutex             // New: Mutex for concurrent access to chatRooms
 }
 
 // NewNetworkStateServer initializes a new NetworkStateServer instance.
@@ -43,6 +52,8 @@ func NewNetworkStateServer() *NetworkStateServer {
 		unregister:       make(chan *WebSocketClient),
 		playerCounter:    0,
 		clientsMutex:     sync.RWMutex{},
+		chatRooms:        make(map[string][]ChatMessage), // New: Initialize chatRooms map
+		chatRoomsMutex:   sync.RWMutex{},                 // New: Initialize chatRooms mutex
 	}
 
 	ns.addInitialNetworkObjects()
@@ -255,6 +266,41 @@ func (ns *NetworkStateServer) sendFullNetworkState() {
 		clientsToBroadcast = append(clientsToBroadcast, client)
 	}
 	ns.clientsMutex.RUnlock()
+
+	for _, client := range clientsToBroadcast {
+		select {
+		case client.send <- broadcastMsg:
+		default:
+			log.Printf("WARNING: Client %s send buffer full, attempting to unregister.", client.playerID)
+			ns.unregister <- client
+		}
+	}
+}
+
+// sendChatMessageToClients marshals and sends a chat message to all connected clients in a specific room.
+func (ns *NetworkStateServer) sendChatMessageToClients(roomID string, message ChatMessage) {
+	ns.clientsMutex.RLock()
+	clientsToBroadcast := make([]*WebSocketClient, 0, len(ns.clients))
+	for client := range ns.clients {
+		clientsToBroadcast = append(clientsToBroadcast, client)
+	}
+	ns.clientsMutex.RUnlock()
+
+	chatMsg := map[string]interface{}{
+		"type": "server_chat_message",
+		"data": map[string]interface{}{
+			"room_id": roomID,
+			"sender":  message.Sender,
+			"text":    message.Text,
+			"time":    message.Timestamp,
+		},
+	}
+
+	broadcastMsg, err := json.Marshal(chatMsg)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal chat message for broadcast: %v", err)
+		return
+	}
 
 	for _, client := range clientsToBroadcast {
 		select {
