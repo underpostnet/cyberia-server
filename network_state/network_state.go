@@ -29,7 +29,7 @@ func NewNetworkState() *NetworkState {
 		GridCellsX:     WORLD_WIDTH / NETWORK_OBJECT_SIZE,
 		GridCellsY:     WORLD_HEIGHT / NETWORK_OBJECT_SIZE,
 		MazeCellsX:     WORLD_WIDTH / MAZE_CELL_WORLD_SIZE,
-		MazeCellsY:     WORLD_HEIGHT / MAZE_CELL_WORLD_SIZE,
+		MazeCellsY:     WORLD_HEIGHT / MAZE_CELL_WORLD_SIZE, // Corrected constant name
 		rng:            rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
@@ -75,7 +75,7 @@ func (ns *NetworkState) BuildSimplifiedMaze() {
 	for _, obj := range ns.NetworkObjects {
 		if obj.IsObstacle {
 			mazeStartX, mazeStartY := ns.WorldToMazeCoords(obj.X, obj.Y)
-			mazeEndX, mazeEndY := ns.WorldToMazeCoords(obj.X+NETWORK_OBJECT_SIZE-1, obj.Y+NETWORK_OBJECT_SIZE-1)
+			mazeEndX, mazeEndY := ns.WorldToMazeCoords(obj.X+float64(NETWORK_OBJECT_SIZE-1), obj.Y+float64(NETWORK_OBJECT_SIZE-1)) // Ensure float arithmetic
 
 			mazeStartX = int(math.Max(0, math.Min(float64(mazeStartX), float64(ns.MazeCellsX-1))))
 			mazeStartY = int(math.Max(0, math.Min(float64(mazeStartY), float64(ns.MazeCellsY-1))))
@@ -90,6 +90,21 @@ func (ns *NetworkState) BuildSimplifiedMaze() {
 		}
 	}
 	log.Println("Simplified maze rebuilt successfully.")
+}
+
+// InitializeWithObjects populates the network state with a given set of objects and builds the maze.
+func (ns *NetworkState) InitializeWithObjects(objects map[string]*NetworkObject) {
+	ns.Mu.Lock()
+	defer ns.Mu.Unlock()
+	ns.NetworkObjects = objects
+	// Populate grid (simplified, assumes objects don't overlap in initial state for grid assignment)
+	for _, obj := range ns.NetworkObjects {
+		gridX, gridY := ns.WorldToGridCoords(obj.X, obj.Y)
+		if gridX >= 0 && gridX < ns.GridCellsX && gridY >= 0 && gridY < ns.GridCellsY {
+			ns.Grid[gridY][gridX] = obj // Note: This simple grid doesn't handle multiple objects per cell
+		}
+	}
+	// BuildSimplifiedMaze should be called after this by the caller (e.g., Channel)
 }
 
 // AddNetworkObject adds a NetworkObject to the network state.

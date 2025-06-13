@@ -15,10 +15,12 @@ type NetworkObject struct {
 	Path              []struct{ X, Y float64 } `json:"path"`
 	PathIndex         int                      `json:"path_index"`
 	NetworkObjectType string                   `json:"network_object_type"`
+	ObjectLayerIDs    []string                 `json:"object_layer_ids"` // New field
+	IsPersistent      bool                     `json:"is_persistent"`    // New field, defaults to true for most server objects
 }
 
 // NewNetworkObject is a factory function to create new NetworkObject instances.
-func NewNetworkObject(id string, x, y float64, color Color, isObstacle bool, speed float64, objType string) *NetworkObject {
+func NewNetworkObject(id string, x, y float64, color Color, isObstacle bool, speed float64, objType string, objectLayerIDs []string, isPersistent bool) *NetworkObject {
 	return &NetworkObject{
 		ID:                id,
 		X:                 x,
@@ -29,6 +31,8 @@ func NewNetworkObject(id string, x, y float64, color Color, isObstacle bool, spe
 		Path:              []struct{ X, Y float64 }{},
 		PathIndex:         0,
 		NetworkObjectType: objType,
+		ObjectLayerIDs:    objectLayerIDs,
+		IsPersistent:      isPersistent,
 	}
 }
 

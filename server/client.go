@@ -14,10 +14,11 @@ const (
 
 // WebSocketClient represents a single connected client.
 type WebSocketClient struct {
-	conn     *websocket.Conn
-	send     chan []byte
-	playerID string
-	done     chan struct{}
+	conn      *websocket.Conn
+	send      chan []byte
+	playerID  string
+	ChannelID string // New: ID of the channel the client is currently in
+	done      chan struct{}
 }
 
 // NewWebSocketClient creates a new WebSocketClient instance.
