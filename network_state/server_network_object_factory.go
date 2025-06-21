@@ -1,7 +1,7 @@
 package network_state
 
 import (
-	"cyberia-server/config" // Assuming this path for your new config package
+	"cyberia-server/config"
 	"log"
 	"math/rand"
 
@@ -21,12 +21,12 @@ func NewServerNetworkObjectFactory(seed int64) *ServerNetworkObjectFactory {
 }
 
 func (f *ServerNetworkObjectFactory) worldToGridCoords(worldX, worldY float64) (int, int) {
-	return int(worldX / NETWORK_OBJECT_SIZE), int(worldY / NETWORK_OBJECT_SIZE)
+	return int(worldX / config.NETWORK_OBJECT_SIZE), int(worldY / config.NETWORK_OBJECT_SIZE)
 }
 
 func (f *ServerNetworkObjectFactory) gridToWorldCoords(gridX, gridY int) (float64, float64) {
-	return float64(gridX*NETWORK_OBJECT_SIZE) + NETWORK_OBJECT_SIZE/2,
-		float64(gridY*NETWORK_OBJECT_SIZE) + NETWORK_OBJECT_SIZE/2
+	return float64(gridX*config.NETWORK_OBJECT_SIZE) + config.NETWORK_OBJECT_SIZE/2,
+		float64(gridY*config.NETWORK_OBJECT_SIZE) + config.NETWORK_OBJECT_SIZE/2
 }
 
 func (f *ServerNetworkObjectFactory) findValidSpawnLocationInGrid(
@@ -69,17 +69,17 @@ func (f *ServerNetworkObjectFactory) GenerateInitialState(channelID string, play
 
 	// 1. Generate Walls based on channelID
 	wallCoords := f.getChannelSpecificWallCoordinates(channelID)
-	tempMazeForBots := make([][]int, WORLD_HEIGHT/NETWORK_OBJECT_SIZE)
-	for i := range tempMazeForBots {
-		tempMazeForBots[i] = make([]int, WORLD_WIDTH/NETWORK_OBJECT_SIZE)
+	tempMazeForBots := make([][]int, config.WORLD_HEIGHT/config.NETWORK_OBJECT_SIZE)
+	for i := range tempMazeForBots { // Fix: Use config.WORLD_WIDTH and config.NETWORK_OBJECT_SIZE
+		tempMazeForBots[i] = make([]int, config.WORLD_WIDTH/config.NETWORK_OBJECT_SIZE)
 	}
 
 	for _, wc := range wallCoords {
 		wallObjID := uuid.New().String()
 		initialObjects[wallObjID] = NewNetworkObject(
 			wallObjID,
-			wc[0], wc[1],
-			WallColor, // Use WallColor from constants
+			wc[0], wc[1], // X, Y
+			config.WallColor, // Use WallColor from config
 			true, 0, "WALL",
 			config.DefaultObjectLayerIDs["WALL"],
 			true,
@@ -99,7 +99,7 @@ func (f *ServerNetworkObjectFactory) GenerateInitialState(channelID string, play
 	initialObjects[playerID] = NewNetworkObject(
 		playerID,
 		chosenSpawn[0], chosenSpawn[1],
-		PlayerDefaultColor,
+		config.PlayerDefaultColor,
 		false, config.DefaultPlayerSpeed, "PLAYER",
 		config.DefaultObjectLayerIDs["PLAYER"],
 		true,
@@ -109,8 +109,8 @@ func (f *ServerNetworkObjectFactory) GenerateInitialState(channelID string, play
 	botConfigs := f.getChannelSpecificBotConfigs(channelID)
 	for _, botCfg := range botConfigs {
 		botObjID := uuid.New().String()
-		preferredWorldX := WORLD_WIDTH/2 + botCfg.InitialXOffset
-		preferredWorldY := WORLD_HEIGHT/2 + botCfg.InitialYOffset
+		preferredWorldX := config.WORLD_WIDTH/2 + botCfg.InitialXOffset
+		preferredWorldY := config.WORLD_HEIGHT/2 + botCfg.InitialYOffset
 		prefGridX, prefGridY := f.worldToGridCoords(preferredWorldX, preferredWorldY)
 
 		botGridX, botGridY, found := f.findValidSpawnLocationInGrid(tempMazeForBots, prefGridX, prefGridY, 15, 50)
@@ -123,7 +123,7 @@ func (f *ServerNetworkObjectFactory) GenerateInitialState(channelID string, play
 		initialObjects[botObjID] = NewNetworkObject(
 			botObjID,
 			botSpawnX, botSpawnY,
-			Color(botCfg.Color), // Cast config.Color to network_state.Color
+			botCfg.Color, // Now directly config.Color
 			false, config.DefaultBotSpeed, "BOT-QUEST-PROVIDER",
 			botCfg.ObjectLayerIDs, // Use specific layer IDs from config
 			true,
@@ -138,8 +138,8 @@ func (f *ServerNetworkObjectFactory) getChannelSpecificWallCoordinates(channelID
 	// For brevity, returning a simplified version. You'd implement the full mound logic here.
 	var obstacleMoundsGrid [][4]int // {startX, startY, width, height} in grid coords
 
-	gridCellsX := WORLD_WIDTH / NETWORK_OBJECT_SIZE
-	gridCellsY := WORLD_HEIGHT / NETWORK_OBJECT_SIZE
+	gridCellsX := config.WORLD_WIDTH / config.NETWORK_OBJECT_SIZE
+	gridCellsY := config.WORLD_HEIGHT / config.NETWORK_OBJECT_SIZE
 	gridCenterX := gridCellsX / 2
 	gridCenterY := gridCellsY / 2
 
@@ -162,7 +162,7 @@ func (f *ServerNetworkObjectFactory) getChannelSpecificWallCoordinates(channelID
 			for xOff := 0; xOff < mound[2]; xOff++ {
 				gx, gy := mound[0]+xOff, mound[1]+yOff
 				if gx >= 0 && gx < gridCellsX && gy >= 0 && gy < gridCellsY {
-					wx, wy := float64(gx*NETWORK_OBJECT_SIZE), float64(gy*NETWORK_OBJECT_SIZE)
+					wx, wy := float64(gx*config.NETWORK_OBJECT_SIZE), float64(gy*config.NETWORK_OBJECT_SIZE)
 					coord := [2]float64{wx, wy}
 					if !seen[coord] {
 						wallCoords = append(wallCoords, coord)

@@ -1,6 +1,8 @@
 package network_state
 
 import (
+	"cyberia-server/config"
+
 	"math"
 )
 
@@ -9,7 +11,7 @@ type NetworkObject struct {
 	ID                string                   `json:"obj_id"`
 	X                 float64                  `json:"x"`
 	Y                 float64                  `json:"y"`
-	Color             Color                    `json:"color"`
+	Color             config.Color             `json:"color"`
 	IsObstacle        bool                     `json:"is_obstacle"`
 	Speed             float64                  `json:"speed"`
 	Path              []struct{ X, Y float64 } `json:"path"`
@@ -20,7 +22,7 @@ type NetworkObject struct {
 }
 
 // NewNetworkObject is a factory function to create new NetworkObject instances.
-func NewNetworkObject(id string, x, y float64, color Color, isObstacle bool, speed float64, objType string, objectLayerIDs []string, isPersistent bool) *NetworkObject {
+func NewNetworkObject(id string, x, y float64, color config.Color, isObstacle bool, speed float64, objType string, objectLayerIDs []string, isPersistent bool) *NetworkObject {
 	return &NetworkObject{
 		ID:                id,
 		X:                 x,

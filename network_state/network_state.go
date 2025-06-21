@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"math/rand"
+
+	"cyberia-server/config" // Import the new consolidated config
+	"math/rand"             // Import math/rand
 	"sync"
 	"time"
 )
@@ -13,11 +15,11 @@ import (
 type NetworkState struct {
 	Mu             sync.RWMutex              // Mutex for concurrent access to network objects and maze
 	NetworkObjects map[string]*NetworkObject // All network objects, indexed by ID
-	GridCellsX     int                       // Number of conceptual grid cells horizontally
-	GridCellsY     int                       // Number of conceptual grid cells vertically
+	GridCellsX     int                       // Number of conceptual grid cells horizontally (derived from config.WORLD_WIDTH)
+	GridCellsY     int                       // Number of conceptual grid cells vertically (derived from config.WORLD_HEIGHT)
 	Grid           [][]*NetworkObject        // Conceptual grid for quick object lookup by position
-	MazeCellsX     int                       // Number of A* maze cells horizontally
-	MazeCellsY     int                       // Number of A* maze cells vertically
+	MazeCellsX     int                       // Number of A* maze cells horizontally (derived from config.WORLD_WIDTH)
+	MazeCellsY     int                       // Number of A* maze cells vertically (derived from config.WORLD_HEIGHT)
 	SimplifiedMaze [][]int                   // Simplified maze (0: walkable, 1: obstacle) for A*
 	rng            *rand.Rand                // Random number generator for positions
 }
@@ -26,10 +28,10 @@ type NetworkState struct {
 func NewNetworkState() *NetworkState {
 	ns := &NetworkState{
 		NetworkObjects: make(map[string]*NetworkObject),
-		GridCellsX:     WORLD_WIDTH / NETWORK_OBJECT_SIZE,
-		GridCellsY:     WORLD_HEIGHT / NETWORK_OBJECT_SIZE,
-		MazeCellsX:     WORLD_WIDTH / MAZE_CELL_WORLD_SIZE,
-		MazeCellsY:     WORLD_HEIGHT / MAZE_CELL_WORLD_SIZE, // Corrected constant name
+		GridCellsX:     config.WORLD_WIDTH / config.NETWORK_OBJECT_SIZE,
+		GridCellsY:     config.WORLD_HEIGHT / config.NETWORK_OBJECT_SIZE,
+		MazeCellsX:     config.WORLD_WIDTH / config.MAZE_CELL_WORLD_SIZE,
+		MazeCellsY:     config.WORLD_HEIGHT / config.MAZE_CELL_WORLD_SIZE,
 		rng:            rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
@@ -47,18 +49,18 @@ func NewNetworkState() *NetworkState {
 
 // WorldToGridCoords converts world coordinates to conceptual grid indices.
 func (ns *NetworkState) WorldToGridCoords(worldX, worldY float64) (int, int) {
-	return int(worldX / NETWORK_OBJECT_SIZE), int(worldY / NETWORK_OBJECT_SIZE)
+	return int(worldX / config.NETWORK_OBJECT_SIZE), int(worldY / config.NETWORK_OBJECT_SIZE)
 }
 
 // WorldToMazeCoords converts world coordinates to A* maze indices.
 func (ns *NetworkState) WorldToMazeCoords(worldX, worldY float64) (int, int) {
-	return int(worldX / MAZE_CELL_WORLD_SIZE), int(worldY / MAZE_CELL_WORLD_SIZE)
+	return int(worldX / config.MAZE_CELL_WORLD_SIZE), int(worldY / config.MAZE_CELL_WORLD_SIZE)
 }
 
 // MazeToWorldCoords converts A* maze indices to world coordinates (center of the cell).
 func (ns *NetworkState) MazeToWorldCoords(mazeX, mazeY int) (float64, float64) {
-	return float64(mazeX*MAZE_CELL_WORLD_SIZE) + NETWORK_OBJECT_SIZE/2,
-		float64(mazeY*MAZE_CELL_WORLD_SIZE) + NETWORK_OBJECT_SIZE/2
+	return float64(mazeX*config.MAZE_CELL_WORLD_SIZE) + config.NETWORK_OBJECT_SIZE/2,
+		float64(mazeY*config.MAZE_CELL_WORLD_SIZE) + config.NETWORK_OBJECT_SIZE/2
 }
 
 // BuildSimplifiedMaze populates the A* maze based on current obstacle NetworkObjects.
@@ -74,8 +76,8 @@ func (ns *NetworkState) BuildSimplifiedMaze() {
 
 	for _, obj := range ns.NetworkObjects {
 		if obj.IsObstacle {
-			mazeStartX, mazeStartY := ns.WorldToMazeCoords(obj.X, obj.Y)
-			mazeEndX, mazeEndY := ns.WorldToMazeCoords(obj.X+float64(NETWORK_OBJECT_SIZE-1), obj.Y+float64(NETWORK_OBJECT_SIZE-1)) // Ensure float arithmetic
+			mazeStartX, mazeStartY := ns.WorldToMazeCoords(obj.X, obj.Y)                                                                         // Top-left corner
+			mazeEndX, mazeEndY := ns.WorldToMazeCoords(obj.X+float64(config.NETWORK_OBJECT_SIZE-1), obj.Y+float64(config.NETWORK_OBJECT_SIZE-1)) // Bottom-right corner
 
 			mazeStartX = int(math.Max(0, math.Min(float64(mazeStartX), float64(ns.MazeCellsX-1))))
 			mazeStartY = int(math.Max(0, math.Min(float64(mazeStartY), float64(ns.MazeCellsY-1))))
@@ -179,9 +181,9 @@ func (ns *NetworkState) GetRandomAvailablePosition() (float64, float64, error) {
 	for y := 0; y < ns.GridCellsY; y++ {
 		for x := 0; x < ns.GridCellsX; x++ {
 			if ns.Grid[y][x] == nil {
-				mazeX, mazeY := ns.WorldToMazeCoords(float64(x*NETWORK_OBJECT_SIZE), float64(y*NETWORK_OBJECT_SIZE))
+				mazeX, mazeY := ns.WorldToMazeCoords(float64(x*config.NETWORK_OBJECT_SIZE), float64(y*config.NETWORK_OBJECT_SIZE))
 				if mazeX >= 0 && mazeX < ns.MazeCellsX && mazeY >= 0 && mazeY < ns.MazeCellsY && ns.SimplifiedMaze[mazeY][mazeX] == 0 {
-					availableCells = append(availableCells, struct{ X, Y float64 }{X: float64(x * NETWORK_OBJECT_SIZE), Y: float64(y * NETWORK_OBJECT_SIZE)})
+					availableCells = append(availableCells, struct{ X, Y float64 }{X: float64(x * config.NETWORK_OBJECT_SIZE), Y: float64(y * config.NETWORK_OBJECT_SIZE)})
 				}
 			}
 		}

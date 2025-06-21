@@ -60,7 +60,7 @@ func NewChannel(id string, factory *network_state.ServerNetworkObjectFactory) *C
 		clients:      make(map[*WebSocketClient]bool),
 		factory:      factory, // Retain factory if needed for other operations later
 		chatHistory:  make([]ChatMessage, 0, maxChatHistory),
-		ticker:       time.NewTicker(network_state.NETWORK_STATE_TICK_INTERVAL),
+		ticker:       time.NewTicker(config.NETWORK_STATE_TICK_INTERVAL),
 		done:         make(chan struct{}),
 	}
 
@@ -90,7 +90,7 @@ func (c *Channel) Run() {
 
 // updateAndBroadcast handles a single tick of game logic: updating positions and broadcasting.
 func (c *Channel) updateAndBroadcast() {
-	deltaTime := float64(network_state.NETWORK_STATE_TICK_INTERVAL) / float64(time.Second)
+	deltaTime := float64(config.NETWORK_STATE_TICK_INTERVAL) / float64(time.Second)
 
 	c.networkState.Mu.Lock()
 	for _, obj := range c.networkState.NetworkObjects {
@@ -160,7 +160,7 @@ func (c *Channel) AddClient(client *WebSocketClient) {
 	playerObj := network_state.NewNetworkObject(
 		client.playerID,
 		chosenSpawn[0], chosenSpawn[1],
-		network_state.PlayerDefaultColor,
+		config.PlayerDefaultColor,
 		false, // IsObstacle
 		config.DefaultPlayerSpeed,
 		"PLAYER",
