@@ -41,16 +41,17 @@ var DefaultObjectLayerIDs = map[string][]string{
 // ChannelPlayerSpawns defines player spawn points (world coordinates) for each channel.
 // Format: map[channelID][][2]float64 where [2]float64 is {X, Y}
 var ChannelPlayerSpawns = map[string][][2]float64{
-	ChannelAlphaID: {{1650, 1475}, {1350, 1525}, {1500, 1325}}, // Assuming WORLD_WIDTH=3000, WORLD_HEIGHT=3000, NETWORK_OBJECT_SIZE=50
+	ChannelAlphaID: {{1650, 1475}, {1350, 1525}, {1500, 1325}},
 	ChannelBetaID: {
 		{750, 750},
-		{2200, 750},  // 3000 * 3/4 - 50
-		{1500, 2225}, // 3000 * 3/4 - 25
+		{2200, 750},
+		{1500, 2225},
 	},
-	// Note: Hardcoded values derived from network_state constants to break import cycle.
-	// If network_state constants change, these values must be manually updated.
-	// WORLD_WIDTH=3000, WORLD_HEIGHT=3000, NETWORK_OBJECT_SIZE=50
 }
+
+// Predefined Clean Background Colors
+var ChannelAlphaCleanBackgroundColor = []int{110, 29, 134, 255}
+var ChannelBetaCleanBackgroundColor = []int{74, 163, 151, 255}
 
 // DefaultPlayerSpawn is a fallback spawn point.
 var DefaultPlayerSpawn = [2]float64{

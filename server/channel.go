@@ -119,10 +119,19 @@ func (c *Channel) broadcastNetworkState() {
 		c.clientsMutex.RUnlock()
 		return
 	}
+
+	var cleanBackgroundColor []int
+	if c.ID == config.ChannelAlphaID {
+		cleanBackgroundColor = config.ChannelAlphaCleanBackgroundColor
+	} else if c.ID == config.ChannelBetaID {
+		cleanBackgroundColor = config.ChannelBetaCleanBackgroundColor
+	}
+
 	// Only marshal if there are clients to send to
 	stateUpdateMsg, err := json.Marshal(map[string]interface{}{
-		"type":            "network_state_update",
-		"network_objects": objectsSnapshot,
+		"type":                   "network_state_update",
+		"network_objects":        objectsSnapshot,
+		"clean_background_color": cleanBackgroundColor,
 	})
 	if err != nil {
 		c.clientsMutex.RUnlock()
