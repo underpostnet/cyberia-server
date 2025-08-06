@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"math" // Import math for distance calculations
 	"net/http"
 	"sync"
 	"time"
@@ -10,6 +11,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
+
+// Define AOI_RADIUS on the server side. This should ideally be consistent with the client's AOI.
+const AOI_RADIUS = 300.0
 
 // Player represents a connected client in the game.
 type Player struct {
@@ -88,14 +92,23 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 			log.Printf("Player %s disconnected. Total players: %d", player.ID, len(h.clients))
 
-			// Notify other clients about disconnection
+			// Notify other clients about disconnection by directly sending to broadcast channel
 			disconnectMsg := Message{
 				Type:     "player_disconnect",
 				PlayerID: player.ID,
 			}
-			h.broadcastMessage(disconnectMsg)
+			jsonDisconnectMsg, err := json.Marshal(disconnectMsg)
+			if err != nil {
+				log.Printf("Error marshalling disconnect message: %v", err)
+				// Continue even if there's a marshalling error, to ensure unregister completes
+			} else {
+				h.broadcast <- jsonDisconnectMsg
+			}
 
 		case message := <-h.broadcast:
+			// This broadcast channel is now mainly used for general messages (like disconnects)
+			// or if we decide to implement a global chat later.
+			// For player updates, we'll send directly to relevant clients in ReadPump.
 			h.mu.RLock()
 			for conn, player := range h.clients {
 				select {
@@ -110,25 +123,30 @@ func (h *Hub) Run() {
 	}
 }
 
-// broadcastMessage sends a structured message to all connected clients.
-func (h *Hub) broadcastMessage(msg Message) {
-	jsonMsg, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("Error marshalling message: %v", err)
-		return
-	}
-	h.broadcast <- jsonMsg
-}
-
-// GetPlayersOnMap returns a list of all players currently on a specific map.
-func (h *Hub) GetPlayersOnMap(mapID int) []Player {
+// GetPlayersInAOI returns a list of players within the Area of Interest of a given player.
+// It excludes the requesting player from the returned list.
+func (h *Hub) GetPlayersInAOI(requestingPlayer *Player) []Player {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	var playersOnMap []Player
+	var playersInAOI []Player
 	for _, p := range h.clients {
-		if p.MapID == mapID {
-			playersOnMap = append(playersOnMap, Player{
+		// Exclude the requesting player themselves
+		if p.ID == requestingPlayer.ID {
+			continue
+		}
+		// Only consider players on the same map
+		if p.MapID != requestingPlayer.MapID {
+			continue
+		}
+
+		// Calculate distance
+		dx := p.X - requestingPlayer.X
+		dy := p.Y - requestingPlayer.Y
+		distance := math.Sqrt(dx*dx + dy*dy)
+
+		if distance <= AOI_RADIUS {
+			playersInAOI = append(playersInAOI, Player{
 				ID:    p.ID,
 				X:     p.X,
 				Y:     p.Y,
@@ -136,7 +154,7 @@ func (h *Hub) GetPlayersOnMap(mapID int) []Player {
 			})
 		}
 	}
-	return playersOnMap
+	return playersInAOI
 }
 
 // ReadPump reads messages from the WebSocket connection and sends them to the hub.
@@ -178,13 +196,43 @@ func (p *Player) ReadPump(hub *Hub) {
 			}
 			hub.mu.Unlock()
 
-			// Broadcast updated player list for the current map
-			playersOnMap := hub.GetPlayersOnMap(p.MapID)
-			updateMsg := Message{
-				Type:    "player_update",
-				Players: playersOnMap,
+			// After a player updates their position, we need to send updated AOI data
+			// to ALL players whose AOI might have changed or who are now in range.
+			// For simplicity, we will re-evaluate and send AOI to ALL active players.
+			// In a highly optimized system, you'd only send to affected players.
+			hub.mu.RLock() // Read lock for iterating clients
+			for _, clientPlayer := range hub.clients {
+				// Get players within THIS clientPlayer's AOI (excluding clientPlayer itself)
+				playersInClientAOI := hub.GetPlayersInAOI(clientPlayer)
+
+				// Always include the clientPlayer's own position in their update.
+				// This ensures the client always knows its own authoritative position from the server.
+				// This is crucial for server authority.
+				selfPlayerCopy := *clientPlayer // Create a copy to avoid modifying the original
+				selfPlayerCopy.Conn = nil       // Clear non-serializable fields
+				selfPlayerCopy.Send = nil
+
+				// Add self to the list if not already present (GetPlayersInAOI excludes self)
+				playersInClientAOI = append(playersInClientAOI, selfPlayerCopy)
+
+				updateMsg := Message{
+					Type:    "player_update",
+					Players: playersInClientAOI,
+				}
+
+				jsonUpdateMsg, err := json.Marshal(updateMsg)
+				if err != nil {
+					log.Printf("Error marshalling AOI update message for player %s: %v", clientPlayer.ID, err)
+					continue
+				}
+
+				select {
+				case clientPlayer.Send <- jsonUpdateMsg:
+				default:
+					log.Printf("Player %s send channel full, dropping AOI update.", clientPlayer.ID)
+				}
 			}
-			hub.broadcastMessage(updateMsg)
+			hub.mu.RUnlock() // Release read lock
 
 		default:
 			log.Printf("Unknown message type from player %s: %s", p.ID, msg.Type)
@@ -216,6 +264,7 @@ func (p *Player) WritePump() {
 			w.Write(message)
 
 			// Add queued chat messages to the current WebSocket message.
+			// This part is less relevant for player updates, but kept for general message queuing.
 			n := len(p.Send)
 			for i := 0; i < n; i++ {
 				w.Write(<-p.Send)
