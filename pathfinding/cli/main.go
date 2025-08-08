@@ -2,153 +2,202 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
-// main is the CLI runner for the pathfinding algorithm.
-// It handles argument parsing, map generation, and animation.
-func main() {
-	// 1. Argument Parsing
-	if len(os.Args) != 9 {
-		fmt.Println("Usage: go run main.go <start_x> <start_y> <end_x> <end_y> <obj_w> <obj_h> <grid_width> <grid_height>")
-		os.Exit(1)
-	}
+// Global variables for command-line flags.
+var (
+	startX, startY, endX, endY, gridW, gridH int
+	objW, objH                               float64
+	savePath                                 string
+	loadPath                                 string
+	show                                     bool
+)
 
-	parse := func(s string) float64 {
-		v, err := strconv.ParseFloat(s, 64)
-		if err != nil {
-			fmt.Printf("Invalid arg: %s\n", s)
+// newPathfinderFromArgs creates and configures a Pathfinder instance based on command-line arguments.
+func newPathfinderFromArgs() *Pathfinder {
+	// Pathfinder now handles object dimensions.
+	pf := NewPathfinder(gridW, gridH, objW, objH)
+
+	// Load or generate obstacles
+	if loadPath != "" {
+		fmt.Printf("Loading map from file: %s\n", loadPath)
+		if err := pf.LoadObstacles(loadPath); err != nil {
+			fmt.Println("Error loading obstacles:", err)
 			os.Exit(1)
 		}
-		return v
+		fmt.Println("Map loaded successfully!")
+	} else {
+		fmt.Println("Generating new map...")
+		numObs := int((gridW * gridH) / 80)
+		start := PointI{X: startX, Y: startY}
+		end := PointI{X: endX, Y: endY}
+		pf.GenerateMap(numObs, start, end)
+
+		if savePath != "" {
+			fmt.Printf("Saving map to file: %s\n", savePath)
+			if err := pf.SaveObstacles(savePath); err != nil {
+				fmt.Println("Error saving obstacles:", err)
+				os.Exit(1)
+			}
+			fmt.Println("Map saved successfully!")
+		}
 	}
 
-	startXf := parse(os.Args[1])
-	startYf := parse(os.Args[2])
-	endXf := parse(os.Args[3])
-	endYf := parse(os.Args[4])
-	objW := parse(os.Args[5])
-	objH := parse(os.Args[6])
-	gridWf := parse(os.Args[7])
-	gridHf := parse(os.Args[8])
+	return pf
+}
 
-	gridW := int(gridWf)
-	gridH := int(gridHf)
+// validateStartPoint checks if the initial start point is walkable and finds a new one if not.
+func validateStartPoint(pf *Pathfinder, start *PointI) {
+	if walkable, reason := pf.isWalkableVerbose(start.X, start.Y); !walkable {
+		fmt.Printf("Warning: The initial start point (%d, %d) is not walkable. Reason: %s. Searching for a new random start point.\n", start.X, start.Y, reason)
 
-	// Store the original, unclamped end point from user input for display purposes.
-	originalEnd := PointI{int(math.Round(endXf)), int(math.Round(endYf))}
+		foundNewStart := false
+		const maxAttempts = 100
+		for i := 0; i < maxAttempts; i++ {
+			randX := rand.Intn(gridW)
+			randY := rand.Intn(gridH)
+			if pf.isWalkable(randX, randY) {
+				start.X = randX
+				start.Y = randY
+				foundNewStart = true
+				fmt.Printf("New walkable start point found at (%d, %d).\n", start.X, start.Y)
+				break
+			}
+		}
 
-	// Clamp start and end coordinates to be within the grid bounds.
-	// This prevents the program from trying to path to or from an impossible location.
-	clamp := func(val, min, max float64) int {
-		return int(math.Max(float64(min), math.Min(float64(max-1), val)))
+		if !foundNewStart {
+			fmt.Println("Error: Could not find a new walkable start point after multiple attempts.")
+			os.Exit(1)
+		}
 	}
+}
 
-	start := PointI{clamp(startXf, 0, float64(gridW)), clamp(startYf, 0, float64(gridH))}
-	end := PointI{clamp(endXf, 0, float64(gridW)), clamp(endYf, 0, float64(gridH))}
+// validateEndPoint checks if the end point is walkable and finds a new one if not.
+func validateEndPoint(pf *Pathfinder, end *PointI) {
+	// The findClosestWalkablePoint function already handles out-of-bounds points by clamping them.
+	// So we can directly call it without a separate bounds check here.
+	if !pf.isWalkable(end.X, end.Y) {
+		newEnd, err := pf.findClosestWalkablePoint(*end)
+		if err != nil {
+			fmt.Println("Error: End point is not walkable and no close alternatives found.")
+			os.Exit(1)
+		}
+		*end = newEnd
+		fmt.Printf("Warning: The initial end point was not walkable or was out of bounds. Using closest walkable point at (%d, %d).\n", newEnd.X, newEnd.Y)
+	}
+}
 
-	// 2. Input Validation
-	if gridW <= 1 || gridH <= 1 {
-		fmt.Println("grid must be >1")
+// runPathfindingAndAnimation executes the A* algorithm and animates the result if requested.
+func runPathfindingAndAnimation(pf *Pathfinder) {
+	start := pf.start
+	end := pf.end
+
+	fmt.Println("--------------------------------------------------")
+	fmt.Printf("  Grid size: %dx%d\n", gridW, gridH)
+	fmt.Printf("  Object size: %.2fx%.2f\n", objW, objH)
+	fmt.Printf("  Start: (%d, %d)  End: (%d, %d)\n", start.X, start.Y, end.X, end.Y)
+	fmt.Println("--------------------------------------------------")
+
+	path, closestPoint, err := pf.findPath(start, end)
+	if err != nil {
+		fmt.Println("Error finding path:", err)
 		os.Exit(1)
 	}
 
-	rand.Seed(time.Now().UnixNano())
-
-	// 3. Pathfinding Attempts and Animation
-	const maxAttempts = 10
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		pf := NewPathfinder(gridW, gridH)
-		// Decreased obstacle density for a higher chance of finding a path
-		numObs := int((gridW * gridH) / 80)
-		pf.GenerateMap(numObs, start, end, objW, objH)
-
-		fmt.Println("--------------------------------------------------")
-		fmt.Printf("Attempt %d of %d:\n", attempt, maxAttempts)
-		fmt.Printf("  Grid size: %dx%d\n", gridW, gridH)
-		fmt.Printf("  Object size: %.2fx%.2f\n", objW, objH)
-		fmt.Printf("  Start: (%d, %d)  Original End: (%d, %d)\n", start.X, start.Y, originalEnd.X, originalEnd.Y)
-		fmt.Println("--------------------------------------------------")
-
-		path, newEnd, err := pf.findPath(start, end)
-		if err == nil {
-			if newEnd.X != end.X || newEnd.Y != end.Y {
-				fmt.Printf("Original end point not walkable. Finding path to closest walkable point at (%d, %d).\n", newEnd.X, newEnd.Y)
-			}
-			fmt.Println("Path found! Beginning animation.")
-			// Animate the path
-			for i, p := range path {
-				printGrid(pf, p, path, i, newEnd)
-			}
-			fmt.Println("--------------------------------------------------")
-			fmt.Println("Animation complete. Total path length:", len(path), "steps.")
-			os.Exit(0)
+	fmt.Println("Path found!")
+	if show {
+		fmt.Printf("Animating path to closest point (%d, %d)\n", closestPoint.X, closestPoint.Y)
+		for i, p := range path {
+			fmt.Printf("\033[H\033[2J") // Clear screen for animation
+			fmt.Println(pf.AnimateGrid(p, path))
+			fmt.Printf("Step %d of %d: (%d, %d)\n", i+1, len(path), p.X, p.Y)
+			time.Sleep(100 * time.Millisecond) // Simulate animation delay
 		}
-
-		fmt.Printf("Error in attempt %d: %v. Retrying...\n", attempt, err)
 	}
-
-	fmt.Println("--------------------------------------------------")
-	fmt.Printf("Failed to find a path after %d attempts. Exiting.\n", maxAttempts)
-	os.Exit(1)
 }
 
-// printGrid animates the path by printing the grid at each step.
-func printGrid(pf *Pathfinder, current PointI, path []PointI, pathIndex int, newEnd PointI) {
-	// ANSI escape codes to clear the screen and move the cursor to the home position
-	fmt.Print("\033[2J\033[H")
-
-	fmt.Println("--------------------------------------------------")
-	fmt.Printf("Animating pathfinding... Step %d\n", pathIndex+1)
-	fmt.Printf("Current Position: (%d, %d)\n", current.X, current.Y)
-	fmt.Println("--------------------------------------------------")
-
-	// Calculate the rendering size of the object
-	renderW := int(math.Floor(pf.objectW))
-	renderH := int(math.Floor(pf.objectH))
-	if renderW < 1 {
-		renderW = 1
-	}
-	if renderH < 1 {
-		renderH = 1
-	}
-
-	// Calculate the top-left corner of the object for rendering
-	offsetX := int(math.Floor(float64(current.X) - float64(renderW)/2.0 + 0.5))
-	offsetY := int(math.Floor(float64(current.Y) - float64(renderH)/2.0 + 0.5))
-
-	for y := 0; y < pf.gridH; y++ {
-		for x := 0; x < pf.gridW; x++ {
-			isPath := false
-			for i := 0; i <= pathIndex; i++ {
-				if path[i].X == x && path[i].Y == y {
-					isPath = true
-					break
-				}
+var rootCmd = &cobra.Command{
+	Use:   "cli",
+	Short: "A command-line pathfinding animator",
+	Long:  `A command-line tool that uses the A* algorithm to find and animate a path from a start to an end point on a grid.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		// Read arguments if they are provided, otherwise use flags.
+		if len(args) == 8 {
+			var err error
+			if startX, err = strconv.Atoi(args[0]); err != nil {
+				fmt.Println("Invalid start-x argument.")
+				os.Exit(1)
 			}
-
-			// Check if the current grid cell is part of the object's rendering box
-			isObject := x >= offsetX && x < offsetX+renderW && y >= offsetY && y < offsetY+renderH
-
-			if isObject {
-				fmt.Print("X ") // Moving object (simplified visual)
-			} else if x == pf.start.X && y == pf.start.Y {
-				fmt.Print("S ")
-			} else if x == newEnd.X && y == newEnd.Y {
-				fmt.Print("E ")
-			} else if pf.grid[y][x] == 1 {
-				fmt.Print("● ") // Obstacle
-			} else if isPath {
-				fmt.Print("+ ") // Path trail
-			} else {
-				fmt.Print(". ") // Empty space
+			if startY, err = strconv.Atoi(args[1]); err != nil {
+				fmt.Println("Invalid start-y argument.")
+				os.Exit(1)
+			}
+			if endX, err = strconv.Atoi(args[2]); err != nil {
+				fmt.Println("Invalid end-x argument.")
+				os.Exit(1)
+			}
+			if endY, err = strconv.Atoi(args[3]); err != nil {
+				fmt.Println("Invalid end-y argument.")
+				os.Exit(1)
+			}
+			if objW, err = strconv.ParseFloat(args[4], 64); err != nil {
+				fmt.Println("Invalid obj-w argument.")
+				os.Exit(1)
+			}
+			if objH, err = strconv.ParseFloat(args[5], 64); err != nil {
+				fmt.Println("Invalid obj-h argument.")
+				os.Exit(1)
+			}
+			if gridW, err = strconv.Atoi(args[6]); err != nil {
+				fmt.Println("Invalid grid-w argument.")
+				os.Exit(1)
+			}
+			if gridH, err = strconv.Atoi(args[7]); err != nil {
+				fmt.Println("Invalid grid-h argument.")
+				os.Exit(1)
 			}
 		}
-		fmt.Println()
+
+		rand.Seed(time.Now().UnixNano())
+
+		// Create a new pathfinder instance
+		pf := newPathfinderFromArgs()
+
+		// Validate and set start and end points
+		start := PointI{X: startX, Y: startY}
+		end := PointI{X: endX, Y: endY}
+		validateStartPoint(pf, &start)
+		validateEndPoint(pf, &end)
+		pf.SetStartAndEnd(start, end)
+
+		// Run pathfinding and animation
+		runPathfindingAndAnimation(pf)
+	},
+}
+
+func init() {
+	rootCmd.PersistentFlags().IntVar(&startX, "start-x", 10, "The starting X coordinate.")
+	rootCmd.PersistentFlags().IntVar(&startY, "start-y", 10, "The starting Y coordinate.")
+	rootCmd.PersistentFlags().IntVar(&endX, "end-x", 40, "The ending X coordinate.")
+	rootCmd.PersistentFlags().IntVar(&endY, "end-y", 40, "The ending Y coordinate.")
+	rootCmd.PersistentFlags().Float64Var(&objW, "obj-w", 1.0, "The width of the moving object.")
+	rootCmd.PersistentFlags().Float64Var(&objH, "obj-h", 1.0, "The height of the moving object.")
+	rootCmd.PersistentFlags().IntVar(&gridW, "grid-w", 50, "The width of the grid.")
+	rootCmd.PersistentFlags().IntVar(&gridH, "grid-h", 50, "The height of the grid.")
+	rootCmd.PersistentFlags().StringVar(&savePath, "save", "", "Path to save the generated obstacle map.")
+	rootCmd.PersistentFlags().StringVar(&loadPath, "load", "", "Path to load a pre-existing obstacle map.")
+	rootCmd.PersistentFlags().BoolVar(&show, "show", false, "Show the animated path.")
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
-	time.Sleep(50 * time.Millisecond) // Adjust sleep time to change animation speed
 }

@@ -2,9 +2,12 @@ package main
 
 import (
 	"container/heap"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
+	"os"
+	"strings"
 )
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -94,8 +97,13 @@ type Pathfinder struct {
 //----------------------------------------------------------------------------------------------------------------------
 
 // NewPathfinder creates and initializes a new Pathfinder instance.
-func NewPathfinder(w, h int) *Pathfinder {
-	p := &Pathfinder{gridW: w, gridH: h}
+func NewPathfinder(w, h int, objW, objH float64) *Pathfinder {
+	p := &Pathfinder{
+		gridW:   w,
+		gridH:   h,
+		objectW: objW,
+		objectH: objH,
+	}
 	p.grid = make([][]int, h)
 	for y := 0; y < h; y++ {
 		p.grid[y] = make([]int, w)
@@ -103,20 +111,21 @@ func NewPathfinder(w, h int) *Pathfinder {
 	return p
 }
 
+// SetStartAndEnd sets the start and end points for visualization.
+func (pf *Pathfinder) SetStartAndEnd(start, end PointI) {
+	pf.start = start
+	pf.end = end
+}
+
 // GenerateMap creates a procedural grid with randomly placed obstacles, ensuring
 // they do not overlap with the start and end points.
-func (pf *Pathfinder) GenerateMap(numObstacles int, start, end PointI, objW, objH float64) {
+func (pf *Pathfinder) GenerateMap(numObstacles int, start, end PointI) {
 	pf.obstacles = []Rectangle{} // Clear previous obstacles
 	for y := 0; y < pf.gridH; y++ {
 		for x := 0; x < pf.gridW; x++ {
 			pf.grid[y][x] = 0
 		}
 	}
-
-	pf.objectW = objW
-	pf.objectH = objH
-	pf.start = start
-	pf.end = end
 
 	maxObsW := int(math.Max(1, float64(pf.gridW)/10.0))
 	maxObsH := int(math.Max(1, float64(pf.gridH)/10.0))
@@ -162,12 +171,116 @@ func (pf *Pathfinder) GenerateMap(numObstacles int, start, end PointI, objW, obj
 	}
 }
 
+// LoadObstacles populates the Pathfinder's obstacles from a JSON file.
+func (pf *Pathfinder) LoadObstacles(filePath string) error {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	var loadedObstacles []Rectangle
+	if err := json.Unmarshal(data, &loadedObstacles); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+	pf.obstacles = loadedObstacles
+
+	// Re-build the grid based on the loaded obstacles
+	for y := 0; y < pf.gridH; y++ {
+		for x := 0; x < pf.gridW; x++ {
+			pf.grid[y][x] = 0
+			if pf.isObstacle(x, y) {
+				pf.grid[y][x] = 1
+			}
+		}
+	}
+
+	return nil
+}
+
+// AnimateGrid generates a string representation of the grid for a console animation.
+// It now correctly renders the object size by rounding down to the nearest integer.
+func (pf *Pathfinder) AnimateGrid(current PointI, path []PointI) string {
+	var sb strings.Builder
+	pathMap := make(map[PointI]bool)
+	for _, p := range path {
+		pathMap[p] = true
+	}
+
+	// Calculate the integer dimensions of the object by rounding down
+	objW := int(math.Floor(pf.objectW))
+	objH := int(math.Floor(pf.objectH))
+	if objW < 1 {
+		objW = 1
+	} // ensure minimum size is 1
+	if objH < 1 {
+		objH = 1
+	} // ensure minimum size is 1
+
+	// Calculate the top-left corner of the object's representation
+	startX := current.X - objW/2
+	startY := current.Y - objH/2
+
+	for y := 0; y < pf.gridH; y++ {
+		for x := 0; x < pf.gridW; x++ {
+			p := PointI{X: x, Y: y}
+
+			// Check if the current cell is part of the moving object's approximated bounding box.
+			isObjectCell := false
+			if x >= startX && x < startX+objW && y >= startY && y < startY+objH {
+				isObjectCell = true
+			}
+
+			if isObjectCell {
+				sb.WriteString("• ")
+			} else {
+				switch {
+				case p == pf.start:
+					sb.WriteString("S ")
+				case p == pf.end:
+					sb.WriteString("E ")
+				case pathMap[p]:
+					sb.WriteString("P ")
+				case pf.grid[y][x] == 1:
+					sb.WriteString("O ")
+				default:
+					sb.WriteString(". ")
+				}
+			}
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+// isObstacle checks if a grid cell is covered by any obstacle.
+func (pf *Pathfinder) isObstacle(x, y int) bool {
+	cellRect := Rectangle{MinX: float64(x), MinY: float64(y), MaxX: float64(x + 1), MaxY: float64(y + 1)}
+	for _, obs := range pf.obstacles {
+		if rectsOverlap(cellRect, obs) {
+			return true
+		}
+	}
+	return false
+}
+
+// SaveObstacles saves the current obstacles to a JSON file.
+func (pf *Pathfinder) SaveObstacles(filePath string) error {
+	data, err := json.MarshalIndent(pf.obstacles, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal obstacles to JSON: %w", err)
+	}
+
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
+}
+
 // findPath runs A* on the integer grid and returns a slice of PointI.
 // If the end point is not walkable, it finds the closest walkable point.
+// If a path to the final destination cannot be found, it finds a path to the closest reachable point.
 func (pf *Pathfinder) findPath(start, end PointI) ([]PointI, PointI, error) {
-	if !pf.isWalkable(start.X, start.Y) {
-		return nil, PointI{}, fmt.Errorf("start not walkable")
-	}
 
 	// If the end point is not walkable, find the closest walkable point.
 	if !pf.isWalkable(end.X, end.Y) {
@@ -181,16 +294,17 @@ func (pf *Pathfinder) findPath(start, end PointI) ([]PointI, PointI, error) {
 	open := make(PriorityQueue, 0)
 	heap.Init(&open)
 
-	// Map to quickly check if a node is already in the open set
 	openSet := make(map[int]*Node)
+	gScore := make(map[int]float64)
 
 	startNode := &Node{X: start.X, Y: start.Y, g: 0, h: heuristic(start.X, start.Y, end.X, end.Y)}
 	startNode.f = startNode.g + startNode.h
 	heap.Push(&open, startNode)
 	openSet[keyFrom(start.X, start.Y, pf.gridW)] = startNode
-
-	gScore := make(map[int]float64)
 	gScore[keyFrom(start.X, start.Y, pf.gridW)] = 0
+
+	// Track the node in the open set that is closest to the target
+	var closestNode *Node = startNode
 
 	dirs := []struct {
 		dx, dy int
@@ -203,15 +317,18 @@ func (pf *Pathfinder) findPath(start, end PointI) ([]PointI, PointI, error) {
 	for open.Len() > 0 {
 		current := heap.Pop(&open).(*Node)
 		ck := keyFrom(current.X, current.Y, pf.gridW)
-		delete(openSet, ck) // Remove from openSet
+		delete(openSet, ck)
+
+		// Check if we've found a better candidate for the closest node
+		if current.h < closestNode.h {
+			closestNode = current
+		}
 
 		if ck == keyFrom(end.X, end.Y, pf.gridW) {
-			// rebuild path
 			path := []PointI{}
 			for n := current; n != nil; n = n.parent {
 				path = append(path, PointI{n.X, n.Y})
 			}
-			// reverse
 			for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
 				path[i], path[j] = path[j], path[i]
 			}
@@ -227,7 +344,6 @@ func (pf *Pathfinder) findPath(start, end PointI) ([]PointI, PointI, error) {
 			tentG := current.g + d.cost
 			nk := keyFrom(nx, ny, pf.gridW)
 
-			// If we've found a better path to an existing node, update it.
 			if existingNode, ok := openSet[nk]; ok {
 				if tentG < existingNode.g {
 					existingNode.g = tentG
@@ -246,8 +362,21 @@ func (pf *Pathfinder) findPath(start, end PointI) ([]PointI, PointI, error) {
 			hn := heuristic(nx, ny, end.X, end.Y)
 			node := &Node{X: nx, Y: ny, g: tentG, h: hn, f: tentG + hn, parent: current}
 			heap.Push(&open, node)
-			openSet[nk] = node // Add to openSet
+			openSet[nk] = node
 		}
+	}
+
+	// If the loop finishes without finding a path, rebuild the path to the closest node
+	if closestNode != nil {
+		fmt.Println("Warning: Could not find a path to the exact destination. Found a path to the closest reachable point.")
+		path := []PointI{}
+		for n := closestNode; n != nil; n = n.parent {
+			path = append(path, PointI{n.X, n.Y})
+		}
+		for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
+			path[i], path[j] = path[j], path[i]
+		}
+		return path, PointI{X: closestNode.X, Y: closestNode.Y}, nil
 	}
 
 	return nil, end, fmt.Errorf("no path found")
@@ -255,13 +384,25 @@ func (pf *Pathfinder) findPath(start, end PointI) ([]PointI, PointI, error) {
 
 // findClosestWalkablePoint searches for the nearest walkable point to a given point.
 func (pf *Pathfinder) findClosestWalkablePoint(point PointI) (PointI, error) {
-	if pf.isWalkable(point.X, point.Y) {
-		return point, nil
+	// First, determine the valid range of coordinates for the object's center.
+	// This ensures the object's bounding box is always within the grid.
+	halfW := pf.objectW / 2.0
+	halfH := pf.objectH / 2.0
+
+	// Clamp the point to the range where the object's center can validly exist.
+	clampedPoint := PointI{
+		X: int(math.Max(math.Floor(halfW), math.Min(float64(point.X), float64(pf.gridW)-math.Ceil(halfW)))),
+		Y: int(math.Max(math.Floor(halfH), math.Min(float64(point.Y), float64(pf.gridH)-math.Ceil(halfH)))),
 	}
 
-	queue := []PointI{point}
+	// If the clamped point is already walkable, return it.
+	if pf.isWalkable(clampedPoint.X, clampedPoint.Y) {
+		return clampedPoint, nil
+	}
+
+	queue := []PointI{clampedPoint}
 	visited := make(map[int]bool)
-	visited[keyFrom(point.X, point.Y, pf.gridW)] = true
+	visited[keyFrom(clampedPoint.X, clampedPoint.Y, pf.gridW)] = true
 
 	// Explore outwards in a spiral pattern
 	dirs := []struct {
@@ -281,7 +422,9 @@ func (pf *Pathfinder) findClosestWalkablePoint(point PointI) (PointI, error) {
 
 		for _, d := range dirs {
 			nx, ny := curr.X+d.dx, curr.Y+d.dy
-			if nx >= 0 && nx < pf.gridW && ny >= 0 && ny < pf.gridH {
+			// Ensure the next point is within the valid range for the object's center
+			if float64(nx) >= math.Floor(halfW) && float64(nx) <= float64(pf.gridW)-math.Ceil(halfW) &&
+				float64(ny) >= math.Floor(halfH) && float64(ny) <= float64(pf.gridH)-math.Ceil(halfH) {
 				k := keyFrom(nx, ny, pf.gridW)
 				if !visited[k] {
 					visited[k] = true
@@ -297,6 +440,12 @@ func (pf *Pathfinder) findClosestWalkablePoint(point PointI) (PointI, error) {
 // isWalkable checks whether the object centered at (x,y) fits without colliding
 // with any obstacle by sampling the grid cells that the object's bounding box covers.
 func (pf *Pathfinder) isWalkable(x, y int) bool {
+	_, reason := pf.isWalkableVerbose(x, y)
+	return reason == ""
+}
+
+// isWalkableVerbose provides a detailed reason if a point is not walkable.
+func (pf *Pathfinder) isWalkableVerbose(x, y int) (bool, string) {
 	// Create a bounding box for the object at the given grid cell.
 	halfW := pf.objectW / 2.0
 	halfH := pf.objectH / 2.0
@@ -308,12 +457,22 @@ func (pf *Pathfinder) isWalkable(x, y int) bool {
 	}
 
 	// Check for out-of-bounds collision or collision with obstacles.
-	if objRect.MinX < 0 || objRect.MaxX >= float64(pf.gridW) ||
-		objRect.MinY < 0 || objRect.MaxY >= float64(pf.gridH) ||
-		pf.CheckCollision(objRect) {
-		return false
+	if objRect.MinX < 0 {
+		return false, fmt.Sprintf("out of bounds (minX=%.2f < 0)", objRect.MinX)
 	}
-	return true
+	if objRect.MaxX > float64(pf.gridW) {
+		return false, fmt.Sprintf("out of bounds (maxX=%.2f > gridW=%d)", objRect.MaxX, pf.gridW)
+	}
+	if objRect.MinY < 0 {
+		return false, fmt.Sprintf("out of bounds (minY=%.2f < 0)", objRect.MinY)
+	}
+	if objRect.MaxY > float64(pf.gridH) {
+		return false, fmt.Sprintf("out of bounds (maxY=%.2f > gridH=%d)", objRect.MaxY, pf.gridH)
+	}
+	if pf.CheckCollision(objRect) {
+		return false, "collides with an obstacle"
+	}
+	return true, ""
 }
 
 // CheckCollision checks if the given rectangle overlaps with any of the
