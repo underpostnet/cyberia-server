@@ -1,37 +1,6 @@
-# **Go Pathfinding CLI**
 
-This is a command-line tool that demonstrates the **A**\* pathfinding algorithm. It generates a grid with random obstacles, finds the optimal path from a start to an end point, and can animate the path in the terminal.
 
-## **Installation**
-
-To run this application, you must have **Go** installed. Navigate to the project directory and run:
-
-```bash
-# You can run the application directly without building an executable
-go run . main.go <arguments>
-```
-
-The program's dependencies (such as the **cobra** library) will be fetched automatically.
-
-## **Usage**
-
-You can run the program using either **positional arguments** or more descriptive **flags**.
-
-### **Positional Arguments**
-
-The simplest way to run the program is by providing all the arguments in a specific order:
-
-```bash
-go run . <start_x> <start_y> <end_x> <end_y> <obj_w> <obj_h> <grid_width> <grid_height>
-```
-
-**Example:**
-
-```bash
-go run . 10 10 40 40 2 2 50 50
-```
-
-### **Flags**
+### Flags
 
 Using flags is more flexible, as you can specify only the arguments you need. All flags have default values.
 
@@ -43,7 +12,7 @@ Using flags is more flexible, as you can specify only the arguments you need. Al
 * `--save <file_path>`: Saves the generated obstacle map to a file.
 * `--load <file_path>`: Loads a pre-existing obstacle map from a file.
 
-**Examples:**
+### Examples
 
 ```bash
 # Run with flags and animation
