@@ -2,8 +2,6 @@
 
 ### Flags
 
-Using flags is more flexible, as you can specify only the arguments you need. All flags have default values.
-
 * `--start-x`, `--start-y`: The starting coordinates.
 * `--end-x`, `--end-y`: The ending coordinates.
 * `--obj-w`, `--obj-h`: The width and height of the moving object.
