@@ -121,10 +121,6 @@ func (pf *Pathfinder) GenerateMap(numObstacles int, start, end PointI, objW, obj
 	maxObsW := int(math.Max(1, float64(pf.gridW)/10.0))
 	maxObsH := int(math.Max(1, float64(pf.gridH)/10.0))
 
-	// Create forbidden rects around start/end so obstacles don't spawn on them
-	startRect := Rectangle{MinX: float64(start.X) - objW, MinY: float64(start.Y) - objH, MaxX: float64(start.X) + objW, MaxY: float64(start.Y) + objH}
-	endRect := Rectangle{MinX: float64(end.X) - objW, MinY: float64(end.Y) - objH, MaxX: float64(end.X) + objW, MaxY: float64(end.Y) + objH}
-
 	attempts := 0
 	randMaxX := pf.gridW - 1
 	randMaxY := pf.gridH - 1
@@ -145,7 +141,9 @@ func (pf *Pathfinder) GenerateMap(numObstacles int, start, end PointI, objW, obj
 
 		obs := Rectangle{MinX: float64(minX), MinY: float64(minY), MaxX: float64(maxX), MaxY: float64(maxY)}
 
-		// avoid overlapping start/end buffers
+		// Skip placing the obstacle if it overlaps with the start or end points
+		startRect := Rectangle{MinX: float64(start.X), MinY: float64(start.Y), MaxX: float64(start.X), MaxY: float64(start.Y)}
+		endRect := Rectangle{MinX: float64(end.X), MinY: float64(end.Y), MaxX: float64(end.X), MaxY: float64(end.Y)}
 		if rectsOverlap(obs, startRect) || rectsOverlap(obs, endRect) {
 			continue
 		}
@@ -165,12 +163,19 @@ func (pf *Pathfinder) GenerateMap(numObstacles int, start, end PointI, objW, obj
 }
 
 // findPath runs A* on the integer grid and returns a slice of PointI.
-func (pf *Pathfinder) findPath(start, end PointI) ([]PointI, error) {
+// If the end point is not walkable, it finds the closest walkable point.
+func (pf *Pathfinder) findPath(start, end PointI) ([]PointI, PointI, error) {
 	if !pf.isWalkable(start.X, start.Y) {
-		return nil, fmt.Errorf("start not walkable")
+		return nil, PointI{}, fmt.Errorf("start not walkable")
 	}
+
+	// If the end point is not walkable, find the closest walkable point.
 	if !pf.isWalkable(end.X, end.Y) {
-		return nil, fmt.Errorf("end not walkable")
+		newEnd, err := pf.findClosestWalkablePoint(end)
+		if err != nil {
+			return nil, PointI{}, fmt.Errorf("end point not walkable and no close alternatives found")
+		}
+		end = newEnd
 	}
 
 	open := make(PriorityQueue, 0)
@@ -210,7 +215,7 @@ func (pf *Pathfinder) findPath(start, end PointI) ([]PointI, error) {
 			for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
 				path[i], path[j] = path[j], path[i]
 			}
-			return path, nil
+			return path, end, nil
 		}
 
 		for _, d := range dirs {
@@ -245,45 +250,81 @@ func (pf *Pathfinder) findPath(start, end PointI) ([]PointI, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("no path found")
+	return nil, end, fmt.Errorf("no path found")
+}
+
+// findClosestWalkablePoint searches for the nearest walkable point to a given point.
+func (pf *Pathfinder) findClosestWalkablePoint(point PointI) (PointI, error) {
+	if pf.isWalkable(point.X, point.Y) {
+		return point, nil
+	}
+
+	queue := []PointI{point}
+	visited := make(map[int]bool)
+	visited[keyFrom(point.X, point.Y, pf.gridW)] = true
+
+	// Explore outwards in a spiral pattern
+	dirs := []struct {
+		dx, dy int
+	}{
+		{1, 0}, {-1, 0}, {0, 1}, {0, -1},
+		{1, 1}, {1, -1}, {-1, 1}, {-1, -1},
+	}
+
+	for len(queue) > 0 {
+		curr := queue[0]
+		queue = queue[1:]
+
+		if pf.isWalkable(curr.X, curr.Y) {
+			return curr, nil
+		}
+
+		for _, d := range dirs {
+			nx, ny := curr.X+d.dx, curr.Y+d.dy
+			if nx >= 0 && nx < pf.gridW && ny >= 0 && ny < pf.gridH {
+				k := keyFrom(nx, ny, pf.gridW)
+				if !visited[k] {
+					visited[k] = true
+					queue = append(queue, PointI{nx, ny})
+				}
+			}
+		}
+	}
+
+	return PointI{}, fmt.Errorf("no walkable point found")
 }
 
 // isWalkable checks whether the object centered at (x,y) fits without colliding
 // with any obstacle by sampling the grid cells that the object's bounding box covers.
 func (pf *Pathfinder) isWalkable(x, y int) bool {
-	// bounds check for center
-	if x < 0 || x >= pf.gridW || y < 0 || y >= pf.gridH {
-		return false
-	}
-
+	// Create a bounding box for the object at the given grid cell.
 	halfW := pf.objectW / 2.0
 	halfH := pf.objectH / 2.0
-	minX := int(math.Floor(float64(x) - halfW))
-	minY := int(math.Floor(float64(y) - halfH))
-	maxX := int(math.Ceil(float64(x) + halfW))
-	maxY := int(math.Ceil(float64(y) + halfH))
-
-	if minX < 0 {
-		minX = 0
-	}
-	if minY < 0 {
-		minY = 0
-	}
-	if maxX >= pf.gridW {
-		maxX = pf.gridW - 1
-	}
-	if maxY >= pf.gridH {
-		maxY = pf.gridH - 1
+	objRect := Rectangle{
+		MinX: float64(x) - halfW,
+		MinY: float64(y) - halfH,
+		MaxX: float64(x) + halfW,
+		MaxY: float64(y) + halfH,
 	}
 
-	for yy := minY; yy <= maxY; yy++ {
-		for xx := minX; xx <= maxX; xx++ {
-			if pf.grid[yy][xx] == 1 {
-				return false
-			}
-		}
+	// Check for out-of-bounds collision or collision with obstacles.
+	if objRect.MinX < 0 || objRect.MaxX >= float64(pf.gridW) ||
+		objRect.MinY < 0 || objRect.MaxY >= float64(pf.gridH) ||
+		pf.CheckCollision(objRect) {
+		return false
 	}
 	return true
+}
+
+// CheckCollision checks if the given rectangle overlaps with any of the
+// obstacles in the Pathfinder's map.
+func (pf *Pathfinder) CheckCollision(rect Rectangle) bool {
+	for _, obs := range pf.obstacles {
+		if rectsOverlap(rect, obs) {
+			return true
+		}
+	}
+	return false
 }
 
 //----------------------------------------------------------------------------------------------------------------------

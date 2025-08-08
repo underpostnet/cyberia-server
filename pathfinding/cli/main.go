@@ -38,20 +38,22 @@ func main() {
 
 	gridW := int(gridWf)
 	gridH := int(gridHf)
-	start := PointI{int(math.Round(startXf)), int(math.Round(startYf))}
-	end := PointI{int(math.Round(endXf)), int(math.Round(endYf))}
+
+	// Store the original, unclamped end point from user input for display purposes.
+	originalEnd := PointI{int(math.Round(endXf)), int(math.Round(endYf))}
+
+	// Clamp start and end coordinates to be within the grid bounds.
+	// This prevents the program from trying to path to or from an impossible location.
+	clamp := func(val, min, max float64) int {
+		return int(math.Max(float64(min), math.Min(float64(max-1), val)))
+	}
+
+	start := PointI{clamp(startXf, 0, float64(gridW)), clamp(startYf, 0, float64(gridH))}
+	end := PointI{clamp(endXf, 0, float64(gridW)), clamp(endYf, 0, float64(gridH))}
 
 	// 2. Input Validation
 	if gridW <= 1 || gridH <= 1 {
 		fmt.Println("grid must be >1")
-		os.Exit(1)
-	}
-	if start.X < 0 || start.X >= gridW || start.Y < 0 || start.Y >= gridH {
-		fmt.Println("start out of bounds")
-		os.Exit(1)
-	}
-	if end.X < 0 || end.X >= gridW || end.Y < 0 || end.Y >= gridH {
-		fmt.Println("end out of bounds")
 		os.Exit(1)
 	}
 
@@ -69,15 +71,18 @@ func main() {
 		fmt.Printf("Attempt %d of %d:\n", attempt, maxAttempts)
 		fmt.Printf("  Grid size: %dx%d\n", gridW, gridH)
 		fmt.Printf("  Object size: %.2fx%.2f\n", objW, objH)
-		fmt.Printf("  Start: (%d, %d)  End: (%d, %d)\n", start.X, start.Y, end.X, end.Y)
+		fmt.Printf("  Start: (%d, %d)  Original End: (%d, %d)\n", start.X, start.Y, originalEnd.X, originalEnd.Y)
 		fmt.Println("--------------------------------------------------")
 
-		path, err := pf.findPath(start, end)
+		path, newEnd, err := pf.findPath(start, end)
 		if err == nil {
+			if newEnd.X != end.X || newEnd.Y != end.Y {
+				fmt.Printf("Original end point not walkable. Finding path to closest walkable point at (%d, %d).\n", newEnd.X, newEnd.Y)
+			}
 			fmt.Println("Path found! Beginning animation.")
 			// Animate the path
 			for i, p := range path {
-				printGrid(pf, p, path, i)
+				printGrid(pf, p, path, i, newEnd)
 			}
 			fmt.Println("--------------------------------------------------")
 			fmt.Println("Animation complete. Total path length:", len(path), "steps.")
@@ -93,7 +98,7 @@ func main() {
 }
 
 // printGrid animates the path by printing the grid at each step.
-func printGrid(pf *Pathfinder, current PointI, path []PointI, pathIndex int) {
+func printGrid(pf *Pathfinder, current PointI, path []PointI, pathIndex int, newEnd PointI) {
 	// ANSI escape codes to clear the screen and move the cursor to the home position
 	fmt.Print("\033[2J\033[H")
 
@@ -133,7 +138,7 @@ func printGrid(pf *Pathfinder, current PointI, path []PointI, pathIndex int) {
 				fmt.Print("X ") // Moving object (simplified visual)
 			} else if x == pf.start.X && y == pf.start.Y {
 				fmt.Print("S ")
-			} else if x == pf.end.X && y == pf.end.Y {
+			} else if x == newEnd.X && y == newEnd.Y {
 				fmt.Print("E ")
 			} else if pf.grid[y][x] == 1 {
 				fmt.Print("● ") // Obstacle
