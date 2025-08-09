@@ -11,6 +11,15 @@ import (
 	"time"
 )
 
+// Global variables for command-line flags.
+var (
+	startX, startY, endX, endY, gridW, gridH int
+	objW, objH                               float64
+	savePath                                 string
+	loadPath                                 string
+	show                                     bool
+)
+
 //----------------------------------------------------------------------------------------------------------------------
 // 1. Data Structures & Interfaces
 // These types encapsulate the data needed for the grid, pathfinding nodes, and the priority queue.

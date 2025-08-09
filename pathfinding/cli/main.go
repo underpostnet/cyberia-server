@@ -10,15 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Global variables for command-line flags.
-var (
-	startX, startY, endX, endY, gridW, gridH int
-	objW, objH                               float64
-	savePath                                 string
-	loadPath                                 string
-	show                                     bool
-)
-
 // newPathfinderFromArgs creates and configures a Pathfinder instance based on command-line arguments.
 func newPathfinderFromArgs() *Pathfinder {
 	// Pathfinder now handles object dimensions.
