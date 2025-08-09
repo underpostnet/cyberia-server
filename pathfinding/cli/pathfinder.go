@@ -8,16 +8,6 @@ import (
 	"math/rand"
 	"os"
 	"strings"
-	"time"
-)
-
-// Global variables for command-line flags.
-var (
-	startX, startY, endX, endY, gridW, gridH int
-	objW, objH                               float64
-	savePath                                 string
-	loadPath                                 string
-	show                                     bool
 )
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -209,7 +199,7 @@ func (pf *Pathfinder) LoadObstacles(filePath string) error {
 
 // AnimateGrid generates a string representation of the grid for a console animation.
 // It now correctly renders the object size by rounding down to the nearest integer.
-func (pf *Pathfinder) AnimateGrid(current PointI, path []PointI) string {
+func (pf *Pathfinder) AnimateGrid(current PointI, path []PointI, aoiRadius float64) string {
 	var sb strings.Builder
 	pathMap := make(map[PointI]bool)
 	for _, p := range path {
@@ -238,6 +228,15 @@ func (pf *Pathfinder) AnimateGrid(current PointI, path []PointI) string {
 			isObjectCell := false
 			if x >= startX && x < startX+objW && y >= startY && y < startY+objH {
 				isObjectCell = true
+			}
+
+			// Check if the cell is outside the Area of Interest
+			if aoiRadius > 0 {
+				dist := math.Sqrt(math.Pow(float64(x-current.X), 2) + math.Pow(float64(y-current.Y), 2))
+				if dist > aoiRadius {
+					sb.WriteString("? ")
+					continue
+				}
 			}
 
 			if isObjectCell {
@@ -554,34 +553,5 @@ func validateEndPoint(pf *Pathfinder, end *PointI) {
 		}
 		*end = newEnd
 		fmt.Printf("Warning: The initial end point was not walkable or was out of bounds. Using closest walkable point at (%d, %d).\n", newEnd.X, newEnd.Y)
-	}
-}
-
-// runPathfindingAndAnimation executes the A* algorithm and animates the result if requested.
-func runPathfindingAndAnimation(pf *Pathfinder) {
-	start := pf.start
-	end := pf.end
-
-	fmt.Println("--------------------------------------------------")
-	fmt.Printf("  Grid size: %dx%d\n", gridW, gridH)
-	fmt.Printf("  Object size: %.2fx%.2f\n", objW, objH)
-	fmt.Printf("  Start: (%d, %d)  End: (%d, %d)\n", start.X, start.Y, end.X, end.Y)
-	fmt.Println("--------------------------------------------------")
-
-	path, closestPoint, err := pf.findPath(start, end)
-	if err != nil {
-		fmt.Println("Error finding path:", err)
-		os.Exit(1)
-	}
-
-	fmt.Println("Path found!")
-	if show {
-		fmt.Printf("Animating path to closest point (%d, %d)\n", closestPoint.X, closestPoint.Y)
-		for i, p := range path {
-			fmt.Printf("\033[H\033[2J") // Clear screen for animation
-			fmt.Println(pf.AnimateGrid(p, path))
-			fmt.Printf("Step %d of %d: (%d, %d)\n", i+1, len(path), p.X, p.Y)
-			time.Sleep(100 * time.Millisecond) // Simulate animation delay
-		}
 	}
 }

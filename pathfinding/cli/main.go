@@ -10,6 +10,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Global variables for command-line flags.
+var (
+	startX, startY, endX, endY, gridW, gridH int
+	objW, objH                               float64
+	savePath                                 string
+	loadPath                                 string
+	show                                     bool
+	aoiRadius                                float64 // New flag for Area of Interest radius
+)
+
 // newPathfinderFromArgs creates and configures a Pathfinder instance based on command-line arguments.
 func newPathfinderFromArgs() *Pathfinder {
 	// Pathfinder now handles object dimensions.
@@ -41,6 +51,38 @@ func newPathfinderFromArgs() *Pathfinder {
 	}
 
 	return pf
+}
+
+// runPathfindingAndAnimation executes the A* algorithm and animates the result if requested.
+func runPathfindingAndAnimation(pf *Pathfinder) {
+	start := pf.start
+	end := pf.end
+
+	fmt.Println("--------------------------------------------------")
+	fmt.Printf("  Grid size: %dx%d\n", gridW, gridH)
+	fmt.Printf("  Object size: %.2fx%.2f\n", objW, objH)
+	fmt.Printf("  Start: (%d, %d)  End: (%d, %d)\n", start.X, start.Y, end.X, end.Y)
+	if aoiRadius > 0 {
+		fmt.Printf("  AOI Radius: %.2f\n", aoiRadius)
+	}
+	fmt.Println("--------------------------------------------------")
+
+	path, closestPoint, err := pf.findPath(start, end)
+	if err != nil {
+		fmt.Println("Error finding path:", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Path found!")
+	if show {
+		fmt.Printf("Animating path to closest point (%d, %d)\n", closestPoint.X, closestPoint.Y)
+		for i, p := range path {
+			fmt.Printf("\033[H\033[2J") // Clear screen for animation
+			fmt.Println(pf.AnimateGrid(p, path, aoiRadius))
+			fmt.Printf("Step %d of %d: (%d, %d)\n", i+1, len(path), p.X, p.Y)
+			time.Sleep(100 * time.Millisecond) // Simulate animation delay
+		}
+	}
 }
 
 var rootCmd = &cobra.Command{
@@ -114,6 +156,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&savePath, "save", "", "Path to save the generated obstacle map.")
 	rootCmd.PersistentFlags().StringVar(&loadPath, "load", "", "Path to load a pre-existing obstacle map.")
 	rootCmd.PersistentFlags().BoolVar(&show, "show", false, "Show the animated path.")
+	rootCmd.PersistentFlags().Float64Var(&aoiRadius, "aoi", 0.0, "The radius for the Area of Interest (AOI).")
 }
 
 func main() {
