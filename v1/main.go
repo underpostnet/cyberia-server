@@ -16,7 +16,7 @@ import (
 )
 
 //----------------------------------------------------------------------------------------------------------------------
-// 1. Data Structures & Interfaces (from pathfinder.go)
+// 1. Data Structures & Interfaces
 // These types encapsulate the data needed for the grid, pathfinding nodes, and the priority queue.
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -89,25 +89,24 @@ func (pq *PriorityQueue) update(node *Node, g, h float64) {
 
 // Pathfinder holds the state and logic for the A* search.
 type Pathfinder struct {
-	gridW, gridH     int
-	obstacles        []Rectangle
-	objectW, objectH float64
-	grid             [][]int // 0 = free, 1 = obstacle
-	start, end       PointI
+	gridW, gridH int
+	obstacles    []Rectangle
+	objectSize   float64
+	grid         [][]int // 0 = free, 1 = obstacle
+	start, end   PointI
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-// 2. Core Logic & Methods (from pathfinder.go)
+// 2. Core Logic & Methods
 // These methods implement the A* algorithm and its supporting functions.
 //----------------------------------------------------------------------------------------------------------------------
 
 // NewPathfinder creates and initializes a new Pathfinder instance.
-func NewPathfinder(w, h int, objW, objH float64) *Pathfinder {
+func NewPathfinder(w, h int, objSize float64) *Pathfinder {
 	p := &Pathfinder{
-		gridW:   w,
-		gridH:   h,
-		objectW: objW,
-		objectH: objH,
+		gridW:      w,
+		gridH:      h,
+		objectSize: objSize,
 	}
 	p.grid = make([][]int, h)
 	for y := 0; y < h; y++ {
@@ -279,18 +278,12 @@ func (pf *Pathfinder) findPath(start, end PointI) ([]PointI, PointI, error) {
 
 // findClosestWalkablePoint searches for the nearest walkable point to a given point.
 func (pf *Pathfinder) findClosestWalkablePoint(point PointI) (PointI, error) {
-	// First, determine the valid range of coordinates for the object's center.
-	// This ensures the object's bounding box is always within the grid.
-	halfW := pf.objectW / 2.0
-	halfH := pf.objectH / 2.0
-
-	// Clamp the point to the range where the object's center can validly exist.
+	halfSize := pf.objectSize / 2.0
 	clampedPoint := PointI{
-		X: int(math.Max(math.Floor(halfW), math.Min(float64(point.X), float64(pf.gridW)-math.Ceil(halfW)))),
-		Y: int(math.Max(math.Floor(halfH), math.Min(float64(point.Y), float64(pf.gridH)-math.Ceil(halfH)))),
+		X: int(math.Max(math.Floor(halfSize), math.Min(float64(point.X), float64(pf.gridW)-math.Ceil(halfSize)))),
+		Y: int(math.Max(math.Floor(halfSize), math.Min(float64(point.Y), float64(pf.gridH)-math.Ceil(halfSize)))),
 	}
 
-	// If the clamped point is already walkable, return it.
 	if pf.isWalkable(clampedPoint.X, clampedPoint.Y) {
 		return clampedPoint, nil
 	}
@@ -299,7 +292,6 @@ func (pf *Pathfinder) findClosestWalkablePoint(point PointI) (PointI, error) {
 	visited := make(map[int]bool)
 	visited[keyFrom(clampedPoint.X, clampedPoint.Y, pf.gridW)] = true
 
-	// Explore outwards in a spiral pattern
 	dirs := []struct {
 		dx, dy int
 	}{
@@ -317,9 +309,8 @@ func (pf *Pathfinder) findClosestWalkablePoint(point PointI) (PointI, error) {
 
 		for _, d := range dirs {
 			nx, ny := curr.X+d.dx, curr.Y+d.dy
-			// Ensure the next point is within the valid range for the object's center
-			if float64(nx) >= math.Floor(halfW) && float64(nx) <= float64(pf.gridW)-math.Ceil(halfW) &&
-				float64(ny) >= math.Floor(halfH) && float64(ny) <= float64(pf.gridH)-math.Ceil(halfH) {
+			if float64(nx) >= math.Floor(halfSize) && float64(nx) <= float64(pf.gridW)-math.Ceil(halfSize) &&
+				float64(ny) >= math.Floor(halfSize) && float64(ny) <= float64(pf.gridH)-math.Ceil(halfSize) {
 				k := keyFrom(nx, ny, pf.gridW)
 				if !visited[k] {
 					visited[k] = true
@@ -332,6 +323,28 @@ func (pf *Pathfinder) findClosestWalkablePoint(point PointI) (PointI, error) {
 	return PointI{}, fmt.Errorf("no walkable point found")
 }
 
+// findWalkablePoint finds a random, valid walkable point within the grid.
+func (pf *Pathfinder) findWalkablePoint() PointI {
+	const maxAttempts = 100
+	for i := 0; i < maxAttempts; i++ {
+		randX := rand.Intn(pf.gridW)
+		randY := rand.Intn(pf.gridH)
+		if pf.isWalkable(randX, randY) {
+			return PointI{X: randX, Y: randY}
+		}
+	}
+	// Fallback to a brute-force search if random attempts fail
+	for y := 0; y < pf.gridH; y++ {
+		for x := 0; x < pf.gridW; x++ {
+			if pf.isWalkable(x, y) {
+				return PointI{X: x, Y: y}
+			}
+		}
+	}
+	// Should not happen on a valid map
+	return PointI{X: 0, Y: 0}
+}
+
 // isWalkable checks whether the object centered at (x,y) fits without colliding
 // with any obstacle by sampling the grid cells that the object's bounding box covers.
 func (pf *Pathfinder) isWalkable(x, y int) bool {
@@ -341,17 +354,14 @@ func (pf *Pathfinder) isWalkable(x, y int) bool {
 
 // isWalkableVerbose provides a detailed reason if a point is not walkable.
 func (pf *Pathfinder) isWalkableVerbose(x, y int) (bool, string) {
-	// Create a bounding box for the object at the given grid cell.
-	halfW := pf.objectW / 2.0
-	halfH := pf.objectH / 2.0
+	halfSize := pf.objectSize / 2.0
 	objRect := Rectangle{
-		MinX: float64(x) - halfW,
-		MinY: float64(y) - halfH,
-		MaxX: float64(x) + halfW,
-		MaxY: float64(y) + halfH,
+		MinX: float64(x) - halfSize,
+		MinY: float64(y) - halfSize,
+		MaxX: float64(x) + halfSize,
+		MaxY: float64(y) + halfSize,
 	}
 
-	// Check for out-of-bounds collision or collision with obstacles.
 	if objRect.MinX < 0 {
 		return false, fmt.Sprintf("out of bounds (minX=%.2f < 0)", objRect.MinX)
 	}
@@ -382,7 +392,7 @@ func (pf *Pathfinder) CheckCollision(rect Rectangle) bool {
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-// 3. Helper Functions (from pathfinder.go)
+// 3. Helper Functions
 // These functions were moved from heuristic.go to consolidate the pathfinding logic.
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -402,7 +412,7 @@ func rectsOverlap(a, b Rectangle) bool {
 func keyFrom(x, y, width int) int { return y*width + x }
 
 //----------------------------------------------------------------------------------------------------------------------
-// 4. Data Structures & Interfaces (from aoi.go)
+// 4. Data Structures & Interfaces
 // These types encapsulate the data needed for AOI management.
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -411,6 +421,13 @@ func keyFrom(x, y, width int) int { return y*width + x }
 type MapData struct {
 	Width, Height int
 	Obstacles     [][]int // 0 for free space, 1 for obstacle
+}
+
+// InitData is the initial data sent to the client upon connection.
+type InitData struct {
+	GridW      int     `json:"gridW"`
+	GridH      int     `json:"gridH"`
+	ObjectSize float64 `json:"objectSize"`
 }
 
 // AOIUpdates represents the data sent to a single client.
@@ -443,7 +460,7 @@ type AOIManager struct {
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-// 5. Core Logic & Methods (from aoi.go)
+// 5. Core Logic & Methods
 // These methods implement the core logic for AOI data management.
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -545,8 +562,7 @@ const (
 	port         = ":8080"
 	gridW        = 100
 	gridH        = 100
-	objectW      = 1.0
-	objectH      = 1.0
+	objectSize   = 1.0 // The object now occupies one full cell
 	numObstacles = 200
 	aoiRadius    = 20.0
 	tickRate     = 200 * time.Millisecond // Server tick rate
@@ -591,7 +607,6 @@ type GameServer struct {
 }
 
 func NewGameServer() *GameServer {
-	// Initialize map data and pathfinder
 	mapData := &MapData{
 		Width:     gridW,
 		Height:    gridH,
@@ -600,10 +615,11 @@ func NewGameServer() *GameServer {
 	for i := range mapData.Obstacles {
 		mapData.Obstacles[i] = make([]int, gridW)
 	}
-	pf := NewPathfinder(gridW, gridH, objectW, objectH)
+	pf := NewPathfinder(gridW, gridH, objectSize)
 
-	startPos := PointI{X: rand.Intn(gridW), Y: rand.Intn(gridH)}
-	endPos := PointI{X: rand.Intn(gridW), Y: rand.Intn(gridH)}
+	// Use a walkable point for both start and end, to ensure they don't overlap with obstacles
+	startPos := pf.findWalkablePoint()
+	endPos := pf.findWalkablePoint()
 
 	pf.GenerateMap(numObstacles, startPos, endPos)
 	for y := 0; y < gridH; y++ {
@@ -632,7 +648,19 @@ func (gs *GameServer) run() {
 			log.Printf("Client connected with ID: %s", client.playerID)
 			gs.playerMutex.Lock()
 			gs.players[client.playerID] = client
-			gs.aoiManager.AddPlayer(client.playerID, PointI{X: rand.Intn(gridW), Y: rand.Intn(gridH)})
+
+			// Find a random walkable start point for the new player
+			startPos := gs.pathfinder.findWalkablePoint()
+			gs.aoiManager.AddPlayer(client.playerID, startPos)
+
+			initPayload := InitData{
+				GridW:      gs.aoiManager.MapData.Width,
+				GridH:      gs.aoiManager.MapData.Height,
+				ObjectSize: objectSize,
+			}
+			msg := Message{Type: "init_data", Payload: initPayload}
+			client.writeJSON(msg)
+
 			gs.playerMutex.Unlock()
 
 		case client := <-gs.unregister:
@@ -646,7 +674,6 @@ func (gs *GameServer) run() {
 			gs.playerMutex.Unlock()
 
 		case message := <-gs.broadcast:
-			// No generic broadcasting, AOI updates are targeted
 			_ = message
 		}
 	}
@@ -660,7 +687,6 @@ func (gs *GameServer) gameLoop() {
 	for range ticker.C {
 		gs.playerMutex.Lock()
 
-		// Move all players along their paths
 		for _, player := range gs.aoiManager.Players {
 			if player.isOnline && len(player.path) > 0 {
 				nextPoint := player.path[0]
@@ -669,7 +695,6 @@ func (gs *GameServer) gameLoop() {
 			}
 		}
 
-		// Send AOI updates to all online players
 		for _, client := range gs.players {
 			if player, exists := gs.aoiManager.Players[client.playerID]; exists && player.isOnline {
 				updates, err := gs.aoiManager.GetAOIUpdatesForPlayer(client.playerID, aoiRadius, player.path, player.targetPos)
@@ -681,7 +706,6 @@ func (gs *GameServer) gameLoop() {
 				msg := Message{Type: "aoi_update", Payload: updates}
 				if err := client.writeJSON(msg); err != nil {
 					log.Printf("Error writing to client %s: %v", client.playerID, err)
-					// Handle client disconnection
 					gs.unregister <- client
 				}
 			}
@@ -736,7 +760,6 @@ func (c *Client) readPump(server *GameServer) {
 				path, target, err := server.pathfinder.findPath(start, end)
 				if err != nil {
 					log.Printf("Error finding path for player %s: %v", c.playerID, err)
-					// Send a message back to the client that the path was not found
 					clientMsg := Message{Type: "path_not_found", Payload: "Cannot find a path to the requested location."}
 					c.writeJSON(clientMsg)
 				} else {
