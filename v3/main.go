@@ -42,6 +42,29 @@ type Dimensions struct {
 	Height float64 `json:"Height"`
 }
 
+// Direction defines the possible directions for animated objects.
+type Direction int
+
+const (
+	UP Direction = iota
+	UP_RIGHT
+	RIGHT
+	DOWN_RIGHT
+	DOWN
+	DOWN_LEFT
+	LEFT
+	UP_LEFT
+	NONE // For objects without a specific direction (e.g., static)
+)
+
+// ObjectLayerMode defines animation modes (e.g., idle, walking).
+type ObjectLayerMode int
+
+const (
+	IDLE ObjectLayerMode = iota
+	WALKING
+)
+
 // ObjectState represents the state of a game object, with variable dimensions and a unique ID.
 type ObjectState struct {
 	ID   string     `json:"id"`
@@ -50,7 +73,7 @@ type ObjectState struct {
 	Type string     `json:"Type"` // e.g., "player", "obstacle"
 }
 
-// PlayerState holds the dynamic state of a player, including their path.
+// PlayerState holds the dynamic state of a player, including their path, direction, and mode.
 type PlayerState struct {
 	ID        string     `json:"id"`
 	Pos       Point      `json:"Pos"`
@@ -59,6 +82,8 @@ type PlayerState struct {
 	TargetPos PointI     `json:"targetPos"`
 	AOI       Rectangle
 	Client    *Client
+	Direction Direction       `json:"direction"`
+	Mode      ObjectLayerMode `json:"mode"`
 }
 
 // AOIUpdatePayload is the structure for the JSON message sent to clients.
@@ -134,8 +159,7 @@ func (pq *PriorityQueue) update(node *Node, g, h float64) {
 type Pathfinder struct {
 	gridW, gridH int
 	obstacles    map[string]ObjectState
-	grid         [][]int    // 0 = free, 1 = obstacle
-	playerDims   Dimensions // NEW: Store the dimensions of the object being path-found.
+	grid         [][]int // 0 = free, 1 = obstacle
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -144,12 +168,11 @@ type Pathfinder struct {
 //----------------------------------------------------------------------------------------------------------------------
 
 // NewPathfinder creates and initializes a new Pathfinder instance.
-func NewPathfinder(w, h int, playerDims Dimensions) *Pathfinder {
+func NewPathfinder(w, h int) *Pathfinder {
 	p := &Pathfinder{
-		gridW:      w,
-		gridH:      h,
-		obstacles:  make(map[string]ObjectState),
-		playerDims: playerDims, // NEW: Store player dimensions.
+		gridW:     w,
+		gridH:     h,
+		obstacles: make(map[string]ObjectState),
 	}
 	p.grid = make([][]int, h)
 	for y := 0; y < h; y++ {
@@ -247,9 +270,9 @@ func (pf *Pathfinder) isCellWalkable(x, y int) bool {
 	return pf.grid[y][x] == 0
 }
 
-// isWalkable now checks if a rectangular area is clear.
-func (pf *Pathfinder) isWalkable(x, y int) bool {
-	playerW, playerH := int(pf.playerDims.Width), int(pf.playerDims.Height)
+// isWalkable checks if a rectangular area is clear. It now takes player dimensions as an argument.
+func (pf *Pathfinder) isWalkable(x, y int, playerDims Dimensions) bool {
+	playerW, playerH := int(math.Ceil(playerDims.Width)), int(math.Ceil(playerDims.Height))
 
 	// Check if any cell within the player's bounding box is an obstacle.
 	for dy := 0; dy < playerH; dy++ {
@@ -262,13 +285,13 @@ func (pf *Pathfinder) isWalkable(x, y int) bool {
 	return true
 }
 
-// findRandomWalkablePoint finds a random, valid spawn location for a player.
-func (pf *Pathfinder) findRandomWalkablePoint() (PointI, error) {
+// findRandomWalkablePoint finds a random, valid spawn location for a player. It now takes player dimensions.
+func (pf *Pathfinder) findRandomWalkablePoint(playerDims Dimensions) (PointI, error) {
 	attempts := 0
 	for attempts < 100 { // Limit attempts to avoid infinite loops on a full map
-		x := rand.Intn(pf.gridW - int(pf.playerDims.Width))
-		y := rand.Intn(pf.gridH - int(pf.playerDims.Height))
-		if pf.isWalkable(x, y) {
+		x := rand.Intn(pf.gridW - int(playerDims.Width))
+		y := rand.Intn(pf.gridH - int(playerDims.Height))
+		if pf.isWalkable(x, y, playerDims) {
 			return PointI{X: x, Y: y}, nil
 		}
 		attempts++
@@ -276,18 +299,18 @@ func (pf *Pathfinder) findRandomWalkablePoint() (PointI, error) {
 	return PointI{}, fmt.Errorf("could not find a walkable point after %d attempts", attempts)
 }
 
-// Astar finds the shortest path from start to end using the A* algorithm.
-func (pf *Pathfinder) Astar(start, end PointI) ([]PointI, error) {
-	if !pf.isWalkable(start.X, start.Y) {
-		closestStart, err := pf.findClosestWalkablePoint(start)
+// Astar finds the shortest path from start to end using the A* algorithm. It now takes player dimensions.
+func (pf *Pathfinder) Astar(start, end PointI, playerDims Dimensions) ([]PointI, error) {
+	if !pf.isWalkable(start.X, start.Y, playerDims) {
+		closestStart, err := pf.findClosestWalkablePoint(start, playerDims)
 		if err != nil {
 			return nil, err
 		}
 		start = closestStart
 	}
 
-	if !pf.isWalkable(end.X, end.Y) {
-		closestEnd, err := pf.findClosestWalkablePoint(end)
+	if !pf.isWalkable(end.X, end.Y, playerDims) {
+		closestEnd, err := pf.findClosestWalkablePoint(end, playerDims)
 		if err != nil {
 			return nil, err
 		}
@@ -316,7 +339,7 @@ func (pf *Pathfinder) Astar(start, end PointI) ([]PointI, error) {
 		}
 
 		for _, neighbor := range neighbors {
-			if !pf.isWalkable(neighbor.X, neighbor.Y) {
+			if !pf.isWalkable(neighbor.X, neighbor.Y, playerDims) {
 				continue
 			}
 
@@ -335,7 +358,6 @@ func (pf *Pathfinder) Astar(start, end PointI) ([]PointI, error) {
 			}
 		}
 	}
-
 	return nil, fmt.Errorf("path not found")
 }
 
@@ -353,22 +375,21 @@ func rectsOverlap(r1, r2 Rectangle) bool {
 	return r1.MinX < r2.MaxX && r1.MaxX > r2.MinX && r1.MinY < r2.MaxY && r1.MaxY > r2.MinY
 }
 
-// findClosestWalkablePoint finds the nearest walkable point to a given point.
-func (pf *Pathfinder) findClosestWalkablePoint(point PointI) (PointI, error) {
+// findClosestWalkablePoint finds the nearest walkable point to a given point. It now takes player dimensions.
+func (pf *Pathfinder) findClosestWalkablePoint(point PointI, playerDims Dimensions) (PointI, error) {
 	queue := []PointI{point}
 	visited := make(map[int]bool)
 	visited[keyFrom(point.X, point.Y, pf.gridW)] = true
 
 	dirs := []struct{ dx, dy int }{
-		{1, 0}, {-1, 0}, {0, 1}, {0, -1},
-		{1, 1}, {1, -1}, {-1, 1}, {-1, -1},
+		{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1},
 	}
 
 	for len(queue) > 0 {
 		curr := queue[0]
 		queue = queue[1:]
 
-		if pf.isWalkable(curr.X, curr.Y) {
+		if pf.isWalkable(curr.X, curr.Y, playerDims) {
 			return curr, nil
 		}
 
@@ -383,30 +404,27 @@ func (pf *Pathfinder) findClosestWalkablePoint(point PointI) (PointI, error) {
 			}
 		}
 	}
-	return PointI{}, fmt.Errorf("no walkable point found")
+
+	return PointI{}, fmt.Errorf("could not find a walkable point near (%d, %d)", point.X, point.Y)
 }
 
-// keyFrom generates a unique key for a grid coordinate.
-func keyFrom(x, y, w int) int {
-	return y*w + x
+// keyFrom generates a unique key for a grid point.
+func keyFrom(x, y, gridW int) int {
+	return y*gridW + x
 }
 
-// heuristic calculates the Manhattan distance.
+// heuristic calculates the Manhattan distance between two points.
 func heuristic(x1, y1, x2, y2 int) float64 {
 	return math.Abs(float64(x1-x2)) + math.Abs(float64(y1-y2))
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-// 3. Server-side communication and game loop logic
+// 3. Server Logic
+// These methods manage the WebSocket connections, game loop, and state updates.
 //----------------------------------------------------------------------------------------------------------------------
 
-// NewGameServer creates a new instance of the game server.
-func NewGameServer() *GameServer {
-	const gridW, gridH = 100, 100
-	const aoiRadius = 20.0
-	// NEW: Define player dimensions here
-	playerDims := Dimensions{Width: 2.0, Height: 3.0}
-
+// NewGameServer creates a new GameServer instance.
+func NewGameServer(gridW, gridH int, aoiRadius float64) *GameServer {
 	server := &GameServer{
 		clients:    make(map[string]*Client),
 		players:    make(map[string]*PlayerState),
@@ -416,251 +434,297 @@ func NewGameServer() *GameServer {
 		gridW:      gridW,
 		gridH:      gridH,
 		aoiRadius:  aoiRadius,
-		pathfinder: NewPathfinder(gridW, gridH, playerDims), // NEW: Pass player dimensions
+		pathfinder: NewPathfinder(gridW, gridH),
 	}
-	server.pathfinder.GenerateObstacles(50, PointI{X: 10, Y: 10}, PointI{X: 90, Y: 90})
-	server.obstacles = server.pathfinder.obstacles
 	return server
 }
 
-// run is the main game loop for the server.
+// run is the main game loop.
 func (server *GameServer) run() {
-	go server.handleClientLifecycle()
-	gameTick := time.NewTicker(time.Second / 60)
+	// INCREASED TICK RATE: Changed game tick from 100ms to 50ms for smoother animation.
+	gameTick := time.NewTicker(50 * time.Millisecond) // Game tick for state updates
 	defer gameTick.Stop()
-	for range gameTick.C {
-		server.mu.Lock()
-		server.updatePlayerPositions()
-		server.sendAOIUpdates()
-		server.mu.Unlock()
-	}
-}
 
-// handleClientLifecycle manages client registration and unregistration.
-func (server *GameServer) handleClientLifecycle() {
+	// Initial obstacle generation
+	startPoint := PointI{X: 1, Y: 1}
+	endPoint := PointI{X: server.gridW - 2, Y: server.gridH - 2}
+	server.pathfinder.GenerateObstacles(100, startPoint, endPoint)
+	for _, obs := range server.pathfinder.obstacles {
+		server.obstacles[obs.ID] = obs
+	}
+
 	for {
 		select {
 		case client := <-server.register:
-			server.mu.Lock()
-			// Find a valid, random spawn point before creating the player
-			spawnPos, err := server.pathfinder.findRandomWalkablePoint()
-			if err != nil {
-				log.Printf("Failed to find a spawn point for client %s: %v", client.playerID, err)
-				server.mu.Unlock()
-				continue
-			}
-			server.clients[client.playerID] = client
-			server.players[client.playerID] = &PlayerState{
-				ID: client.playerID,
-				Pos: Point{
-					X: float64(spawnPos.X),
-					Y: float64(spawnPos.Y),
-				},
-				Dims:   server.pathfinder.playerDims, // Use the same dimensions as the pathfinder
-				Path:   []PointI{},
-				Client: client,
-			}
-			server.mu.Unlock()
-			log.Printf("Client %s connected and registered.", client.playerID)
-			server.sendInitialData(client)
+			server.handleClientRegistration(client)
 		case client := <-server.unregister:
+			server.handleClientUnregistration(client)
+		case <-gameTick.C:
 			server.mu.Lock()
-			delete(server.clients, client.playerID)
-			delete(server.players, client.playerID)
-			close(client.send)
+			server.updatePlayerPositions()
+			server.sendAOIUpdates()
 			server.mu.Unlock()
-			log.Printf("Client %s disconnected and unregistered.", client.playerID)
 		}
 	}
 }
 
-// updatePlayerPositions moves players along their path.
+// handleClientRegistration handles new client connections.
+func (server *GameServer) handleClientRegistration(client *Client) {
+	log.Printf("Client registered: %s", client.playerID)
+	server.mu.Lock()
+	server.clients[client.playerID] = client
+
+	// Player dimensions are now truly random for each player
+	randomWidth := rand.Float64()*2 + 1  // 1.0 to 3.0
+	randomHeight := rand.Float64()*2 + 1 // 1.0 to 3.0
+	playerDims := Dimensions{Width: randomWidth, Height: randomHeight}
+
+	// Create a new player state for the client
+	playerPos, err := server.pathfinder.findRandomWalkablePoint(playerDims)
+	if err != nil {
+		log.Printf("Error finding walkable point for new player: %v", err)
+		server.mu.Unlock()
+		return
+	}
+	playerState := &PlayerState{
+		ID:        client.playerID,
+		Pos:       Point{X: float64(playerPos.X), Y: float64(playerPos.Y)},
+		Dims:      playerDims,
+		Path:      []PointI{},
+		TargetPos: PointI{X: -1, Y: -1},
+		AOI:       Rectangle{},
+		Client:    client,
+		Direction: NONE,
+		Mode:      IDLE,
+	}
+	server.players[client.playerID] = playerState
+
+	server.mu.Unlock()
+
+	// Send initial game data
+	server.sendInitialData(client)
+}
+
+// handleClientUnregistration removes a disconnected client.
+func (server *GameServer) handleClientUnregistration(client *Client) {
+	server.mu.Lock()
+	if _, ok := server.clients[client.playerID]; ok {
+		delete(server.clients, client.playerID)
+		delete(server.players, client.playerID)
+		close(client.send)
+		log.Printf("Client unregistered: %s", client.playerID)
+	}
+	server.mu.Unlock()
+}
+
+// updatePlayerPositions moves players along their path and updates their direction and mode.
 func (server *GameServer) updatePlayerPositions() {
+	// A simple movement speed
+	speed := 0.2
+
 	for _, player := range server.players {
 		if len(player.Path) > 0 {
+			// Player is walking
+			player.Mode = WALKING
 			nextPoint := player.Path[0]
-			dx := float64(nextPoint.X) - player.Pos.X
-			dy := float64(nextPoint.Y) - player.Pos.Y
-			dist := math.Sqrt(dx*dx + dy*dy)
-			if dist < 0.1 { // Arrived at the next waypoint
-				player.Pos.X, player.Pos.Y = float64(nextPoint.X), float64(nextPoint.Y)
-				player.Path = player.Path[1:]
+			targetX := float64(nextPoint.X)
+			targetY := float64(nextPoint.Y)
+
+			// Calculate direction
+			dx := targetX - player.Pos.X
+			dy := targetY - player.Pos.Y
+
+			// Determine discrete direction
+			if dx > 0 {
+				if dy > 0 {
+					player.Direction = DOWN_RIGHT
+				} else if dy < 0 {
+					player.Direction = UP_RIGHT
+				} else {
+					player.Direction = RIGHT
+				}
+			} else if dx < 0 {
+				if dy > 0 {
+					player.Direction = DOWN_LEFT
+				} else if dy < 0 {
+					player.Direction = UP_LEFT
+				} else {
+					player.Direction = LEFT
+				}
 			} else {
-				speed := 5.0 * (1.0 / 60.0) // 5 units per second
-				if dist > 0 {
-					player.Pos.X += dx / dist * speed
-					player.Pos.Y += dy / dist * speed
+				if dy > 0 {
+					player.Direction = DOWN
+				} else if dy < 0 {
+					player.Direction = UP
+				} else {
+					player.Direction = NONE
+				}
+			}
+
+			// Normalize movement vector and apply speed
+			dist := math.Sqrt(dx*dx + dy*dy)
+			if dist > speed {
+				player.Pos.X += (dx / dist) * speed
+				player.Pos.Y += (dy / dist) * speed
+			} else {
+				player.Pos.X = targetX
+				player.Pos.Y = targetY
+				player.Path = player.Path[1:]
+			}
+		} else {
+			// Player has no path, they are idle
+			player.Mode = IDLE
+			player.Direction = NONE
+		}
+	}
+}
+
+// sendAOIUpdates sends state updates to all clients based on their AOI.
+func (server *GameServer) sendAOIUpdates() {
+	for _, client := range server.clients {
+		if !client.isPlayer {
+			continue
+		}
+
+		playerState, ok := server.players[client.playerID]
+		if !ok {
+			continue
+		}
+
+		// Update the player's AOI bounding box
+		playerState.AOI = Rectangle{
+			MinX: playerState.Pos.X - server.aoiRadius,
+			MinY: playerState.Pos.Y - server.aoiRadius,
+			MaxX: playerState.Pos.X + playerState.Dims.Width + server.aoiRadius,
+			MaxY: playerState.Pos.Y + playerState.Dims.Height + server.aoiRadius,
+		}
+
+		// Find visible players and grid objects
+		visiblePlayers := make(map[string]ObjectState)
+		for _, otherPlayer := range server.players {
+			if otherPlayer.ID == client.playerID {
+				continue
+			}
+			if rectsOverlap(playerState.AOI, Rectangle{
+				MinX: otherPlayer.Pos.X, MinY: otherPlayer.Pos.Y,
+				MaxX: otherPlayer.Pos.X + otherPlayer.Dims.Width, MaxY: otherPlayer.Pos.Y + otherPlayer.Dims.Height,
+			}) {
+				// The player's Dims, Direction, and Mode are now part of the ObjectState.
+				visiblePlayers[otherPlayer.ID] = ObjectState{
+					ID:   otherPlayer.ID,
+					Pos:  otherPlayer.Pos,
+					Dims: otherPlayer.Dims,
+					Type: "player",
 				}
 			}
 		}
-	}
-}
 
-// sendAOIUpdates sends the visible area of interest to each player.
-func (server *GameServer) sendAOIUpdates() {
-	for _, player := range server.players {
-		player.AOI = server.calculateAOI(player)
-		visiblePlayers := server.getVisiblePlayers(player)
-		visibleGridObjects := server.getVisibleGridObjects(player)
+		// Corrected Logic: Only send obstacles that are within the player's AOI
+		visibleGridObjects := make(map[string]ObjectState)
+		for _, obstacle := range server.obstacles {
+			if rectsOverlap(playerState.AOI, Rectangle{
+				MinX: obstacle.Pos.X, MinY: obstacle.Pos.Y,
+				MaxX: obstacle.Pos.X + obstacle.Dims.Width, MaxY: obstacle.Pos.Y + obstacle.Dims.Height,
+			}) {
+				visibleGridObjects[obstacle.ID] = obstacle
+			}
+		}
 
+		// Create payload
 		payload := AOIUpdatePayload{
-			PlayerID:           player.ID,
-			Player:             *player,
+			PlayerID:           client.playerID,
+			Player:             *playerState,
 			VisiblePlayers:     visiblePlayers,
 			VisibleGridObjects: visibleGridObjects,
 		}
-
-		message, err := json.Marshal(map[string]interface{}{
-			"type":    "aoi_update",
-			"payload": payload,
-		})
-		if err != nil {
-			log.Printf("Error marshaling aoi_update: %v", err)
-			continue
-		}
-		player.Client.send <- message
+		server.sendJSON(client, "aoi_update", payload)
 	}
 }
 
-// calculateAOI calculates the Area of Interest for a given player.
-func (server *GameServer) calculateAOI(player *PlayerState) Rectangle {
-	return Rectangle{
-		MinX: player.Pos.X - server.aoiRadius,
-		MinY: player.Pos.Y - server.aoiRadius,
-		MaxX: player.Pos.X + player.Dims.Width + server.aoiRadius,
-		MaxY: player.Pos.Y + player.Dims.Height + server.aoiRadius,
-	}
-}
-
-// getVisiblePlayers returns a map of players within the given player's AOI.
-func (server *GameServer) getVisiblePlayers(player *PlayerState) map[string]ObjectState {
-	visible := make(map[string]ObjectState)
-	for _, otherPlayer := range server.players {
-		if otherPlayer.ID == player.ID {
-			continue
-		}
-		playerRect := Rectangle{
-			MinX: otherPlayer.Pos.X, MinY: otherPlayer.Pos.Y,
-			MaxX: otherPlayer.Pos.X + otherPlayer.Dims.Width, MaxY: otherPlayer.Pos.Y + otherPlayer.Dims.Height,
-		}
-		if rectsOverlap(player.AOI, playerRect) {
-			visible[otherPlayer.ID] = ObjectState{
-				ID:   otherPlayer.ID,
-				Pos:  otherPlayer.Pos,
-				Dims: otherPlayer.Dims,
-				Type: "player",
-			}
-		}
-	}
-	return visible
-}
-
-// getVisibleGridObjects returns a map of grid objects within the player's AOI.
-func (server *GameServer) getVisibleGridObjects(player *PlayerState) map[string]ObjectState {
-	visible := make(map[string]ObjectState)
-	for id, obj := range server.obstacles {
-		objRect := Rectangle{
-			MinX: obj.Pos.X, MinY: obj.Pos.Y,
-			MaxX: obj.Pos.X + obj.Dims.Width, MaxY: obj.Pos.Y + obj.Dims.Height,
-		}
-		if rectsOverlap(player.AOI, objRect) {
-			visible[id] = obj
-		}
-	}
-	return visible
-}
-
-// sendInitialData sends the initial game state to a new client.
+// sendInitialData sends initial game setup data to a new client.
 func (server *GameServer) sendInitialData(client *Client) {
 	initData := map[string]interface{}{
-		"type": "init_data",
-		"payload": map[string]interface{}{
-			"gridW":     server.gridW,
-			"gridH":     server.gridH,
-			"aoiRadius": server.aoiRadius,
-		},
+		"gridW":     server.gridW,
+		"gridH":     server.gridH,
+		"aoiRadius": server.aoiRadius,
 	}
-	message, err := json.Marshal(initData)
-	if err != nil {
-		log.Printf("Error marshaling init data: %v", err)
-		return
-	}
-	client.send <- message
+	server.sendJSON(client, "init_data", initData)
+	// NEW: Send an immediate AOI update so the client has initial state.
+	server.sendAOIUpdates()
 }
 
-// handleConnections handles new WebSocket connections.
-func handleConnections(server *GameServer, w http.ResponseWriter, r *http.Request) {
-	upgrader := websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true },
-	}
-	conn, err := upgrader.Upgrade(w, r, nil)
+// sendJSON is a helper function to send a JSON message to a client.
+func (server *GameServer) sendJSON(client *Client, messageType string, payload interface{}) {
+	msg, err := json.Marshal(map[string]interface{}{
+		"type":    messageType,
+		"payload": payload,
+	})
 	if err != nil {
-		log.Printf("Failed to upgrade WebSocket connection: %v", err)
+		log.Printf("Error marshaling JSON for client %s: %v", client.playerID, err)
+		return
+	}
+	select {
+	case client.send <- msg:
+	default:
+		// Client send channel is full, assume client is gone.
+		server.handleClientUnregistration(client)
+	}
+}
+
+// ServeWs handles websocket requests from the peer.
+func ServeWs(server *GameServer, w http.ResponseWriter, r *http.Request) {
+	conn, err := (&websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}).Upgrade(w, r, nil)
+	if err != nil {
+		log.Println(err)
 		return
 	}
 
 	playerID := uuid.New().String()
-	client := &Client{
-		conn:       conn,
-		playerID:   playerID,
-		send:       make(chan []byte, 256),
-		lastAction: time.Now(),
-	}
+	client := &Client{conn: conn, playerID: playerID, send: make(chan []byte, 256), isPlayer: true, lastAction: time.Now()}
 	server.register <- client
 
 	go client.writePump()
 	go client.readPump(server)
 }
 
-// main starts the HTTP server and game loop.
-func main() {
-	gameServer := NewGameServer()
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		handleConnections(gameServer, w, r)
-	})
-
-	log.Println("Server started on :8080")
-	go gameServer.run()
-	log.Fatal(http.ListenAndServe(":8080", nil))
-}
-
-// readPump reads messages from the WebSocket connection.
+// readPump processes incoming messages from a client.
 func (c *Client) readPump(server *GameServer) {
 	defer func() {
 		server.unregister <- c
 		c.conn.Close()
 	}()
 
-	c.conn.SetReadLimit(512)
-	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-		return nil
-	})
-
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("Error reading message: %v", err)
+				log.Printf("error: %v", err)
 			}
 			break
 		}
-		server.processMessage(c, message)
+		c.handleMessage(server, message)
 	}
 }
 
-// processMessage handles incoming client messages.
-func (server *GameServer) processMessage(client *Client, message []byte) {
+// handleMessage parses and processes a message from a client.
+func (c *Client) handleMessage(server *GameServer, message []byte) {
 	var msg map[string]interface{}
 	if err := json.Unmarshal(message, &msg); err != nil {
-		log.Printf("Error unmarshaling message from client %s: %v", client.playerID, err)
+		log.Printf("Error unmarshaling message from client %s: %v", c.playerID, err)
 		return
 	}
 
 	messageType, ok := msg["type"].(string)
 	if !ok {
-		log.Printf("Invalid message type from client %s", client.playerID)
+		log.Printf("Invalid message type from client %s", c.playerID)
+		return
+	}
+
+	server.mu.Lock()
+	player, playerExists := server.players[c.playerID]
+	server.mu.Unlock()
+	if !playerExists {
+		log.Printf("Player %s not found", c.playerID)
 		return
 	}
 
@@ -668,48 +732,33 @@ func (server *GameServer) processMessage(client *Client, message []byte) {
 	case "path_request":
 		payload, ok := msg["payload"].(map[string]interface{})
 		if !ok {
-			log.Printf("Invalid payload for path_request from client %s", client.playerID)
+			log.Printf("Invalid payload for path_request from client %s", c.playerID)
 			return
 		}
-
 		targetX, okX := payload["targetX"].(float64)
 		targetY, okY := payload["targetY"].(float64)
 		if !okX || !okY {
-			log.Printf("Invalid target coordinates for path_request from client %s", client.playerID)
+			log.Printf("Invalid target coordinates from client %s", c.playerID)
 			return
 		}
 
 		server.mu.Lock()
-		player, ok := server.players[client.playerID]
-		if !ok {
-			server.mu.Unlock()
-			log.Printf("Player state not found for client %s", client.playerID)
-			return
-		}
+		start := PointI{X: int(player.Pos.X), Y: int(player.Pos.Y)}
+		target := PointI{X: int(targetX), Y: int(targetY)}
 
-		// Find the closest walkable point for the target, considering player's dimensions
-		targetPos := PointI{X: int(targetX), Y: int(targetY)}
-		closestTarget, err := server.pathfinder.findClosestWalkablePoint(targetPos)
+		// NEW: Pass player's unique dimensions to the Astar function
+		path, err := server.pathfinder.Astar(start, target, player.Dims)
 		if err != nil {
-			log.Printf("No walkable point found for target from client %s", client.playerID)
-			server.sendFeedback(client, "Path target is blocked.")
-			server.mu.Unlock()
-			return
-		}
-
-		path, err := server.pathfinder.Astar(PointI{X: int(player.Pos.X), Y: int(player.Pos.Y)}, closestTarget)
-		if err != nil {
-			log.Printf("Path not found from client %s: %v", client.playerID, err)
-			server.sendFeedback(client, "Path not found.")
+			log.Printf("Path not found from client %s: %v", c.playerID, err)
+			server.sendFeedback(c, "Path not found.")
 		} else {
 			player.Path = path
-			player.TargetPos = closestTarget
-			log.Printf("Client %s requested new path to (%d, %d)", client.playerID, closestTarget.X, closestTarget.Y)
+			player.TargetPos = target
+			log.Printf("Client %s requested new path to (%d, %d)", c.playerID, target.X, target.Y)
 		}
-
 		server.mu.Unlock()
 	default:
-		log.Printf("Unknown message type '%s' from client %s", messageType, client.playerID)
+		log.Printf("Unknown message type '%s' from client %s", messageType, c.playerID)
 	}
 }
 
@@ -742,7 +791,19 @@ func (c *Client) writePump() {
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+			w, err := c.conn.NextWriter(websocket.TextMessage)
+			if err != nil {
+				return
+			}
+			w.Write(message)
+
+			// Add queued chat messages to the current websocket message.
+			n := len(c.send)
+			for i := 0; i < n; i++ {
+				w.Write(<-c.send)
+			}
+
+			if err := w.Close(); err != nil {
 				return
 			}
 		case <-ticker.C:
@@ -751,5 +812,20 @@ func (c *Client) writePump() {
 				return
 			}
 		}
+	}
+}
+
+func main() {
+	rand.Seed(time.Now().UnixNano())
+	// NEW: The game server no longer needs to be initialized with a single player dimension
+	server := NewGameServer(100, 100, 20.0)
+	go server.run()
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		ServeWs(server, w, r)
+	})
+	log.Println("Starting server on :8080...")
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		log.Fatal("ListenAndServe: ", err)
 	}
 }
