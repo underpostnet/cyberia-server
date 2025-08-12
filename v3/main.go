@@ -91,7 +91,7 @@ type GameServer struct {
 	pathfinder   *Pathfinder
 }
 
-// Node and PriorityQueue for A* pathfinding (unchanged, but included for completeness).
+// Node and PriorityQueue for A* pathfinding.
 type Node struct {
 	X, Y    int
 	g, h, f float64
@@ -262,13 +262,22 @@ func (pf *Pathfinder) isWalkable(x, y int) bool {
 	return true
 }
 
+// findRandomWalkablePoint finds a random, valid spawn location for a player.
+func (pf *Pathfinder) findRandomWalkablePoint() (PointI, error) {
+	attempts := 0
+	for attempts < 100 { // Limit attempts to avoid infinite loops on a full map
+		x := rand.Intn(pf.gridW - int(pf.playerDims.Width))
+		y := rand.Intn(pf.gridH - int(pf.playerDims.Height))
+		if pf.isWalkable(x, y) {
+			return PointI{X: x, Y: y}, nil
+		}
+		attempts++
+	}
+	return PointI{}, fmt.Errorf("could not find a walkable point after %d attempts", attempts)
+}
+
 // Astar finds the shortest path from start to end using the A* algorithm.
 func (pf *Pathfinder) Astar(start, end PointI) ([]PointI, error) {
-	// A* implementation... (unchanged)
-	// We'll just rely on the new isWalkable function.
-	// NOTE: The user's Astar implementation was not provided, but we assume it
-	// calls isWalkable. The change is isolated to the isWalkable function itself.
-
 	if !pf.isWalkable(start.X, start.Y) {
 		closestStart, err := pf.findClosestWalkablePoint(start)
 		if err != nil {
@@ -290,7 +299,6 @@ func (pf *Pathfinder) Astar(start, end PointI) ([]PointI, error) {
 	startNode := &Node{X: start.X, Y: start.Y, g: 0, h: heuristic(start.X, start.Y, end.X, end.Y), parent: nil}
 	heap.Push(&openSet, startNode)
 
-	cameFrom := make(map[PointI]*Node)
 	gScore := make(map[PointI]float64)
 	gScore[start] = 0.0
 
@@ -322,9 +330,7 @@ func (pf *Pathfinder) Astar(start, end PointI) ([]PointI, error) {
 					parent: current,
 				}
 				neighborNode.f = neighborNode.g + neighborNode.h
-				cameFrom[neighbor] = current
 				gScore[neighbor] = tentativeGScore
-
 				heap.Push(&openSet, neighborNode)
 			}
 		}
@@ -436,12 +442,19 @@ func (server *GameServer) handleClientLifecycle() {
 		select {
 		case client := <-server.register:
 			server.mu.Lock()
+			// Find a valid, random spawn point before creating the player
+			spawnPos, err := server.pathfinder.findRandomWalkablePoint()
+			if err != nil {
+				log.Printf("Failed to find a spawn point for client %s: %v", client.playerID, err)
+				server.mu.Unlock()
+				continue
+			}
 			server.clients[client.playerID] = client
 			server.players[client.playerID] = &PlayerState{
 				ID: client.playerID,
 				Pos: Point{
-					X: float64(rand.Intn(server.gridW)),
-					Y: float64(rand.Intn(server.gridH)),
+					X: float64(spawnPos.X),
+					Y: float64(spawnPos.Y),
 				},
 				Dims:   server.pathfinder.playerDims, // Use the same dimensions as the pathfinder
 				Path:   []PointI{},
