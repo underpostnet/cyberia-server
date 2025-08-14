@@ -508,15 +508,13 @@ func (s *GameServer) movePlayer(player *PlayerState) {
 	// A simple movement logic: move to the next point in the path.
 	// This can be replaced with interpolation for smoother movement.
 	nextPoint := player.Path[0]
+
+	// Calculate direction based on old and new position BEFORE updating position
+	oldPoint := PointI{X: int(player.Pos.X), Y: int(player.Pos.Y)}
+	s.updatePlayerDirection(player, oldPoint, nextPoint)
+
 	player.Pos.X = float64(nextPoint.X)
 	player.Pos.Y = float64(nextPoint.Y)
-
-	// Calculate direction based on old and new position
-	oldPoint := player.Path[0]
-	if len(player.Path) > 1 {
-		oldPoint = player.Path[1]
-	}
-	s.updatePlayerDirection(player, oldPoint, nextPoint)
 
 	player.Path = player.Path[1:] // Remove the current point
 	if len(player.Path) == 0 {
