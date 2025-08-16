@@ -56,6 +56,7 @@ type ObjectLayerMode int
 const (
 	IDLE ObjectLayerMode = iota
 	WALKING
+	TELEPORTING
 )
 
 type ObjectState struct {
@@ -93,6 +94,7 @@ type PortalState struct {
 	Pos          Point
 	Dims         Dimensions
 	PortalConfig *PortalConfig
+	Label        string `json:"Label"`
 }
 
 type MapState struct {
@@ -111,10 +113,11 @@ type AOIUpdatePayload struct {
 }
 
 type Client struct {
-	conn       *websocket.Conn
-	playerID   string
-	send       chan []byte
-	lastAction time.Time
+	conn        *websocket.Conn
+	playerID    string
+	send        chan []byte
+	lastAction  time.Time
+	playerState *PlayerState // Added playerState field
 }
 
 type GameServer struct {
@@ -299,7 +302,6 @@ func (pf *Pathfinder) findClosestWalkablePoint(p PointI, playerDims Dimensions) 
 	queue := []PointI{p}
 	visited := make(map[PointI]bool)
 	visited[p] = true
-
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
@@ -325,7 +327,6 @@ func (pf *Pathfinder) Astar(start, end PointI, playerDims Dimensions) ([]PointI,
 	heap.Push(&openSet, startNode)
 	gScore := make(map[PointI]float64)
 	gScore[start] = 0.0
-
 	for openSet.Len() > 0 {
 		current := heap.Pop(&openSet).(*Node)
 		if current.X == end.X && current.Y == end.Y {
@@ -338,26 +339,52 @@ func (pf *Pathfinder) Astar(start, end PointI, playerDims Dimensions) ([]PointI,
 			}
 			tentativeGScore := gScore[PointI{X: current.X, Y: current.Y}] + 1
 			if val, ok := gScore[neighborPos]; !ok || tentativeGScore < val {
-				gScore[neighborPos] = tentativeGScore
-				h := heuristic(neighborPos.X, neighborPos.Y, end.X, end.Y)
-				heap.Push(&openSet, &Node{X: neighborPos.X, Y: neighborPos.Y, g: tentativeGScore, h: h, f: tentativeGScore + h, parent: current})
+				if neighborNode := findNodeInPQ(&openSet, neighborPos); neighborNode != nil {
+					if tentativeGScore < neighborNode.g {
+						neighborNode.g = tentativeGScore
+						neighborNode.f = neighborNode.g + neighborNode.h
+						neighborNode.parent = current
+						heap.Fix(&openSet, neighborNode.index)
+					}
+				} else {
+					newNode := &Node{
+						X:      neighborPos.X,
+						Y:      neighborPos.Y,
+						g:      tentativeGScore,
+						h:      heuristic(neighborPos.X, neighborPos.Y, end.X, end.Y),
+						parent: current,
+					}
+					newNode.f = newNode.g + newNode.h
+					gScore[neighborPos] = newNode.g
+					heap.Push(&openSet, newNode)
+				}
 			}
 		}
 	}
-	return nil, fmt.Errorf("could not find path")
+	return nil, fmt.Errorf("could not find a path")
 }
 
-// heuristic is the Manhattan distance heuristic for A*.
 func heuristic(x1, y1, x2, y2 int) float64 {
 	return math.Abs(float64(x1-x2)) + math.Abs(float64(y1-y2))
 }
 
-// reconstructPath reconstructs the path from the goal node.
-func reconstructPath(node *Node) []PointI {
+func findNodeInPQ(pq *PriorityQueue, p PointI) *Node {
+	for _, node := range *pq {
+		if node.X == p.X && node.Y == p.Y {
+			return node
+		}
+	}
+	return nil
+}
+
+func reconstructPath(n *Node) []PointI {
 	path := make([]PointI, 0)
-	for node != nil {
-		path = append([]PointI{{X: node.X, Y: node.Y}}, path...)
-		node = node.parent
+	for n != nil {
+		path = append(path, PointI{X: n.X, Y: n.Y})
+		n = n.parent
+	}
+	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
+		path[i], path[j] = path[j], path[i]
 	}
 	return path
 }
@@ -367,505 +394,521 @@ func rectsOverlap(r1, r2 Rectangle) bool {
 	return r1.MinX < r2.MaxX && r1.MaxX > r2.MinX && r1.MinY < r2.MaxY && r1.MaxY > r2.MinY
 }
 
-// NewGameServer creates and initializes a new GameServer.
+// NewGameServer creates a new game server.
 func NewGameServer() *GameServer {
-	rand.Seed(time.Now().UnixNano())
-	server := &GameServer{
-		clients:        make(map[string]*Client),
+	gs := &GameServer{
 		maps:           make(map[int]*MapState),
+		clients:        make(map[string]*Client),
 		register:       make(chan *Client),
 		unregister:     make(chan *Client),
-		aoiRadius:      25.0,
-		portalHoldTime: 5 * time.Second,
-		playerSpeed:    7.0, // Increased player speed
+		aoiRadius:      15.0,
+		portalHoldTime: 2 * time.Second,
+		playerSpeed:    12.0,
 	}
-
-	// Portal configurations for each map
-	portalConfigsMap1 := []PortalConfig{
-		{DestMapID: 2, DestPortalIndex: 0, SpawnRadius: 15.0},
-		{DestMapID: 1, DestPortalIndex: 1, SpawnRadius: 15.0},
-	}
-	portalConfigsMap2 := []PortalConfig{
-		{DestMapID: 3, DestPortalIndex: 0, SpawnRadius: 15.0},
-		{DestMapID: 1, DestPortalIndex: 0, SpawnRadius: 15.0},
-		{DestMapID: 2, DestPortalIndex: 1, SpawnRadius: 15.0},
-	}
-	portalConfigsMap3 := []PortalConfig{
-		{DestMapID: 1, DestPortalIndex: 0, SpawnRadius: 15.0},
-		{DestMapID: 2, DestPortalIndex: 0, SpawnRadius: 15.0},
-	}
-
-	// Create and configure maps
-	portalRects := make(map[int][]Rectangle)
-	portals := make(map[int][]*PortalState)
-	for i := 1; i <= 3; i++ {
-		mapState := &MapState{
-			gridW:      100,
-			gridH:      100,
-			pathfinder: NewPathfinder(100, 100),
-			players:    make(map[string]*PlayerState),
-			portals:    make(map[string]*PortalState),
-		}
-
-		// Generate portals first to avoid placing obstacles over them
-		numPortals := rand.Intn(2) + 2
-		portalList := mapState.generatePortals(numPortals)
-		portalRects[i] = make([]Rectangle, len(portalList))
-		portals[i] = portalList
-
-		for idx, portal := range portalList {
-			rect := Rectangle{MinX: portal.Pos.X, MinY: portal.Pos.Y, MaxX: portal.Pos.X + portal.Dims.Width, MaxY: portal.Pos.Y + portal.Dims.Height}
-			portalRects[i][idx] = rect
-			mapState.portals[portal.ID] = portal
-		}
-
-		mapState.pathfinder.GenerateObstacles(20, portalRects[i])
-		server.maps[i] = mapState
-	}
-
-	// Assign portal configurations after all portals are generated
-	for i := 1; i <= 3; i++ {
-		portalList := portals[i]
-		var configs []PortalConfig
-		switch i {
-		case 1:
-			configs = portalConfigsMap1
-		case 2:
-			configs = portalConfigsMap2
-		case 3:
-			configs = portalConfigsMap3
-		}
-		for idx, portal := range portalList {
-			if idx < len(configs) {
-				portal.PortalConfig = &configs[idx]
-			}
-		}
-	}
-	log.Printf("Game server initialized with %d maps.", len(server.maps))
-	return server
+	gs.createMaps()
+	return gs
 }
 
-// run starts the game loop.
-func (s *GameServer) run() {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
+func (s *GameServer) createMaps() {
+	log.Println("Creating game maps...")
+	const (
+		numMaps    = 3
+		gridSizeW  = 100
+		gridSizeH  = 100
+		numObs     = 100
+		numPortals = 2
+	)
+
+	portalConfigs := [numMaps][]PortalConfig{
+		// Map 0
+		{
+			{DestMapID: 1, DestPortalIndex: 0, SpawnRadius: 2.0},
+			{DestMapID: 0, DestPortalIndex: 1, SpawnRadius: 2.0},
+		},
+		// Map 1
+		{
+			{DestMapID: 0, DestPortalIndex: 0, SpawnRadius: 2.0},
+			{DestMapID: 2, DestPortalIndex: 1, SpawnRadius: 2.0},
+		},
+		// Map 2
+		{
+			{DestMapID: 1, DestPortalIndex: 1, SpawnRadius: 2.0},
+			{DestMapID: 2, DestPortalIndex: 0, SpawnRadius: 2.0},
+		},
+	}
+
+	// Correctly initialize the global slice of slices
+	allMapsPortals = make([][]*PortalState, numMaps)
+
+	for i := 0; i < numMaps; i++ {
+		ms := &MapState{
+			gridW:      gridSizeW,
+			gridH:      gridSizeH,
+			players:    make(map[string]*PlayerState),
+			portals:    make(map[string]*PortalState),
+			obstacles:  make(map[string]ObjectState),
+			pathfinder: NewPathfinder(gridSizeW, gridSizeH),
+		}
+
+		portals := ms.generatePortals(numPortals)
+		// Store the generated portals in the global slice
+		allMapsPortals[i] = portals
+
+		for _, p := range portals {
+			ms.portals[p.ID] = p
+		}
+
+		// Collect portal rectangles for obstacle generation
+		portalRects := make([]Rectangle, len(portals))
+		for idx, p := range portals {
+			portalRects[idx] = Rectangle{MinX: p.Pos.X, MinY: p.Pos.Y, MaxX: p.Pos.X + p.Dims.Width, MaxY: p.Pos.Y + p.Dims.Height}
+		}
+
+		ms.pathfinder.GenerateObstacles(numObs, portalRects)
+		s.maps[i] = ms
+	}
+
+	// Link portals after all maps are generated
+	for mapID, portals := range allMapsPortals {
+		for portalIndex, portal := range portals {
+			portal.PortalConfig = &portalConfigs[mapID][portalIndex]
+
+			destPortal := allMapsPortals[portal.PortalConfig.DestMapID][portal.PortalConfig.DestPortalIndex]
+
+			portal.Label = fmt.Sprintf("Map %d, Pos: (%d, %d)",
+				portal.PortalConfig.DestMapID,
+				int(destPortal.Pos.X),
+				int(destPortal.Pos.Y),
+			)
+		}
+	}
+
+	log.Println("Maps created and portals linked.")
+}
+
+func (s *GameServer) Run() {
+	go s.listenForClients()
+	go s.gameLoop()
+}
+
+func (s *GameServer) listenForClients() {
+	log.Println("Starting client listener...")
 	for {
 		select {
 		case client := <-s.register:
 			s.mu.Lock()
-			playerDims := Dimensions{Width: float64(rand.Intn(2) + 2), Height: float64(rand.Intn(2) + 2)}
-			startMapID := 1
-			mapState := s.maps[startMapID]
-			startPos, err := mapState.pathfinder.findRandomWalkablePoint(playerDims)
-			if err != nil {
-				log.Printf("Failed to place new player: %v", err)
-				s.mu.Unlock()
-				continue
-			}
-			newPlayer := &PlayerState{
-				ID:        client.playerID,
-				MapID:     startMapID,
-				Pos:       Point{X: float64(startPos.X), Y: float64(startPos.Y)},
-				Dims:      playerDims,
-				Client:    client,
-				Path:      []PointI{},
-				TargetPos: PointI{},
-				Direction: NONE,
-				Mode:      IDLE,
-			}
 			s.clients[client.playerID] = client
-			mapState.players[client.playerID] = newPlayer
-			log.Printf("Client %s connected to map %d. Total clients: %d", client.playerID, newPlayer.MapID, len(s.clients))
 			s.mu.Unlock()
-
-			// Send initial data to the new client
-			go func() {
-				s.mu.Lock()
-				mapState := s.maps[newPlayer.MapID]
-				initData := map[string]interface{}{
-					"type": "init_data",
-					"payload": map[string]interface{}{
-						"gridW":     mapState.gridW,
-						"gridH":     mapState.gridH,
-						"aoiRadius": s.aoiRadius,
-					},
-				}
-				s.mu.Unlock()
-				jsonMessage, _ := json.Marshal(initData)
-				client.send <- jsonMessage
-			}()
-
 		case client := <-s.unregister:
 			s.mu.Lock()
 			if _, ok := s.clients[client.playerID]; ok {
-				// Find which map the player is on before unregistering
-				var player *PlayerState
-				var mapState *MapState
-				for _, m := range s.maps {
-					if p, playerExists := m.players[client.playerID]; playerExists {
-						player = p
-						mapState = m
-						break
-					}
-				}
-				if player != nil && mapState != nil {
-					delete(mapState.players, client.playerID)
-					log.Printf("Removed player %s from map %d", player.ID, player.MapID)
-				} else {
-					log.Printf("Could not find player %s in any map during unregister", client.playerID)
-				}
-
 				delete(s.clients, client.playerID)
+				playerState := client.playerState
+				if playerState != nil {
+					mapState, ok := s.maps[playerState.MapID]
+					if ok {
+						delete(mapState.players, client.playerID)
+					}
+				}
 				close(client.send)
-				log.Printf("Client %s disconnected. Total clients: %d", client.playerID, len(s.clients))
 			}
 			s.mu.Unlock()
-		case <-ticker.C:
-			s.mu.Lock()
-			s.handlePlayerMovement()
-			s.handlePlayerTeleport()
-			s.updateClients()
-			s.mu.Unlock()
 		}
 	}
 }
 
-// handlePlayerMovement updates player positions based on their path.
-func (s *GameServer) handlePlayerMovement() {
-	for _, mapState := range s.maps {
-		for _, player := range mapState.players {
-			if len(player.Path) > 0 {
-				player.Mode = WALKING
-				target := player.Path[0]
-				dx, dy := float64(target.X)-player.Pos.X, float64(target.Y)-player.Pos.Y
-				dist := math.Sqrt(dx*dx + dy*dy)
+func (s *GameServer) gameLoop() {
+	ticker := time.NewTicker(100 * time.Millisecond) // Tick at 10 FPS
+	defer ticker.Stop()
 
-				if dist < 0.1 {
-					player.Pos.X, player.Pos.Y = float64(target.X), float64(target.Y)
-					player.Path = player.Path[1:]
-					if len(player.Path) == 0 {
-						player.Mode = IDLE
-					}
-					continue
-				}
-
-				angle := math.Atan2(dy, dx)
-				player.Direction = getDirectionFromAngle(angle)
-
-				speed := s.playerSpeed * 0.1 // Adjust speed to be frame rate independent
-				if dist < speed {
-					player.Pos.X, player.Pos.Y = float64(target.X), float64(target.Y)
-				} else {
-					player.Pos.X += math.Cos(angle) * speed
-					player.Pos.Y += math.Sin(angle) * speed
-				}
+	for range ticker.C {
+		s.mu.Lock()
+		for _, mapState := range s.maps {
+			for _, player := range mapState.players {
+				s.updatePlayerPosition(player, mapState)
+				s.checkPortal(player, mapState)
 			}
+			s.updateAOIs(mapState)
+		}
+		s.mu.Unlock()
+	}
+}
+
+func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapState) {
+	if player.Mode == WALKING && len(player.Path) > 0 {
+		targetNode := player.Path[0]
+		dx := float64(targetNode.X) - player.Pos.X
+		dy := float64(targetNode.Y) - player.Pos.Y
+
+		dist := math.Sqrt(dx*dx + dy*dy)
+		step := s.playerSpeed / 10.0 // Calculate movement step based on FPS
+
+		if dist < step {
+			player.Pos = Point{X: float64(targetNode.X), Y: float64(targetNode.Y)}
+			player.Path = player.Path[1:]
+			if len(player.Path) == 0 {
+				player.Mode = IDLE
+				player.Direction = NONE
+			}
+		} else {
+			dirX, dirY := dx/dist, dy/dist
+			player.Pos.X += dirX * step
+			player.Pos.Y += dirY * step
+			s.updatePlayerDirection(player, dirX, dirY)
 		}
 	}
 }
 
-// handlePlayerTeleport checks for players on portals and teleports them.
-func (s *GameServer) handlePlayerTeleport() {
-	for mapID, mapState := range s.maps {
-		for _, player := range mapState.players {
-			playerRect := Rectangle{MinX: player.Pos.X, MinY: player.Pos.Y, MaxX: player.Pos.X + player.Dims.Width, MaxY: player.Pos.Y + player.Dims.Height}
-			onPortal := false
-			for _, portal := range mapState.portals {
-				portalRect := Rectangle{MinX: portal.Pos.X, MinY: portal.Pos.Y, MaxX: portal.Pos.X + portal.Dims.Width, MaxY: portal.Pos.Y + portal.Dims.Height}
-				if rectsOverlap(playerRect, portalRect) {
-					onPortal = true
-					if !player.OnPortal || player.ActivePortalID != portal.ID {
-						player.OnPortal = true
-						player.TimeOnPortal = time.Now()
-						player.ActivePortalID = portal.ID
-					}
-					break
-				}
-			}
+func (s *GameServer) updatePlayerDirection(player *PlayerState, dirX, dirY float64) {
+	angle := math.Atan2(dirY, dirX)
+	if angle < 0 {
+		angle += 2 * math.Pi
+	}
+	directionIndex := int(math.Round(angle/(math.Pi/4))) % 8
+	player.Direction = Direction(directionIndex)
+}
 
-			if !onPortal {
-				player.OnPortal = false
-				player.ActivePortalID = ""
-			}
-
-			if player.OnPortal && time.Since(player.TimeOnPortal) > s.portalHoldTime {
-				s.teleportPlayer(player, mapID, mapState)
-			}
+func (s *GameServer) checkPortal(player *PlayerState, mapState *MapState) {
+	onPortal := false
+	var activePortal *PortalState
+	for _, portal := range mapState.portals {
+		portalRect := Rectangle{
+			MinX: portal.Pos.X, MinY: portal.Pos.Y,
+			MaxX: portal.Pos.X + portal.Dims.Width, MaxY: portal.Pos.Y + portal.Dims.Height,
 		}
-	}
-}
-
-// teleportPlayer teleports a player to a new map and position.
-func (s *GameServer) teleportPlayer(player *PlayerState, currentMapID int, currentMap *MapState) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	portal, ok := currentMap.portals[player.ActivePortalID]
-	if !ok || portal.PortalConfig == nil {
-		log.Printf("Portal not found or not configured: %s", player.ActivePortalID)
-		return
-	}
-
-	destMap, ok := s.maps[portal.PortalConfig.DestMapID]
-	if !ok {
-		log.Printf("Destination map %d not found", portal.PortalConfig.DestMapID)
-		return
-	}
-
-	destPortals := make([]*PortalState, 0)
-	for _, p := range destMap.portals {
-		destPortals = append(destPortals, p)
-	}
-
-	if portal.PortalConfig.DestPortalIndex >= len(destPortals) {
-		log.Printf("Destination portal index out of range on map %d", portal.PortalConfig.DestMapID)
-		return
-	}
-
-	destPortal := destPortals[portal.PortalConfig.DestPortalIndex]
-
-	// Remove player from current map
-	delete(currentMap.players, player.ID)
-
-	// Update player state for new map
-	player.MapID = portal.PortalConfig.DestMapID
-	player.Path = []PointI{} // Clear path
-	player.TargetPos = PointI{}
-
-	spawnPoint, err := destMap.pathfinder.findRandomWalkablePoint(player.Dims)
-	if err != nil {
-		log.Printf("Error finding spawn point in new map: %v", err)
-		player.Pos = destPortal.Pos
-	} else {
-		player.Pos = Point{X: float64(spawnPoint.X), Y: float64(spawnPoint.Y)}
-	}
-
-	// Add player to the new map
-	destMap.players[player.ID] = player
-	log.Printf("Player %s teleported from map %d to map %d", player.ID, currentMapID, player.MapID)
-}
-
-// getDirectionFromAngle converts an angle in radians to a Direction enum.
-func getDirectionFromAngle(angle float64) Direction {
-	angle = math.Mod(angle+2*math.Pi, 2*math.Pi)
-	if angle >= 7*math.Pi/8 && angle < 9*math.Pi/8 {
-		return LEFT
-	} else if angle >= 9*math.Pi/8 && angle < 11*math.Pi/8 {
-		return DOWN_LEFT
-	} else if angle >= 11*math.Pi/8 && angle < 13*math.Pi/8 {
-		return DOWN
-	} else if angle >= 13*math.Pi/8 && angle < 15*math.Pi/8 {
-		return DOWN_RIGHT
-	} else if angle >= 15*math.Pi/8 || angle < math.Pi/8 {
-		return RIGHT
-	} else if angle >= math.Pi/8 && angle < 3*math.Pi/8 {
-		return UP_RIGHT
-	} else if angle >= 3*math.Pi/8 && angle < 5*math.Pi/8 {
-		return UP
-	} else {
-		return UP_LEFT
-	}
-}
-
-// updateClients sends AOI updates to all connected clients.
-func (s *GameServer) updateClients() {
-	for mapID, mapState := range s.maps {
-		for _, player := range mapState.players {
-			client := player.Client
-			if client == nil {
-				continue
-			}
-			player.AOI = Rectangle{
-				MinX: player.Pos.X - s.aoiRadius, MinY: player.Pos.Y - s.aoiRadius,
-				MaxX: player.Pos.X + player.Dims.Width + s.aoiRadius, MaxY: player.Pos.Y + player.Dims.Height + s.aoiRadius,
-			}
-
-			visiblePlayers := make(map[string]ObjectState)
-			for _, otherPlayer := range mapState.players {
-				if otherPlayer.ID == player.ID {
-					continue
-				}
-				if rectsOverlap(player.AOI, Rectangle{MinX: otherPlayer.Pos.X, MinY: otherPlayer.Pos.Y, MaxX: otherPlayer.Pos.X + otherPlayer.Dims.Width, MaxY: otherPlayer.Pos.Y + otherPlayer.Dims.Height}) {
-					visiblePlayers[otherPlayer.ID] = ObjectState{
-						ID: otherPlayer.ID, Pos: otherPlayer.Pos, Dims: otherPlayer.Dims, Type: "player",
-					}
-				}
-			}
-
-			visibleGridObjects := make(map[string]ObjectState)
-			for id, obstacle := range mapState.pathfinder.obstacles {
-				if rectsOverlap(player.AOI, Rectangle{MinX: obstacle.Pos.X, MinY: obstacle.Pos.Y, MaxX: obstacle.Pos.X + obstacle.Dims.Width, MaxY: obstacle.Pos.Y + obstacle.Dims.Height}) {
-					visibleGridObjects[id] = obstacle
-				}
-			}
-
-			for id, portal := range mapState.portals {
-				if rectsOverlap(player.AOI, Rectangle{MinX: portal.Pos.X, MinY: portal.Pos.Y, MaxX: portal.Pos.X + portal.Dims.Width, MaxY: portal.Pos.Y + portal.Dims.Height}) {
-					label := fmt.Sprintf("To Map %d", portal.PortalConfig.DestMapID)
-					if portal.PortalConfig.DestMapID == mapID {
-						label = "To Same Map"
-					}
-					visibleGridObjects[id] = ObjectState{
-						ID: id, Pos: portal.Pos, Dims: portal.Dims, Type: "portal", PortalLabel: label,
-					}
-				}
-			}
-
-			payload := AOIUpdatePayload{
-				PlayerID:           player.ID,
-				Player:             *player,
-				VisiblePlayers:     visiblePlayers,
-				VisibleGridObjects: visibleGridObjects,
-			}
-
-			jsonMessage, err := json.Marshal(map[string]interface{}{
-				"type":    "aoi_update",
-				"payload": payload,
-			})
-			if err != nil {
-				log.Printf("Error marshaling AOI update: %v", err)
-				continue
-			}
-			select {
-			case client.send <- jsonMessage:
-			default:
-				// If a client is too slow, we'll just close their connection
-				log.Printf("Client %s send channel is full, closing connection.", client.playerID)
-				close(client.send)
-				// We don't delete from mapState.players or s.clients here; unregister handles this
-			}
+		playerRect := Rectangle{
+			MinX: player.Pos.X, MinY: player.Pos.Y,
+			MaxX: player.Pos.X + player.Dims.Width, MaxY: player.Pos.Y + player.Dims.Height,
 		}
-	}
-}
 
-// readPump handles incoming messages from the WebSocket connection.
-func readPump(conn *websocket.Conn, client *Client, server *GameServer) {
-	defer func() {
-		server.unregister <- client
-		conn.Close()
-	}()
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
-			}
+		if rectsOverlap(playerRect, portalRect) {
+			onPortal = true
+			activePortal = portal
 			break
 		}
-		client.lastAction = time.Now()
-		var msg map[string]interface{}
-		if err := json.Unmarshal(message, &msg); err != nil {
-			log.Printf("Error unmarshaling message: %v", err)
-			continue
-		}
-		if msg["type"] == "path_request" {
-			payload := msg["payload"].(map[string]interface{})
-			targetX := int(payload["targetX"].(float64))
-			targetY := int(payload["targetY"].(float64))
-			server.mu.Lock()
+	}
 
-			// Find player and their current map
-			var mapState *MapState
-			var player *PlayerState
-			for _, m := range server.maps {
-				if p, ok := m.players[client.playerID]; ok {
-					mapState = m
-					player = p
-					break
+	if onPortal {
+		if !player.OnPortal {
+			player.OnPortal = true
+			player.TimeOnPortal = time.Now()
+			player.ActivePortalID = activePortal.ID
+		} else if time.Since(player.TimeOnPortal) > s.portalHoldTime {
+			s.teleportPlayer(player, activePortal)
+		}
+	} else {
+		player.OnPortal = false
+		player.ActivePortalID = ""
+	}
+}
+
+func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
+	s.mu.Unlock()     // Unlock to prevent deadlock during map access
+	defer s.mu.Lock() // Ensure lock is re-acquired before function exit
+
+	if portal.PortalConfig == nil {
+		log.Println("Teleportation failed: Portal config is nil.")
+		return
+	}
+
+	destMapID := portal.PortalConfig.DestMapID
+	destPortalIndex := portal.PortalConfig.DestPortalIndex
+
+	// Safely retrieve the destination portal from the global slice
+	if destMapID >= len(allMapsPortals) || destPortalIndex >= len(allMapsPortals[destMapID]) {
+		log.Printf("Teleportation failed: Destination portal index out of bounds. MapID: %d, PortalIndex: %d", destMapID, destPortalIndex)
+		return
+	}
+	destPortal := allMapsPortals[destMapID][destPortalIndex]
+
+	destMapState, ok := s.maps[destMapID]
+	if !ok {
+		log.Printf("Teleportation failed: Destination map %d not found.", destMapID)
+		return
+	}
+
+	spawnX := destPortal.Pos.X + (destPortal.Dims.Width / 2) + rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
+	spawnY := destPortal.Pos.Y + (destPortal.Dims.Height / 2) + rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
+
+	// Ensure the new position is walkable
+	destPosI, err := destMapState.pathfinder.findClosestWalkablePoint(PointI{X: int(spawnX), Y: int(spawnY)}, player.Dims)
+	if err != nil {
+		log.Printf("Could not find a walkable spawn point: %v", err)
+		return
+	}
+
+	// Remove player from current map
+	currentMapState, ok := s.maps[player.MapID]
+	if ok {
+		delete(currentMapState.players, player.ID)
+	}
+
+	// Add player to new map
+	player.MapID = destMapID
+	player.Pos = Point{X: float64(destPosI.X), Y: float64(destPosI.Y)}
+	player.TargetPos = PointI{} // Clear target
+	player.Path = []PointI{}    // Clear path
+	player.Mode = TELEPORTING   // Set mode to TELEPORTING
+	player.OnPortal = false
+	destMapState.players[player.ID] = player
+
+	// Update client to reflect new state immediately
+	s.sendAOI(player)
+}
+
+func (s *GameServer) updateAOIs(mapState *MapState) {
+	for _, player := range mapState.players {
+		player.AOI = Rectangle{
+			MinX: player.Pos.X - s.aoiRadius,
+			MinY: player.Pos.Y - s.aoiRadius,
+			MaxX: player.Pos.X + player.Dims.Width + s.aoiRadius,
+			MaxY: player.Pos.Y + player.Dims.Height + s.aoiRadius,
+		}
+		s.sendAOI(player)
+	}
+}
+
+func (s *GameServer) sendAOI(player *PlayerState) {
+	mapState, ok := s.maps[player.MapID]
+	if !ok {
+		log.Printf("Map %d not found for player %s.", player.MapID, player.ID)
+		return
+	}
+
+	visiblePlayers := make(map[string]ObjectState)
+	for _, otherPlayer := range mapState.players {
+		if otherPlayer.ID != player.ID {
+			otherPlayerRect := Rectangle{
+				MinX: otherPlayer.Pos.X, MinY: otherPlayer.Pos.Y,
+				MaxX: otherPlayer.Pos.X + otherPlayer.Dims.Width, MaxY: otherPlayer.Pos.Y + otherPlayer.Dims.Height,
+			}
+			if rectsOverlap(player.AOI, otherPlayerRect) {
+				visiblePlayers[otherPlayer.ID] = ObjectState{
+					ID: otherPlayer.ID, Pos: otherPlayer.Pos, Dims: otherPlayer.Dims, Type: "player",
 				}
 			}
-
-			if mapState == nil || player == nil {
-				log.Printf("Player %s not found in any map", client.playerID)
-				server.mu.Unlock()
-				continue
-			}
-
-			// Find closest walkable point to the target
-			targetPoint, err := mapState.pathfinder.findClosestWalkablePoint(PointI{X: targetX, Y: targetY}, player.Dims)
-			if err != nil {
-				log.Printf("Could not find walkable point for target: %v", err)
-				server.mu.Unlock()
-				continue
-			}
-
-			startPoint := PointI{X: int(player.Pos.X), Y: int(player.Pos.Y)}
-			path, err := mapState.pathfinder.Astar(startPoint, targetPoint, player.Dims)
-
-			if err != nil {
-				player.Path = nil
-			} else {
-				player.Path = path
-				player.TargetPos = targetPoint
-			}
-			server.mu.Unlock()
 		}
 	}
-}
 
-// writePump handles outgoing messages to the WebSocket connection.
-func writePump(conn *websocket.Conn, client *Client) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer func() {
-		ticker.Stop()
-		conn.Close()
-	}()
-	for {
-		select {
-		case message, ok := <-client.send:
-			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if !ok {
-				conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
-			w, err := conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				return
-			}
-			w.Write(message)
-			if err := w.Close(); err != nil {
-				return
-			}
-		case <-ticker.C:
-			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return
+	visibleGridObjects := make(map[string]ObjectState)
+
+	// Add obstacles
+	for _, obstacle := range mapState.obstacles {
+		obstacleRect := Rectangle{
+			MinX: obstacle.Pos.X, MinY: obstacle.Pos.Y,
+			MaxX: obstacle.Pos.X + obstacle.Dims.Width, MaxY: obstacle.Pos.Y + obstacle.Dims.Height,
+		}
+		if rectsOverlap(player.AOI, obstacleRect) {
+			visibleGridObjects[obstacle.ID] = obstacle
+		}
+	}
+
+	// Add portals
+	for _, portal := range mapState.portals {
+		portalRect := Rectangle{
+			MinX: portal.Pos.X, MinY: portal.Pos.Y,
+			MaxX: portal.Pos.X + portal.Dims.Width, MaxY: portal.Pos.Y + portal.Dims.Height,
+		}
+		if rectsOverlap(player.AOI, portalRect) {
+			visibleGridObjects[portal.ID] = ObjectState{
+				ID: portal.ID, Pos: portal.Pos, Dims: portal.Dims, Type: "portal", PortalLabel: portal.Label,
 			}
 		}
 	}
+
+	payload := AOIUpdatePayload{
+		PlayerID:           player.ID,
+		Player:             *player,
+		VisiblePlayers:     visiblePlayers,
+		VisibleGridObjects: visibleGridObjects,
+	}
+
+	message, err := json.Marshal(map[string]interface{}{"type": "aoi_update", "payload": payload})
+	if err != nil {
+		log.Printf("Error marshaling AOI update: %v", err)
+		return
+	}
+	select {
+	case player.Client.send <- message:
+	default:
+		log.Printf("Client %s message channel is full.", player.ID)
+	}
 }
 
-// handleWebsocket handles new websocket connections.
-func handleWebsocket(server *GameServer, w http.ResponseWriter, r *http.Request) {
+// Handler for WebSocket connections.
+func (s *GameServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
 		CheckOrigin: func(r *http.Request) bool {
 			return true
 		},
 	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("Upgrade failed:", err)
+		log.Println("Upgrade error:", err)
 		return
 	}
+
+	s.mu.Lock()
+
+	// Assign a random, unique player ID and random dimensions
 	playerID := uuid.New().String()
-	client := &Client{
-		playerID: playerID,
-		conn:     conn,
-		send:     make(chan []byte, 256),
+	playerDims := Dimensions{
+		Width:  float64(rand.Intn(4) + 1),
+		Height: float64(rand.Intn(4) + 1),
 	}
-	server.register <- client
-	go writePump(conn, client)
-	go readPump(conn, client, server)
+
+	// Place the new player in a random walkable point on a random map
+	startMapID := rand.Intn(len(s.maps))
+	startMapState := s.maps[startMapID]
+	startPosI, err := startMapState.pathfinder.findRandomWalkablePoint(playerDims)
+	if err != nil {
+		log.Printf("Could not place new player: %v", err)
+		conn.Close()
+		s.mu.Unlock()
+		return
+	}
+
+	playerState := &PlayerState{
+		ID:        playerID,
+		MapID:     startMapID,
+		Pos:       Point{X: float64(startPosI.X), Y: float64(startPosI.Y)},
+		Dims:      playerDims,
+		Path:      []PointI{},
+		TargetPos: PointI{-1, -1},
+		Direction: NONE,
+		Mode:      IDLE,
+	}
+
+	client := &Client{
+		conn:        conn,
+		playerID:    playerID,
+		send:        make(chan []byte, 256), // Use a buffered channel
+		lastAction:  time.Now(),
+		playerState: playerState,
+	}
+	playerState.Client = client
+
+	startMapState.players[playerID] = playerState
+
+	s.mu.Unlock()
+
+	s.register <- client
+
+	go client.writePump()
+	go client.readPump(s)
+}
+
+// readPump handles incoming messages from the client.
+func (c *Client) readPump(server *GameServer) {
+	defer func() {
+		server.unregister <- c
+		c.conn.Close()
+	}()
+	c.conn.SetReadLimit(512)
+	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
+	for {
+		_, message, err := c.conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("error: %v", err)
+			}
+			break
+		}
+		var msg map[string]interface{}
+		if err := json.Unmarshal(message, &msg); err != nil {
+			log.Printf("Error unmarshaling message: %v", err)
+			continue
+		}
+		if msg["type"] == "player_action" {
+			payload := msg["payload"].(map[string]interface{})
+			targetX := payload["targetX"].(float64)
+			targetY := payload["targetY"].(float64)
+			server.mu.Lock()
+			player, ok := server.maps[c.playerState.MapID].players[c.playerID]
+			if !ok {
+				log.Println("Player not found in map")
+				server.mu.Unlock()
+				continue
+			}
+			mapState, ok := server.maps[player.MapID]
+			if !ok {
+				log.Println("Player map not found")
+				server.mu.Unlock()
+				continue
+			}
+
+			server.mu.Unlock()
+
+			// Recalculate path
+			startPosI := PointI{X: int(math.Round(player.Pos.X)), Y: int(math.Round(player.Pos.Y))}
+			targetPosI := PointI{X: int(math.Round(targetX)), Y: int(math.Round(targetY))}
+
+			newPath, err := mapState.pathfinder.Astar(startPosI, targetPosI, player.Dims)
+			if err != nil {
+				log.Printf("Pathfinding error for player %s: %v", c.playerID, err)
+				continue
+			}
+
+			server.mu.Lock()
+			player.Path = newPath
+			player.TargetPos = targetPosI
+			player.Mode = WALKING
+			server.mu.Unlock()
+		}
+	}
+}
+
+// writePump writes messages to the WebSocket connection.
+func (c *Client) writePump() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer func() {
+		ticker.Stop()
+		c.conn.Close()
+	}()
+	for {
+		select {
+		case message, ok := <-c.send:
+			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if !ok {
+				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+			w, err := c.conn.NextWriter(websocket.TextMessage)
+			if err != nil {
+				return
+			}
+			w.Write(message)
+
+			// Flush the buffer to send immediately
+			if err := w.Close(); err != nil {
+				return
+			}
+		case <-ticker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		}
+	}
 }
 
 func main() {
-	gameServer := NewGameServer()
-	go gameServer.run()
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		handleWebsocket(gameServer, w, r)
-	})
-	log.Println("Server starting on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		log.Fatal("ListenAndServe: ", err)
+	server := NewGameServer()
+	go server.Run()
+
+	http.HandleFunc("/ws", server.handleConnections)
+	log.Println("Server started on :8080")
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		log.Fatal("ListenAndServe:", err)
 	}
 }
+
+// Global variable to hold portal states for cross-map linking
+var allMapsPortals [][]*PortalState
