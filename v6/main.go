@@ -403,7 +403,7 @@ func NewGameServer() *GameServer {
 		unregister:     make(chan *Client),
 		aoiRadius:      15.0,
 		portalHoldTime: 2 * time.Second,
-		playerSpeed:    12.0,
+		playerSpeed:    24.0,
 	}
 	gs.createMaps()
 	return gs
@@ -465,6 +465,7 @@ func (s *GameServer) createMaps() {
 		}
 
 		ms.pathfinder.GenerateObstacles(numObs, portalRects)
+		ms.obstacles = ms.pathfinder.obstacles
 		s.maps[i] = ms
 	}
 
