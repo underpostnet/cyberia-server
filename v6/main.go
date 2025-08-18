@@ -687,9 +687,6 @@ func (s *GameServer) updateAOIs(mapState *MapState) {
 	}
 }
 
-// debug flag: toggle to true to print raw AOI JSON messages
-const debugAOI = true
-
 func (s *GameServer) sendAOI(player *PlayerState) {
 	mapState, ok := s.maps[player.MapID]
 	if !ok {
@@ -779,11 +776,6 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 	if err != nil {
 		log.Printf("Error marshaling AOI update: %v", err)
 		return
-	}
-
-	if debugAOI {
-		// Print the JSON being sent so you can verify direction values exactly
-		log.Printf("AOI JSON for player %s: %s\n", player.ID, string(message))
 	}
 
 	select {
