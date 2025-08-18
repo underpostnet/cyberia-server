@@ -583,7 +583,7 @@ func (s *GameServer) updatePlayerDirection(player *PlayerState, dirX, dirY float
 	if angle < 0 {
 		angle += 2 * math.Pi
 	}
-	directionIndex := int(math.Round(angle/(math.Pi/4))) % 8
+	directionIndex := (int(math.Round(angle/(math.Pi/4))) + 2) % 8
 	player.Direction = Direction(directionIndex)
 }
 
@@ -910,18 +910,14 @@ func (c *Client) readPump(server *GameServer) {
 					// No closest walkable - we'll set direction towards target and set mode to WALKING so client displays direction
 					log.Printf("Pathfinding failed for player %s, no closest walkable: %v", c.playerID, err)
 					server.mu.Lock()
-					// compute direction toward requested target
+					// compute direction toward requested target (use central helper to ensure consistent mapping)
 					dx := float64(targetPosI.X) - player.Pos.X
 					dy := float64(targetPosI.Y) - player.Pos.Y
 					dist := math.Sqrt(dx*dx + dy*dy)
 					if dist > 0 {
 						dirX, dirY := dx/dist, dy/dist
-						angle := math.Atan2(dirY, dirX)
-						if angle < 0 {
-							angle += 2 * math.Pi
-						}
-						directionIndex := int(math.Round(angle/(math.Pi/4))) % 8
-						player.Direction = Direction(directionIndex)
+						// reuse server helper so angle->index mapping stays consistent
+						server.updatePlayerDirection(player, dirX, dirY)
 						player.Mode = WALKING
 						player.TargetPos = targetPosI
 						// leave player.Path empty; client will show direction while server cannot compute full path
@@ -943,12 +939,8 @@ func (c *Client) readPump(server *GameServer) {
 					dist := math.Sqrt(dx*dx + dy*dy)
 					if dist > 0 {
 						dirX, dirY := dx/dist, dy/dist
-						angle := math.Atan2(dirY, dirX)
-						if angle < 0 {
-							angle += 2 * math.Pi
-						}
-						directionIndex := int(math.Round(angle/(math.Pi/4))) % 8
-						player.Direction = Direction(directionIndex)
+						// use central helper for consistent mapping
+						server.updatePlayerDirection(player, dirX, dirY)
 						player.Mode = WALKING
 						player.TargetPos = closest
 					} else {
@@ -969,18 +961,13 @@ func (c *Client) readPump(server *GameServer) {
 				player.Path = newPath
 				player.TargetPos = usedTarget
 				player.Mode = WALKING
-				// compute direction from player.Pos to first node
+				// compute direction from player.Pos to first node (use helper)
 				dx := float64(first.X) - player.Pos.X
 				dy := float64(first.Y) - player.Pos.Y
 				dist := math.Sqrt(dx*dx + dy*dy)
 				if dist > 0 {
 					dirX, dirY := dx/dist, dy/dist
-					angle := math.Atan2(dirY, dirX)
-					if angle < 0 {
-						angle += 2 * math.Pi
-					}
-					directionIndex := int(math.Round(angle/(math.Pi/4))) % 8
-					player.Direction = Direction(directionIndex)
+					server.updatePlayerDirection(player, dirX, dirY)
 				}
 				server.mu.Unlock()
 			} else {
