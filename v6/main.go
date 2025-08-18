@@ -535,6 +535,7 @@ func (s *GameServer) gameLoop() {
 	}
 }
 
+// ---------- CHANGE: updatePlayerPosition now recalculates direction when arriving to a node ----------
 func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapState) {
 	if player.Mode == WALKING && len(player.Path) > 0 {
 		targetNode := player.Path[0]
@@ -545,13 +546,28 @@ func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapStat
 		step := s.playerSpeed / 10.0 // Calculate movement step based on FPS
 
 		if dist < step {
+			// snap to node
 			player.Pos = Point{X: float64(targetNode.X), Y: float64(targetNode.Y)}
+			// consume node
 			player.Path = player.Path[1:]
 			if len(player.Path) == 0 {
+				// no more nodes -> idle
 				player.Mode = IDLE
 				player.Direction = NONE
+			} else {
+				// There is a next node: recompute direction toward next node (important!)
+				next := player.Path[0]
+				dirX := float64(next.X) - player.Pos.X
+				dirY := float64(next.Y) - player.Pos.Y
+				norm := math.Sqrt(dirX*dirX + dirY*dirY)
+				if norm > 0 {
+					dirX /= norm
+					dirY /= norm
+					s.updatePlayerDirection(player, dirX, dirY)
+				}
 			}
 		} else {
+			// normal interpolation toward current node
 			dirX, dirY := dx/dist, dy/dist
 			player.Pos.X += dirX * step
 			player.Pos.Y += dirY * step
@@ -559,6 +575,8 @@ func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapStat
 		}
 	}
 }
+
+// -------------------------------------------------------------------------
 
 func (s *GameServer) updatePlayerDirection(player *PlayerState, dirX, dirY float64) {
 	angle := math.Atan2(dirY, dirX)
@@ -669,6 +687,9 @@ func (s *GameServer) updateAOIs(mapState *MapState) {
 	}
 }
 
+// debug flag: toggle to true to print raw AOI JSON messages
+const debugAOI = true
+
 func (s *GameServer) sendAOI(player *PlayerState) {
 	mapState, ok := s.maps[player.MapID]
 	if !ok {
@@ -676,23 +697,29 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		return
 	}
 
-	visiblePlayers := make(map[string]ObjectState)
+	// Build visible players map with direction & mode included (for each visible player)
+	visiblePlayersMap := make(map[string]map[string]interface{})
 	for _, otherPlayer := range mapState.players {
-		if otherPlayer.ID != player.ID {
-			otherPlayerRect := Rectangle{
-				MinX: otherPlayer.Pos.X, MinY: otherPlayer.Pos.Y,
-				MaxX: otherPlayer.Pos.X + otherPlayer.Dims.Width, MaxY: otherPlayer.Pos.Y + otherPlayer.Dims.Height,
-			}
-			if rectsOverlap(player.AOI, otherPlayerRect) {
-				visiblePlayers[otherPlayer.ID] = ObjectState{
-					ID: otherPlayer.ID, Pos: otherPlayer.Pos, Dims: otherPlayer.Dims, Type: "player",
-				}
+		if otherPlayer.ID == player.ID {
+			continue
+		}
+		otherRect := Rectangle{
+			MinX: otherPlayer.Pos.X, MinY: otherPlayer.Pos.Y,
+			MaxX: otherPlayer.Pos.X + otherPlayer.Dims.Width, MaxY: otherPlayer.Pos.Y + otherPlayer.Dims.Height,
+		}
+		if rectsOverlap(player.AOI, otherRect) {
+			visiblePlayersMap[otherPlayer.ID] = map[string]interface{}{
+				"id":        otherPlayer.ID,
+				"Pos":       otherPlayer.Pos,
+				"Dims":      otherPlayer.Dims,
+				"Type":      "player",
+				"direction": int(otherPlayer.Direction),
+				"mode":      int(otherPlayer.Mode),
 			}
 		}
 	}
 
-	visibleGridObjects := make(map[string]ObjectState)
-
+	visibleGridObjectsMap := make(map[string]map[string]interface{})
 	// Add obstacles
 	for _, obstacle := range mapState.obstacles {
 		obstacleRect := Rectangle{
@@ -700,7 +727,12 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 			MaxX: obstacle.Pos.X + obstacle.Dims.Width, MaxY: obstacle.Pos.Y + obstacle.Dims.Height,
 		}
 		if rectsOverlap(player.AOI, obstacleRect) {
-			visibleGridObjects[obstacle.ID] = obstacle
+			visibleGridObjectsMap[obstacle.ID] = map[string]interface{}{
+				"id":   obstacle.ID,
+				"Pos":  obstacle.Pos,
+				"Dims": obstacle.Dims,
+				"Type": obstacle.Type,
+			}
 		}
 	}
 
@@ -711,24 +743,49 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 			MaxX: portal.Pos.X + portal.Dims.Width, MaxY: portal.Pos.Y + portal.Dims.Height,
 		}
 		if rectsOverlap(player.AOI, portalRect) {
-			visibleGridObjects[portal.ID] = ObjectState{
-				ID: portal.ID, Pos: portal.Pos, Dims: portal.Dims, Type: "portal", PortalLabel: portal.Label,
+			visibleGridObjectsMap[portal.ID] = map[string]interface{}{
+				"id":          portal.ID,
+				"Pos":         portal.Pos,
+				"Dims":        portal.Dims,
+				"Type":        "portal",
+				"PortalLabel": portal.Label,
 			}
 		}
 	}
 
-	payload := AOIUpdatePayload{
-		PlayerID:           player.ID,
-		Player:             *player,
-		VisiblePlayers:     visiblePlayers,
-		VisibleGridObjects: visibleGridObjects,
+	// --- Build payload explicitly to guarantee 'direction' and 'mode' are sent as ints ---
+	playerObj := map[string]interface{}{
+		"id":             player.ID,
+		"MapID":          player.MapID,
+		"Pos":            player.Pos,
+		"Dims":           player.Dims,
+		"path":           player.Path,
+		"targetPos":      player.TargetPos,
+		"AOI":            player.AOI,
+		"direction":      int(player.Direction), // Force int
+		"mode":           int(player.Mode),      // Force int
+		"onPortal":       player.OnPortal,
+		"activePortalID": player.ActivePortalID,
 	}
 
-	message, err := json.Marshal(map[string]interface{}{"type": "aoi_update", "payload": payload})
+	payloadMap := map[string]interface{}{
+		"playerID":           player.ID,
+		"player":             playerObj,
+		"visiblePlayers":     visiblePlayersMap,
+		"visibleGridObjects": visibleGridObjectsMap,
+	}
+
+	message, err := json.Marshal(map[string]interface{}{"type": "aoi_update", "payload": payloadMap})
 	if err != nil {
 		log.Printf("Error marshaling AOI update: %v", err)
 		return
 	}
+
+	if debugAOI {
+		// Print the JSON being sent so you can verify direction values exactly
+		log.Printf("AOI JSON for player %s: %s\n", player.ID, string(message))
+	}
+
 	select {
 	case player.Client.send <- message:
 	default:
@@ -830,6 +887,8 @@ func (c *Client) readPump(server *GameServer) {
 			payload := msg["payload"].(map[string]interface{})
 			targetX := payload["targetX"].(float64)
 			targetY := payload["targetY"].(float64)
+
+			// Acquire player under lock, but release before running pathfinder (it can be expensive)
 			server.mu.Lock()
 			player, ok := server.maps[c.playerState.MapID].players[c.playerID]
 			if !ok {
@@ -843,7 +902,7 @@ func (c *Client) readPump(server *GameServer) {
 				server.mu.Unlock()
 				continue
 			}
-
+			// Copy relevant references and release lock
 			server.mu.Unlock()
 
 			// Recalculate path
@@ -851,16 +910,96 @@ func (c *Client) readPump(server *GameServer) {
 			targetPosI := PointI{X: int(math.Round(targetX)), Y: int(math.Round(targetY))}
 
 			newPath, err := mapState.pathfinder.Astar(startPosI, targetPosI, player.Dims)
+			var usedTarget PointI = targetPosI
 			if err != nil {
-				log.Printf("Pathfinding error for player %s: %v", c.playerID, err)
-				continue
+				// If A* fails, try to find the closest walkable point to the requested target and A* to that point
+				closest, cerr := mapState.pathfinder.findClosestWalkablePoint(targetPosI, player.Dims)
+				if cerr != nil {
+					// No closest walkable - we'll set direction towards target and set mode to WALKING so client displays direction
+					log.Printf("Pathfinding failed for player %s, no closest walkable: %v", c.playerID, err)
+					server.mu.Lock()
+					// compute direction toward requested target
+					dx := float64(targetPosI.X) - player.Pos.X
+					dy := float64(targetPosI.Y) - player.Pos.Y
+					dist := math.Sqrt(dx*dx + dy*dy)
+					if dist > 0 {
+						dirX, dirY := dx/dist, dy/dist
+						angle := math.Atan2(dirY, dirX)
+						if angle < 0 {
+							angle += 2 * math.Pi
+						}
+						directionIndex := int(math.Round(angle/(math.Pi/4))) % 8
+						player.Direction = Direction(directionIndex)
+						player.Mode = WALKING
+						player.TargetPos = targetPosI
+						// leave player.Path empty; client will show direction while server cannot compute full path
+					} else {
+						// clicked on same cell - set idle
+						player.Mode = IDLE
+					}
+					server.mu.Unlock()
+					continue
+				}
+				// We found a closest walkable point; try A* again to closest
+				newPath, err = mapState.pathfinder.Astar(startPosI, closest, player.Dims)
+				if err != nil {
+					// Even after closest, A* failed: set direction toward closest and set mode to WALKING
+					log.Printf("Pathfinding failed for player %s even to closest walkable: %v", c.playerID, err)
+					server.mu.Lock()
+					dx := float64(closest.X) - player.Pos.X
+					dy := float64(closest.Y) - player.Pos.Y
+					dist := math.Sqrt(dx*dx + dy*dy)
+					if dist > 0 {
+						dirX, dirY := dx/dist, dy/dist
+						angle := math.Atan2(dirY, dirX)
+						if angle < 0 {
+							angle += 2 * math.Pi
+						}
+						directionIndex := int(math.Round(angle/(math.Pi/4))) % 8
+						player.Direction = Direction(directionIndex)
+						player.Mode = WALKING
+						player.TargetPos = closest
+					} else {
+						player.Mode = IDLE
+					}
+					server.mu.Unlock()
+					continue
+				}
+				// use closest as the target since we successfully found a path to it
+				usedTarget = closest
 			}
 
-			server.mu.Lock()
-			player.Path = newPath
-			player.TargetPos = targetPosI
-			player.Mode = WALKING
-			server.mu.Unlock()
+			// If we reached here and have a path (newPath != nil), set it
+			if newPath != nil && len(newPath) > 0 {
+				// compute initial direction toward first path node
+				first := newPath[0]
+				server.mu.Lock()
+				player.Path = newPath
+				player.TargetPos = usedTarget
+				player.Mode = WALKING
+				// compute direction from player.Pos to first node
+				dx := float64(first.X) - player.Pos.X
+				dy := float64(first.Y) - player.Pos.Y
+				dist := math.Sqrt(dx*dx + dy*dy)
+				if dist > 0 {
+					dirX, dirY := dx/dist, dy/dist
+					angle := math.Atan2(dirY, dirX)
+					if angle < 0 {
+						angle += 2 * math.Pi
+					}
+					directionIndex := int(math.Round(angle/(math.Pi/4))) % 8
+					player.Direction = Direction(directionIndex)
+				}
+				server.mu.Unlock()
+			} else {
+				// If newPath is nil or empty and we didn't already set direction above, set idle (click on same cell)
+				server.mu.Lock()
+				// if target equals start, go idle
+				if startPosI.X == targetPosI.X && startPosI.Y == targetPosI.Y {
+					player.Mode = IDLE
+				}
+				server.mu.Unlock()
+			}
 		}
 	}
 }
