@@ -105,13 +105,6 @@ type MapState struct {
 	gridW, gridH int
 }
 
-type AOIUpdatePayload struct {
-	PlayerID           string                 `json:"playerID"`
-	Player             PlayerState            `json:"player"`
-	VisiblePlayers     map[string]ObjectState `json:"visiblePlayers"`
-	VisibleGridObjects map[string]ObjectState `json:"visibleGridObjects"`
-}
-
 type Client struct {
 	conn        *websocket.Conn
 	playerID    string
@@ -129,6 +122,21 @@ type GameServer struct {
 	aoiRadius      float64
 	portalHoldTime time.Duration
 	playerSpeed    float64
+
+	// New: server-side configuration values that will be sent to clients
+	cellSize         float64
+	fps              int
+	interpolationMs  int
+	defaultObjWidth  float64
+	defaultObjHeight float64
+	colors           map[string]ColorRGBA
+}
+
+type ColorRGBA struct {
+	R int `json:"r"`
+	G int `json:"g"`
+	B int `json:"b"`
+	A int `json:"a"`
 }
 
 type Node struct {
@@ -404,6 +412,28 @@ func NewGameServer() *GameServer {
 		aoiRadius:      15.0,
 		portalHoldTime: 2 * time.Second,
 		playerSpeed:    24.0,
+
+		// default config values (these will be sent to clients on connect)
+		cellSize:         12.0,
+		fps:              60,
+		interpolationMs:  200,
+		defaultObjWidth:  1.0,
+		defaultObjHeight: 1.0,
+		colors: map[string]ColorRGBA{
+			"BACKGROUND":   {R: 30, G: 30, B: 30, A: 255},
+			"OBSTACLE":     {R: 100, G: 100, B: 100, A: 255},
+			"PLAYER":       {R: 0, G: 200, B: 255, A: 255},
+			"OTHER_PLAYER": {R: 255, G: 100, B: 0, A: 255},
+			"PATH":         {R: 0, G: 255, B: 0, A: 128}, // fade(green,0.5)
+			"TARGET":       {R: 255, G: 255, B: 0, A: 255},
+			"AOI":          {R: 255, G: 0, B: 255, A: 51}, // fade(purple,0.2)
+			"DEBUG_TEXT":   {R: 220, G: 220, B: 220, A: 255},
+			"ERROR_TEXT":   {R: 255, G: 50, B: 50, A: 255},
+			"PORTAL":       {R: 180, G: 50, B: 255, A: 180},
+			"PORTAL_LABEL": {R: 240, G: 240, B: 240, A: 255},
+			"UI_TEXT":      {R: 255, G: 255, B: 255, A: 255},
+			"MAP_BOUNDARY": {R: 255, G: 255, B: 255, A: 255},
+		},
 	}
 	gs.createMaps()
 	return gs
@@ -583,6 +613,8 @@ func (s *GameServer) updatePlayerDirection(player *PlayerState, dirX, dirY float
 	if angle < 0 {
 		angle += 2 * math.Pi
 	}
+	// Convert continuous angle -> 8-way index, then rotate mapping so index 0 == UP
+	// (the server's Direction const declares UP=0, UP_RIGHT=1, RIGHT=2, ...)
 	directionIndex := (int(math.Round(angle/(math.Pi/4))) + 2) % 8
 	player.Direction = Direction(directionIndex)
 }
@@ -842,6 +874,28 @@ func (s *GameServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	startMapState.players[playerID] = playerState
 
+	// Build init_data payload to send to the client before starting pumps
+	initPayload := map[string]interface{}{
+		"gridW":               startMapState.gridW,
+		"gridH":               startMapState.gridH,
+		"defaultObjectWidth":  s.defaultObjWidth,
+		"defaultObjectHeight": s.defaultObjHeight,
+		"cellSize":            s.cellSize,
+		"fps":                 s.fps,
+		"interpolationMs":     s.interpolationMs,
+		"aoiRadius":           s.aoiRadius,
+		"colors":              s.colors,
+	}
+
+	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
+
+	// Send init message into the client's outbound channel (buffered)
+	select {
+	case client.send <- initMsg:
+	default:
+		log.Printf("Client %s init channel full.", client.playerID)
+	}
+
 	s.mu.Unlock()
 
 	s.register <- client
@@ -1018,6 +1072,7 @@ func (c *Client) writePump() {
 }
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
 	server := NewGameServer()
 	go server.Run()
 
