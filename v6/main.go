@@ -441,7 +441,7 @@ func NewGameServer() *GameServer {
 			"FOREGROUND":   {R: 60, G: 140, B: 60, A: 220},
 			"PLAYER":       {R: 0, G: 200, B: 255, A: 255},
 			"OTHER_PLAYER": {R: 255, G: 100, B: 0, A: 255},
-			"PATH":         {R: 0, G: 255, B: 0, A: 128}, // fade(green,0.5)
+			"PATH":         {R: 255, G: 255, B: 0, A: 128}, // fade(yellow,0.5)
 			"TARGET":       {R: 255, G: 255, B: 0, A: 255},
 			"AOI":          {R: 255, G: 0, B: 255, A: 51}, // fade(purple,0.2)
 			"DEBUG_TEXT":   {R: 220, G: 220, B: 220, A: 255},
