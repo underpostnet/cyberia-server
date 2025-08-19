@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	// "cyberia-server/config" // Already implicitly used via server/channel.go -> network_state -> config
 	"log"
-	"time" // New: Import time for timestamps
+	"time"
 
 	"cyberia-server/pathfinding"
 	// Updated import path
@@ -54,7 +54,7 @@ func (ns *NetworkStateServer) handleClientMessage(client *WebSocketClient, messa
 			return
 		}
 		ns.processClientMoveRequest(client, currentChannel, moveData)
-	case "client_chat_message": // New: Handle chat messages
+	case "client_chat_message":
 		var chatData clientChatMessageData
 		if err := json.Unmarshal(msg.Data, &chatData); err != nil {
 			log.Printf("Client %s: ERROR unmarshaling chat message data: %v", client.playerID, err)

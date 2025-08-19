@@ -100,6 +100,7 @@ type PortalState struct {
 type MapState struct {
 	pathfinder   *Pathfinder
 	obstacles    map[string]ObjectState
+	foregrounds  map[string]ObjectState
 	portals      map[string]*PortalState
 	players      map[string]*PlayerState
 	gridW, gridH int
@@ -123,7 +124,6 @@ type GameServer struct {
 	portalHoldTime time.Duration
 	playerSpeed    float64
 
-	// New: server-side configuration values that will be sent to clients
 	cellSize         float64
 	fps              int
 	interpolationMs  int
@@ -429,11 +429,12 @@ func NewGameServer() *GameServer {
 		defaultObjHeight:          1.0,
 		cameraSmoothing:           0.15,
 		cameraZoom:                2,
-		defaultWidthScreenFactor:  0.75,
-		defaultHeightScreenFactor: 0.75,
+		defaultWidthScreenFactor:  0.9,
+		defaultHeightScreenFactor: 0.9,
 		colors: map[string]ColorRGBA{
 			"BACKGROUND":   {R: 30, G: 30, B: 30, A: 255},
 			"OBSTACLE":     {R: 100, G: 100, B: 100, A: 255},
+			"FOREGROUND":   {R: 60, G: 140, B: 60, A: 220},
 			"PLAYER":       {R: 0, G: 200, B: 255, A: 255},
 			"OTHER_PLAYER": {R: 255, G: 100, B: 0, A: 255},
 			"PATH":         {R: 0, G: 255, B: 0, A: 128}, // fade(green,0.5)
@@ -484,12 +485,13 @@ func (s *GameServer) createMaps() {
 
 	for i := 0; i < numMaps; i++ {
 		ms := &MapState{
-			gridW:      gridSizeW,
-			gridH:      gridSizeH,
-			players:    make(map[string]*PlayerState),
-			portals:    make(map[string]*PortalState),
-			obstacles:  make(map[string]ObjectState),
-			pathfinder: NewPathfinder(gridSizeW, gridSizeH),
+			gridW:       gridSizeW,
+			gridH:       gridSizeH,
+			players:     make(map[string]*PlayerState),
+			portals:     make(map[string]*PortalState),
+			obstacles:   make(map[string]ObjectState),
+			foregrounds: make(map[string]ObjectState),
+			pathfinder:  NewPathfinder(gridSizeW, gridSizeH),
 		}
 
 		portals := ms.generatePortals(numPortals)
@@ -508,6 +510,17 @@ func (s *GameServer) createMaps() {
 
 		ms.pathfinder.GenerateObstacles(numObs, portalRects)
 		ms.obstacles = ms.pathfinder.obstacles
+
+		for _, obs := range ms.obstacles {
+			fg := ObjectState{
+				ID:   uuid.New().String(),
+				Pos:  obs.Pos,
+				Dims: obs.Dims,
+				Type: "foreground",
+			}
+			ms.foregrounds[fg.ID] = fg
+		}
+
 		s.maps[i] = ms
 	}
 
@@ -790,6 +803,21 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 				"Dims":        portal.Dims,
 				"Type":        "portal",
 				"PortalLabel": portal.Label,
+			}
+		}
+	}
+
+	for _, fg := range mapState.foregrounds {
+		fgRect := Rectangle{
+			MinX: fg.Pos.X, MinY: fg.Pos.Y,
+			MaxX: fg.Pos.X + fg.Dims.Width, MaxY: fg.Pos.Y + fg.Dims.Height,
+		}
+		if rectsOverlap(player.AOI, fgRect) {
+			visibleGridObjectsMap[fg.ID] = map[string]interface{}{
+				"id":   fg.ID,
+				"Pos":  fg.Pos,
+				"Dims": fg.Dims,
+				"Type": "foreground",
 			}
 		}
 	}

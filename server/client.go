@@ -17,7 +17,7 @@ type WebSocketClient struct {
 	conn      *websocket.Conn
 	send      chan []byte
 	playerID  string
-	ChannelID string // New: ID of the channel the client is currently in
+	ChannelID string
 	done      chan struct{}
 }
 
