@@ -428,9 +428,9 @@ func NewGameServer() *GameServer {
 		defaultObjWidth:           1.0,
 		defaultObjHeight:          1.0,
 		cameraSmoothing:           0.15,
-		cameraZoom:                4,
-		defaultWidthScreenFactor:  0.5,
-		defaultHeightScreenFactor: 0.5,
+		cameraZoom:                2,
+		defaultWidthScreenFactor:  0.75,
+		defaultHeightScreenFactor: 0.75,
 		colors: map[string]ColorRGBA{
 			"BACKGROUND":   {R: 30, G: 30, B: 30, A: 255},
 			"OBSTACLE":     {R: 100, G: 100, B: 100, A: 255},
