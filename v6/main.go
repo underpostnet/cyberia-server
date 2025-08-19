@@ -138,6 +138,9 @@ type GameServer struct {
 	// screen size factors (fractions of monitor size) sent to client as init hints
 	defaultWidthScreenFactor  float64
 	defaultHeightScreenFactor float64
+
+	// development UI
+	devUi bool
 }
 
 type ColorRGBA struct {
@@ -431,6 +434,7 @@ func NewGameServer() *GameServer {
 		cameraZoom:                2,
 		defaultWidthScreenFactor:  0.9,
 		defaultHeightScreenFactor: 0.9,
+		devUi:                     false,
 		colors: map[string]ColorRGBA{
 			"BACKGROUND":   {R: 30, G: 30, B: 30, A: 255},
 			"OBSTACLE":     {R: 100, G: 100, B: 100, A: 255},
@@ -929,6 +933,7 @@ func (s *GameServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 		"cameraZoom":                s.cameraZoom,
 		"defaultWidthScreenFactor":  s.defaultWidthScreenFactor,
 		"defaultHeightScreenFactor": s.defaultHeightScreenFactor,
+		"devUi":                     s.devUi,
 	}
 
 	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
