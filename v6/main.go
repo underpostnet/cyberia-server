@@ -81,6 +81,7 @@ type PlayerState struct {
 	OnPortal       bool            `json:"onPortal"`
 	TimeOnPortal   time.Time       `json:"-"` // Ignore
 	ActivePortalID string          `json:"activePortalID"`
+	SumStatsLimit  int             `json:"sumStatsLimit"`
 }
 
 type PortalConfig struct {
@@ -432,9 +433,9 @@ func NewGameServer() *GameServer {
 		defaultObjHeight:          1.0,
 		cameraSmoothing:           0.15,
 		cameraZoom:                2,
-		defaultWidthScreenFactor:  0.9,
-		defaultHeightScreenFactor: 0.9,
-		devUi:                     false,
+		defaultWidthScreenFactor:  1,
+		defaultHeightScreenFactor: 0.95,
+		devUi:                     true,
 		colors: map[string]ColorRGBA{
 			"BACKGROUND":   {R: 30, G: 30, B: 30, A: 255},
 			"OBSTACLE":     {R: 100, G: 100, B: 100, A: 255},
@@ -839,6 +840,7 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		"mode":           int(player.Mode),      // Force int
 		"onPortal":       player.OnPortal,
 		"activePortalID": player.ActivePortalID,
+		"sumStatsLimit":  player.SumStatsLimit,
 	}
 
 	payloadMap := map[string]interface{}{
@@ -896,15 +898,19 @@ func (s *GameServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ** assign SumStatsLimit for this player (example: random between 15 and 40) **
+	sumLimit := rand.Intn(26) + 45
+
 	playerState := &PlayerState{
-		ID:        playerID,
-		MapID:     startMapID,
-		Pos:       Point{X: float64(startPosI.X), Y: float64(startPosI.Y)},
-		Dims:      playerDims,
-		Path:      []PointI{},
-		TargetPos: PointI{-1, -1},
-		Direction: NONE,
-		Mode:      IDLE,
+		ID:            playerID,
+		MapID:         startMapID,
+		Pos:           Point{X: float64(startPosI.X), Y: float64(startPosI.Y)},
+		Dims:          playerDims,
+		Path:          []PointI{},
+		TargetPos:     PointI{-1, -1},
+		Direction:     NONE,
+		Mode:          IDLE,
+		SumStatsLimit: sumLimit,
 	}
 
 	client := &Client{
@@ -934,6 +940,7 @@ func (s *GameServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 		"defaultWidthScreenFactor":  s.defaultWidthScreenFactor,
 		"defaultHeightScreenFactor": s.defaultHeightScreenFactor,
 		"devUi":                     s.devUi,
+		"sumStatsLimit":             playerState.SumStatsLimit,
 	}
 
 	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
