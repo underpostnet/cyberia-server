@@ -130,6 +130,14 @@ type GameServer struct {
 	defaultObjWidth  float64
 	defaultObjHeight float64
 	colors           map[string]ColorRGBA
+
+	// camera smoothing and zoom to send to client
+	cameraSmoothing float64
+	cameraZoom      float64
+
+	// screen size factors (fractions of monitor size) sent to client as init hints
+	defaultWidthScreenFactor  float64
+	defaultHeightScreenFactor float64
 }
 
 type ColorRGBA struct {
@@ -414,11 +422,15 @@ func NewGameServer() *GameServer {
 		playerSpeed:    24.0,
 
 		// default config values (these will be sent to clients on connect)
-		cellSize:         12.0,
-		fps:              60,
-		interpolationMs:  200,
-		defaultObjWidth:  1.0,
-		defaultObjHeight: 1.0,
+		cellSize:                  12.0,
+		fps:                       60,
+		interpolationMs:           200,
+		defaultObjWidth:           1.0,
+		defaultObjHeight:          1.0,
+		cameraSmoothing:           0.15,
+		cameraZoom:                4,
+		defaultWidthScreenFactor:  0.5,
+		defaultHeightScreenFactor: 0.5,
 		colors: map[string]ColorRGBA{
 			"BACKGROUND":   {R: 30, G: 30, B: 30, A: 255},
 			"OBSTACLE":     {R: 100, G: 100, B: 100, A: 255},
@@ -876,15 +888,19 @@ func (s *GameServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	// Build init_data payload to send to the client before starting pumps
 	initPayload := map[string]interface{}{
-		"gridW":               startMapState.gridW,
-		"gridH":               startMapState.gridH,
-		"defaultObjectWidth":  s.defaultObjWidth,
-		"defaultObjectHeight": s.defaultObjHeight,
-		"cellSize":            s.cellSize,
-		"fps":                 s.fps,
-		"interpolationMs":     s.interpolationMs,
-		"aoiRadius":           s.aoiRadius,
-		"colors":              s.colors,
+		"gridW":                     startMapState.gridW,
+		"gridH":                     startMapState.gridH,
+		"defaultObjectWidth":        s.defaultObjWidth,
+		"defaultObjectHeight":       s.defaultObjHeight,
+		"cellSize":                  s.cellSize,
+		"fps":                       s.fps,
+		"interpolationMs":           s.interpolationMs,
+		"aoiRadius":                 s.aoiRadius,
+		"colors":                    s.colors,
+		"cameraSmoothing":           s.cameraSmoothing,
+		"cameraZoom":                s.cameraZoom,
+		"defaultWidthScreenFactor":  s.defaultWidthScreenFactor,
+		"defaultHeightScreenFactor": s.defaultHeightScreenFactor,
 	}
 
 	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
