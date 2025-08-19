@@ -514,7 +514,7 @@ func (s *GameServer) createMaps() {
 		for _, obs := range ms.obstacles {
 			fg := ObjectState{
 				ID:   uuid.New().String(),
-				Pos:  obs.Pos,
+				Pos:  Point{X: obs.Pos.X, Y: obs.Pos.Y - obs.Dims.Height},
 				Dims: obs.Dims,
 				Type: "foreground",
 			}
