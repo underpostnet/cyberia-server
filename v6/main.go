@@ -1118,8 +1118,6 @@ func (s *GameServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sumLimit := rand.Intn(26) + 1000
-
 	playerState := &PlayerState{
 		ID:            playerID,
 		MapID:         startMapID,
@@ -1129,7 +1127,7 @@ func (s *GameServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 		TargetPos:     PointI{-1, -1},
 		Direction:     NONE,
 		Mode:          IDLE,
-		SumStatsLimit: sumLimit,
+		SumStatsLimit: 65,
 	}
 
 	client := &Client{
