@@ -75,13 +75,30 @@ type PlayerState struct {
 	Path           []PointI        `json:"path"`
 	TargetPos      PointI          `json:"targetPos"`
 	AOI            Rectangle       `json:"AOI"`
-	Client         *Client         `json:"-"` // Ignore for JSON marshaling
+	Client         *Client         `json:"-"`
 	Direction      Direction       `json:"direction"`
 	Mode           ObjectLayerMode `json:"mode"`
 	OnPortal       bool            `json:"onPortal"`
-	TimeOnPortal   time.Time       `json:"-"` // Ignore
+	TimeOnPortal   time.Time       `json:"-"`
 	ActivePortalID string          `json:"activePortalID"`
 	SumStatsLimit  int             `json:"sumStatsLimit"`
+}
+
+type BotState struct {
+	ID                   string          `json:"id"`
+	MapID                int             `json:"MapID"`
+	Pos                  Point           `json:"Pos"`
+	Dims                 Dimensions      `json:"Dims"`
+	Path                 []PointI        `json:"path"`
+	TargetPos            PointI          `json:"targetPos"`
+	Direction            Direction       `json:"direction"`
+	Mode                 ObjectLayerMode `json:"mode"`
+	Behavior             string          `json:"behavior"` // "hostile" or "passive"
+	SpawnCenter          Point           `json:"spawnCenter"`
+	SpawnRadius          float64         `json:"spawnRadius"`
+	AggroRange           float64         `json:"aggroRange"`
+	CurrentTargetPlayer  string          `json:"-"` // player ID currently being pursued (if any)
+	lastPursuitTargetPos PointI          `json:"-"` // cached player's last cell to know when to re-path
 }
 
 type PortalConfig struct {
@@ -104,6 +121,7 @@ type MapState struct {
 	foregrounds  map[string]ObjectState
 	portals      map[string]*PortalState
 	players      map[string]*PlayerState
+	bots         map[string]*BotState
 	gridW, gridH int
 }
 
@@ -112,7 +130,7 @@ type Client struct {
 	playerID    string
 	send        chan []byte
 	lastAction  time.Time
-	playerState *PlayerState // Added playerState field
+	playerState *PlayerState
 }
 
 type GameServer struct {
@@ -132,16 +150,17 @@ type GameServer struct {
 	defaultObjHeight float64
 	colors           map[string]ColorRGBA
 
-	// camera smoothing and zoom to send to client
 	cameraSmoothing float64
 	cameraZoom      float64
 
-	// screen size factors (fractions of monitor size) sent to client as init hints
 	defaultWidthScreenFactor  float64
 	defaultHeightScreenFactor float64
 
-	// development UI
 	devUi bool
+
+	// bot related defaults
+	botsPerMap    int
+	botAggroRange float64
 }
 
 type ColorRGBA struct {
@@ -425,7 +444,6 @@ func NewGameServer() *GameServer {
 		portalHoldTime: 2 * time.Second,
 		playerSpeed:    24.0,
 
-		// default config values (these will be sent to clients on connect)
 		cellSize:                  12.0,
 		fps:                       60,
 		interpolationMs:           200,
@@ -436,15 +454,17 @@ func NewGameServer() *GameServer {
 		defaultWidthScreenFactor:  1,
 		defaultHeightScreenFactor: 0.95,
 		devUi:                     true,
+		botsPerMap:                10,
+		botAggroRange:             10.0, // default aggression range (x)
 		colors: map[string]ColorRGBA{
 			"BACKGROUND":   {R: 30, G: 30, B: 30, A: 255},
 			"OBSTACLE":     {R: 100, G: 100, B: 100, A: 255},
 			"FOREGROUND":   {R: 60, G: 140, B: 60, A: 220},
 			"PLAYER":       {R: 0, G: 200, B: 255, A: 255},
 			"OTHER_PLAYER": {R: 255, G: 100, B: 0, A: 255},
-			"PATH":         {R: 255, G: 255, B: 0, A: 128}, // fade(yellow,0.5)
+			"PATH":         {R: 255, G: 255, B: 0, A: 128},
 			"TARGET":       {R: 255, G: 255, B: 0, A: 255},
-			"AOI":          {R: 255, G: 0, B: 255, A: 51}, // fade(purple,0.2)
+			"AOI":          {R: 255, G: 0, B: 255, A: 51},
 			"DEBUG_TEXT":   {R: 220, G: 220, B: 220, A: 255},
 			"ERROR_TEXT":   {R: 255, G: 50, B: 50, A: 255},
 			"PORTAL":       {R: 180, G: 50, B: 255, A: 180},
@@ -468,24 +488,20 @@ func (s *GameServer) createMaps() {
 	)
 
 	portalConfigs := [numMaps][]PortalConfig{
-		// Map 0
 		{
 			{DestMapID: 1, DestPortalIndex: 0, SpawnRadius: 2.0},
 			{DestMapID: 0, DestPortalIndex: 1, SpawnRadius: 2.0},
 		},
-		// Map 1
 		{
 			{DestMapID: 0, DestPortalIndex: 0, SpawnRadius: 2.0},
 			{DestMapID: 2, DestPortalIndex: 1, SpawnRadius: 2.0},
 		},
-		// Map 2
 		{
 			{DestMapID: 1, DestPortalIndex: 1, SpawnRadius: 2.0},
 			{DestMapID: 2, DestPortalIndex: 0, SpawnRadius: 2.0},
 		},
 	}
 
-	// Correctly initialize the global slice of slices
 	allMapsPortals = make([][]*PortalState, numMaps)
 
 	for i := 0; i < numMaps; i++ {
@@ -497,17 +513,16 @@ func (s *GameServer) createMaps() {
 			obstacles:   make(map[string]ObjectState),
 			foregrounds: make(map[string]ObjectState),
 			pathfinder:  NewPathfinder(gridSizeW, gridSizeH),
+			bots:        make(map[string]*BotState),
 		}
 
 		portals := ms.generatePortals(numPortals)
-		// Store the generated portals in the global slice
 		allMapsPortals[i] = portals
 
 		for _, p := range portals {
 			ms.portals[p.ID] = p
 		}
 
-		// Collect portal rectangles for obstacle generation
 		portalRects := make([]Rectangle, len(portals))
 		for idx, p := range portals {
 			portalRects[idx] = Rectangle{MinX: p.Pos.X, MinY: p.Pos.Y, MaxX: p.Pos.X + p.Dims.Width, MaxY: p.Pos.Y + p.Dims.Height}
@@ -526,16 +541,16 @@ func (s *GameServer) createMaps() {
 			ms.foregrounds[fg.ID] = fg
 		}
 
+		// instantiate bots for this map
+		s.instantiateBots(ms, i)
+
 		s.maps[i] = ms
 	}
 
-	// Link portals after all maps are generated
 	for mapID, portals := range allMapsPortals {
 		for portalIndex, portal := range portals {
 			portal.PortalConfig = &portalConfigs[mapID][portalIndex]
-
 			destPortal := allMapsPortals[portal.PortalConfig.DestMapID][portal.PortalConfig.DestPortalIndex]
-
 			portal.Label = fmt.Sprintf("Map %d, Pos: (%d, %d)",
 				portal.PortalConfig.DestMapID,
 				int(destPortal.Pos.X),
@@ -545,6 +560,72 @@ func (s *GameServer) createMaps() {
 	}
 
 	log.Println("Maps created and portals linked.")
+}
+
+// instantiateBots creates bots for a map with random passive/hostile distribution.
+func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
+	for i := 0; i < s.botsPerMap; i++ {
+		// random dims and spawn point
+		dims := Dimensions{Width: float64(rand.Intn(4) + 1), Height: float64(rand.Intn(4) + 1)}
+		startPosI, err := ms.pathfinder.findRandomWalkablePoint(dims)
+		if err != nil {
+			continue
+		}
+		startPos := Point{X: float64(startPosI.X), Y: float64(startPosI.Y)}
+		spawnRadius := rand.Float64()*6.0 + 3.0 // 3..9
+		behavior := "passive"
+		if rand.Intn(2) == 0 {
+			behavior = "hostile"
+		}
+
+		bot := &BotState{
+			ID:          uuid.New().String(),
+			MapID:       mapID,
+			Pos:         startPos,
+			Dims:        dims,
+			Path:        []PointI{},
+			TargetPos:   PointI{-1, -1},
+			Direction:   NONE,
+			Mode:        IDLE,
+			Behavior:    behavior,
+			SpawnCenter: startPos,
+			SpawnRadius: spawnRadius,
+			AggroRange:  s.botAggroRange,
+		}
+
+		// initial wandering path: random point within spawn radius (both passive and hostile should wander initially)
+		target := s.randomPointWithinRadius(ms, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
+		if target.X >= 0 {
+			if pth, err := ms.pathfinder.Astar(PointI{X: int(math.Round(bot.Pos.X)), Y: int(math.Round(bot.Pos.Y))}, target, bot.Dims); err == nil && len(pth) > 0 {
+				bot.Path = pth
+				bot.TargetPos = target
+				bot.Mode = WALKING
+			}
+		}
+		ms.bots[bot.ID] = bot
+	}
+}
+
+// randomPointWithinRadius returns a random walkable PointI within radius from center (or {-1,-1} on failure).
+func (s *GameServer) randomPointWithinRadius(ms *MapState, center Point, radius float64, dims Dimensions) PointI {
+	for tries := 0; tries < 30; tries++ {
+		// random angle + distance
+		ang := rand.Float64() * 2 * math.Pi
+		r := rand.Float64() * radius
+		x := int(math.Round(center.X + math.Cos(ang)*r))
+		y := int(math.Round(center.Y + math.Sin(ang)*r))
+		if x < 0 || x >= ms.gridW || y < 0 || y >= ms.gridH {
+			continue
+		}
+		if ms.pathfinder.isWalkable(x, y, dims) {
+			return PointI{X: x, Y: y}
+		}
+		// try closest walkable
+		if c, err := ms.pathfinder.findClosestWalkablePoint(PointI{X: x, Y: y}, dims); err == nil {
+			return c
+		}
+	}
+	return PointI{-1, -1}
 }
 
 func (s *GameServer) Run() {
@@ -579,20 +660,150 @@ func (s *GameServer) listenForClients() {
 }
 
 func (s *GameServer) gameLoop() {
-	ticker := time.NewTicker(100 * time.Millisecond) // Tick at 10 FPS
+	ticker := time.NewTicker(100 * time.Millisecond) // 10 FPS
 	defer ticker.Stop()
 
 	for range ticker.C {
 		s.mu.Lock()
 		for _, mapState := range s.maps {
+			// update players
 			for _, player := range mapState.players {
 				s.updatePlayerPosition(player, mapState)
 				s.checkPortal(player, mapState)
 			}
+			// update bots (bot AI)
+			s.updateBots(mapState)
+			// update AOIs
 			s.updateAOIs(mapState)
 		}
 		s.mu.Unlock()
 	}
+}
+
+// update bots per map
+func (s *GameServer) updateBots(mapState *MapState) {
+	for _, bot := range mapState.bots {
+		// Hostile logic: check for nearest player in aggro range
+		if bot.Behavior == "hostile" {
+			nearestID := ""
+			nearestDist := math.MaxFloat64
+			var nearestPlayer *PlayerState
+			for _, p := range mapState.players {
+				dx := p.Pos.X - bot.Pos.X
+				dy := p.Pos.Y - bot.Pos.Y
+				dist := math.Sqrt(dx*dx + dy*dy)
+				if dist < nearestDist {
+					nearestDist = dist
+					nearestID = p.ID
+					nearestPlayer = p
+				}
+			}
+			if nearestPlayer != nil && nearestDist <= bot.AggroRange {
+				// Pursue the player: recompute path if newly acquired or player moved cell
+				playerCell := PointI{X: int(math.Round(nearestPlayer.Pos.X)), Y: int(math.Round(nearestPlayer.Pos.Y))}
+				needRepath := bot.CurrentTargetPlayer != nearestID || bot.lastPursuitTargetPos != playerCell
+				if needRepath {
+					start := PointI{X: int(math.Round(bot.Pos.X)), Y: int(math.Round(bot.Pos.Y))}
+					target, err := mapState.pathfinder.findClosestWalkablePoint(playerCell, bot.Dims)
+					if err == nil {
+						if p, err2 := mapState.pathfinder.Astar(start, target, bot.Dims); err2 == nil && len(p) > 0 {
+							bot.Path = p
+							bot.TargetPos = target
+							bot.Mode = WALKING
+							bot.CurrentTargetPlayer = nearestID
+							bot.lastPursuitTargetPos = playerCell
+						}
+					}
+				}
+			} else {
+				// No player in range: clear pursuit (if any) and ensure wandering behavior
+				if bot.CurrentTargetPlayer != "" {
+					bot.CurrentTargetPlayer = ""
+					bot.lastPursuitTargetPos = PointI{-1, -1}
+				}
+
+				// IMPORTANT CHANGE: When not pursuing, hostile bots behave like passive bots:
+				// - if they have no current walking path, generate a new random wander target within spawn radius.
+				if bot.Mode != WALKING || len(bot.Path) == 0 {
+					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
+					if target.X >= 0 {
+						if pth, err := mapState.pathfinder.Astar(PointI{X: int(math.Round(bot.Pos.X)), Y: int(math.Round(bot.Pos.Y))}, target, bot.Dims); err == nil && len(pth) > 0 {
+							bot.Path = pth
+							bot.TargetPos = target
+							bot.Mode = WALKING
+						} else {
+							// if we can't path to a target, remain idle until next tick tries again
+							if len(bot.Path) == 0 {
+								bot.Mode = IDLE
+							}
+						}
+					}
+				}
+			}
+		} else {
+			// Passive: if no path, create wandering path
+			if len(bot.Path) == 0 || bot.Mode != WALKING {
+				target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
+				if target.X >= 0 {
+					if pth, err := mapState.pathfinder.Astar(PointI{X: int(math.Round(bot.Pos.X)), Y: int(math.Round(bot.Pos.Y))}, target, bot.Dims); err == nil && len(pth) > 0 {
+						bot.Path = pth
+						bot.TargetPos = target
+						bot.Mode = WALKING
+					}
+				}
+			}
+		}
+		// Move bot along its path
+		s.updateBotPosition(bot, mapState)
+	}
+}
+
+// update bot movement similar to players
+func (s *GameServer) updateBotPosition(bot *BotState, mapState *MapState) {
+	if bot.Mode == WALKING && len(bot.Path) > 0 {
+		targetNode := bot.Path[0]
+		dx := float64(targetNode.X) - bot.Pos.X
+		dy := float64(targetNode.Y) - bot.Pos.Y
+		dist := math.Sqrt(dx*dx + dy*dy)
+		step := s.playerSpeed / 10.0 // same tick scaling as players
+
+		if dist < step {
+			// snap
+			bot.Pos = Point{X: float64(targetNode.X), Y: float64(targetNode.Y)}
+			bot.Path = bot.Path[1:]
+			if len(bot.Path) == 0 {
+				bot.Mode = IDLE
+				bot.Direction = NONE
+				// Next tick, wandering behavior (passive or hostile-not-pursuing) will assign a new target
+			} else {
+				// compute direction toward next node
+				next := bot.Path[0]
+				dirX := float64(next.X) - bot.Pos.X
+				dirY := float64(next.Y) - bot.Pos.Y
+				norm := math.Sqrt(dirX*dirX + dirY*dirY)
+				if norm > 0 {
+					dirX /= norm
+					dirY /= norm
+					s.updateBotDirection(bot, dirX, dirY)
+				}
+			}
+		} else {
+			// normal interpolation
+			dirX, dirY := dx/dist, dy/dist
+			bot.Pos.X += dirX * step
+			bot.Pos.Y += dirY * step
+			s.updateBotDirection(bot, dirX, dirY)
+		}
+	}
+}
+
+func (s *GameServer) updateBotDirection(bot *BotState, dirX, dirY float64) {
+	angle := math.Atan2(dirY, dirX)
+	if angle < 0 {
+		angle += 2 * math.Pi
+	}
+	directionIndex := (int(math.Round(angle/(math.Pi/4))) + 2) % 8
+	bot.Direction = Direction(directionIndex)
 }
 
 // ---------- CHANGE: updatePlayerPosition now recalculates direction when arriving to a node ----------
@@ -643,8 +854,6 @@ func (s *GameServer) updatePlayerDirection(player *PlayerState, dirX, dirY float
 	if angle < 0 {
 		angle += 2 * math.Pi
 	}
-	// Convert continuous angle -> 8-way index, then rotate mapping so index 0 == UP
-	// (the server's Direction const declares UP=0, UP_RIGHT=1, RIGHT=2, ...)
 	directionIndex := (int(math.Round(angle/(math.Pi/4))) + 2) % 8
 	player.Direction = Direction(directionIndex)
 }
@@ -695,7 +904,6 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 	destMapID := portal.PortalConfig.DestMapID
 	destPortalIndex := portal.PortalConfig.DestPortalIndex
 
-	// Safely retrieve the destination portal from the global slice
 	if destMapID >= len(allMapsPortals) || destPortalIndex >= len(allMapsPortals[destMapID]) {
 		log.Printf("Teleportation failed: Destination portal index out of bounds. MapID: %d, PortalIndex: %d", destMapID, destPortalIndex)
 		return
@@ -711,29 +919,25 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 	spawnX := destPortal.Pos.X + (destPortal.Dims.Width / 2) + rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
 	spawnY := destPortal.Pos.Y + (destPortal.Dims.Height / 2) + rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
 
-	// Ensure the new position is walkable
 	destPosI, err := destMapState.pathfinder.findClosestWalkablePoint(PointI{X: int(spawnX), Y: int(spawnY)}, player.Dims)
 	if err != nil {
 		log.Printf("Could not find a walkable spawn point: %v", err)
 		return
 	}
 
-	// Remove player from current map
 	currentMapState, ok := s.maps[player.MapID]
 	if ok {
 		delete(currentMapState.players, player.ID)
 	}
 
-	// Add player to new map
 	player.MapID = destMapID
 	player.Pos = Point{X: float64(destPosI.X), Y: float64(destPosI.Y)}
-	player.TargetPos = PointI{} // Clear target
-	player.Path = []PointI{}    // Clear path
-	player.Mode = TELEPORTING   // Set mode to TELEPORTING
+	player.TargetPos = PointI{}
+	player.Path = []PointI{}
+	player.Mode = TELEPORTING
 	player.OnPortal = false
 	destMapState.players[player.ID] = player
 
-	// Update client to reflect new state immediately
 	s.sendAOI(player)
 }
 
@@ -756,7 +960,7 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		return
 	}
 
-	// Build visible players map with direction & mode included (for each visible player)
+	// visible players
 	visiblePlayersMap := make(map[string]map[string]interface{})
 	for _, otherPlayer := range mapState.players {
 		if otherPlayer.ID == player.ID {
@@ -827,7 +1031,25 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		}
 	}
 
-	// --- Build payload explicitly to guarantee 'direction' and 'mode' are sent as ints ---
+	// Add bots to visibleGridObjectsMap (client should render Type="bot")
+	for _, bot := range mapState.bots {
+		botRect := Rectangle{
+			MinX: bot.Pos.X, MinY: bot.Pos.Y,
+			MaxX: bot.Pos.X + bot.Dims.Width, MaxY: bot.Pos.Y + bot.Dims.Height,
+		}
+		if rectsOverlap(player.AOI, botRect) {
+			visibleGridObjectsMap[bot.ID] = map[string]interface{}{
+				"id":        bot.ID,
+				"Pos":       bot.Pos,
+				"Dims":      bot.Dims,
+				"Type":      "bot",
+				"behavior":  bot.Behavior,
+				"direction": int(bot.Direction),
+				"mode":      int(bot.Mode),
+			}
+		}
+	}
+
 	playerObj := map[string]interface{}{
 		"id":             player.ID,
 		"MapID":          player.MapID,
@@ -836,8 +1058,8 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		"path":           player.Path,
 		"targetPos":      player.TargetPos,
 		"AOI":            player.AOI,
-		"direction":      int(player.Direction), // Force int
-		"mode":           int(player.Mode),      // Force int
+		"direction":      int(player.Direction),
+		"mode":           int(player.Mode),
 		"onPortal":       player.OnPortal,
 		"activePortalID": player.ActivePortalID,
 		"sumStatsLimit":  player.SumStatsLimit,
@@ -880,14 +1102,12 @@ func (s *GameServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 
-	// Assign a random, unique player ID and random dimensions
 	playerID := uuid.New().String()
 	playerDims := Dimensions{
 		Width:  float64(rand.Intn(4) + 1),
 		Height: float64(rand.Intn(4) + 1),
 	}
 
-	// Place the new player in a random walkable point on a random map
 	startMapID := rand.Intn(len(s.maps))
 	startMapState := s.maps[startMapID]
 	startPosI, err := startMapState.pathfinder.findRandomWalkablePoint(playerDims)
@@ -898,8 +1118,7 @@ func (s *GameServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ** assign SumStatsLimit for this player (example: random between 15 and 40) **
-	sumLimit := rand.Intn(26) + 45
+	sumLimit := rand.Intn(26) + 1000
 
 	playerState := &PlayerState{
 		ID:            playerID,
@@ -916,7 +1135,7 @@ func (s *GameServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 	client := &Client{
 		conn:        conn,
 		playerID:    playerID,
-		send:        make(chan []byte, 256), // Use a buffered channel
+		send:        make(chan []byte, 256),
 		lastAction:  time.Now(),
 		playerState: playerState,
 	}
@@ -924,7 +1143,6 @@ func (s *GameServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	startMapState.players[playerID] = playerState
 
-	// Build init_data payload to send to the client before starting pumps
 	initPayload := map[string]interface{}{
 		"gridW":                     startMapState.gridW,
 		"gridH":                     startMapState.gridH,
@@ -945,7 +1163,6 @@ func (s *GameServer) handleConnections(w http.ResponseWriter, r *http.Request) {
 
 	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
 
-	// Send init message into the client's outbound channel (buffered)
 	select {
 	case client.send <- initMsg:
 	default:
@@ -990,7 +1207,6 @@ func (c *Client) readPump(server *GameServer) {
 			targetX := payload["targetX"].(float64)
 			targetY := payload["targetY"].(float64)
 
-			// Acquire player under lock, but release before running pathfinder (it can be expensive)
 			server.mu.Lock()
 			player, ok := server.maps[c.playerState.MapID].players[c.playerID]
 			if !ok {
@@ -1004,44 +1220,34 @@ func (c *Client) readPump(server *GameServer) {
 				server.mu.Unlock()
 				continue
 			}
-			// Copy relevant references and release lock
 			server.mu.Unlock()
 
-			// Recalculate path
 			startPosI := PointI{X: int(math.Round(player.Pos.X)), Y: int(math.Round(player.Pos.Y))}
 			targetPosI := PointI{X: int(math.Round(targetX)), Y: int(math.Round(targetY))}
 
 			newPath, err := mapState.pathfinder.Astar(startPosI, targetPosI, player.Dims)
 			var usedTarget PointI = targetPosI
 			if err != nil {
-				// If A* fails, try to find the closest walkable point to the requested target and A* to that point
 				closest, cerr := mapState.pathfinder.findClosestWalkablePoint(targetPosI, player.Dims)
 				if cerr != nil {
-					// No closest walkable - we'll set direction towards target and set mode to WALKING so client displays direction
 					log.Printf("Pathfinding failed for player %s, no closest walkable: %v", c.playerID, err)
 					server.mu.Lock()
-					// compute direction toward requested target (use central helper to ensure consistent mapping)
 					dx := float64(targetPosI.X) - player.Pos.X
 					dy := float64(targetPosI.Y) - player.Pos.Y
 					dist := math.Sqrt(dx*dx + dy*dy)
 					if dist > 0 {
 						dirX, dirY := dx/dist, dy/dist
-						// reuse server helper so angle->index mapping stays consistent
 						server.updatePlayerDirection(player, dirX, dirY)
 						player.Mode = WALKING
 						player.TargetPos = targetPosI
-						// leave player.Path empty; client will show direction while server cannot compute full path
 					} else {
-						// clicked on same cell - set idle
 						player.Mode = IDLE
 					}
 					server.mu.Unlock()
 					continue
 				}
-				// We found a closest walkable point; try A* again to closest
 				newPath, err = mapState.pathfinder.Astar(startPosI, closest, player.Dims)
 				if err != nil {
-					// Even after closest, A* failed: set direction toward closest and set mode to WALKING
 					log.Printf("Pathfinding failed for player %s even to closest walkable: %v", c.playerID, err)
 					server.mu.Lock()
 					dx := float64(closest.X) - player.Pos.X
@@ -1049,7 +1255,6 @@ func (c *Client) readPump(server *GameServer) {
 					dist := math.Sqrt(dx*dx + dy*dy)
 					if dist > 0 {
 						dirX, dirY := dx/dist, dy/dist
-						// use central helper for consistent mapping
 						server.updatePlayerDirection(player, dirX, dirY)
 						player.Mode = WALKING
 						player.TargetPos = closest
@@ -1059,19 +1264,15 @@ func (c *Client) readPump(server *GameServer) {
 					server.mu.Unlock()
 					continue
 				}
-				// use closest as the target since we successfully found a path to it
 				usedTarget = closest
 			}
 
-			// If we reached here and have a path (newPath != nil), set it
 			if newPath != nil && len(newPath) > 0 {
-				// compute initial direction toward first path node
 				first := newPath[0]
 				server.mu.Lock()
 				player.Path = newPath
 				player.TargetPos = usedTarget
 				player.Mode = WALKING
-				// compute direction from player.Pos to first node (use helper)
 				dx := float64(first.X) - player.Pos.X
 				dy := float64(first.Y) - player.Pos.Y
 				dist := math.Sqrt(dx*dx + dy*dy)
@@ -1081,9 +1282,7 @@ func (c *Client) readPump(server *GameServer) {
 				}
 				server.mu.Unlock()
 			} else {
-				// If newPath is nil or empty and we didn't already set direction above, set idle (click on same cell)
 				server.mu.Lock()
-				// if target equals start, go idle
 				if startPosI.X == targetPosI.X && startPosI.Y == targetPosI.Y {
 					player.Mode = IDLE
 				}
@@ -1113,8 +1312,6 @@ func (c *Client) writePump() {
 				return
 			}
 			w.Write(message)
-
-			// Flush the buffer to send immediately
 			if err := w.Close(); err != nil {
 				return
 			}
