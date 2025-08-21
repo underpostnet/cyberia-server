@@ -25,9 +25,10 @@ func (s *GameServer) randomPointWithinRadius(ms *MapState, center Point, radius 
 	return PointI{-1, -1}
 }
 
-// updateBots updates AI for all bots on a map.
+// update bots per map
 func (s *GameServer) updateBots(mapState *MapState) {
 	for _, bot := range mapState.bots {
+		// Hostile logic: check for nearest player in aggro range
 		if bot.Behavior == "hostile" {
 			nearestID := ""
 			nearestDist := math.MaxFloat64
@@ -43,6 +44,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				}
 			}
 			if nearestPlayer != nil && nearestDist <= bot.AggroRange {
+				// Pursue the player: recompute path if newly acquired or player moved cell
 				playerCell := PointI{X: int(math.Round(nearestPlayer.Pos.X)), Y: int(math.Round(nearestPlayer.Pos.Y))}
 				needRepath := bot.CurrentTargetPlayer != nearestID || bot.lastPursuitTargetPos != playerCell
 				if needRepath {
@@ -59,10 +61,14 @@ func (s *GameServer) updateBots(mapState *MapState) {
 					}
 				}
 			} else {
+				// No player in range: clear pursuit (if any) and ensure wandering behavior
 				if bot.CurrentTargetPlayer != "" {
 					bot.CurrentTargetPlayer = ""
 					bot.lastPursuitTargetPos = PointI{-1, -1}
 				}
+
+				// IMPORTANT CHANGE: When not pursuing, hostile bots behave like passive bots:
+				// - if they have no current walking path, generate a new random wander target within spawn radius.
 				if bot.Mode != WALKING || len(bot.Path) == 0 {
 					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
 					if target.X >= 0 {
@@ -70,13 +76,29 @@ func (s *GameServer) updateBots(mapState *MapState) {
 							bot.Path = pth
 							bot.TargetPos = target
 							bot.Mode = WALKING
-						} else if len(bot.Path) == 0 {
-							bot.Mode = IDLE
+						} else {
+							// if we can't path to a target, remain idle until next tick tries again
+							if len(bot.Path) == 0 {
+								bot.Mode = IDLE
+							}
 						}
 					}
 				}
 			}
+		} else {
+			// Passive: if no path, create wandering path
+			if len(bot.Path) == 0 || bot.Mode != WALKING {
+				target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
+				if target.X >= 0 {
+					if pth, err := mapState.pathfinder.Astar(PointI{X: int(math.Round(bot.Pos.X)), Y: int(math.Round(bot.Pos.Y))}, target, bot.Dims); err == nil && len(pth) > 0 {
+						bot.Path = pth
+						bot.TargetPos = target
+						bot.Mode = WALKING
+					}
+				}
+			}
 		}
+		// Move bot along its path
 		s.updateBotPosition(bot, mapState)
 	}
 }
@@ -118,7 +140,9 @@ func (s *GameServer) updateBotPosition(bot *BotState, mapState *MapState) {
 
 func (s *GameServer) updateBotDirection(bot *BotState, dirX, dirY float64) {
 	angle := math.Atan2(dirY, dirX)
-	if angle < 0 { angle += 2 * math.Pi }
+	if angle < 0 {
+		angle += 2 * math.Pi
+	}
 	directionIndex := (int(math.Round(angle/(math.Pi/4))) + 2) % 8
 	bot.Direction = Direction(directionIndex)
 }
