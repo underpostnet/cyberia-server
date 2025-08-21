@@ -4,6 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"math/rand"
+	"os"
+	"path/filepath"
+	"strings"
 )
 
 // Stats describes the attribute distribution for an object layer.
@@ -18,24 +23,24 @@ type Stats struct {
 
 // RenderFrames holds named animation frames as 3D int matrices.
 type RenderFrames struct {
-	UpIdle         [][][]int `json:"up_idle"`
-	DownIdle       [][][]int `json:"down_idle"`
-	RightIdle      [][][]int `json:"right_idle"`
-	LeftIdle       [][][]int `json:"left_idle"`
-	UpRightIdle    [][][]int `json:"up_right_idle"`
-	DownRightIdle  [][][]int `json:"down_right_idle"`
-	UpLeftIdle     [][][]int `json:"up_left_idle"`
-	DownLeftIdle   [][][]int `json:"down_left_idle"`
-	DefaultIdle    [][][]int `json:"default_idle"`
-	UpWalking      [][][]int `json:"up_walking"`
-	DownWalking    [][][]int `json:"down_walking"`
-	RightWalking   [][][]int `json:"right_walking"`
-	LeftWalking    [][][]int `json:"left_walking"`
-	UpRightWalking [][][]int `json:"up_right_walking"`
+	UpIdle           [][][]int `json:"up_idle"`
+	DownIdle         [][][]int `json:"down_idle"`
+	RightIdle        [][][]int `json:"right_idle"`
+	LeftIdle         [][][]int `json:"left_idle"`
+	UpRightIdle      [][][]int `json:"up_right_idle"`
+	DownRightIdle    [][][]int `json:"down_right_idle"`
+	UpLeftIdle       [][][]int `json:"up_left_idle"`
+	DownLeftIdle     [][][]int `json:"down_left_idle"`
+	DefaultIdle      [][][]int `json:"default_idle"`
+	UpWalking        [][][]int `json:"up_walking"`
+	DownWalking      [][][]int `json:"down_walking"`
+	RightWalking     [][][]int `json:"right_walking"`
+	LeftWalking      [][][]int `json:"left_walking"`
+	UpRightWalking   [][][]int `json:"up_right_walking"`
 	DownRightWalking [][][]int `json:"down_right_walking"`
-	UpLeftWalking  [][][]int `json:"up_left_walking"`
-	DownLeftWalking [][][]int `json:"down_left_walking"`
-	NoneIdle       [][][]int `json:"none_idle"`
+	UpLeftWalking    [][][]int `json:"up_left_walking"`
+	DownLeftWalking  [][][]int `json:"down_left_walking"`
+	NoneIdle         [][][]int `json:"none_idle"`
 }
 
 // Render holds the frames, palette/colors and timing metadata.
@@ -109,4 +114,140 @@ func NewDefaultSkinObjectLayer(id string) ObjectLayer {
 	}
 	_ = layer.UpdateHash()
 	return layer
+}
+
+// randomInt returns a random int in [min, max].
+func randomInt(min, max int) int {
+	if max < min {
+		min, max = max, min
+	}
+	return rand.Intn(max-min+1) + min
+}
+
+// randomBool returns a random boolean.
+func randomBool() bool { return rand.Intn(2) == 0 }
+
+// randomID creates a lightweight pseudo-random identifier with a given prefix.
+func randomID(prefix string) string {
+	alphabet := "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, 8)
+	for i := range b {
+		b[i] = alphabet[rand.Intn(len(alphabet))]
+	}
+	return fmt.Sprintf("%s-%s", prefix, string(b))
+}
+
+// random3D builds a WxHxD cube of small ints for demo frames.
+func random3D(w, h, d, minVal, maxVal int) [][][]int {
+	cube := make([][][]int, d)
+	for z := 0; z < d; z++ {
+		plane := make([][]int, h)
+		for y := 0; y < h; y++ {
+			row := make([]int, w)
+			for x := 0; x < w; x++ {
+				row[x] = randomInt(minVal, maxVal)
+			}
+			plane[y] = row
+		}
+		cube[z] = plane
+	}
+	return cube
+}
+
+// randomPalette returns N RGB colors with 0-255 ints.
+func randomPalette(n int) [][]int {
+	colors := make([][]int, n)
+	for i := 0; i < n; i++ {
+		colors[i] = []int{randomInt(0, 255), randomInt(0, 255), randomInt(0, 255)}
+	}
+	return colors
+}
+
+// BuildRandomObjectLayer constructs a small randomized ObjectLayer.
+func BuildRandomObjectLayer() ObjectLayer {
+	// Keep values modest so the file remains small.
+	stats := Stats{
+		Effect:       randomInt(0, 10),
+		Resistance:   randomInt(0, 10),
+		Agility:      randomInt(0, 10),
+		Range:        randomInt(0, 10),
+		Intelligence: randomInt(0, 10),
+		Utility:      randomInt(0, 10),
+	}
+
+	frames := RenderFrames{
+		UpIdle:           random3D(3, 3, 1, 0, 1),
+		DownIdle:         random3D(3, 3, 1, 0, 1),
+		RightIdle:        random3D(3, 3, 1, 0, 1),
+		LeftIdle:         random3D(3, 3, 1, 0, 1),
+		UpRightIdle:      random3D(3, 3, 1, 0, 1),
+		DownRightIdle:    random3D(3, 3, 1, 0, 1),
+		UpLeftIdle:       random3D(3, 3, 1, 0, 1),
+		DownLeftIdle:     random3D(3, 3, 1, 0, 1),
+		DefaultIdle:      random3D(3, 3, 1, 0, 1),
+		UpWalking:        random3D(3, 3, 2, 0, 1),
+		DownWalking:      random3D(3, 3, 2, 0, 1),
+		RightWalking:     random3D(3, 3, 2, 0, 1),
+		LeftWalking:      random3D(3, 3, 2, 0, 1),
+		UpRightWalking:   random3D(3, 3, 2, 0, 1),
+		DownRightWalking: random3D(3, 3, 2, 0, 1),
+		UpLeftWalking:    random3D(3, 3, 2, 0, 1),
+		DownLeftWalking:  random3D(3, 3, 2, 0, 1),
+		NoneIdle:         random3D(3, 3, 1, 0, 1),
+	}
+
+	render := Render{
+		Frames:        frames,
+		Colors:        randomPalette(4),
+		FrameDuration: randomInt(60, 180), // ms
+		IsStateless:   randomBool(),
+	}
+
+	itemTypes := []string{"skin", "weapon", "armor", "artifact"}
+	it := itemTypes[rand.Intn(len(itemTypes))]
+	item := Item{
+		ID:          randomID("item"),
+		Type:        it,
+		Description: fmt.Sprintf("Random %s generated by object_layer_create", it),
+		Activable:   randomBool(),
+	}
+
+	ol := ObjectLayer{Stats: stats, Render: render, Item: item}
+	_ = ol.UpdateHash() // ignore err here; data is valid and local
+	return ol
+}
+
+// DefaultOutPath returns the default output path for a random object layer.
+func DefaultOutPath() string {
+	return "./object_layer_random.json"
+}
+
+// NormalizePath normalizes a given path to an absolute path.
+func NormalizePath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return DefaultOutPath()
+	}
+	// Expand to absolute path for logging clarity but write using provided path.
+	abs, err := filepath.Abs(p)
+	if err == nil {
+		return abs
+	}
+	return p
+}
+
+// WriteJSON writes a JSON object to a file.
+func WriteJSON(path string, v any) error {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	// Ensure directory exists if a nested path is provided.
+	dir := filepath.Dir(path)
+	if dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(path, b, 0o644)
 }
