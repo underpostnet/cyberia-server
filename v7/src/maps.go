@@ -154,6 +154,7 @@ func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
 			SpawnCenter: startPos,
 			SpawnRadius: spawnRadius,
 			AggroRange:  s.botAggroRange,
+			ObjectLayers: []ObjectLayer{NewDefaultSkinObjectLayer("default-bot")},
 		}
 
 		// initial wandering path: random point within spawn radius

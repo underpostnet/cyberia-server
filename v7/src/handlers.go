@@ -50,6 +50,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		Direction:     NONE,
 		Mode:          IDLE,
 		SumStatsLimit: 65,
+        ObjectLayers:   []ObjectLayer{NewDefaultSkinObjectLayer("anon")},
 	}
 
 	client := &Client{
