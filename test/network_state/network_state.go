@@ -5,8 +5,8 @@ import (
 	"log"
 	"math"
 
-	"cyberia-server/config" // Import the new consolidated config
-	"math/rand"             // Import math/rand
+	"cyberia-server/test/config" // Import the new consolidated config
+	"math/rand"                  // Import math/rand
 	"sync"
 	"time"
 )

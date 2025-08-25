@@ -2,11 +2,11 @@ package server
 
 import (
 	"encoding/json"
-	// "cyberia-server/config" // Already implicitly used via server/channel.go -> network_state -> config
+	// "cyberia-server/test/config" // Already implicitly used via server/channel.go -> network_state -> config
 	"log"
 	"time"
 
-	"cyberia-server/pathfinding"
+	"cyberia-server/test/pathfinding"
 	// Updated import path
 )
 

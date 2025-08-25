@@ -1,8 +1,8 @@
 package server
 
 import (
-	"cyberia-server/config"
-	"cyberia-server/network_state"
+	"cyberia-server/test/config"
+	"cyberia-server/test/network_state"
 	"log"
 	"sync"
 	"time"

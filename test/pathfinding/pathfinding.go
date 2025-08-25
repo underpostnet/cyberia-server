@@ -6,7 +6,7 @@ import (
 	"log"
 	"math"
 
-	"cyberia-server/network_state" // Updated import path
+	"cyberia-server/test/network_state" // Updated import path
 )
 
 // AStarNode represents a node in the A* algorithm's search space.

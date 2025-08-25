@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	game "cyberia-server/v7/src"
+	game "cyberia-server/test/v7/src"
 )
 
 func main() {

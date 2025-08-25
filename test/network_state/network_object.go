@@ -1,7 +1,7 @@
 package network_state
 
 import (
-	"cyberia-server/config"
+	"cyberia-server/test/config"
 
 	"math"
 )

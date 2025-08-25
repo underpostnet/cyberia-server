@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"cyberia-server/server"
+	"cyberia-server/test/server"
 )
 
 const (

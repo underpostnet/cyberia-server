@@ -1,7 +1,7 @@
 package server
 
 import (
-	"cyberia-server/config"
+	"cyberia-server/test/config"
 	"encoding/json"
 	"fmt"
 	"log"
