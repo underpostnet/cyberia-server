@@ -24,10 +24,12 @@ func NewAPIRouter(cfg Config, db *DB) chi.Router {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// Object layers
+	// Object layers and users
 	ol := NewObjectLayerHandler(cfg, db)
+	uh := NewUserHandler(cfg, db)
 	r.Route("/v1", func(sub chi.Router) {
 		ol.Routes(sub)
+		uh.Routes(sub)
 	})
 
 	return r
