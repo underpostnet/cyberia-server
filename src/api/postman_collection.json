@@ -1,0 +1,258 @@
+{
+  "info": {
+    "name": "Cyberia Server API",
+    "_postman_id": "8f7b4b3a-2f72-4d20-9c3a-4f4c1c0c9b11",
+    "description": "Postman collection for Users and Object Layers APIs with JWT auth and role-based access",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "POST /auth/register",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@local\",\n  \"username\": \"admin\",\n  \"password\": \"change-me-now\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "POST /auth/login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Save token to collection variable if present",
+                  "var json = pm.response.json();",
+                  "if (json && json.token) {",
+                  "  pm.collectionVariables.set('token', json.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@local\",\n  \"password\": \"change-me-now\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "GET /users/me",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me"]
+            }
+          }
+        },
+        {
+          "name": "GET /users?page=&page_size=",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users?page=1&page_size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "page_size", "value": "20"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /users/{id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "PUT /users/{id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"new-name\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "DELETE /users/{id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Object Layers",
+      "item": [
+        {
+          "name": "GET /object-layers?page=&page_size=",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/object-layers?page=1&page_size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["object-layers"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "page_size", "value": "10"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /object-layers/{id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/object-layers/{{objectLayerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["object-layers", "{{objectLayerId}}"]
+            }
+          }
+        },
+        {
+          "name": "POST /object-layers (moderator+)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"stats\": {\n    \"effect\": 1,\n    \"resistance\": 2,\n    \"agility\": 3,\n    \"range\": 4,\n    \"intelligence\": 5,\n    \"utility\": 6\n  },\n  \"render\": {\n    \"frames\": {\n      \"default_idle\": [ [[0]] ]\n    },\n    \"colors\": [[0,0,0]],\n    \"frame_duration\": 120,\n    \"is_stateless\": true\n  },\n  \"item\": {\n    \"id\": \"item-123\",\n    \"type\": \"skin\",\n    \"description\": \"\",\n    \"activable\": false\n  },\n  \"sha256\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/object-layers",
+              "host": ["{{baseUrl}}"],
+              "path": ["object-layers"]
+            }
+          }
+        },
+        {
+          "name": "PUT /object-layers/{id} (moderator+)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"stats\": {\n    \"effect\": 2,\n    \"resistance\": 2,\n    \"agility\": 3,\n    \"range\": 4,\n    \"intelligence\": 5,\n    \"utility\": 6\n  },\n  \"render\": {\n    \"frames\": {\n      \"default_idle\": [ [[1]] ]\n    },\n    \"colors\": [[1,1,1]],\n    \"frame_duration\": 100,\n    \"is_stateless\": false\n  },\n  \"item\": {\n    \"id\": \"item-123\",\n    \"type\": \"skin\",\n    \"description\": \"updated\",\n    \"activable\": true\n  },\n  \"sha256\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/object-layers/{{objectLayerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["object-layers", "{{objectLayerId}}"]
+            }
+          }
+        },
+        {
+          "name": "DELETE /object-layers/{id} (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/object-layers/{{objectLayerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["object-layers", "{{objectLayerId}}"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080/api/v1" },
+    { "key": "token", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "objectLayerId", "value": "" }
+  ]
+}

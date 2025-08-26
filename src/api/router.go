@@ -17,17 +17,16 @@ func NewAPIRouter(cfg Config, db *DB) chi.Router {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	// Health
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
-	})
-
 	// Object layers and users
 	ol := NewObjectLayerHandler(cfg, db)
 	uh := NewUserHandler(cfg, db)
 	r.Route("/v1", func(sub chi.Router) {
+		// Health
+		sub.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"status":"ok"}`))
+		})
 		ol.Routes(sub)
 		uh.Routes(sub)
 	})
