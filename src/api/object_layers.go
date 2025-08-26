@@ -58,7 +58,11 @@ func (h *ObjectLayerHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
+	// Optional filter by embedded item id: doc.item.id
 	filter := bson.M{}
+	if itemID := r.URL.Query().Get("item_id"); itemID != "" {
+		filter["doc.item.id"] = itemID
+	}
 	opts := options.Find().SetSkip(int64((page-1)*pageSize)).SetLimit(int64(pageSize)).SetSort(bson.D{{Key: "_id", Value: -1}})
 	cur, err := h.col.Find(ctx, filter, opts)
 	if err != nil {
