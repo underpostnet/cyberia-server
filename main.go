@@ -26,6 +26,9 @@ func main() {
     if err != nil {
         log.Fatalf("mongo connect error: %v", err)
     }
+    if err := api.SeedDefaultAdmin(context.Background(), cfg, db); err != nil {
+        log.Printf("admin seed error: %v", err)
+    }
 
     r := chi.NewRouter()
     // Mount REST API under /api

@@ -14,6 +14,10 @@ type Config struct {
 	JWTIssuer     string
 	ReadTimeout   time.Duration
 	WriteTimeout  time.Duration
+	SeedAdmin     bool
+	AdminEmail    string
+	AdminUsername string
+	AdminPassword string
 }
 
 func LoadConfig() Config {
@@ -24,6 +28,10 @@ func LoadConfig() Config {
 		JWTIssuer:     getEnv("JWT_ISSUER", "cyberia-server"),
 		ReadTimeout:   parseDuration(getEnv("API_READ_TIMEOUT", "15s"), 15*time.Second),
 		WriteTimeout:  parseDuration(getEnv("API_WRITE_TIMEOUT", "15s"), 15*time.Second),
+		SeedAdmin:     getEnv("ADMIN_SEED", "true") == "true",
+		AdminEmail:    getEnv("ADMIN_EMAIL", "admin@local"),
+		AdminUsername: getEnv("ADMIN_USERNAME", "admin"),
+		AdminPassword: getEnv("ADMIN_PASSWORD", "change-me-now"),
 	}
 	if cfg.JWTSecret == "dev-secret-change-me" {
 		log.Println("[WARN] Using default JWT secret; set JWT_SECRET in production")
