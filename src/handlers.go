@@ -17,7 +17,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool { return true },
+		CheckOrigin:     func(r *http.Request) bool { return true },
 	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -50,9 +50,11 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		Direction:     NONE,
 		Mode:          IDLE,
 		SumStatsLimit: 65,
-        ObjectLayers:   []ObjectLayer{NewDefaultSkinObjectLayer("anon")},
+		ObjectLayers:  []string{},
 	}
-
+	for i := 0; i < 20; i++ {
+		playerState.ObjectLayers = append(playerState.ObjectLayers, uuid.New().String())
+	}
 	client := &Client{
 		conn:        conn,
 		playerID:    playerID,
@@ -226,12 +228,18 @@ func (c *Client) writePump() {
 				return
 			}
 			w, err := c.conn.NextWriter(websocket.TextMessage)
-			if err != nil { return }
+			if err != nil {
+				return
+			}
 			w.Write(message)
-			if err := w.Close(); err != nil { return }
+			if err := w.Close(); err != nil {
+				return
+			}
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil { return }
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
 		}
 	}
 }

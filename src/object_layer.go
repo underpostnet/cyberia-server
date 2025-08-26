@@ -97,21 +97,11 @@ func (ol *ObjectLayer) UpdateHash() error {
 
 // NewDefaultSkinObjectLayer builds a minimal skin layer with given item ID.
 func NewDefaultSkinObjectLayer(id string) ObjectLayer {
-	layer := ObjectLayer{
-		Stats: Stats{},
-		Render: Render{
-			Frames:        RenderFrames{},
-			Colors:        nil,
-			FrameDuration: 0,
-			IsStateless:   true,
-		},
-		Item: Item{
-			ID:          id,
-			Type:        "skin",
-			Description: "",
-			Activable:   false,
-		},
-	}
+	layer := BuildRandomObjectLayer()
+	layer.Item.ID = id
+	layer.Item.Type = "skin"
+	layer.Item.Description = ""
+	layer.Item.Activable = false
 	_ = layer.UpdateHash()
 	return layer
 }
