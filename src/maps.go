@@ -109,8 +109,8 @@ func (ms *MapState) generatePortals(numPortals int) []*PortalState {
 			continue
 		}
 		portal := &PortalState{
-			ID:  uuid.New().String(),
-			Pos: Point{X: float64(posI.X), Y: float64(posI.Y)},
+			ID:   uuid.New().String(),
+			Pos:  Point{X: float64(posI.X), Y: float64(posI.Y)},
 			Dims: dims,
 		}
 		portals = append(portals, portal)
@@ -142,19 +142,19 @@ func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
 		}
 
 		bot := &BotState{
-			ID:          uuid.New().String(),
-			MapID:       mapID,
-			Pos:         startPos,
-			Dims:        dims,
-			Path:        []PointI{},
-			TargetPos:   PointI{-1, -1},
-			Direction:   NONE,
-			Mode:        IDLE,
-			Behavior:    behavior,
-			SpawnCenter: startPos,
-			SpawnRadius: spawnRadius,
-			AggroRange:  s.botAggroRange,
-			ObjectLayers: []ObjectLayer{NewDefaultSkinObjectLayer("default-bot")},
+			ID:           uuid.New().String(),
+			MapID:        mapID,
+			Pos:          startPos,
+			Dims:         dims,
+			Path:         []PointI{},
+			TargetPos:    PointI{-1, -1},
+			Direction:    NONE,
+			Mode:         IDLE,
+			Behavior:     behavior,
+			SpawnCenter:  startPos,
+			SpawnRadius:  spawnRadius,
+			AggroRange:   s.botAggroRange,
+			ObjectLayers: []string{uuid.New().String()},
 		}
 
 		// initial wandering path: random point within spawn radius
