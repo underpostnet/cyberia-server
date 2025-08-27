@@ -26,8 +26,18 @@ func main() {
     if err != nil {
         log.Fatalf("mongo connect error: %v", err)
     }
+    // Seed default data
+    if err := api.SeedObjectLayers(context.Background(), db); err != nil {
+        log.Printf("object layers seed error: %v", err)
+    }
     if err := api.SeedDefaultAdmin(context.Background(), cfg, db); err != nil {
         log.Printf("admin seed error: %v", err)
+    }
+    // Load all available object layer item IDs and set them on the game server
+    if ids, err := api.ListAllObjectLayerItemIDs(context.Background(), db); err != nil {
+        log.Printf("load object layer ids error: %v", err)
+    } else {
+        s.SetAvailableItemIDs(ids)
     }
 
     r := chi.NewRouter()

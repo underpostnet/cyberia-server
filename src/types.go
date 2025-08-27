@@ -72,7 +72,7 @@ type PlayerState struct {
 	TimeOnPortal   time.Time       `json:"-"`
 	ActivePortalID string          `json:"activePortalID"`
 	SumStatsLimit  int             `json:"sumStatsLimit"`
-	ObjectLayers   []string        `json:"objectLayers"`
+	Items          []string        `json:"items"`
 }
 
 type BotState struct {
@@ -90,7 +90,7 @@ type BotState struct {
 	AggroRange           float64         `json:"aggroRange"`
 	CurrentTargetPlayer  string          `json:"-"` // player ID currently being pursued (if any)
 	lastPursuitTargetPos PointI          `json:"-"` // cached player's last cell to know when to re-path
-	ObjectLayers         []string        `json:"objectLayers"`
+	Items                []string        `json:"items"`
 }
 
 type PortalConfig struct {
@@ -153,6 +153,9 @@ type GameServer struct {
 	// bot related defaults
 	botsPerMap    int
 	botAggroRange float64
+
+	// available object item IDs to assign to players on connect
+	availableItemIDs []string
 }
 
 type ColorRGBA struct {

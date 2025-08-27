@@ -50,10 +50,21 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		Direction:     NONE,
 		Mode:          IDLE,
 		SumStatsLimit: 65,
-		ObjectLayers:  []string{},
+		Items:         []string{},
 	}
-	for i := 0; i < 20; i++ {
-		playerState.ObjectLayers = append(playerState.ObjectLayers, uuid.New().String())
+	// Assign up to 12 random item IDs from server's available list
+	if n := len(s.availableItemIDs); n > 0 {
+		pick := 12
+		if n < pick { pick = n }
+		// copy and shuffle indices to avoid mutating server list
+		indices := make([]int, n)
+		for i := 0; i < n; i++ { indices[i] = i }
+		rand.Shuffle(n, func(i, j int) { indices[i], indices[j] = indices[j], indices[i] })
+		items := make([]string, 0, pick)
+		for i := 0; i < pick; i++ {
+			items = append(items, s.availableItemIDs[indices[i]])
+		}
+		playerState.Items = items
 	}
 	client := &Client{
 		conn:        conn,
@@ -82,6 +93,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		"defaultHeightScreenFactor": s.defaultHeightScreenFactor,
 		"devUi":                     s.devUi,
 		"sumStatsLimit":             playerState.SumStatsLimit,
+		"items":                     playerState.Items,
 	}
 	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
 	select {
