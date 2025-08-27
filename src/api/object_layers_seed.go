@@ -12,27 +12,45 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// SeedObjectLayers creates 40 random skin object layers if collection is empty.
+// SeedObjectLayers ensures there are 40 skin object layers (ids skin-01..skin-40).
 func SeedObjectLayers(ctx context.Context, db *DB) error {
 	col := db.Collection("object_layers")
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	count, err := col.CountDocuments(ctx, bson.M{})
+	// Fetch existing skin item ids
+	cur, err := col.Find(ctx, bson.M{"doc.item.type": "skin"})
 	if err != nil {
 		return err
 	}
-	if count > 0 {
-		return nil
+	defer cur.Close(ctx)
+	existing := map[string]struct{}{}
+	type row struct{ Doc game.ObjectLayer `bson:"doc"` }
+	for cur.Next(ctx) {
+		var r row
+		if err := cur.Decode(&r); err != nil {
+			return err
+		}
+		if r.Doc.Item.ID != "" {
+			existing[r.Doc.Item.ID] = struct{}{}
+		}
+	}
+	if err := cur.Err(); err != nil {
+		return err
 	}
 
+	// Prepare missing docs among skin-01..skin-40
 	docs := make([]interface{}, 0, 40)
 	for i := 0; i < 40; i++ {
 		id := fmt.Sprintf("skin-%02d", i+1)
+		if _, ok := existing[id]; ok {
+			continue
+		}
 		ol := game.NewDefaultSkinObjectLayer(id)
 		docs = append(docs, bson.M{"doc": ol})
 	}
 	if len(docs) == 0 {
+		log.Println("[INFO] Skin object layers already at desired count (40)")
 		return nil
 	}
 	if _, err := col.InsertMany(ctx, docs); err != nil {
@@ -43,7 +61,7 @@ func SeedObjectLayers(ctx context.Context, db *DB) error {
 		}
 		return err
 	}
-	log.Println("[INFO] Seeded 40 skin object layers")
+	log.Printf("[INFO] Seeded %d missing skin object layers", len(docs))
 	return nil
 }
 
