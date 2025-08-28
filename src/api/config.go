@@ -22,7 +22,7 @@ type Config struct {
 
 func LoadConfig() Config {
 	cfg := Config{
-		MongoURI:      getEnv("MONGO_URI", "mongodb://localhost:27017"),
+		MongoURI:      getEnv("MONGO_URI", "mongodb://127.0.0.1:27017"),
 		MongoDatabase: getEnv("MONGO_DB", "cyberia"),
 		JWTSecret:     getEnv("JWT_SECRET", "dev-secret-change-me"),
 		JWTIssuer:     getEnv("JWT_ISSUER", "cyberia-server"),
