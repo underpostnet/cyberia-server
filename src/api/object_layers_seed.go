@@ -25,14 +25,16 @@ func SeedObjectLayers(ctx context.Context, db *DB) error {
 	}
 	defer cur.Close(ctx)
 	existing := map[string]struct{}{}
-	type row struct{ Doc game.ObjectLayer `bson:"doc"` }
+	type row struct {
+		Doc game.ObjectLayer `bson:"doc"`
+	}
 	for cur.Next(ctx) {
 		var r row
 		if err := cur.Decode(&r); err != nil {
 			return err
 		}
-		if r.Doc.Item.ID != "" {
-			existing[r.Doc.Item.ID] = struct{}{}
+		if r.Doc.Data.Item.ID != "" {
+			existing[r.Doc.Data.Item.ID] = struct{}{}
 		}
 	}
 	if err := cur.Err(); err != nil {
@@ -76,15 +78,17 @@ func ListAllObjectLayerItemIDs(ctx context.Context, db *DB) ([]string, error) {
 		return nil, err
 	}
 	defer cur.Close(ctx)
-	type row struct{ Doc game.ObjectLayer `bson:"doc"` }
+	type row struct {
+		Doc game.ObjectLayer `bson:"doc"`
+	}
 	ids := []string{}
 	for cur.Next(ctx) {
 		var r row
 		if err := cur.Decode(&r); err != nil {
 			return nil, err
 		}
-		if r.Doc.Item.ID != "" {
-			ids = append(ids, r.Doc.Item.ID)
+		if r.Doc.Data.Item.ID != "" {
+			ids = append(ids, r.Doc.Data.Item.ID)
 		}
 	}
 	return ids, cur.Err()

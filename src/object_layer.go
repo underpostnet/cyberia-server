@@ -81,7 +81,7 @@ func (ol *ObjectLayer) ComputeHash() (string, error) {
 		Render Render `json:"render"`
 		Item   Item   `json:"item"`
 	}
-	p := payload{Stats: ol.Stats, Render: ol.Render, Item: ol.Item}
+	p := payload{Stats: ol.Data.Stats, Render: ol.Data.Render, Item: ol.Data.Item}
 	b, err := json.Marshal(p)
 	if err != nil {
 		return "", err
@@ -103,10 +103,10 @@ func (ol *ObjectLayer) UpdateHash() error {
 // NewDefaultSkinObjectLayer builds a minimal skin layer with given item ID.
 func NewDefaultSkinObjectLayer(id string) ObjectLayer {
 	layer := BuildRandomObjectLayer()
-	layer.Item.ID = id
-	layer.Item.Type = "skin"
-	layer.Item.Description = ""
-	layer.Item.Activable = false
+	layer.Data.Item.ID = id
+	layer.Data.Item.Type = "skin"
+	layer.Data.Item.Description = ""
+	layer.Data.Item.Activable = false
 	_ = layer.UpdateHash()
 	return layer
 }
@@ -207,7 +207,7 @@ func BuildRandomObjectLayer() ObjectLayer {
 		Activable:   randomBool(),
 	}
 
-	ol := ObjectLayer{Stats: stats, Render: render, Item: item}
+	ol := ObjectLayer{Data: ObjectLayerData{Stats: stats, Render: render, Item: item}}
 	_ = ol.UpdateHash() // ignore err here; data is valid and local
 	return ol
 }
