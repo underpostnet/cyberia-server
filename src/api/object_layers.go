@@ -50,10 +50,10 @@ func (h *ObjectLayerHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	// Optional filter by embedded item id: doc.item.id
+	// Optional filter by embedded item id: data.item.id
 	filter := bson.M{}
 	if itemID := r.URL.Query().Get("item_id"); itemID != "" {
-		filter["doc.item.id"] = itemID
+		filter["data.item.id"] = itemID
 	}
 	opts := options.Find().SetSkip(int64((page - 1) * pageSize)).SetLimit(int64(pageSize)).SetSort(bson.D{{Key: "_id", Value: -1}})
 	cur, err := h.col.Find(ctx, filter, opts)
@@ -90,8 +90,8 @@ func (h *ObjectLayerHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	var doc game.ObjectLayer
-	if err := h.col.FindOne(ctx, bson.M{"_id": id}).Decode(&doc); err != nil {
+	var data game.ObjectLayer
+	if err := h.col.FindOne(ctx, bson.M{"_id": id}).Decode(&data); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			errorJSON(w, http.StatusNotFound, "not found")
 			return
@@ -99,7 +99,7 @@ func (h *ObjectLayerHandler) Get(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, doc)
+	writeJSON(w, http.StatusOK, data)
 }
 
 // Create POST /object-layers
@@ -143,7 +143,8 @@ func (h *ObjectLayerHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	res, err := h.col.UpdateByID(ctx, id, bson.M{"$set": bson.M{"doc": payload}})
+	res, err := h.col.UpdateByID(ctx, id, bson.M{"$set": bson.M{"data": payload.Data}})
+
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, err.Error())
 		return

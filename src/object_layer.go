@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // Stats describes the attribute distribution for an object layer.
@@ -68,8 +70,9 @@ type ObjectLayerData struct {
 
 // ObjectLayer encapsulates object layer data and a content hash.
 type ObjectLayer struct {
-	Data   ObjectLayerData `json:"data"`
-	Sha256 string          `json:"sha256"`
+	Data   ObjectLayerData    `json:"data"`
+	Sha256 string             `json:"sha256"`
+	ID     primitive.ObjectID `bson:"_id,omitempty" json:"_id"`
 }
 
 // ComputeHash computes a SHA-256 hash of the canonical JSON encoding of the
