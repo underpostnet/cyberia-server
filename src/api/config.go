@@ -22,8 +22,8 @@ type Config struct {
 
 func LoadConfig() Config {
 	cfg := Config{
-		MongoURI:      getEnv("MONGO_URI", "mongodb://127.0.0.1:27017"),
-		MongoDatabase: getEnv("MONGO_DB", "cyberia"),
+		MongoURI:      getEnv("MONGO_URI", "mongodb://mongodb-0.mongodb-service:27017"),
+		MongoDatabase: getEnv("MONGO_DB", "example2-cyberia"),
 		JWTSecret:     getEnv("JWT_SECRET", "dev-secret-change-me"),
 		JWTIssuer:     getEnv("JWT_ISSUER", "cyberia-server"),
 		ReadTimeout:   parseDuration(getEnv("API_READ_TIMEOUT", "15s"), 15*time.Second),

@@ -36,7 +36,7 @@ func NewObjectLayerHandler(cfg Config, db *DB) *ObjectLayerHandler {
 	return &ObjectLayerHandler{
 		cfg: cfg,
 		db:  db,
-		col: db.Collection("object_layers"),
+		col: db.Collection("objectlayers"),
 	}
 }
 
@@ -63,7 +63,7 @@ func (h *ObjectLayerHandler) List(w http.ResponseWriter, r *http.Request) {
 	if itemID := r.URL.Query().Get("item_id"); itemID != "" {
 		filter["doc.item.id"] = itemID
 	}
-	opts := options.Find().SetSkip(int64((page-1)*pageSize)).SetLimit(int64(pageSize)).SetSort(bson.D{{Key: "_id", Value: -1}})
+	opts := options.Find().SetSkip(int64((page - 1) * pageSize)).SetLimit(int64(pageSize)).SetSort(bson.D{{Key: "_id", Value: -1}})
 	cur, err := h.col.Find(ctx, filter, opts)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, err.Error())
@@ -188,15 +188,23 @@ func (h *ObjectLayerHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // Helpers
 
 func parseInt(s string, def int) int {
-	if s == "" { return def }
+	if s == "" {
+		return def
+	}
 	v, err := strconv.Atoi(s)
-	if err != nil { return def }
+	if err != nil {
+		return def
+	}
 	return v
 }
 
 func clamp(v, minV, maxV int) int {
-	if v < minV { return minV }
-	if v > maxV { return maxV }
+	if v < minV {
+		return minV
+	}
+	if v > maxV {
+		return maxV
+	}
 	return v
 }
 
