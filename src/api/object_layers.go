@@ -17,14 +17,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// DBObjectLayer is the MongoDB model for storing object layers.
-// We store the whole game.ObjectLayer document in field "doc" to avoid
-// modifying the core game struct with bson tags.
-type DBObjectLayer struct {
-	ID  primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Doc game.ObjectLayer   `bson:"doc" json:"doc"`
-}
-
 // ObjectLayerHandler groups dependencies.
 type ObjectLayerHandler struct {
 	cfg Config
@@ -70,7 +62,7 @@ func (h *ObjectLayerHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer cur.Close(ctx)
-	var items []DBObjectLayer
+	var items []game.ObjectLayer
 	if err := cur.All(ctx, &items); err != nil {
 		errorJSON(w, http.StatusInternalServerError, err.Error())
 		return
@@ -79,7 +71,7 @@ func (h *ObjectLayerHandler) List(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		total = int64(len(items))
 	}
-	resp := apiListResponse[DBObjectLayer]{
+	resp := apiListResponse[game.ObjectLayer]{
 		Items:      items,
 		Page:       page,
 		PageSize:   pageSize,
@@ -98,7 +90,7 @@ func (h *ObjectLayerHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	var doc DBObjectLayer
+	var doc game.ObjectLayer
 	if err := h.col.FindOne(ctx, bson.M{"_id": id}).Decode(&doc); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			errorJSON(w, http.StatusNotFound, "not found")
@@ -124,7 +116,7 @@ func (h *ObjectLayerHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	res, err := h.col.InsertOne(ctx, DBObjectLayer{Doc: payload})
+	res, err := h.col.InsertOne(ctx, payload)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, err.Error())
 		return
