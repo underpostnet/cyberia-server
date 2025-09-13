@@ -59,12 +59,17 @@ type Item struct {
 	Activable   bool   `json:"activable"`
 }
 
-// ObjectLayer encapsulates stats, render, item and a content hash.
-type ObjectLayer struct {
+// ObjectLayerData encapsulates stats, render, item.
+type ObjectLayerData struct {
 	Stats  Stats  `json:"stats"`
 	Render Render `json:"render"`
 	Item   Item   `json:"item"`
-	Sha256 string `json:"sha256"`
+}
+
+// ObjectLayer encapsulates object layer data and a content hash.
+type ObjectLayer struct {
+	Data   ObjectLayerData `json:"data"`
+	Sha256 string          `json:"sha256"`
 }
 
 // ComputeHash computes a SHA-256 hash of the canonical JSON encoding of the
