@@ -50,7 +50,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		Direction:     NONE,
 		Mode:          IDLE,
 		SumStatsLimit: 65,
-		ObjectLayers:  []ObjectLayerState{{ItemID: "anon", Active: true}},
+		ObjectLayers:  []ObjectLayerState{{ItemID: "anon", Active: true}, {ItemID: "punk", Active: false}},
 	}
 	client := &Client{
 		conn:        conn,
@@ -206,6 +206,34 @@ func (c *Client) readPump(server *GameServer) {
 				}
 				server.mu.Unlock()
 			}
+		} else if msg["type"] == "item_activation" {
+			payload, ok := msg["payload"].(map[string]interface{})
+			if !ok {
+				log.Printf("Invalid item_activation payload format for player %s", c.playerID)
+				continue
+			}
+			itemId, okId := payload["itemId"].(string)
+			active, okActive := payload["active"].(bool)
+			if !okId || !okActive {
+				log.Printf("Invalid itemId or active field in item_activation payload for player %s", c.playerID)
+				continue
+			}
+
+			server.mu.Lock()
+			player, ok := server.maps[c.playerState.MapID].players[c.playerID]
+			if !ok {
+				log.Printf("Player %s not found in map %d for item activation", c.playerID, c.playerState.MapID)
+				server.mu.Unlock()
+				continue
+			}
+			for i := range player.ObjectLayers {
+				if player.ObjectLayers[i].ItemID == itemId {
+					player.ObjectLayers[i].Active = active
+					log.Printf("Player %s updated item '%s' active state to %v", c.playerID, itemId, active)
+					break
+				}
+			}
+			server.mu.Unlock()
 		}
 	}
 }

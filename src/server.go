@@ -241,12 +241,13 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		otherRect := Rectangle{MinX: otherPlayer.Pos.X, MinY: otherPlayer.Pos.Y, MaxX: otherPlayer.Pos.X + otherPlayer.Dims.Width, MaxY: otherPlayer.Pos.Y + otherPlayer.Dims.Height}
 		if rectsOverlap(player.AOI, otherRect) {
 			visiblePlayersMap[otherPlayer.ID] = map[string]interface{}{
-				"id":        otherPlayer.ID,
-				"Pos":       otherPlayer.Pos,
-				"Dims":      otherPlayer.Dims,
-				"Type":      "player",
-				"direction": int(otherPlayer.Direction),
-				"mode":      int(otherPlayer.Mode),
+				"id":           otherPlayer.ID,
+				"Pos":          otherPlayer.Pos,
+				"Dims":         otherPlayer.Dims,
+				"Type":         "player",
+				"direction":    int(otherPlayer.Direction),
+				"mode":         int(otherPlayer.Mode),
+				"objectLayers": otherPlayer.ObjectLayers,
 			}
 		}
 	}
@@ -279,13 +280,14 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		botRect := Rectangle{MinX: bot.Pos.X, MinY: bot.Pos.Y, MaxX: bot.Pos.X + bot.Dims.Width, MaxY: bot.Pos.Y + bot.Dims.Height}
 		if rectsOverlap(player.AOI, botRect) {
 			visibleGridObjectsMap[bot.ID] = map[string]interface{}{
-				"id":        bot.ID,
-				"Pos":       bot.Pos,
-				"Dims":      bot.Dims,
-				"Type":      "bot",
-				"behavior":  bot.Behavior,
-				"direction": int(bot.Direction),
-				"mode":      int(bot.Mode),
+				"id":           bot.ID,
+				"Pos":          bot.Pos,
+				"Dims":         bot.Dims,
+				"Type":         "bot",
+				"behavior":     bot.Behavior,
+				"direction":    int(bot.Direction),
+				"mode":         int(bot.Mode),
+				"objectLayers": bot.ObjectLayers,
 			}
 		}
 	}
