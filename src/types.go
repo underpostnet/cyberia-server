@@ -49,6 +49,11 @@ const (
 	TELEPORTING
 )
 
+type ObjectLayerState struct {
+	ItemID string `json:"itemId"`
+	Active bool   `json:"active"`
+}
+
 type ObjectState struct {
 	ID          string     `json:"id"`
 	Pos         Point      `json:"Pos"`
@@ -58,39 +63,39 @@ type ObjectState struct {
 }
 
 type PlayerState struct {
-	ID             string          `json:"id"`
-	MapID          int             `json:"MapID"`
-	Pos            Point           `json:"Pos"`
-	Dims           Dimensions      `json:"Dims"`
-	Path           []PointI        `json:"path"`
-	TargetPos      PointI          `json:"targetPos"`
-	AOI            Rectangle       `json:"AOI"`
-	Client         *Client         `json:"-"`
-	Direction      Direction       `json:"direction"`
-	Mode           ObjectLayerMode `json:"mode"`
-	OnPortal       bool            `json:"onPortal"`
-	TimeOnPortal   time.Time       `json:"-"`
-	ActivePortalID string          `json:"activePortalID"`
-	SumStatsLimit  int             `json:"sumStatsLimit"`
-	Items          []string        `json:"items"`
+	ID             string             `json:"id"`
+	MapID          int                `json:"MapID"`
+	Pos            Point              `json:"Pos"`
+	Dims           Dimensions         `json:"Dims"`
+	Path           []PointI           `json:"path"`
+	TargetPos      PointI             `json:"targetPos"`
+	AOI            Rectangle          `json:"AOI"`
+	Client         *Client            `json:"-"`
+	Direction      Direction          `json:"direction"`
+	Mode           ObjectLayerMode    `json:"mode"`
+	OnPortal       bool               `json:"onPortal"`
+	TimeOnPortal   time.Time          `json:"-"`
+	ActivePortalID string             `json:"activePortalID"`
+	SumStatsLimit  int                `json:"sumStatsLimit"`
+	ObjectLayers   []ObjectLayerState `json:"objectLayers"`
 }
 
 type BotState struct {
-	ID                   string          `json:"id"`
-	MapID                int             `json:"MapID"`
-	Pos                  Point           `json:"Pos"`
-	Dims                 Dimensions      `json:"Dims"`
-	Path                 []PointI        `json:"path"`
-	TargetPos            PointI          `json:"targetPos"`
-	Direction            Direction       `json:"direction"`
-	Mode                 ObjectLayerMode `json:"mode"`
-	Behavior             string          `json:"behavior"` // "hostile" or "passive"
-	SpawnCenter          Point           `json:"spawnCenter"`
-	SpawnRadius          float64         `json:"spawnRadius"`
-	AggroRange           float64         `json:"aggroRange"`
-	CurrentTargetPlayer  string          `json:"-"` // player ID currently being pursued (if any)
-	lastPursuitTargetPos PointI          `json:"-"` // cached player's last cell to know when to re-path
-	Items                []string        `json:"items"`
+	ID                   string             `json:"id"`
+	MapID                int                `json:"MapID"`
+	Pos                  Point              `json:"Pos"`
+	Dims                 Dimensions         `json:"Dims"`
+	Path                 []PointI           `json:"path"`
+	TargetPos            PointI             `json:"targetPos"`
+	Direction            Direction          `json:"direction"`
+	Mode                 ObjectLayerMode    `json:"mode"`
+	Behavior             string             `json:"behavior"` // "hostile" or "passive"
+	SpawnCenter          Point              `json:"spawnCenter"`
+	SpawnRadius          float64            `json:"spawnRadius"`
+	AggroRange           float64            `json:"aggroRange"`
+	CurrentTargetPlayer  string             `json:"-"` // player ID currently being pursued (if any)
+	lastPursuitTargetPos PointI             `json:"-"` // cached player's last cell to know when to re-path
+	ObjectLayers         []ObjectLayerState `json:"objectLayers"`
 }
 
 type PortalConfig struct {
@@ -153,9 +158,6 @@ type GameServer struct {
 	// bot related defaults
 	botsPerMap    int
 	botAggroRange float64
-
-	// available object item IDs to assign to players on connect
-	availableItemIDs []string
 }
 
 type ColorRGBA struct {

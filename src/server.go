@@ -47,17 +47,9 @@ func NewGameServer() *GameServer {
 			"UI_TEXT":      {R: 255, G: 255, B: 255, A: 255},
 			"MAP_BOUNDARY": {R: 255, G: 255, B: 255, A: 255},
 		},
-		availableItemIDs: make([]string, 0),
 	}
 	gs.createMaps()
 	return gs
-}
-
-// SetAvailableItemIDs sets the list of item IDs available for random assignment to players.
-func (s *GameServer) SetAvailableItemIDs(ids []string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.availableItemIDs = append([]string(nil), ids...)
 }
 
 func (s *GameServer) Run() {
@@ -310,7 +302,7 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		"onPortal":       player.OnPortal,
 		"activePortalID": player.ActivePortalID,
 		"sumStatsLimit":  player.SumStatsLimit,
-		"items":          player.Items,
+		"objectLayers":   player.ObjectLayers,
 	}
 	payloadMap := map[string]interface{}{
 		"playerID":           player.ID,

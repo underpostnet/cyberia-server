@@ -154,11 +154,7 @@ func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
 			SpawnCenter:  startPos,
 			SpawnRadius:  spawnRadius,
 			AggroRange:   s.botAggroRange,
-			Items:        []string{},
-		}
-		// Give bots one random item ID if available
-		if n := len(s.availableItemIDs); n > 0 {
-			bot.Items = []string{s.availableItemIDs[rand.Intn(n)]}
+			ObjectLayers: []ObjectLayerState{{ItemID: "purple", Active: true}},
 		}
 
 		// initial wandering path: random point within spawn radius
