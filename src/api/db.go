@@ -15,13 +15,13 @@ type DB struct {
 }
 
 func ConnectMongo(ctx context.Context, cfg Config) (*DB, error) {
-	client, err := mongo.NewClient(options.Client().ApplyURI(cfg.MongoURI))
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	if err := client.Connect(ctx); err != nil {
+	if err := client.Ping(ctx, nil); err != nil {
 		return nil, err
 	}
 	return &DB{Client: client, Database: client.Database(cfg.MongoDatabase)}, nil
