@@ -48,9 +48,11 @@ func (s *GameServer) createMaps() {
 			portals:     make(map[string]*PortalState),
 			obstacles:   make(map[string]ObjectState),
 			foregrounds: make(map[string]ObjectState),
+			floors:      make(map[string]*FloorState),
 			pathfinder:  NewPathfinder(gridSizeW, gridSizeH),
 			bots:        make(map[string]*BotState),
 		}
+		ms.generateFloors(10, 10)
 
 		portals := ms.generatePortals(numPortals)
 		allMapsPortals[i] = portals
@@ -96,6 +98,34 @@ func (s *GameServer) createMaps() {
 	}
 
 	log.Println("Maps created and portals linked.")
+}
+
+// generateFloors creates and places floor tiles on a map based on its FloorConfig.
+func (ms *MapState) generateFloors(Rows, Cols int) {
+
+	if Rows <= 0 || Cols <= 0 {
+		log.Println("Invalid floor config, rows and cols must be positive.")
+		return
+	}
+
+	tileWidth := float64(ms.gridW) / float64(Cols)
+	tileHeight := float64(ms.gridH) / float64(Rows)
+
+	for r := 0; r < Rows; r++ {
+		for c := 0; c < Cols; c++ {
+			posX := float64(c) * tileWidth
+			posY := float64(r) * tileHeight
+
+			floor := &FloorState{
+				ID:           uuid.New().String(),
+				Pos:          Point{X: posX, Y: posY},
+				Dims:         Dimensions{Width: tileWidth, Height: tileHeight},
+				Type:         "floor",
+				ObjectLayers: []ObjectLayerState{},
+			}
+			ms.floors[floor.ID] = floor
+		}
+	}
 }
 
 // generatePortals creates and places portals on a map.

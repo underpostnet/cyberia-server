@@ -80,6 +80,14 @@ type PlayerState struct {
 	ObjectLayers   []ObjectLayerState `json:"objectLayers"`
 }
 
+type FloorState struct {
+	ID           string             `json:"id"`
+	Pos          Point              `json:"Pos"`
+	Dims         Dimensions         `json:"Dims"`
+	Type         string             `json:"Type"`
+	ObjectLayers []ObjectLayerState `json:"objectLayers"`
+}
+
 type BotState struct {
 	ID                   string             `json:"id"`
 	MapID                int                `json:"MapID"`
@@ -117,6 +125,7 @@ type MapState struct {
 	obstacles    map[string]ObjectState
 	foregrounds  map[string]ObjectState
 	portals      map[string]*PortalState
+	floors       map[string]*FloorState
 	players      map[string]*PlayerState
 	bots         map[string]*BotState
 	gridW, gridH int

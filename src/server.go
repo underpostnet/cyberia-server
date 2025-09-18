@@ -36,21 +36,22 @@ func NewGameServer() *GameServer {
 		botsPerMap:                10,
 		botAggroRange:             10.0,
 		colors: map[string]ColorRGBA{
-			"BACKGROUND":      {R: 0, G: 0, B: 0, A: 255},
-			"GRID_BACKGROUND": {R: 128, G: 128, B: 128, A: 255},
-			"OBSTACLE":        {R: 100, G: 100, B: 100, A: 255},
-			"FOREGROUND":      {R: 60, G: 140, B: 60, A: 220},
-			"PLAYER":          {R: 0, G: 200, B: 255, A: 255},
-			"OTHER_PLAYER":    {R: 255, G: 100, B: 0, A: 255},
-			"PATH":            {R: 255, G: 255, B: 0, A: 128},
-			"TARGET":          {R: 255, G: 255, B: 0, A: 255},
-			"AOI":             {R: 255, G: 0, B: 255, A: 51},
-			"DEBUG_TEXT":      {R: 220, G: 220, B: 220, A: 255},
-			"ERROR_TEXT":      {R: 255, G: 50, B: 50, A: 255},
-			"PORTAL":          {R: 180, G: 50, B: 255, A: 180},
-			"PORTAL_LABEL":    {R: 240, G: 240, B: 240, A: 255},
-			"UI_TEXT":         {R: 255, G: 255, B: 255, A: 255},
-			"MAP_BOUNDARY":    {R: 255, G: 255, B: 255, A: 255},
+			"BACKGROUND":       {R: 0, G: 0, B: 0, A: 255},
+			"GRID_BACKGROUND":  {R: 128, G: 128, B: 128, A: 255},
+			"FLOOR_BACKGROUND": {R: 0, G: 255, B: 0, A: 255},
+			"OBSTACLE":         {R: 100, G: 100, B: 100, A: 255},
+			"FOREGROUND":       {R: 60, G: 140, B: 60, A: 220},
+			"PLAYER":           {R: 0, G: 200, B: 255, A: 255},
+			"OTHER_PLAYER":     {R: 255, G: 100, B: 0, A: 255},
+			"PATH":             {R: 255, G: 255, B: 0, A: 128},
+			"TARGET":           {R: 255, G: 255, B: 0, A: 255},
+			"AOI":              {R: 255, G: 0, B: 255, A: 51},
+			"DEBUG_TEXT":       {R: 220, G: 220, B: 220, A: 255},
+			"ERROR_TEXT":       {R: 255, G: 50, B: 50, A: 255},
+			"PORTAL":           {R: 180, G: 50, B: 255, A: 180},
+			"PORTAL_LABEL":     {R: 240, G: 240, B: 240, A: 255},
+			"UI_TEXT":          {R: 255, G: 255, B: 255, A: 255},
+			"MAP_BOUNDARY":     {R: 255, G: 255, B: 255, A: 255},
 		},
 	}
 	gs.createMaps()
@@ -261,6 +262,18 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		obstacleRect := Rectangle{MinX: obstacle.Pos.X, MinY: obstacle.Pos.Y, MaxX: obstacle.Pos.X + obstacle.Dims.Width, MaxY: obstacle.Pos.Y + obstacle.Dims.Height}
 		if rectsOverlap(player.AOI, obstacleRect) {
 			visibleGridObjectsMap[obstacle.ID] = map[string]interface{}{"id": obstacle.ID, "Pos": obstacle.Pos, "Dims": obstacle.Dims, "Type": obstacle.Type}
+		}
+	}
+	for _, floor := range mapState.floors {
+		floorRect := Rectangle{MinX: floor.Pos.X, MinY: floor.Pos.Y, MaxX: floor.Pos.X + floor.Dims.Width, MaxY: floor.Pos.Y + floor.Dims.Height}
+		if rectsOverlap(player.AOI, floorRect) {
+			visibleGridObjectsMap[floor.ID] = map[string]interface{}{
+				"id":           floor.ID,
+				"Pos":          floor.Pos,
+				"Dims":         floor.Dims,
+				"Type":         "floor",
+				"objectLayers": floor.ObjectLayers,
+			}
 		}
 	}
 	for _, portal := range mapState.portals {
