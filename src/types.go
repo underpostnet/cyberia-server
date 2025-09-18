@@ -104,6 +104,7 @@ type BotState struct {
 	CurrentTargetPlayer  string             `json:"-"` // player ID currently being pursued (if any)
 	lastPursuitTargetPos PointI             `json:"-"` // cached player's last cell to know when to re-path
 	ObjectLayers         []ObjectLayerState `json:"objectLayers"`
+	ExpiresAt            time.Time          `json:"-"` // bots with a lifetime will be removed after this time
 }
 
 type PortalConfig struct {

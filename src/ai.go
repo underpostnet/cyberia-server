@@ -3,6 +3,7 @@ package game
 import (
 	"math"
 	"math/rand"
+	"time"
 )
 
 // randomPointWithinRadius returns a random walkable PointI within radius from center (or {-1,-1} on failure).
@@ -27,7 +28,13 @@ func (s *GameServer) randomPointWithinRadius(ms *MapState, center Point, radius 
 
 // update bots per map
 func (s *GameServer) updateBots(mapState *MapState) {
-	for _, bot := range mapState.bots {
+	for botID, bot := range mapState.bots {
+		// Check for expiration
+		if !bot.ExpiresAt.IsZero() && time.Now().After(bot.ExpiresAt) {
+			delete(mapState.bots, botID)
+			continue
+		}
+
 		// Hostile logic: check for nearest player in aggro range
 		if bot.Behavior == "hostile" {
 			nearestID := ""
