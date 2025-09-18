@@ -77,6 +77,11 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				// IMPORTANT CHANGE: When not pursuing, hostile bots behave like passive bots:
 				// - if they have no current walking path, generate a new random wander target within spawn radius.
 				if bot.Mode != WALKING || len(bot.Path) == 0 {
+					// Skill activation for permanent bots taking a wander "action"
+					if bot.ExpiresAt.IsZero() {
+						s.handleBotSkills(bot, mapState)
+					}
+
 					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
 					if target.X >= 0 {
 						if pth, err := mapState.pathfinder.Astar(PointI{X: int(math.Round(bot.Pos.X)), Y: int(math.Round(bot.Pos.Y))}, target, bot.Dims); err == nil && len(pth) > 0 {
@@ -95,6 +100,11 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		} else {
 			// Passive: if no path, create wandering path
 			if len(bot.Path) == 0 || bot.Mode != WALKING {
+				// Skill activation for permanent bots taking a wander "action"
+				if bot.ExpiresAt.IsZero() {
+					s.handleBotSkills(bot, mapState)
+				}
+
 				target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
 				if target.X >= 0 {
 					if pth, err := mapState.pathfinder.Astar(PointI{X: int(math.Round(bot.Pos.X)), Y: int(math.Round(bot.Pos.Y))}, target, bot.Dims); err == nil && len(pth) > 0 {
