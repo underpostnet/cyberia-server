@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -176,6 +177,32 @@ func (h *ObjectLayerHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// CheckObjectLayersByType verifies the integrity of object layers for a specific item type
+func CheckObjectLayersByType(ctx context.Context, db *DB, itemType string) error {
+	col := db.Collection("objectlayers")
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	// Fetch existing object layers of given type
+	cur, err := col.Find(ctx, bson.M{"data.item.type": itemType})
+	if err != nil {
+		return err
+	}
+	defer cur.Close(ctx)
+
+	var existing []string
+	for cur.Next(ctx) {
+		var layer game.ObjectLayer
+		if err := cur.Decode(&layer); err != nil {
+			return err
+		}
+		existing = append(existing, layer.Data.Item.ID)
+	}
+	log.Printf("[INFO] Total existing %s object layers: %d\n", itemType, len(existing))
+
+	return nil
 }
 
 // Helpers

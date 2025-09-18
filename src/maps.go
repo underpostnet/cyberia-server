@@ -117,11 +117,13 @@ func (ms *MapState) generateFloors(Rows, Cols int) {
 			posY := float64(r) * tileHeight
 
 			floor := &FloorState{
-				ID:           uuid.New().String(),
-				Pos:          Point{X: posX, Y: posY},
-				Dims:         Dimensions{Width: tileWidth, Height: tileHeight},
-				Type:         "floor",
-				ObjectLayers: []ObjectLayerState{},
+				ID:   uuid.New().String(),
+				Pos:  Point{X: posX, Y: posY},
+				Dims: Dimensions{Width: tileWidth, Height: tileHeight},
+				Type: "floor",
+				ObjectLayers: []ObjectLayerState{
+					{ItemID: "grass", Active: true},
+				},
 			}
 			ms.floors[floor.ID] = floor
 		}
