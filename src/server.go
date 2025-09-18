@@ -254,6 +254,8 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 				"direction":    int(otherPlayer.Direction),
 				"mode":         int(otherPlayer.Mode),
 				"objectLayers": otherPlayer.ObjectLayers,
+				"life":         otherPlayer.Life,
+				"maxLife":      otherPlayer.MaxLife,
 			}
 		}
 	}
