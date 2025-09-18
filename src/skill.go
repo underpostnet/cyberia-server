@@ -50,6 +50,7 @@ func (s *GameServer) executePlayerDoppelgangerSkill(player *PlayerState, mapStat
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	maxLife := float64(rand.Intn(151) + 50) // Random between 50 and 200
 	botLifetime := 10 * time.Second
 
 	doppelgangerBot := &BotState{
@@ -62,6 +63,8 @@ func (s *GameServer) executePlayerDoppelgangerSkill(player *PlayerState, mapStat
 		SpawnRadius:  5.0,
 		ObjectLayers: []ObjectLayerState{{ItemID: itemID, Active: true}},
 		ExpiresAt:    time.Now().Add(botLifetime),
+		MaxLife:      maxLife,
+		Life:         maxLife * 0.5, // Set life to 50% of max life
 	}
 
 	mapState.bots[doppelgangerBot.ID] = doppelgangerBot
@@ -100,6 +103,7 @@ func (s *GameServer) executeBotDoppelgangerSkill(bot *BotState, mapState *MapSta
 		return // Skill did not activate on this action
 	}
 
+	maxLife := float64(rand.Intn(151) + 50) // Random between 50 and 200
 	botLifetime := 10 * time.Second
 
 	doppelgangerBot := &BotState{
@@ -112,6 +116,8 @@ func (s *GameServer) executeBotDoppelgangerSkill(bot *BotState, mapState *MapSta
 		SpawnRadius:  5.0,
 		ObjectLayers: []ObjectLayerState{{ItemID: itemID, Active: true}},
 		ExpiresAt:    time.Now().Add(botLifetime),
+		MaxLife:      maxLife,
+		Life:         maxLife * 0.5, // Set life to 50% of max life
 	}
 
 	mapState.bots[doppelgangerBot.ID] = doppelgangerBot

@@ -305,6 +305,8 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 				"behavior":     bot.Behavior,
 				"direction":    int(bot.Direction),
 				"mode":         int(bot.Mode),
+				"life":         bot.Life,
+				"maxLife":      bot.MaxLife,
 				"objectLayers": bot.ObjectLayers,
 			}
 		}
@@ -321,6 +323,8 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		"mode":           int(player.Mode),
 		"onPortal":       player.OnPortal,
 		"activePortalID": player.ActivePortalID,
+		"life":           player.Life,
+		"maxLife":        player.MaxLife,
 		"sumStatsLimit":  player.SumStatsLimit,
 		"objectLayers":   player.ObjectLayers,
 	}

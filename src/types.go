@@ -78,6 +78,8 @@ type PlayerState struct {
 	ActivePortalID string             `json:"activePortalID"`
 	SumStatsLimit  int                `json:"sumStatsLimit"`
 	ObjectLayers   []ObjectLayerState `json:"objectLayers"`
+	MaxLife        float64            `json:"maxLife"`
+	Life           float64            `json:"life"`
 }
 
 type FloorState struct {
@@ -105,6 +107,8 @@ type BotState struct {
 	lastPursuitTargetPos PointI             `json:"-"` // cached player's last cell to know when to re-path
 	ObjectLayers         []ObjectLayerState `json:"objectLayers"`
 	ExpiresAt            time.Time          `json:"-"` // bots with a lifetime will be removed after this time
+	MaxLife              float64            `json:"maxLife"`
+	Life                 float64            `json:"life"`
 }
 
 type PortalConfig struct {

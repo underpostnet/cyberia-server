@@ -39,7 +39,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		return
 	}
-
+	maxLife := float64(rand.Intn(151) + 50) // Random between 50 and 200
 	playerState := &PlayerState{
 		ID:            playerID,
 		MapID:         startMapID,
@@ -51,6 +51,8 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		Mode:          IDLE,
 		SumStatsLimit: 65,
 		ObjectLayers:  []ObjectLayerState{{ItemID: "anon", Active: true}, {ItemID: "punk", Active: false}},
+		MaxLife:       maxLife,
+		Life:          maxLife * 0.5, // Set life to 50% of max life
 	}
 	client := &Client{
 		conn:        conn,
