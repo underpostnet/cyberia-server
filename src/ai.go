@@ -29,6 +29,11 @@ func (s *GameServer) randomPointWithinRadius(ms *MapState, center Point, radius 
 // update bots per map
 func (s *GameServer) updateBots(mapState *MapState) {
 	for botID, bot := range mapState.bots {
+		// If bot is dead, skip all AI logic.
+		if !bot.RespawnTime.IsZero() {
+			continue
+		}
+
 		// Check for expiration
 		if !bot.ExpiresAt.IsZero() && time.Now().After(bot.ExpiresAt) {
 			delete(mapState.bots, botID)
@@ -66,6 +71,11 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			nearestDist := math.MaxFloat64
 			var nearestPlayer *PlayerState
 			for _, p := range mapState.players {
+				// Don't target dead/ghost players
+				if p.Life <= 0 || p.IsGhost() {
+					continue
+				}
+
 				dx := p.Pos.X - bot.Pos.X
 				dy := p.Pos.Y - bot.Pos.Y
 				dist := math.Sqrt(dx*dx + dy*dy)

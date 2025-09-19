@@ -106,17 +106,6 @@ func (ol *ObjectLayer) UpdateHash() error {
 	return nil
 }
 
-// NewDefaultSkinObjectLayer builds a minimal skin layer with given item ID.
-func NewDefaultSkinObjectLayer(id string) ObjectLayer {
-	layer := BuildRandomObjectLayer()
-	layer.Data.Item.ID = id
-	layer.Data.Item.Type = "skin"
-	layer.Data.Item.Description = ""
-	layer.Data.Item.Activable = false
-	_ = layer.UpdateHash()
-	return layer
-}
-
 // randomInt returns a random int in [min, max].
 func randomInt(min, max int) int {
 	if max < min {

@@ -50,7 +50,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		Direction:     NONE,
 		Mode:          IDLE,
 		SumStatsLimit: 100,
-		ObjectLayers:  []ObjectLayerState{{ItemID: "anon", Active: true}, {ItemID: "atlas_pistol_mk2", Active: true}, {ItemID: "punk", Active: false}},
+		ObjectLayers:  []ObjectLayerState{{ItemID: "anon", Active: true}, {ItemID: "atlas_pistol_mk2", Active: true}, {ItemID: "punk", Active: false}, {ItemID: "ghost", Active: false}},
 		MaxLife:       maxLife,
 		Life:          maxLife * 0.5, // Set life to 50% of max life
 	}
@@ -134,6 +134,13 @@ func (c *Client) readPump(server *GameServer) {
 				server.mu.Unlock()
 				continue
 			}
+
+			// Dead players can't perform actions.
+			if player.IsGhost() {
+				server.mu.Unlock()
+				continue
+			}
+
 			mapState, ok := server.maps[player.MapID]
 			if !ok {
 				log.Println("Player map not found")

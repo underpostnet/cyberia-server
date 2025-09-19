@@ -53,9 +53,19 @@ func NewGameServer() *GameServer {
 			"UI_TEXT":          {R: 255, G: 255, B: 255, A: 255},
 			"MAP_BOUNDARY":     {R: 255, G: 255, B: 255, A: 255},
 		},
+		objectLayerDataCache: make(map[string]*ObjectLayer),
 	}
 	gs.createMaps()
 	return gs
+}
+
+// SetObjectLayerCache sets the cache for object layer data.
+// This is called from main after the server is created and data is loaded.
+func (s *GameServer) SetObjectLayerCache(cache map[string]*ObjectLayer) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.objectLayerDataCache = cache
+	log.Printf("Object layer cache set with %d items.", len(s.objectLayerDataCache))
 }
 
 func (s *GameServer) Run() {
@@ -96,11 +106,18 @@ func (s *GameServer) gameLoop() {
 	for range ticker.C {
 		s.mu.Lock()
 		for _, mapState := range s.maps {
+			// Phase 1: Handle state changes (respawn, death from collisions)
+			s.handleRespawns(mapState)
+			s.handleBulletCollisions(mapState)
+
+			// Phase 2: Update positions based on current state
 			for _, player := range mapState.players {
 				s.updatePlayerPosition(player, mapState)
 				s.checkPortal(player, mapState)
 			}
 			s.updateBots(mapState)
+
+			// Phase 3: Broadcast new state to clients
 			s.updateAOIs(mapState)
 		}
 		s.mu.Unlock()
@@ -109,6 +126,11 @@ func (s *GameServer) gameLoop() {
 
 // ---------- Player movement and direction ----------
 func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapState) {
+	// Dead players can't move.
+	if player.IsGhost() {
+		return
+	}
+
 	if player.Mode == WALKING && len(player.Path) > 0 {
 		targetNode := player.Path[0]
 		dx := float64(targetNode.X) - player.Pos.X
