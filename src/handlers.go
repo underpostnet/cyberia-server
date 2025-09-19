@@ -238,6 +238,76 @@ func (c *Client) readPump(server *GameServer) {
 				server.mu.Unlock()
 				continue
 			}
+
+			// --- LAYER RESTRICTION LOGIC for Players ---
+			// If trying to activate an item, check against the rules.
+			if active {
+				activeLayerCount := 0
+				activeLayerTypes := make(map[string]bool)
+				var requestedItemType string
+
+				for _, layer := range player.ObjectLayers {
+					if layer.Active {
+						var itemType string
+						if itemData, ok := server.objectLayerDataCache[layer.ItemID]; ok {
+							itemType = itemData.Data.Item.Type
+						} else {
+							itemType = "generic"
+						}
+						activeLayerTypes[itemType] = true
+						activeLayerCount++
+					}
+				}
+				if itemData, ok := server.objectLayerDataCache[itemId]; ok {
+					requestedItemType = itemData.Data.Item.Type
+				} else {
+					requestedItemType = "generic"
+				}
+
+				if activeLayerCount >= 4 {
+					log.Printf("Player %s tried to activate item '%s', but already has max (4) active items. Denied.", c.playerID, itemId)
+					server.mu.Unlock()
+					continue
+				}
+				if _, exists := activeLayerTypes[requestedItemType]; exists {
+					log.Printf("Player %s tried to activate item '%s' of type '%s', but this type is already active. Denied.", c.playerID, itemId, requestedItemType)
+					server.mu.Unlock()
+					continue
+				}
+			}
+			// If trying to deactivate, check if it's the last active skin.
+			if !active {
+				// We only care about deactivating skins.
+				var isTargetSkin bool
+				if itemData, ok := server.objectLayerDataCache[itemId]; ok {
+					isTargetSkin = itemData.Data.Item.Type == "skin"
+				}
+
+				if isTargetSkin {
+					activeSkinCount := 0
+					for _, layer := range player.ObjectLayers {
+						if !layer.Active {
+							continue
+						}
+
+						var isLayerSkin bool
+						if itemData, ok := server.objectLayerDataCache[layer.ItemID]; ok {
+							isLayerSkin = itemData.Data.Item.Type == "skin"
+						}
+						if isLayerSkin {
+							activeSkinCount++
+						}
+					}
+
+					// If this is the last active skin, prevent deactivation.
+					if activeSkinCount <= 1 {
+						log.Printf("Player %s tried to deactivate the last active skin '%s'. Denied.", c.playerID, itemId)
+						server.mu.Unlock()
+						continue // Skip the deactivation
+					}
+				}
+			}
+
 			for i := range player.ObjectLayers {
 				if player.ObjectLayers[i].ItemID == itemId {
 					player.ObjectLayers[i].Active = active

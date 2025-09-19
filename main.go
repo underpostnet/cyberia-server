@@ -22,7 +22,7 @@ func loadObjectLayers(db *api.DB) (map[string]*game.ObjectLayer, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cursor, err := col.Find(ctx, bson.M{"data.item.type": "skill"})
+	cursor, err := col.Find(ctx, bson.M{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query object layers from MongoDB: %w", err)
 	}

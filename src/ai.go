@@ -1,6 +1,7 @@
 package game
 
 import (
+	"log"
 	"math"
 	"math/rand"
 	"time"
@@ -172,6 +173,72 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		}
 		// Move bot along its path
 		s.updateBotPosition(bot, mapState)
+
+		// --- LAYER RESTRICTION & VALIDATION LOGIC ---
+		activeLayerCount := 0
+		activeLayerTypes := make(map[string]bool)
+		hasAnySkin := false
+		firstSkinIndex := -1
+		activeSkinCount := 0
+
+		// First pass: enforce max layers and unique types by deactivating violators.
+		for i := range bot.ObjectLayers {
+			layer := &bot.ObjectLayers[i] // Work with a pointer to modify
+			if !layer.Active {
+				continue
+			}
+
+			var itemType string
+			if itemData, ok := s.objectLayerDataCache[layer.ItemID]; ok {
+				itemType = itemData.Data.Item.Type
+			} else {
+				itemType = "generic"
+			}
+
+			// Rule: unique types for active layers.
+			if _, exists := activeLayerTypes[itemType]; exists {
+				log.Printf("Bot %s has a duplicate active item type '%s' with item '%s'. Deactivating.", bot.ID, itemType, layer.ItemID)
+				layer.Active = false
+				continue
+			}
+
+			// Rule: max 4 active layers.
+			if activeLayerCount >= 4 {
+				log.Printf("Bot %s has more than 4 active layers. Deactivating item '%s'.", bot.ID, layer.ItemID)
+				layer.Active = false
+				continue
+			}
+
+			activeLayerCount++
+			activeLayerTypes[itemType] = true
+		}
+
+		// Second pass: ensure bot has at least one active skin. This is a safeguard.
+		for i, layer := range bot.ObjectLayers {
+			var isSkin bool
+			if itemData, ok := s.objectLayerDataCache[layer.ItemID]; ok {
+				isSkin = itemData.Data.Item.Type == "skin"
+			}
+
+			if !isSkin {
+				continue
+			}
+
+			hasAnySkin = true
+			if firstSkinIndex == -1 {
+				firstSkinIndex = i
+			}
+
+			if layer.Active {
+				activeSkinCount++
+			}
+		}
+
+		if hasAnySkin && activeSkinCount == 0 && firstSkinIndex != -1 {
+			// No active skins, but at least one skin exists. Activate the first one found.
+			bot.ObjectLayers[firstSkinIndex].Active = true
+			log.Printf("Bot %s had no active skins. Force-activated skin '%s'.", bot.ID, bot.ObjectLayers[firstSkinIndex].ItemID)
+		}
 	}
 }
 
