@@ -113,6 +113,7 @@ type BotState struct {
 	Life                   float64            `json:"life"`
 	RespawnTime            time.Time          `json:"-"`
 	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
+	CasterID               string             `json:"-"` // ID of the player or bot that created this bot
 }
 
 type PortalConfig struct {

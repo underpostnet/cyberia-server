@@ -26,6 +26,7 @@ func checkAABBCollision(pos1 Point, dims1 Dimensions, pos2 Point, dims2 Dimensio
 // and handles death, removing the bullet upon impact.
 func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 	bulletsToDelete := []string{}
+	const collisionLifeLoss = 25.0 // Life lost by the bullet per tick of collision.
 
 	for bulletID, bullet := range mapState.bots {
 		if bullet.Behavior != "bullet" {
@@ -45,9 +46,15 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 			continue // No damage to deal.
 		}
 
+		var isColliding bool
+
 		// Check collision with players
 		for _, player := range mapState.players {
-			if !player.RespawnTime.IsZero() { // Don't hit dead/ghost players
+			if player.IsGhost() { // Don't hit dead/ghost players
+				continue
+			}
+			// Bullets should not damage their caster.
+			if player.ID == bullet.CasterID {
 				continue
 			}
 			if checkAABBCollision(bullet.Pos, bullet.Dims, player.Pos, player.Dims) {
@@ -56,15 +63,18 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 					player.Life = 0
 					s.handlePlayerDeath(player)
 				}
-				bulletsToDelete = append(bulletsToDelete, bulletID)
-				goto nextBullet // Bullet is consumed, move to the next one.
+				isColliding = true
 			}
 		}
 
 		// Check collision with other bots
 		for otherBotID, otherBot := range mapState.bots {
-			if bulletID == otherBotID || otherBot.Behavior == "bullet" || !otherBot.RespawnTime.IsZero() {
+			if bulletID == otherBotID || otherBot.Behavior == "bullet" || otherBot.IsGhost() {
 				continue // Don't collide with self, other bullets, or dead bots.
+			}
+			// Bullets should not damage their caster.
+			if otherBotID == bullet.CasterID {
+				continue
 			}
 			if checkAABBCollision(bullet.Pos, bullet.Dims, otherBot.Pos, otherBot.Dims) {
 				otherBot.Life -= bulletDamage
@@ -72,12 +82,18 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 					otherBot.Life = 0
 					s.handleBotDeath(otherBot)
 				}
-				bulletsToDelete = append(bulletsToDelete, bulletID)
-				goto nextBullet // Bullet is consumed, move to the next one.
+				isColliding = true
 			}
 		}
 
-	nextBullet:
+		// If the bullet is colliding, it loses life.
+		if isColliding {
+			bullet.Life -= collisionLifeLoss
+			if bullet.Life <= 0 {
+				// Bullet is "dead" from collision damage, mark for deletion.
+				bulletsToDelete = append(bulletsToDelete, bulletID)
+			}
+		}
 	}
 
 	for _, id := range bulletsToDelete {

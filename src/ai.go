@@ -30,7 +30,7 @@ func (s *GameServer) randomPointWithinRadius(ms *MapState, center Point, radius 
 func (s *GameServer) updateBots(mapState *MapState) {
 	for botID, bot := range mapState.bots {
 		// If bot is dead, skip all AI logic.
-		if !bot.RespawnTime.IsZero() {
+		if bot.IsGhost() {
 			continue
 		}
 
