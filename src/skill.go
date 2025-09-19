@@ -11,8 +11,8 @@ import (
 // SkillConfig maps an ItemID to a list of SkillIDs that can be triggered.
 // This provides a declarative way to associate items with behaviors.
 var SkillConfig = map[string][]string{
-	"anon":   {"doppelganger"},
-	"purple": {"doppelganger"},
+	"anon": {"doppelganger"},
+	// "purple": {"doppelganger"},
 }
 
 // HandlePlayerActionSkills checks if a player's action triggers any skills

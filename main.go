@@ -27,14 +27,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("mongo connect error: %v", err)
 	}
-	// Check skins
-	if err := api.CheckObjectLayersByType(context.Background(), db, "skin"); err != nil {
-		log.Printf("skin object layers check error: %v", err)
+	itemTypes := []string{"skin", "floor", "weapon", "skill"}
+	// Check object layers id by type
+	for _, itemType := range itemTypes {
+		if err := api.CheckObjectLayersByType(context.Background(), db, itemType); err != nil {
+			log.Printf("%s object layers check error: %v", itemType, err)
+		}
 	}
-	// Check floors
-	if err := api.CheckObjectLayersByType(context.Background(), db, "floor"); err != nil {
-		log.Printf("floor object layers check error: %v", err)
-	}
+
 	// Set default admin
 	if err := api.SeedDefaultAdmin(context.Background(), cfg, db); err != nil {
 		log.Printf("admin seed error: %v", err)
