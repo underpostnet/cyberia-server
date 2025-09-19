@@ -96,13 +96,14 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 	spawnY := player.Pos.Y + dirY*spawnOffset
 
 	bulletBot := &BotState{
-		ID:        uuid.New().String(),
-		MapID:     player.MapID,
-		Pos:       Point{X: spawnX, Y: spawnY},
-		Dims:      bulletDims,
-		Behavior:  "bullet",         // New behavior type for straight-line movement
-		Direction: player.Direction, // Inherit player's direction
-		ExpiresAt: time.Now().Add(bulletLifetime),
+		ID:           uuid.New().String(),
+		MapID:        player.MapID,
+		Pos:          Point{X: spawnX, Y: spawnY},
+		Dims:         bulletDims,
+		Behavior:     "bullet",         // New behavior type for straight-line movement
+		Direction:    player.Direction, // Inherit player's direction
+		ExpiresAt:    time.Now().Add(bulletLifetime),
+		ObjectLayers: []ObjectLayerState{{ItemID: "atlas_pistol_mk2_bullet", Active: true}},
 	}
 
 	mapState.bots[bulletBot.ID] = bulletBot
@@ -183,13 +184,14 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, it
 	spawnY := bot.Pos.Y + dirY*spawnOffset
 
 	bulletBot := &BotState{
-		ID:        uuid.New().String(),
-		MapID:     bot.MapID,
-		Pos:       Point{X: spawnX, Y: spawnY},
-		Dims:      bulletDims,
-		Behavior:  "bullet",      // New behavior type for straight-line movement
-		Direction: bot.Direction, // Inherit bot's direction
-		ExpiresAt: time.Now().Add(bulletLifetime),
+		ID:           uuid.New().String(),
+		MapID:        bot.MapID,
+		Pos:          Point{X: spawnX, Y: spawnY},
+		Dims:         bulletDims,
+		Behavior:     "bullet",      // New behavior type for straight-line movement
+		Direction:    bot.Direction, // Inherit bot's direction
+		ExpiresAt:    time.Now().Add(bulletLifetime),
+		ObjectLayers: []ObjectLayerState{{ItemID: "atlas_pistol_mk2_bullet", Active: true}},
 	}
 
 	mapState.bots[bulletBot.ID] = bulletBot
