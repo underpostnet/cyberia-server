@@ -49,8 +49,8 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		TargetPos:     PointI{-1, -1},
 		Direction:     NONE,
 		Mode:          IDLE,
-		SumStatsLimit: 65,
-		ObjectLayers:  []ObjectLayerState{{ItemID: "anon", Active: true}, {ItemID: "punk", Active: false}},
+		SumStatsLimit: 100,
+		ObjectLayers:  []ObjectLayerState{{ItemID: "anon", Active: true}, {ItemID: "atlas_pistol_mk2", Active: true}, {ItemID: "punk", Active: false}},
 		MaxLife:       maxLife,
 		Life:          maxLife * 0.5, // Set life to 50% of max life
 	}

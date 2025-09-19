@@ -35,6 +35,30 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			continue
 		}
 
+		// --- NEW BULLET BEHAVIOR ---
+		// Bullet bots move in a straight line and are removed if they go out of bounds.
+		if bot.Behavior == "bullet" {
+			// Bullets move faster than players
+			bulletSpeed := s.playerSpeed * 2.0
+			// Calculate movement vector from bot's direction
+			dirX, dirY := getDirectionVector(bot.Direction)
+
+			// Update position
+			bot.Pos.X += dirX * bulletSpeed
+			bot.Pos.Y += dirY * bulletSpeed
+
+			// Remove bullet if it goes out of map bounds
+			if bot.Pos.X < 0 || bot.Pos.X > float64(mapState.gridW) ||
+				bot.Pos.Y < 0 || bot.Pos.Y > float64(mapState.gridH) {
+				delete(mapState.bots, botID)
+				continue // Skip further processing for this bot
+			}
+			// For bullets, we don't need to call updateBotPosition or other AI logic
+			// as their movement is simple and direct.
+			continue
+		}
+		// --- END NEW BULLET BEHAVIOR ---
+
 		// Hostile logic: check for nearest player in aggro range
 		if bot.Behavior == "hostile" {
 			nearestID := ""
@@ -162,4 +186,31 @@ func (s *GameServer) updateBotDirection(bot *BotState, dirX, dirY float64) {
 	}
 	directionIndex := (int(math.Round(angle/(math.Pi/4))) + 2) % 8
 	bot.Direction = Direction(directionIndex)
+}
+
+// getDirectionVector converts a Direction enum to a normalized (dx, dy) vector.
+// This helper is used for calculating bullet trajectories.
+func getDirectionVector(dir Direction) (float64, float64) {
+	// Normalize diagonal vectors to maintain consistent speed
+	const diag = 0.70710678118 // 1 / sqrt(2)
+	switch dir {
+	case UP:
+		return 0, -1
+	case UP_RIGHT:
+		return diag, -diag
+	case RIGHT:
+		return 1, 0
+	case DOWN_RIGHT:
+		return diag, diag
+	case DOWN:
+		return 0, 1
+	case DOWN_LEFT:
+		return -diag, diag
+	case LEFT:
+		return -1, 0
+	case UP_LEFT:
+		return -diag, -diag
+	default: // NONE or any other unexpected direction
+		return 0, 0
+	}
 }
