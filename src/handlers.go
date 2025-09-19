@@ -232,90 +232,96 @@ func (c *Client) readPump(server *GameServer) {
 			}
 
 			server.mu.Lock()
-			player, ok := server.maps[c.playerState.MapID].players[c.playerID]
-			if !ok {
-				log.Printf("Player %s not found in map %d for item activation", c.playerID, c.playerState.MapID)
-				server.mu.Unlock()
-				continue
-			}
+			func() { // Use a closure to manage the lock with defer
+				defer server.mu.Unlock()
 
-			// --- LAYER RESTRICTION LOGIC for Players ---
-			// If trying to activate an item, check against the rules.
-			if active {
-				activeLayerCount := 0
-				activeLayerTypes := make(map[string]bool)
-				var requestedItemType string
+				player, ok := server.maps[c.playerState.MapID].players[c.playerID]
+				if !ok {
+					log.Printf("Player %s not found in map %d for item activation", c.playerID, c.playerState.MapID)
+					return
+				}
 
-				for _, layer := range player.ObjectLayers {
-					if layer.Active {
-						var itemType string
-						if itemData, ok := server.objectLayerDataCache[layer.ItemID]; ok {
-							itemType = itemData.Data.Item.Type
-						} else {
-							itemType = "generic"
-						}
-						activeLayerTypes[itemType] = true
-						activeLayerCount++
+				var targetItemIndex = -1
+				for i := range player.ObjectLayers {
+					if player.ObjectLayers[i].ItemID == itemId {
+						targetItemIndex = i
+						break
 					}
 				}
-				if itemData, ok := server.objectLayerDataCache[itemId]; ok {
-					requestedItemType = itemData.Data.Item.Type
-				} else {
-					requestedItemType = "generic"
+
+				if targetItemIndex == -1 {
+					log.Printf("Player %s tried to activate non-existent item '%s'.", c.playerID, itemId)
+					return
 				}
 
-				if activeLayerCount >= 4 {
-					log.Printf("Player %s tried to activate item '%s', but already has max (4) active items. Denied.", c.playerID, itemId)
-					server.mu.Unlock()
-					continue
-				}
-				if _, exists := activeLayerTypes[requestedItemType]; exists {
-					log.Printf("Player %s tried to activate item '%s' of type '%s', but this type is already active. Denied.", c.playerID, itemId, requestedItemType)
-					server.mu.Unlock()
-					continue
-				}
-			}
-			// If trying to deactivate, check if it's the last active skin.
-			if !active {
-				// We only care about deactivating skins.
-				var isTargetSkin bool
-				if itemData, ok := server.objectLayerDataCache[itemId]; ok {
-					isTargetSkin = itemData.Data.Item.Type == "skin"
-				}
+				// --- Step 1: Tentatively apply the requested change ---
+				originalState := player.ObjectLayers[targetItemIndex].Active
+				player.ObjectLayers[targetItemIndex].Active = active
+				log.Printf("Player %s requested to set item '%s' active state to %v. Applying and validating...", c.playerID, itemId, active)
 
-				if isTargetSkin {
-					activeSkinCount := 0
-					for _, layer := range player.ObjectLayers {
-						if !layer.Active {
-							continue
+				// --- Step 2: If activating a unique-type item, deactivate others of the same type (handles swapping) ---
+				if active {
+					var requestedItemType string
+					if itemData, ok := server.objectLayerDataCache[itemId]; ok {
+						requestedItemType = itemData.Data.Item.Type
+					}
+
+					if requestedItemType == "skin" {
+						for i := range player.ObjectLayers {
+							if i == targetItemIndex {
+								continue // Don't touch the item we just activated.
+							}
+							var currentItemType string
+							if itemData, ok := server.objectLayerDataCache[player.ObjectLayers[i].ItemID]; ok {
+								currentItemType = itemData.Data.Item.Type
+							}
+							if currentItemType == requestedItemType && player.ObjectLayers[i].Active {
+								player.ObjectLayers[i].Active = false
+								log.Printf("Swapping active items: Deactivated '%s' for player %s.", player.ObjectLayers[i].ItemID, c.playerID)
+							}
 						}
+					}
+				}
 
-						var isLayerSkin bool
-						if itemData, ok := server.objectLayerDataCache[layer.ItemID]; ok {
-							isLayerSkin = itemData.Data.Item.Type == "skin"
+				// --- Step 3: Run validation and correction logic ---
+				activeLayerCount := 0
+				activeSkinCount := 0
+				hasAnySkin := false
+				firstSkinIndex := -1
+
+				// First pass to count active layers/skins and find the first available skin
+				for i, layer := range player.ObjectLayers {
+					var isSkin bool
+					if itemData, ok := server.objectLayerDataCache[layer.ItemID]; ok && itemData.Data.Item.Type == "skin" {
+						isSkin = true
+					}
+
+					if isSkin {
+						hasAnySkin = true
+						if firstSkinIndex == -1 {
+							firstSkinIndex = i
 						}
-						if isLayerSkin {
+						if layer.Active {
 							activeSkinCount++
 						}
 					}
-
-					// If this is the last active skin, prevent deactivation.
-					if activeSkinCount <= 1 {
-						log.Printf("Player %s tried to deactivate the last active skin '%s'. Denied.", c.playerID, itemId)
-						server.mu.Unlock()
-						continue // Skip the deactivation
+					if layer.Active {
+						activeLayerCount++
 					}
 				}
-			}
 
-			for i := range player.ObjectLayers {
-				if player.ObjectLayers[i].ItemID == itemId {
-					player.ObjectLayers[i].Active = active
-					log.Printf("Player %s updated item '%s' active state to %v", c.playerID, itemId, active)
-					break
+				// Correction 1: Player must have at least one active skin if they own one.
+				if hasAnySkin && activeSkinCount == 0 && firstSkinIndex != -1 {
+					player.ObjectLayers[firstSkinIndex].Active = true
+					log.Printf("Player %s tried to deactivate the last skin. Force-activating skin '%s' to maintain a valid state.", c.playerID, player.ObjectLayers[firstSkinIndex].ItemID)
 				}
-			}
-			server.mu.Unlock()
+
+				// Correction 2: Player cannot have more than 4 active items. Revert the activation if this rule is broken.
+				if activeLayerCount > 4 {
+					log.Printf("Player %s has more than 4 active items after request. Reverting activation of '%s'.", c.playerID, itemId)
+					player.ObjectLayers[targetItemIndex].Active = originalState // Revert the specific change
+				}
+			}()
 		}
 	}
 }
