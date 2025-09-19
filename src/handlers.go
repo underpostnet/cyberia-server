@@ -143,7 +143,7 @@ func (c *Client) readPump(server *GameServer) {
 			server.mu.Unlock()
 
 			// Handle skills that trigger on player action
-			server.HandlePlayerActionSkills(player, mapState)
+			server.HandlePlayerActionSkills(player, mapState, Point{X: targetX, Y: targetY})
 
 			startPosI := PointI{X: int(math.Round(player.Pos.X)), Y: int(math.Round(player.Pos.Y))}
 			targetPosI := PointI{X: int(math.Round(targetX)), Y: int(math.Round(targetY))}

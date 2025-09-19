@@ -192,6 +192,10 @@ func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
 			ObjectLayers: []ObjectLayerState{{ItemID: "purple", Active: true}},
 		}
 
+		if behavior == "hostile" {
+			bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: "atlas_pistol_mk2", Active: true})
+		}
+
 		// initial wandering path: random point within spawn radius
 		target := s.randomPointWithinRadius(ms, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
 		if target.X >= 0 {

@@ -38,14 +38,15 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		// --- NEW BULLET BEHAVIOR ---
 		// Bullet bots move in a straight line and are removed if they go out of bounds.
 		if bot.Behavior == "bullet" {
-			// Bullets move faster than players
-			bulletSpeed := s.playerSpeed * 2.0
+			// Bullets move at twice player speed. playerSpeed is in units per second.
+			// The game loop runs at 10 FPS (100ms per tick), so we divide by 10 to get movement per tick.
+			bulletStep := (s.playerSpeed * 2.0) / 10.0
 			// Calculate movement vector from bot's direction
 			dirX, dirY := getDirectionVector(bot.Direction)
 
 			// Update position
-			bot.Pos.X += dirX * bulletSpeed
-			bot.Pos.Y += dirY * bulletSpeed
+			bot.Pos.X += dirX * bulletStep
+			bot.Pos.Y += dirY * bulletStep
 
 			// Remove bullet if it goes out of map bounds
 			if bot.Pos.X < 0 || bot.Pos.X > float64(mapState.gridW) ||
@@ -75,6 +76,21 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				}
 			}
 			if nearestPlayer != nil && nearestDist <= bot.AggroRange {
+				// Always face the player when in aggro range.
+				// This makes the bot appear to be "aiming", especially when idle.
+				// If the bot is walking, this direction will be updated by updateBotPosition
+				// to follow the path, which is the desired behavior.
+				dirX := nearestPlayer.Pos.X - bot.Pos.X
+				dirY := nearestPlayer.Pos.Y - bot.Pos.Y
+				if dirX != 0 || dirY != 0 {
+					s.updateBotDirection(bot, dirX, dirY)
+				}
+
+				// Hostile bots that are idle (not moving) have a chance to use a skill.
+				if bot.Mode == IDLE && bot.ExpiresAt.IsZero() {
+					s.handleBotSkills(bot, mapState, nearestPlayer.Pos)
+				}
+
 				// Pursue the player: recompute path if newly acquired or player moved cell
 				playerCell := PointI{X: int(math.Round(nearestPlayer.Pos.X)), Y: int(math.Round(nearestPlayer.Pos.Y))}
 				needRepath := bot.CurrentTargetPlayer != nearestID || bot.lastPursuitTargetPos != playerCell
@@ -88,6 +104,11 @@ func (s *GameServer) updateBots(mapState *MapState) {
 							bot.Mode = WALKING
 							bot.CurrentTargetPlayer = nearestID
 							bot.lastPursuitTargetPos = playerCell
+
+							// Skill activation for permanent bots acquiring a player target
+							if bot.ExpiresAt.IsZero() {
+								s.handleBotSkills(bot, mapState, nearestPlayer.Pos)
+							}
 						}
 					}
 				}
@@ -101,17 +122,17 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				// IMPORTANT CHANGE: When not pursuing, hostile bots behave like passive bots:
 				// - if they have no current walking path, generate a new random wander target within spawn radius.
 				if bot.Mode != WALKING || len(bot.Path) == 0 {
-					// Skill activation for permanent bots taking a wander "action"
-					if bot.ExpiresAt.IsZero() {
-						s.handleBotSkills(bot, mapState)
-					}
-
 					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
 					if target.X >= 0 {
 						if pth, err := mapState.pathfinder.Astar(PointI{X: int(math.Round(bot.Pos.X)), Y: int(math.Round(bot.Pos.Y))}, target, bot.Dims); err == nil && len(pth) > 0 {
 							bot.Path = pth
 							bot.TargetPos = target
 							bot.Mode = WALKING
+
+							// Skill activation for permanent bots taking a wander "action"
+							if bot.ExpiresAt.IsZero() {
+								s.handleBotSkills(bot, mapState, Point{X: float64(target.X), Y: float64(target.Y)})
+							}
 						} else {
 							// if we can't path to a target, remain idle until next tick tries again
 							if len(bot.Path) == 0 {
@@ -124,17 +145,17 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		} else {
 			// Passive: if no path, create wandering path
 			if len(bot.Path) == 0 || bot.Mode != WALKING {
-				// Skill activation for permanent bots taking a wander "action"
-				if bot.ExpiresAt.IsZero() {
-					s.handleBotSkills(bot, mapState)
-				}
-
 				target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
 				if target.X >= 0 {
 					if pth, err := mapState.pathfinder.Astar(PointI{X: int(math.Round(bot.Pos.X)), Y: int(math.Round(bot.Pos.Y))}, target, bot.Dims); err == nil && len(pth) > 0 {
 						bot.Path = pth
 						bot.TargetPos = target
 						bot.Mode = WALKING
+
+						// Skill activation for permanent bots taking a wander "action"
+						if bot.ExpiresAt.IsZero() {
+							s.handleBotSkills(bot, mapState, Point{X: float64(target.X), Y: float64(target.Y)})
+						}
 					}
 				}
 			}
@@ -158,7 +179,6 @@ func (s *GameServer) updateBotPosition(bot *BotState, mapState *MapState) {
 			bot.Path = bot.Path[1:]
 			if len(bot.Path) == 0 {
 				bot.Mode = IDLE
-				bot.Direction = NONE
 			} else {
 				next := bot.Path[0]
 				dirX := float64(next.X) - bot.Pos.X
