@@ -65,7 +65,7 @@ func (s *GameServer) executePlayerDoppelgangerSkill(player *PlayerState, mapStat
 		Behavior:     "passive",
 		SpawnCenter:  player.Pos,
 		SpawnRadius:  5.0,
-		ObjectLayers: []ObjectLayerState{{ItemID: itemID, Active: true}},
+		ObjectLayers: []ObjectLayerState{{ItemID: itemID, Active: true, Quantity: 1}},
 		ExpiresAt:    time.Now().Add(botLifetime),
 		MaxLife:      maxLife,
 		Life:         maxLife * 0.5, // Set life to 50% of max life
@@ -129,7 +129,7 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 		Behavior:     "bullet",        // New behavior type for straight-line movement
 		Direction:    bulletDirection, // Use the calculated direction to the target
 		ExpiresAt:    time.Now().Add(bulletLifetime),
-		ObjectLayers: []ObjectLayerState{{ItemID: "atlas_pistol_mk2_bullet", Active: true}},
+		ObjectLayers: []ObjectLayerState{{ItemID: "atlas_pistol_mk2_bullet", Active: true, Quantity: 1}},
 		CasterID:     player.ID,
 		MaxLife:      bulletLife,
 		Life:         bulletLife,
@@ -184,7 +184,7 @@ func (s *GameServer) executeBotDoppelgangerSkill(bot *BotState, mapState *MapSta
 		Behavior:     "passive",
 		SpawnCenter:  bot.Pos,
 		SpawnRadius:  5.0,
-		ObjectLayers: []ObjectLayerState{{ItemID: itemID, Active: true}},
+		ObjectLayers: []ObjectLayerState{{ItemID: itemID, Active: true, Quantity: 1}},
 		ExpiresAt:    time.Now().Add(botLifetime),
 		MaxLife:      maxLife,
 		Life:         maxLife * 0.5, // Set life to 50% of max life
@@ -246,7 +246,7 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, it
 		Behavior:     "bullet",        // New behavior type for straight-line movement
 		Direction:    bulletDirection, // Use the calculated direction to the target
 		ExpiresAt:    time.Now().Add(bulletLifetime),
-		ObjectLayers: []ObjectLayerState{{ItemID: "atlas_pistol_mk2_bullet", Active: true}},
+		ObjectLayers: []ObjectLayerState{{ItemID: "atlas_pistol_mk2_bullet", Active: true, Quantity: 1}},
 		CasterID:     bot.ID,
 		MaxLife:      bulletLife,
 		Life:         bulletLife,

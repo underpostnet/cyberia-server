@@ -122,7 +122,7 @@ func (ms *MapState) generateFloors(Rows, Cols int) {
 				Dims: Dimensions{Width: tileWidth, Height: tileHeight},
 				Type: "floor",
 				ObjectLayers: []ObjectLayerState{
-					{ItemID: "grass", Active: true},
+					{ItemID: "grass", Active: true, Quantity: 1},
 				},
 			}
 			ms.floors[floor.ID] = floor
@@ -189,11 +189,11 @@ func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
 			AggroRange:   s.botAggroRange,
 			MaxLife:      maxLife,
 			Life:         maxLife * 0.5, // Set life to 50% of max life
-			ObjectLayers: []ObjectLayerState{{ItemID: "purple", Active: true}},
+			ObjectLayers: []ObjectLayerState{{ItemID: "purple", Active: true, Quantity: 1}},
 		}
 
 		if behavior == "hostile" {
-			bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: "atlas_pistol_mk2", Active: true})
+			bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: "atlas_pistol_mk2", Active: true, Quantity: 1})
 		}
 
 		// initial wandering path: random point within spawn radius

@@ -50,8 +50,9 @@ const (
 )
 
 type ObjectLayerState struct {
-	ItemID string `json:"itemId"`
-	Active bool   `json:"active"`
+	ItemID   string `json:"itemId"`
+	Active   bool   `json:"active"`
+	Quantity int    `json:"quantity"`
 }
 
 type ObjectState struct {

@@ -50,9 +50,14 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		Direction:     NONE,
 		Mode:          IDLE,
 		SumStatsLimit: 100,
-		ObjectLayers:  []ObjectLayerState{{ItemID: "anon", Active: true}, {ItemID: "atlas_pistol_mk2", Active: true}, {ItemID: "punk", Active: false}, {ItemID: "ghost", Active: false}},
-		MaxLife:       maxLife,
-		Life:          maxLife * 0.5, // Set life to 50% of max life
+		ObjectLayers: []ObjectLayerState{
+			{ItemID: "anon", Active: true, Quantity: 1},
+			{ItemID: "atlas_pistol_mk2", Active: true, Quantity: 1},
+			{ItemID: "punk", Active: false, Quantity: 1},
+			{ItemID: "ghost", Active: false, Quantity: 1},
+		},
+		MaxLife: maxLife,
+		Life:    maxLife * 0.5, // Set life to 50% of max life
 	}
 	client := &Client{
 		conn:        conn,

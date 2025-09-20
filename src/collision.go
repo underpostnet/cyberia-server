@@ -106,7 +106,7 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState) {
 	player.PreRespawnObjectLayers = make([]ObjectLayerState, len(player.ObjectLayers))
 	copy(player.PreRespawnObjectLayers, player.ObjectLayers)
 
-	player.ObjectLayers = []ObjectLayerState{{ItemID: ghostItemID, Active: true}}
+	player.ObjectLayers = []ObjectLayerState{{ItemID: ghostItemID, Active: true, Quantity: 1}}
 	player.RespawnTime = time.Now().Add(respawnDuration)
 	player.Mode = IDLE // Stop movement
 }
@@ -116,7 +116,7 @@ func (s *GameServer) handleBotDeath(bot *BotState) {
 	bot.PreRespawnObjectLayers = make([]ObjectLayerState, len(bot.ObjectLayers))
 	copy(bot.PreRespawnObjectLayers, bot.ObjectLayers)
 
-	bot.ObjectLayers = []ObjectLayerState{{ItemID: ghostItemID, Active: true}}
+	bot.ObjectLayers = []ObjectLayerState{{ItemID: ghostItemID, Active: true, Quantity: 1}}
 	bot.RespawnTime = time.Now().Add(respawnDuration)
 	bot.Mode = IDLE // Stop movement
 }
