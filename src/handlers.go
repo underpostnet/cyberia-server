@@ -54,7 +54,6 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			{ItemID: "anon", Active: true, Quantity: 1},
 			{ItemID: "atlas_pistol_mk2", Active: true, Quantity: 1},
 			{ItemID: "punk", Active: false, Quantity: 1},
-			{ItemID: "ghost", Active: false, Quantity: 1},
 			{ItemID: "coin", Active: false, Quantity: 10},
 		},
 		MaxLife: maxLife,
