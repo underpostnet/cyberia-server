@@ -53,7 +53,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("mongo connect error: %v", err)
 	}
-	itemTypes := []string{"skin", "floor", "weapon", "skill"}
+	itemTypes := []string{"skin", "floor", "weapon", "skill", "coin"}
 
 	// Load all object layers into a cache
 	objectLayerCache, err := loadObjectLayers(db)
