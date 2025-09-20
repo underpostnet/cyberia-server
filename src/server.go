@@ -268,7 +268,7 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		}
 		otherRect := Rectangle{MinX: otherPlayer.Pos.X, MinY: otherPlayer.Pos.Y, MaxX: otherPlayer.Pos.X + otherPlayer.Dims.Width, MaxY: otherPlayer.Pos.Y + otherPlayer.Dims.Height}
 		if rectsOverlap(player.AOI, otherRect) {
-			visiblePlayersMap[otherPlayer.ID] = map[string]interface{}{
+			playerData := map[string]interface{}{
 				"id":           otherPlayer.ID,
 				"Pos":          otherPlayer.Pos,
 				"Dims":         otherPlayer.Dims,
@@ -279,6 +279,13 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 				"life":         otherPlayer.Life,
 				"maxLife":      otherPlayer.MaxLife,
 			}
+			if otherPlayer.IsGhost() {
+				remaining := time.Until(otherPlayer.RespawnTime).Seconds()
+				if remaining > 0 {
+					playerData["respawnIn"] = math.Ceil(remaining)
+				}
+			}
+			visiblePlayersMap[otherPlayer.ID] = playerData
 		}
 	}
 	visibleGridObjectsMap := make(map[string]map[string]interface{})
@@ -321,7 +328,7 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 	for _, bot := range mapState.bots {
 		botRect := Rectangle{MinX: bot.Pos.X, MinY: bot.Pos.Y, MaxX: bot.Pos.X + bot.Dims.Width, MaxY: bot.Pos.Y + bot.Dims.Height}
 		if rectsOverlap(player.AOI, botRect) {
-			visibleGridObjectsMap[bot.ID] = map[string]interface{}{
+			botData := map[string]interface{}{
 				"id":           bot.ID,
 				"Pos":          bot.Pos,
 				"Dims":         bot.Dims,
@@ -333,6 +340,13 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 				"maxLife":      bot.MaxLife,
 				"objectLayers": bot.ObjectLayers,
 			}
+			if bot.IsGhost() {
+				remaining := time.Until(bot.RespawnTime).Seconds()
+				if remaining > 0 {
+					botData["respawnIn"] = math.Ceil(remaining)
+				}
+			}
+			visibleGridObjectsMap[bot.ID] = botData
 		}
 	}
 	playerObj := map[string]interface{}{
@@ -351,6 +365,12 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		"maxLife":        player.MaxLife,
 		"sumStatsLimit":  player.SumStatsLimit,
 		"objectLayers":   player.ObjectLayers,
+	}
+	if player.IsGhost() {
+		remaining := time.Until(player.RespawnTime).Seconds()
+		if remaining > 0 {
+			playerObj["respawnIn"] = math.Ceil(remaining)
+		}
 	}
 	payloadMap := map[string]interface{}{
 		"playerID":           player.ID,
