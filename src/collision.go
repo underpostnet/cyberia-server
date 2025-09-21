@@ -61,6 +61,7 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 				player.Life -= bulletDamage
 				if player.Life <= 0 {
 					player.Life = 0
+					s.HandleOnKillSkills(bullet, player, mapState)
 					s.handlePlayerDeath(player)
 				}
 				isColliding = true
@@ -80,6 +81,7 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 				otherBot.Life -= bulletDamage
 				if otherBot.Life <= 0 {
 					otherBot.Life = 0
+					s.HandleOnKillSkills(bullet, otherBot, mapState)
 					s.handleBotDeath(otherBot)
 				}
 				isColliding = true
