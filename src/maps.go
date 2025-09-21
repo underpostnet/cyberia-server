@@ -175,21 +175,24 @@ func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
 		}
 
 		bot := &BotState{
-			ID:           uuid.New().String(),
-			MapID:        mapID,
-			Pos:          startPos,
-			Dims:         dims,
-			Path:         []PointI{},
-			TargetPos:    PointI{-1, -1},
-			Direction:    NONE,
-			Mode:         IDLE,
-			Behavior:     behavior,
-			SpawnCenter:  startPos,
-			SpawnRadius:  spawnRadius,
-			AggroRange:   s.botAggroRange,
-			MaxLife:      maxLife,
-			Life:         maxLife * 0.5, // Set life to 50% of max life
-			ObjectLayers: []ObjectLayerState{{ItemID: "purple", Active: true, Quantity: 1}},
+			ID:          uuid.New().String(),
+			MapID:       mapID,
+			Pos:         startPos,
+			Dims:        dims,
+			Path:        []PointI{},
+			TargetPos:   PointI{-1, -1},
+			Direction:   NONE,
+			Mode:        IDLE,
+			Behavior:    behavior,
+			SpawnCenter: startPos,
+			SpawnRadius: spawnRadius,
+			AggroRange:  s.botAggroRange,
+			MaxLife:     maxLife,
+			Life:        maxLife * 0.5, // Set life to 50% of max life
+			ObjectLayers: []ObjectLayerState{
+				{ItemID: "purple", Active: true, Quantity: 1},
+				{ItemID: "coin", Active: false, Quantity: 10},
+			},
 		}
 
 		if behavior == "hostile" {

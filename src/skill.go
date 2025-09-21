@@ -257,88 +257,105 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, it
 	// log.Printf("Bot %s triggered skill 'atlas_pistol_mk2_bullet', spawning bullet bot %s", bot.ID, bulletBot.ID)
 }
 
-// HandleOnKillSkills checks for skills that trigger when an entity is killed by a bullet.
-func (s *GameServer) HandleOnKillSkills(killerBullet *BotState, victim interface{}, mapState *MapState) {
+// HandleOnKillSkills checks for skills that trigger when an entity is killed by a bullet,
+// and handles the core mechanic of coin transfer.
+func (s *GameServer) HandleOnKillSkills(killerBullet *BotState, victim interface{}, mapState *MapState) { // The killer is a bullet bot. The actual killer is the caster of the bullet.
 	// The killer is a bullet bot. The actual killer is the caster of the bullet.
 	if killerBullet.CasterID == "" {
 		return
 	}
 
-	// The caster must be a player for these skills to trigger.
-	caster, ok := mapState.players[killerBullet.CasterID]
-	if !ok {
-		return
+	var caster interface{}
+
+	// Find the caster, which can be a player or a bot.
+	if p, ok := mapState.players[killerBullet.CasterID]; ok {
+		caster = p
+	} else if b, ok := mapState.bots[killerBullet.CasterID]; ok {
+		caster = b
+	} else {
+		return // Caster not found in the map.
 	}
 
-	for _, layer := range caster.ObjectLayers {
-		if !layer.Active {
-			continue
-		}
+	// --- Core Mechanic: Coin Transfer on Kill ---
+	// This is not a skill, but a fundamental rule: the victor loots the vanquished.
+	s.executeCoinDropOnKill(caster, victim, s)
 
-		if skillIDs, ok := SkillConfig[layer.ItemID]; ok {
-			for _, skillID := range skillIDs {
-				switch skillID {
-				case "coin_drop_or_transaction":
-					s.executeCoinDropOnKill(caster, victim)
-				// other on-kill skills could be added here
-				default:
-					// This skill is not an on-kill skill, so we ignore it.
-				}
-			}
-		}
-	}
 }
 
-// executeCoinDropOnKill handles the logic for the "coin_drop_or_transaction" skill.
-// It transfers coins from a killed entity to the killer.
-func (s *GameServer) executeCoinDropOnKill(caster *PlayerState, victim interface{}) {
-	// Caster is confirmed to be a player and to have the 'coin' item (implicitly by how this is called).
-	// We still need to find the coin layer to modify it.
-	var casterCoinLayer *ObjectLayerState
-	for i := range caster.ObjectLayers {
-		if caster.ObjectLayers[i].ItemID == "coin" {
-			casterCoinLayer = &caster.ObjectLayers[i]
-			break
-		}
-	}
-	if casterCoinLayer == nil {
-		return // Should not happen if SkillConfig is correct.
-	}
-
-	// The victim must have a 'coin' item with a quantity > 0.
+// executeCoinDropOnKill handles the logic for transferring coins from a killed entity to the killer.
+// This is a core mechanic, not a conditional skill.
+func (s *GameServer) executeCoinDropOnKill(caster interface{}, victim interface{}, server *GameServer) {
+	// 1. Find the victim's coin layer and check if they have coins.
 	var victimCoinLayer *ObjectLayerState
 	var victimID string
+	var victimObjectLayers []ObjectLayerState
 
 	switch v := victim.(type) {
 	case *PlayerState:
 		victimID = v.ID
-		for i := range v.ObjectLayers {
-			if v.ObjectLayers[i].ItemID == "coin" {
-				victimCoinLayer = &v.ObjectLayers[i]
-				break
-			}
-		}
+		victimObjectLayers = v.ObjectLayers
 	case *BotState:
 		victimID = v.ID
-		for i := range v.ObjectLayers {
-			if v.ObjectLayers[i].ItemID == "coin" {
-				victimCoinLayer = &v.ObjectLayers[i]
-				break
-			}
-		}
+		victimObjectLayers = v.ObjectLayers
 	default:
 		log.Printf("executeCoinDropOnKill called with unknown victim type")
 		return
+	}
+
+	for i := range victimObjectLayers {
+		if victimObjectLayers[i].ItemID == "coin" {
+			victimCoinLayer = &victimObjectLayers[i]
+			break
+		}
 	}
 
 	if victimCoinLayer == nil || victimCoinLayer.Quantity <= 0 {
 		return // Victim has no coins to drop.
 	}
 
-	// Perform the transaction.
+	// 2. Find or create the caster's coin layer.
+	var casterCoinLayer *ObjectLayerState
+	var casterID string
+
+	casterCoinLayer, casterID = s.findOrCreateCoinLayer(caster)
+	if casterCoinLayer == nil {
+		log.Printf("executeCoinDropOnKill failed to find or create coin layer for caster")
+		return
+	}
+
+	// 3. Perform the transaction.
 	amountToTransfer := victimCoinLayer.Quantity
 	casterCoinLayer.Quantity += amountToTransfer
 	victimCoinLayer.Quantity = 0
 
-	log.Printf("Player %s triggered 'coin_drop_or_transaction', looting %d coins from %s.", caster.ID, amountToTransfer, victimID)
+	log.Printf("Caster %s triggered 'coin_drop_or_transaction', looting %d coins from %s.", casterID, amountToTransfer, victimID)
+
+}
+
+// findOrCreateCoinLayer finds the coin layer for a given entity (player or bot).
+// If the entity doesn't have a coin layer, it creates one.
+// It returns the coin layer and the entity's ID.
+func (s *GameServer) findOrCreateCoinLayer(entity interface{}) (*ObjectLayerState, string) {
+	switch e := entity.(type) {
+	case *PlayerState:
+		for i := range e.ObjectLayers {
+			if e.ObjectLayers[i].ItemID == "coin" {
+				return &e.ObjectLayers[i], e.ID
+			}
+		}
+		// If player doesn't have a coin layer, add one.
+		e.ObjectLayers = append(e.ObjectLayers, ObjectLayerState{ItemID: "coin", Active: false, Quantity: 0})
+		return &e.ObjectLayers[len(e.ObjectLayers)-1], e.ID
+	case *BotState:
+		for i := range e.ObjectLayers {
+			if e.ObjectLayers[i].ItemID == "coin" {
+				return &e.ObjectLayers[i], e.ID
+			}
+		}
+		// If bot doesn't have a coin layer, add one.
+		e.ObjectLayers = append(e.ObjectLayers, ObjectLayerState{ItemID: "coin", Active: false, Quantity: 0})
+		return &e.ObjectLayers[len(e.ObjectLayers)-1], e.ID
+	default:
+		return nil, ""
+	}
 }

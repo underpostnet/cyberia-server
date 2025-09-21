@@ -105,8 +105,11 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 
 // handlePlayerDeath sets a player to a dead/ghost state.
 func (s *GameServer) handlePlayerDeath(player *PlayerState) {
-	player.PreRespawnObjectLayers = make([]ObjectLayerState, len(player.ObjectLayers))
-	copy(player.PreRespawnObjectLayers, player.ObjectLayers)
+	// Make a definitive copy of the object layers *after* on-kill effects (like coin transfer) have been applied.
+	// This state will be restored on respawn.
+	layersToSave := make([]ObjectLayerState, len(player.ObjectLayers))
+	copy(layersToSave, player.ObjectLayers)
+	player.PreRespawnObjectLayers = layersToSave
 
 	player.ObjectLayers = []ObjectLayerState{{ItemID: ghostItemID, Active: true, Quantity: 1}}
 	player.RespawnTime = time.Now().Add(respawnDuration)
@@ -115,8 +118,10 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState) {
 
 // handleBotDeath sets a bot to a dead state.
 func (s *GameServer) handleBotDeath(bot *BotState) {
-	bot.PreRespawnObjectLayers = make([]ObjectLayerState, len(bot.ObjectLayers))
-	copy(bot.PreRespawnObjectLayers, bot.ObjectLayers)
+	// Make a definitive copy of the object layers *after* on-kill effects have been applied.
+	layersToSave := make([]ObjectLayerState, len(bot.ObjectLayers))
+	copy(layersToSave, bot.ObjectLayers)
+	bot.PreRespawnObjectLayers = layersToSave
 
 	bot.ObjectLayers = []ObjectLayerState{{ItemID: ghostItemID, Active: true, Quantity: 1}}
 	bot.RespawnTime = time.Now().Add(respawnDuration)
@@ -142,6 +147,21 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 			bot.ObjectLayers = bot.PreRespawnObjectLayers
 			bot.PreRespawnObjectLayers = nil
 			bot.RespawnTime = time.Time{}
+
+			// Reset coin quantity for respawned bots.
+			var coinLayerFound bool
+			for i := range bot.ObjectLayers {
+				if bot.ObjectLayers[i].ItemID == "coin" {
+					bot.ObjectLayers[i].Quantity = 10
+					coinLayerFound = true
+					break
+				}
+			}
+
+			if !coinLayerFound {
+				// If the bot somehow lost its coin layer, add it back on respawn.
+				bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: "coin", Active: false, Quantity: 10})
+			}
 		}
 	}
 }
