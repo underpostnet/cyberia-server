@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
+	api "cyberia-server/api"
 	game "cyberia-server/src"
-	api "cyberia-server/src/api"
 
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/bson"
