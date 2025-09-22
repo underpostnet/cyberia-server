@@ -81,7 +81,10 @@ type PlayerState struct {
 	ObjectLayers           []ObjectLayerState `json:"objectLayers"`
 	MaxLife                float64            `json:"maxLife"`
 	Life                   float64            `json:"life"`
+	LifeTimeRegenRate      float64            `json:"lifeTimeRegenRate"`
+	LifeRegen              float64            `json:"lifeRegen"`
 	RespawnTime            time.Time          `json:"-"`
+	NextRegenTime          time.Time          `json:"-"`
 	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
 }
 
@@ -112,7 +115,10 @@ type BotState struct {
 	ExpiresAt              time.Time          `json:"-"` // bots with a lifetime will be removed after this time
 	MaxLife                float64            `json:"maxLife"`
 	Life                   float64            `json:"life"`
+	LifeTimeRegenRate      float64            `json:"lifeTimeRegenRate"`
+	LifeRegen              float64            `json:"lifeRegen"`
 	RespawnTime            time.Time          `json:"-"`
+	NextRegenTime          time.Time          `json:"-"`
 	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
 	CasterID               string             `json:"-"` // ID of the player or bot that created this bot
 }

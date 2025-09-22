@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -161,7 +162,10 @@ func (ms *MapState) generatePortals(numPortals int) []*PortalState {
 func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
 	for i := 0; i < s.botsPerMap; i++ {
 		// random dims and spawn point
-		maxLife := float64(rand.Intn(151) + 50) // Random between 50 and 200
+		maxLife := float64(rand.Intn(151) + 50)   // Random between 50 and 200
+		lifeRegen := rand.Float64()*9 + 1         // 1 to 10 life points
+		lifeTimeRegenRate := rand.Float64()*3 + 2 // 2 to 5 seconds
+
 		dims := Dimensions{Width: float64(rand.Intn(4) + 1), Height: float64(rand.Intn(4) + 1)}
 		startPosI, err := ms.pathfinder.findRandomWalkablePoint(dims)
 		if err != nil {
@@ -175,20 +179,23 @@ func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
 		}
 
 		bot := &BotState{
-			ID:          uuid.New().String(),
-			MapID:       mapID,
-			Pos:         startPos,
-			Dims:        dims,
-			Path:        []PointI{},
-			TargetPos:   PointI{-1, -1},
-			Direction:   NONE,
-			Mode:        IDLE,
-			Behavior:    behavior,
-			SpawnCenter: startPos,
-			SpawnRadius: spawnRadius,
-			AggroRange:  s.botAggroRange,
-			MaxLife:     maxLife,
-			Life:        maxLife * 0.5, // Set life to 50% of max life
+			ID:                uuid.New().String(),
+			MapID:             mapID,
+			Pos:               startPos,
+			Dims:              dims,
+			Path:              []PointI{},
+			TargetPos:         PointI{-1, -1},
+			Direction:         NONE,
+			Mode:              IDLE,
+			Behavior:          behavior,
+			SpawnCenter:       startPos,
+			SpawnRadius:       spawnRadius,
+			AggroRange:        s.botAggroRange,
+			MaxLife:           maxLife,
+			Life:              maxLife * 0.5, // Set life to 50% of max life
+			LifeRegen:         lifeRegen,
+			LifeTimeRegenRate: lifeTimeRegenRate,
+			NextRegenTime:     time.Now().Add(time.Duration(lifeTimeRegenRate * float64(time.Second))),
 			ObjectLayers: []ObjectLayerState{
 				{ItemID: "purple", Active: true, Quantity: 1},
 				{ItemID: "coin", Active: false, Quantity: 10},
