@@ -40,7 +40,6 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		return
 	}
-	maxLife := s.entityBaseMaxLife
 	lifeRegen := rand.Float64()*9 + 1 // 1 to 10 life points
 
 	playerState := &PlayerState{
@@ -59,8 +58,8 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			{ItemID: "punk", Active: false, Quantity: 1},
 			{ItemID: "coin", Active: false, Quantity: 10},
 		},
-		MaxLife:   maxLife,
-		Life:      maxLife * 0.5, // Set life to 50% of max life
+		MaxLife:   s.entityBaseMaxLife, // Base life, will be modified by stats
+		Life:      s.entityBaseMaxLife * 0.5,
 		LifeRegen: lifeRegen,
 	}
 	client := &Client{
@@ -73,6 +72,10 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	playerState.Client = client
 
 	startMapState.players[playerID] = playerState
+
+	// Apply initial stats (like Resistance for MaxLife) after creation.
+	s.ApplyResistanceStat(playerState, startMapState)
+	playerState.Life = playerState.MaxLife * 0.5 // Set life to 50% of final max life
 
 	initPayload := map[string]interface{}{
 		"gridW":                     startMapState.gridW,
@@ -156,10 +159,27 @@ func (c *Client) readPump(server *GameServer) {
 				server.mu.Unlock()
 				continue
 			}
+
+			// --- AGILITY STAT IMPLEMENTATION ---
+			// Rate-limit player actions based on Agility.
+			playerStats := server.CalculateStats(player, mapState)
+			// Base cooldown is defined on the server, reduced by Agility.
+			agilityBonus := time.Duration(playerStats.Agility) * time.Millisecond
+			currentCooldown := server.entityBaseActionCooldown - agilityBonus
+			if currentCooldown < server.entityBaseMinActionCooldown {
+				currentCooldown = server.entityBaseMinActionCooldown
+			}
+
+			if time.Since(c.lastAction) < currentCooldown {
+				server.mu.Unlock()
+				continue // Action came too fast, ignore it.
+			}
+			c.lastAction = time.Now() // Update last action time
+
 			server.mu.Unlock()
 
 			// Handle probabilistic life regeneration on action
-			server.handleProbabilisticRegen(player)
+			server.handleProbabilisticRegen(player, mapState)
 
 			// Handle skills that trigger on player action
 			server.HandlePlayerActionSkills(player, mapState, Point{X: targetX, Y: targetY})
@@ -333,6 +353,9 @@ func (c *Client) readPump(server *GameServer) {
 					log.Printf("Player %s has more than 4 active items after request. Reverting activation of '%s'.", c.playerID, itemId)
 					player.ObjectLayers[targetItemIndex].Active = originalState // Revert the specific change
 				}
+
+				// --- Step 4: After all corrections, recalculate stats that affect the player state directly. ---
+				server.ApplyResistanceStat(player, server.maps[player.MapID])
 			}()
 		}
 	}

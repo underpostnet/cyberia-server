@@ -33,16 +33,8 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 			continue
 		}
 
-		// Calculate bullet damage once.
-		// This assumes s.objectLayerDataCache is available on the GameServer
-		// and maps item IDs to their full ObjectLayer data.
-		var bulletDamage float64
-		for _, layer := range bullet.ObjectLayers {
-			if data, ok := s.objectLayerDataCache[layer.ItemID]; ok {
-				bulletDamage += float64(data.Data.Stats.Effect)
-			}
-		}
-		if bulletDamage <= 0 {
+		stats := s.CalculateStats(bullet, mapState)
+		if stats.Effect <= 0 {
 			continue // No damage to deal.
 		}
 
@@ -58,7 +50,7 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 				continue
 			}
 			if checkAABBCollision(bullet.Pos, bullet.Dims, player.Pos, player.Dims) {
-				player.Life -= bulletDamage
+				player.Life -= stats.Effect
 				if player.Life <= 0 {
 					player.Life = 0
 					s.HandleOnKillSkills(bullet, player, mapState)
@@ -78,7 +70,7 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 				continue
 			}
 			if checkAABBCollision(bullet.Pos, bullet.Dims, otherBot.Pos, otherBot.Dims) {
-				otherBot.Life -= bulletDamage
+				otherBot.Life -= stats.Effect
 				if otherBot.Life <= 0 {
 					otherBot.Life = 0
 					s.HandleOnKillSkills(bullet, otherBot, mapState)

@@ -212,5 +212,8 @@ func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
 			}
 		}
 		ms.bots[bot.ID] = bot
+
+		// Apply initial stats (like Resistance for MaxLife) after creation.
+		s.ApplyResistanceStat(bot, ms)
 	}
 }

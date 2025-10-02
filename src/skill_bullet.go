@@ -11,8 +11,12 @@ import (
 // executePlayerBulletSkill contains the specific logic for the "atlas_pistol_mk2_bullet" skill.
 // It has a chance to spawn a temporary, fast-moving "bullet" bot in the player's current direction.
 func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *MapState, itemID string, target Point) {
+	playerStats := s.CalculateStats(player, mapState)
+
 	const bulletSpawnChance = 0.25 // 25% chance
-	if rand.Float64() >= bulletSpawnChance {
+	// Intelligence stat increases the chance of the skill activating.
+	// We'll model this as a linear increase, capping the effective chance at 95%.
+	if rand.Float64() >= math.Min(bulletSpawnChance+(playerStats.Intelligence/100.0), 0.95) {
 		return // Skill did not activate on this action
 	}
 
@@ -38,9 +42,10 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	bulletLifetime := 5 * time.Second
+	// Range stat increases the bullet's lifetime in milliseconds.
+	bulletLifetime := (5 * time.Second) + (time.Duration(playerStats.Range) * time.Millisecond)
 	bulletDims := Dimensions{Width: 2, Height: 2}
-	bulletLife := s.entityBaseMaxLife
+	bulletBaseLife := s.entityBaseMaxLife
 
 	// Pre-compensate for the first tick's movement.
 	// The bullet is created and then moved in the same game loop before being sent to the client.
@@ -64,11 +69,13 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 		ExpiresAt:    time.Now().Add(bulletLifetime),
 		ObjectLayers: []ObjectLayerState{{ItemID: "atlas_pistol_mk2_bullet", Active: true, Quantity: 1}},
 		CasterID:     player.ID,
-		MaxLife:      bulletLife,
-		Life:         bulletLife,
+		MaxLife:      bulletBaseLife, // Initial MaxLife before resistance is applied
+		Life:         bulletBaseLife,
 	}
 
 	mapState.bots[bulletBot.ID] = bulletBot
+	// Apply resistance stat from caster and bullet's own items.
+	s.ApplyResistanceStat(bulletBot, mapState)
 	// log.Printf("Player %s triggered skill 'atlas_pistol_mk2_bullet', spawning bullet bot %s", player.ID, bulletBot.ID)
 }
 
@@ -76,8 +83,12 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 // It has a chance to spawn a temporary, fast-moving "bullet" bot towards the bot's target.
 // NOTE: This is called from within updateBots, which is already under a server-wide mutex.
 func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, itemID string, target Point) {
+	botStats := s.CalculateStats(bot, mapState)
+
 	const bulletSpawnChance = 0.25 // 25% chance
-	if rand.Float64() >= bulletSpawnChance {
+	// Intelligence stat increases the chance of the skill activating.
+	// We'll model this as a linear increase, capping the effective chance at 95%.
+	if rand.Float64() >= math.Min(bulletSpawnChance+(botStats.Intelligence/100.0), 0.95) {
 		return // Skill did not activate on this action
 	}
 
@@ -100,9 +111,10 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, it
 		bulletDirection = bot.Direction
 	}
 
-	bulletLifetime := 5 * time.Second
+	// Range stat increases the bullet's lifetime in milliseconds.
+	bulletLifetime := (5 * time.Second) + (time.Duration(botStats.Range) * time.Millisecond)
 	bulletDims := Dimensions{Width: 2, Height: 2}
-	bulletLife := s.entityBaseMaxLife
+	bulletBaseLife := s.entityBaseMaxLife
 
 	// Pre-compensate for the first tick's movement.
 	// The bullet is created and then moved in the same game loop before being sent to the client.
@@ -126,10 +138,12 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, it
 		ExpiresAt:    time.Now().Add(bulletLifetime),
 		ObjectLayers: []ObjectLayerState{{ItemID: "atlas_pistol_mk2_bullet", Active: true, Quantity: 1}},
 		CasterID:     bot.ID,
-		MaxLife:      bulletLife,
-		Life:         bulletLife,
+		MaxLife:      bulletBaseLife, // Initial MaxLife before resistance is applied
+		Life:         bulletBaseLife,
 	}
 
 	mapState.bots[bulletBot.ID] = bulletBot
+	// Apply resistance stat from caster and bullet's own items.
+	s.ApplyResistanceStat(bulletBot, mapState)
 	// log.Printf("Bot %s triggered skill 'atlas_pistol_mk2_bullet', spawning bullet bot %s", bot.ID, bulletBot.ID)
 }

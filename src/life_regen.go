@@ -1,29 +1,41 @@
 package game
 
 import (
+	"math"
 	"math/rand"
 )
 
 const lifeRegenChance = 0.35 // 35% chance to regenerate on action
 
 // handleProbabilisticRegen gives an entity a chance to regenerate life when they perform an action.
-// This is called when a player sets a target or a bot decides on a new path.
-func (s *GameServer) handleProbabilisticRegen(entity interface{}) {
-	if rand.Float64() >= lifeRegenChance {
+// This is called when a player sets a target or a bot decides on a new path. The chance to trigger
+// is increased by Intelligence, and the amount regenerated is increased by Utility.
+func (s *GameServer) handleProbabilisticRegen(entity interface{}, mapState *MapState) {
+	stats := s.CalculateStats(entity, mapState)
+
+	// Intelligence stat increases the chance of the skill activating.
+	// We'll model this as a linear increase, capping the effective chance at 95%.
+	triggerChance := math.Min(lifeRegenChance+(stats.Intelligence/100.0), 0.95)
+
+	if rand.Float64() >= triggerChance {
 		return // Regeneration did not trigger
 	}
 
 	switch e := entity.(type) {
 	case *PlayerState:
-		if e.LifeRegen > 0 && e.Life < e.MaxLife {
-			e.Life = e.Life + e.LifeRegen
+		// Utility stat increases the amount of life regenerated.
+		regenAmount := e.LifeRegen + stats.Utility
+		if regenAmount > 0 && e.Life < e.MaxLife {
+			e.Life = e.Life + regenAmount
 			if e.Life > e.MaxLife {
 				e.Life = e.MaxLife
 			}
 		}
 	case *BotState:
-		if e.LifeRegen > 0 && e.Life < e.MaxLife {
-			e.Life = e.Life + e.LifeRegen
+		// Utility stat increases the amount of life regenerated.
+		regenAmount := e.LifeRegen + stats.Utility
+		if regenAmount > 0 && e.Life < e.MaxLife {
+			e.Life = e.Life + regenAmount
 			if e.Life > e.MaxLife {
 				e.Life = e.MaxLife
 			}

@@ -109,6 +109,7 @@ type BotState struct {
 	AggroRange             float64            `json:"aggroRange"`
 	CurrentTargetPlayer    string             `json:"-"` // player ID currently being pursued (if any)
 	lastPursuitTargetPos   PointI             `json:"-"` // cached player's last cell to know when to re-path
+	lastAction             time.Time          `json:"-"`
 	ObjectLayers           []ObjectLayerState `json:"objectLayers"`
 	ExpiresAt              time.Time          `json:"-"` // bots with a lifetime will be removed after this time
 	MaxLife                float64            `json:"maxLife"`
@@ -184,6 +185,9 @@ type GameServer struct {
 
 	// Caches
 	objectLayerDataCache map[string]*ObjectLayer
+
+	entityBaseActionCooldown    time.Duration
+	entityBaseMinActionCooldown time.Duration
 }
 
 type ColorRGBA struct {

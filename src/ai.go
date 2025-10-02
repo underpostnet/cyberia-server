@@ -99,7 +99,18 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 				// Hostile bots that are idle (not moving) have a chance to use a skill.
 				if bot.Mode == IDLE && bot.ExpiresAt.IsZero() {
-					s.handleBotSkills(bot, mapState, nearestPlayer.Pos)
+					// --- AGILITY STAT IMPLEMENTATION ---
+					botStats := s.CalculateStats(bot, mapState)
+					agilityBonus := time.Duration(botStats.Agility) * time.Millisecond
+					currentCooldown := s.entityBaseActionCooldown - agilityBonus
+					if currentCooldown < s.entityBaseMinActionCooldown {
+						currentCooldown = s.entityBaseMinActionCooldown
+					}
+
+					if time.Since(bot.lastAction) >= currentCooldown {
+						s.handleBotSkills(bot, mapState, nearestPlayer.Pos)
+						bot.lastAction = time.Now()
+					}
 				}
 
 				// Pursue the player: recompute path if newly acquired or player moved cell
@@ -117,11 +128,23 @@ func (s *GameServer) updateBots(mapState *MapState) {
 							bot.lastPursuitTargetPos = playerCell
 
 							// Trigger probabilistic regen on acquiring a target.
-							s.handleProbabilisticRegen(bot)
+							s.handleProbabilisticRegen(bot, mapState)
 
 							// Skill activation for permanent bots acquiring a player target
 							if bot.ExpiresAt.IsZero() {
-								s.handleBotSkills(bot, mapState, nearestPlayer.Pos)
+								// --- AGILITY STAT IMPLEMENTATION ---
+								botStats := s.CalculateStats(bot, mapState)
+								agilityBonus := time.Duration(botStats.Agility) * time.Millisecond
+								currentCooldown := s.entityBaseActionCooldown - agilityBonus
+								if currentCooldown < s.entityBaseMinActionCooldown {
+									currentCooldown = s.entityBaseMinActionCooldown
+								}
+
+								if time.Since(bot.lastAction) >= currentCooldown {
+									s.handleBotSkills(bot, mapState, nearestPlayer.Pos)
+									bot.lastAction = time.Now()
+								}
+
 							}
 						}
 					}
@@ -144,11 +167,22 @@ func (s *GameServer) updateBots(mapState *MapState) {
 							bot.Mode = WALKING
 
 							// Trigger probabilistic regen on wander.
-							s.handleProbabilisticRegen(bot)
+							s.handleProbabilisticRegen(bot, mapState)
 
 							// Skill activation for permanent bots taking a wander "action"
 							if bot.ExpiresAt.IsZero() {
-								s.handleBotSkills(bot, mapState, Point{X: float64(target.X), Y: float64(target.Y)})
+								// --- AGILITY STAT IMPLEMENTATION ---
+								botStats := s.CalculateStats(bot, mapState)
+								agilityBonus := time.Duration(botStats.Agility) * time.Millisecond
+								currentCooldown := s.entityBaseActionCooldown - agilityBonus
+								if currentCooldown < s.entityBaseMinActionCooldown {
+									currentCooldown = s.entityBaseMinActionCooldown
+								}
+
+								if time.Since(bot.lastAction) >= currentCooldown {
+									s.handleBotSkills(bot, mapState, Point{X: float64(target.X), Y: float64(target.Y)})
+									bot.lastAction = time.Now()
+								}
 							}
 						} else {
 							// if we can't path to a target, remain idle until next tick tries again
@@ -170,11 +204,22 @@ func (s *GameServer) updateBots(mapState *MapState) {
 						bot.Mode = WALKING
 
 						// Trigger probabilistic regen on wander.
-						s.handleProbabilisticRegen(bot)
+						s.handleProbabilisticRegen(bot, mapState)
 
 						// Skill activation for permanent bots taking a wander "action"
 						if bot.ExpiresAt.IsZero() {
-							s.handleBotSkills(bot, mapState, Point{X: float64(target.X), Y: float64(target.Y)})
+							// --- AGILITY STAT IMPLEMENTATION ---
+							botStats := s.CalculateStats(bot, mapState)
+							agilityBonus := time.Duration(botStats.Agility) * time.Millisecond
+							currentCooldown := s.entityBaseActionCooldown - agilityBonus
+							if currentCooldown < s.entityBaseMinActionCooldown {
+								currentCooldown = s.entityBaseMinActionCooldown
+							}
+
+							if time.Since(bot.lastAction) >= currentCooldown {
+								s.handleBotSkills(bot, mapState, Point{X: float64(target.X), Y: float64(target.Y)})
+								bot.lastAction = time.Now()
+							}
 						}
 					}
 				}
