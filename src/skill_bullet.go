@@ -40,7 +40,7 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 
 	bulletLifetime := 5 * time.Second
 	bulletDims := Dimensions{Width: 2, Height: 2}
-	const bulletLife = 100.0
+	bulletLife := s.entityBaseMaxLife
 
 	// Pre-compensate for the first tick's movement.
 	// The bullet is created and then moved in the same game loop before being sent to the client.
@@ -102,7 +102,7 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, it
 
 	bulletLifetime := 5 * time.Second
 	bulletDims := Dimensions{Width: 2, Height: 2}
-	const bulletLife = 100.0
+	bulletLife := s.entityBaseMaxLife
 
 	// Pre-compensate for the first tick's movement.
 	// The bullet is created and then moved in the same game loop before being sent to the client.

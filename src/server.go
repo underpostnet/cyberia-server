@@ -35,6 +35,7 @@ func NewGameServer() *GameServer {
 		devUi:                     true,
 		botsPerMap:                10,
 		botAggroRange:             10.0,
+		entityBaseMaxLife:         100.0,
 		colors: map[string]ColorRGBA{
 			"BACKGROUND":       {R: 0, G: 0, B: 0, A: 255},
 			"GRID_BACKGROUND":  {R: 128, G: 128, B: 128, A: 255},

@@ -178,8 +178,9 @@ type GameServer struct {
 	devUi bool
 
 	// bot related defaults
-	botsPerMap    int
-	botAggroRange float64
+	botsPerMap        int
+	botAggroRange     float64
+	entityBaseMaxLife float64
 
 	// Caches
 	objectLayerDataCache map[string]*ObjectLayer

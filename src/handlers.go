@@ -39,8 +39,8 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		return
 	}
-	maxLife := float64(rand.Intn(151) + 50) // Random between 50 and 200
-	lifeRegen := rand.Float64()*9 + 1       // 1 to 10 life points
+	maxLife := s.entityBaseMaxLife
+	lifeRegen := rand.Float64()*9 + 1 // 1 to 10 life points
 
 	playerState := &PlayerState{
 		ID:            playerID,

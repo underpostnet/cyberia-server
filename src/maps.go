@@ -161,8 +161,8 @@ func (ms *MapState) generatePortals(numPortals int) []*PortalState {
 func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
 	for i := 0; i < s.botsPerMap; i++ {
 		// random dims and spawn point
-		maxLife := float64(rand.Intn(151) + 50) // Random between 50 and 200
-		lifeRegen := rand.Float64()*9 + 1       // 1 to 10 life points
+		maxLife := s.entityBaseMaxLife
+		lifeRegen := rand.Float64()*9 + 1 // 1 to 10 life points
 
 		dims := Dimensions{Width: float64(rand.Intn(4) + 1), Height: float64(rand.Intn(4) + 1)}
 		startPosI, err := ms.pathfinder.findRandomWalkablePoint(dims)

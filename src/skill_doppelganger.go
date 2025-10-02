@@ -18,7 +18,7 @@ func (s *GameServer) executePlayerDoppelgangerSkill(player *PlayerState, mapStat
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	maxLife := float64(rand.Intn(151) + 50) // Random between 50 and 200
+	maxLife := s.entityBaseMaxLife
 	botLifetime := 10 * time.Second
 
 	doppelgangerBot := &BotState{
@@ -48,7 +48,7 @@ func (s *GameServer) executeBotDoppelgangerSkill(bot *BotState, mapState *MapSta
 		return // Skill did not activate on this action
 	}
 
-	maxLife := float64(rand.Intn(151) + 50) // Random between 50 and 200
+	maxLife := s.entityBaseMaxLife
 	botLifetime := 10 * time.Second
 
 	doppelgangerBot := &BotState{
