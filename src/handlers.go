@@ -57,6 +57,11 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			{ItemID: "atlas_pistol_mk2", Active: true, Quantity: 1},
 			{ItemID: "punk", Active: false, Quantity: 1},
 			{ItemID: "coin", Active: false, Quantity: 10},
+			{ItemID: "purple", Active: false, Quantity: 1},
+			{ItemID: "green", Active: false, Quantity: 1},
+			{ItemID: "paranoia", Active: false, Quantity: 1},
+			{ItemID: "wason", Active: false, Quantity: 1},
+			{ItemID: "alex", Active: false, Quantity: 1},
 		},
 		MaxLife:   s.entityBaseMaxLife, // Base life, will be modified by stats
 		Life:      s.entityBaseMaxLife * 0.5,
