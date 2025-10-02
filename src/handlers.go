@@ -28,7 +28,8 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 
 	playerID := uuid.New().String()
-	playerDims := Dimensions{Width: float64(rand.Intn(4) + 1), Height: float64(rand.Intn(4) + 1)}
+	// playerDims := Dimensions{Width: float64(rand.Intn(4) + 1), Height: float64(rand.Intn(4) + 1)}
+	playerDims := Dimensions{Width: 3, Height: 3}
 
 	startMapID := rand.Intn(len(s.maps))
 	startMapState := s.maps[startMapID]
