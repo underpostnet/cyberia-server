@@ -116,6 +116,9 @@ func (s *GameServer) updateBots(mapState *MapState) {
 							bot.CurrentTargetPlayer = nearestID
 							bot.lastPursuitTargetPos = playerCell
 
+							// Trigger probabilistic regen on acquiring a target.
+							s.handleProbabilisticRegen(bot)
+
 							// Skill activation for permanent bots acquiring a player target
 							if bot.ExpiresAt.IsZero() {
 								s.handleBotSkills(bot, mapState, nearestPlayer.Pos)
@@ -140,6 +143,9 @@ func (s *GameServer) updateBots(mapState *MapState) {
 							bot.TargetPos = target
 							bot.Mode = WALKING
 
+							// Trigger probabilistic regen on wander.
+							s.handleProbabilisticRegen(bot)
+
 							// Skill activation for permanent bots taking a wander "action"
 							if bot.ExpiresAt.IsZero() {
 								s.handleBotSkills(bot, mapState, Point{X: float64(target.X), Y: float64(target.Y)})
@@ -162,6 +168,9 @@ func (s *GameServer) updateBots(mapState *MapState) {
 						bot.Path = pth
 						bot.TargetPos = target
 						bot.Mode = WALKING
+
+						// Trigger probabilistic regen on wander.
+						s.handleProbabilisticRegen(bot)
 
 						// Skill activation for permanent bots taking a wander "action"
 						if bot.ExpiresAt.IsZero() {

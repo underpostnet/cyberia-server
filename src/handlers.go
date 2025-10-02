@@ -39,9 +39,8 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		return
 	}
-	maxLife := float64(rand.Intn(151) + 50)   // Random between 50 and 200
-	lifeRegen := rand.Float64()*9 + 1         // 1 to 10 life points
-	lifeTimeRegenRate := rand.Float64()*3 + 2 // 2 to 5 seconds
+	maxLife := float64(rand.Intn(151) + 50) // Random between 50 and 200
+	lifeRegen := rand.Float64()*9 + 1       // 1 to 10 life points
 
 	playerState := &PlayerState{
 		ID:            playerID,
@@ -59,11 +58,9 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			{ItemID: "punk", Active: false, Quantity: 1},
 			{ItemID: "coin", Active: false, Quantity: 10},
 		},
-		MaxLife:           maxLife,
-		Life:              maxLife * 0.5, // Set life to 50% of max life
-		LifeRegen:         lifeRegen,
-		LifeTimeRegenRate: lifeTimeRegenRate,
-		NextRegenTime:     time.Now().Add(time.Duration(lifeTimeRegenRate * float64(time.Second))),
+		MaxLife:   maxLife,
+		Life:      maxLife * 0.5, // Set life to 50% of max life
+		LifeRegen: lifeRegen,
 	}
 	client := &Client{
 		conn:        conn,
@@ -159,6 +156,9 @@ func (c *Client) readPump(server *GameServer) {
 				continue
 			}
 			server.mu.Unlock()
+
+			// Handle probabilistic life regeneration on action
+			server.handleProbabilisticRegen(player)
 
 			// Handle skills that trigger on player action
 			server.HandlePlayerActionSkills(player, mapState, Point{X: targetX, Y: targetY})

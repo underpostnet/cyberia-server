@@ -109,7 +109,6 @@ func (s *GameServer) gameLoop() {
 			// Phase 1: Handle state changes (respawn, death from collisions)
 			s.handleRespawns(mapState)
 			s.handleBulletCollisions(mapState)
-			s.handleLifeRegeneration(mapState)
 
 			// Phase 2: Update positions based on current state
 			for _, player := range mapState.players {

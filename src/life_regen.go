@@ -1,45 +1,32 @@
 package game
 
 import (
-	"time"
+	"math/rand"
 )
 
-// handleLifeRegeneration processes life regeneration for all players and bots in a given map.
-// It should be called within the main game loop.
-func (s *GameServer) handleLifeRegeneration(mapState *MapState) {
-	now := time.Now()
+const lifeRegenChance = 0.35 // 35% chance to regenerate on action
 
-	// Regenerate life for players
-	for _, player := range mapState.players {
-		// Skip dead players or players with no regen rate
-		if player.IsGhost() || player.LifeTimeRegenRate <= 0 || player.Life >= player.MaxLife {
-			continue
-		}
-
-		if now.After(player.NextRegenTime) {
-			player.Life += player.LifeRegen
-			if player.Life > player.MaxLife {
-				player.Life = player.MaxLife
-			}
-			// Schedule the next regeneration
-			player.NextRegenTime = now.Add(time.Duration(player.LifeTimeRegenRate * float64(time.Second)))
-		}
+// handleProbabilisticRegen gives an entity a chance to regenerate life when they perform an action.
+// This is called when a player sets a target or a bot decides on a new path.
+func (s *GameServer) handleProbabilisticRegen(entity interface{}) {
+	if rand.Float64() >= lifeRegenChance {
+		return // Regeneration did not trigger
 	}
 
-	// Regenerate life for bots
-	for _, bot := range mapState.bots {
-		// Skip dead bots or bots with no regen rate
-		if bot.IsGhost() || bot.LifeTimeRegenRate <= 0 || bot.Life >= bot.MaxLife {
-			continue
-		}
-
-		if now.After(bot.NextRegenTime) {
-			bot.Life += bot.LifeRegen
-			if bot.Life > bot.MaxLife {
-				bot.Life = bot.MaxLife
+	switch e := entity.(type) {
+	case *PlayerState:
+		if e.LifeRegen > 0 && e.Life < e.MaxLife {
+			e.Life = e.Life + e.LifeRegen
+			if e.Life > e.MaxLife {
+				e.Life = e.MaxLife
 			}
-			// Schedule the next regeneration
-			bot.NextRegenTime = now.Add(time.Duration(bot.LifeTimeRegenRate * float64(time.Second)))
+		}
+	case *BotState:
+		if e.LifeRegen > 0 && e.Life < e.MaxLife {
+			e.Life = e.Life + e.LifeRegen
+			if e.Life > e.MaxLife {
+				e.Life = e.MaxLife
+			}
 		}
 	}
 }
