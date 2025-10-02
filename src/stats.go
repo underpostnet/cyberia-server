@@ -8,10 +8,8 @@ package game
 // Resistance — Adds to the owner's maximum life (survivability cap).
 // This value is summed with the entity's base max life.
 
-// Agility — Number of valid input checks (taps) per millisecond
-// that are accepted/validated inputs by the server. (Typically
-// represented as an input-rate; consider converting to taps/sec
-// for readability.)
+// Agility — Reduces the cooldown time between actions, allowing for more frequent actions.
+// Measured in milliseconds of cooldown reduction.
 
 // Range — Lifetime of a caster/summoned entity, measured in milliseconds.
 

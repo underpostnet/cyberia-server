@@ -33,8 +33,8 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 			continue
 		}
 
-		stats := s.CalculateStats(bullet, mapState)
-		if stats.Effect <= 0 {
+		bulletStats := s.CalculateStats(bullet, mapState)
+		if bulletStats.Effect <= 0 {
 			continue // No damage to deal.
 		}
 
@@ -50,12 +50,19 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 				continue
 			}
 			if checkAABBCollision(bullet.Pos, bullet.Dims, player.Pos, player.Dims) {
-				player.Life -= stats.Effect
+				player.Life -= bulletStats.Effect
 				if player.Life <= 0 {
 					player.Life = 0
 					s.HandleOnKillSkills(bullet, player, mapState)
 					s.handlePlayerDeath(player)
 				}
+
+				// "Thorns" effect: The player's Effect stat damages the bullet.
+				playerStats := s.CalculateStats(player, mapState)
+				if playerStats.Effect > 0 {
+					bullet.Life -= playerStats.Effect
+				}
+
 				isColliding = true
 			}
 		}
@@ -70,12 +77,19 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 				continue
 			}
 			if checkAABBCollision(bullet.Pos, bullet.Dims, otherBot.Pos, otherBot.Dims) {
-				otherBot.Life -= stats.Effect
+				otherBot.Life -= bulletStats.Effect
 				if otherBot.Life <= 0 {
 					otherBot.Life = 0
 					s.HandleOnKillSkills(bullet, otherBot, mapState)
 					s.handleBotDeath(otherBot)
 				}
+
+				// "Thorns" effect: The other bot's Effect stat damages the bullet.
+				otherBotStats := s.CalculateStats(otherBot, mapState)
+				if otherBotStats.Effect > 0 {
+					bullet.Life -= otherBotStats.Effect
+				}
+
 				isColliding = true
 			}
 		}
