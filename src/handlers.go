@@ -160,17 +160,10 @@ func (c *Client) readPump(server *GameServer) {
 				continue
 			}
 
-			// --- AGILITY STAT IMPLEMENTATION ---
 			// Rate-limit player actions based on Agility.
 			playerStats := server.CalculateStats(player, mapState)
-			// Base cooldown is defined on the server, reduced by Agility.
-			agilityBonus := time.Duration(playerStats.Agility) * time.Millisecond
-			currentCooldown := server.entityBaseActionCooldown - agilityBonus
-			if currentCooldown < server.entityBaseMinActionCooldown {
-				currentCooldown = server.entityBaseMinActionCooldown
-			}
-
-			if time.Since(c.lastAction) < currentCooldown {
+			cooldown := server.CalculateActionCooldown(playerStats)
+			if time.Since(c.lastAction) < cooldown {
 				server.mu.Unlock()
 				continue // Action came too fast, ignore it.
 			}

@@ -99,15 +99,9 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 				// Hostile bots that are idle (not moving) have a chance to use a skill.
 				if bot.Mode == IDLE && bot.ExpiresAt.IsZero() {
-					// --- AGILITY STAT IMPLEMENTATION ---
 					botStats := s.CalculateStats(bot, mapState)
-					agilityBonus := time.Duration(botStats.Agility) * time.Millisecond
-					currentCooldown := s.entityBaseActionCooldown - agilityBonus
-					if currentCooldown < s.entityBaseMinActionCooldown {
-						currentCooldown = s.entityBaseMinActionCooldown
-					}
-
-					if time.Since(bot.lastAction) >= currentCooldown {
+					cooldown := s.CalculateActionCooldown(botStats)
+					if time.Since(bot.lastAction) >= cooldown {
 						s.handleBotSkills(bot, mapState, nearestPlayer.Pos)
 						bot.lastAction = time.Now()
 					}
@@ -132,15 +126,9 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 							// Skill activation for permanent bots acquiring a player target
 							if bot.ExpiresAt.IsZero() {
-								// --- AGILITY STAT IMPLEMENTATION ---
 								botStats := s.CalculateStats(bot, mapState)
-								agilityBonus := time.Duration(botStats.Agility) * time.Millisecond
-								currentCooldown := s.entityBaseActionCooldown - agilityBonus
-								if currentCooldown < s.entityBaseMinActionCooldown {
-									currentCooldown = s.entityBaseMinActionCooldown
-								}
-
-								if time.Since(bot.lastAction) >= currentCooldown {
+								cooldown := s.CalculateActionCooldown(botStats)
+								if time.Since(bot.lastAction) >= cooldown {
 									s.handleBotSkills(bot, mapState, nearestPlayer.Pos)
 									bot.lastAction = time.Now()
 								}
@@ -171,15 +159,9 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 							// Skill activation for permanent bots taking a wander "action"
 							if bot.ExpiresAt.IsZero() {
-								// --- AGILITY STAT IMPLEMENTATION ---
 								botStats := s.CalculateStats(bot, mapState)
-								agilityBonus := time.Duration(botStats.Agility) * time.Millisecond
-								currentCooldown := s.entityBaseActionCooldown - agilityBonus
-								if currentCooldown < s.entityBaseMinActionCooldown {
-									currentCooldown = s.entityBaseMinActionCooldown
-								}
-
-								if time.Since(bot.lastAction) >= currentCooldown {
+								cooldown := s.CalculateActionCooldown(botStats)
+								if time.Since(bot.lastAction) >= cooldown {
 									s.handleBotSkills(bot, mapState, Point{X: float64(target.X), Y: float64(target.Y)})
 									bot.lastAction = time.Now()
 								}
@@ -208,15 +190,9 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 						// Skill activation for permanent bots taking a wander "action"
 						if bot.ExpiresAt.IsZero() {
-							// --- AGILITY STAT IMPLEMENTATION ---
 							botStats := s.CalculateStats(bot, mapState)
-							agilityBonus := time.Duration(botStats.Agility) * time.Millisecond
-							currentCooldown := s.entityBaseActionCooldown - agilityBonus
-							if currentCooldown < s.entityBaseMinActionCooldown {
-								currentCooldown = s.entityBaseMinActionCooldown
-							}
-
-							if time.Since(bot.lastAction) >= currentCooldown {
+							cooldown := s.CalculateActionCooldown(botStats)
+							if time.Since(bot.lastAction) >= cooldown {
 								s.handleBotSkills(bot, mapState, Point{X: float64(target.X), Y: float64(target.Y)})
 								bot.lastAction = time.Now()
 							}

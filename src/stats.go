@@ -13,6 +13,8 @@ package game
 
 // Range — Lifetime of a caster/summoned entity, measured in milliseconds.
 
+import "time"
+
 // Intelligence — Probability-based stat that increases chance to
 // spawn/trigger a caster-bot or to trigger life-regeneration events.
 // Expressed as a probability or chance modifier.
@@ -101,4 +103,18 @@ func (s *GameServer) ApplyResistanceStat(entity interface{}, mapState *MapState)
 	case *BotState:
 		e.MaxLife = s.entityBaseMaxLife + stats.Resistance
 	}
+}
+
+// CalculateActionCooldown computes the effective action cooldown for an entity
+// based on its Agility stat.
+func (s *GameServer) CalculateActionCooldown(stats ComputedStats) time.Duration {
+	// Agility stat reduces the base cooldown, measured in milliseconds.
+	agilityBonus := time.Duration(stats.Agility) * time.Millisecond
+	currentCooldown := s.entityBaseActionCooldown - agilityBonus
+
+	// Ensure the cooldown does not fall below the minimum defined threshold.
+	if currentCooldown < s.entityBaseMinActionCooldown {
+		return s.entityBaseMinActionCooldown
+	}
+	return currentCooldown
 }
