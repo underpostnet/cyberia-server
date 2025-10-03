@@ -14,10 +14,11 @@ type SkillDefinition struct {
 // SkillConfig maps a triggering ItemID to a list of SkillDefinitions.
 // This provides a declarative way to associate items with behaviors.
 var SkillConfig = map[string][]SkillDefinition{
-	"anon":             {{LogicEventID: "doppelganger"}},
+	// "anon":             {{LogicEventID: "doppelganger"}},
 	"atlas_pistol_mk2": {{ItemIDs: []string{"atlas_pistol_mk2_bullet"}, LogicEventID: "atlas_pistol_mk2_logic"}},
 	"coin":             {{LogicEventID: "coin_drop_or_transaction"}},
-	"purple":           {{LogicEventID: "doppelganger"}},
+	// "purple":           {{LogicEventID: "doppelganger"}},
+	"atlas_pistol_mk2_bullet": {{LogicEventID: "doppelganger"}},
 }
 
 // HandlePlayerActionSkills checks if a player's action triggers any skills

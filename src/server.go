@@ -27,12 +27,12 @@ func NewGameServer() *GameServer {
 		cameraSmoothing:  0.15,
 		cameraZoom:       2,
 		// production immersive settings
-		// defaultWidthScreenFactor:  0.9,
-		// defaultHeightScreenFactor: 0.9,
-		// devUi:                     false,
-		defaultWidthScreenFactor:    0.1,
-		defaultHeightScreenFactor:   0.9,
-		devUi:                       true,
+		defaultWidthScreenFactor:  0.9,
+		defaultHeightScreenFactor: 0.9,
+		devUi:                     false,
+		// defaultWidthScreenFactor:    0.1,
+		// defaultHeightScreenFactor:   0.9,
+		// devUi:                       true,
 		botsPerMap:                  10,
 		botAggroRange:               10.0,
 		entityBaseMaxLife:           100.0,
@@ -264,123 +264,125 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		log.Printf("Map %d not found for player %s.", player.MapID, player.ID)
 		return
 	}
-	visiblePlayersMap := make(map[string]map[string]interface{})
+
+	visiblePlayers := make(map[string]VisiblePlayer)
 	for _, otherPlayer := range mapState.players {
 		if otherPlayer.ID == player.ID {
 			continue
 		}
 		otherRect := Rectangle{MinX: otherPlayer.Pos.X, MinY: otherPlayer.Pos.Y, MaxX: otherPlayer.Pos.X + otherPlayer.Dims.Width, MaxY: otherPlayer.Pos.Y + otherPlayer.Dims.Height}
 		if rectsOverlap(player.AOI, otherRect) {
-			playerData := map[string]interface{}{
-				"id":           otherPlayer.ID,
-				"Pos":          otherPlayer.Pos,
-				"Dims":         otherPlayer.Dims,
-				"Type":         "player",
-				"direction":    int(otherPlayer.Direction),
-				"mode":         int(otherPlayer.Mode),
-				"objectLayers": otherPlayer.ObjectLayers,
-				"life":         otherPlayer.Life,
-				"maxLife":      otherPlayer.MaxLife,
+			playerData := VisiblePlayer{
+				ID:           otherPlayer.ID,
+				Pos:          otherPlayer.Pos,
+				Dims:         otherPlayer.Dims,
+				Type:         "player",
+				Direction:    otherPlayer.Direction,
+				Mode:         otherPlayer.Mode,
+				ObjectLayers: otherPlayer.ObjectLayers,
+				Life:         otherPlayer.Life,
+				MaxLife:      otherPlayer.MaxLife,
 			}
 			if otherPlayer.IsGhost() {
 				remaining := time.Until(otherPlayer.RespawnTime).Seconds()
 				if remaining > 0 {
-					playerData["respawnIn"] = math.Ceil(remaining)
+					respawnIn := math.Ceil(remaining)
+					playerData.RespawnIn = &respawnIn
 				}
 			}
-			visiblePlayersMap[otherPlayer.ID] = playerData
+			visiblePlayers[otherPlayer.ID] = playerData
 		}
 	}
-	visibleGridObjectsMap := make(map[string]map[string]interface{})
+
+	visibleGridObjects := make(map[string]interface{})
 	for _, obstacle := range mapState.obstacles {
 		obstacleRect := Rectangle{MinX: obstacle.Pos.X, MinY: obstacle.Pos.Y, MaxX: obstacle.Pos.X + obstacle.Dims.Width, MaxY: obstacle.Pos.Y + obstacle.Dims.Height}
 		if rectsOverlap(player.AOI, obstacleRect) {
-			visibleGridObjectsMap[obstacle.ID] = map[string]interface{}{"id": obstacle.ID, "Pos": obstacle.Pos, "Dims": obstacle.Dims, "Type": obstacle.Type}
+			visibleGridObjects[obstacle.ID] = obstacle
 		}
 	}
 	for _, floor := range mapState.floors {
 		floorRect := Rectangle{MinX: floor.Pos.X, MinY: floor.Pos.Y, MaxX: floor.Pos.X + floor.Dims.Width, MaxY: floor.Pos.Y + floor.Dims.Height}
 		if rectsOverlap(player.AOI, floorRect) {
-			visibleGridObjectsMap[floor.ID] = map[string]interface{}{
-				"id":           floor.ID,
-				"Pos":          floor.Pos,
-				"Dims":         floor.Dims,
-				"Type":         "floor",
-				"objectLayers": floor.ObjectLayers,
+			visibleGridObjects[floor.ID] = VisibleFloor{
+				ID:           floor.ID,
+				Pos:          floor.Pos,
+				Dims:         floor.Dims,
+				Type:         "floor",
+				ObjectLayers: floor.ObjectLayers,
 			}
 		}
 	}
 	for _, portal := range mapState.portals {
 		portalRect := Rectangle{MinX: portal.Pos.X, MinY: portal.Pos.Y, MaxX: portal.Pos.X + portal.Dims.Width, MaxY: portal.Pos.Y + portal.Dims.Height}
 		if rectsOverlap(player.AOI, portalRect) {
-			visibleGridObjectsMap[portal.ID] = map[string]interface{}{
-				"id":          portal.ID,
-				"Pos":         portal.Pos,
-				"Dims":        portal.Dims,
-				"Type":        "portal",
-				"PortalLabel": portal.Label,
-			}
+			visibleGridObjects[portal.ID] = portal
 		}
 	}
 	for _, fg := range mapState.foregrounds {
 		fgRect := Rectangle{MinX: fg.Pos.X, MinY: fg.Pos.Y, MaxX: fg.Pos.X + fg.Dims.Width, MaxY: fg.Pos.Y + fg.Dims.Height}
 		if rectsOverlap(player.AOI, fgRect) {
-			visibleGridObjectsMap[fg.ID] = map[string]interface{}{"id": fg.ID, "Pos": fg.Pos, "Dims": fg.Dims, "Type": "foreground"}
+			visibleGridObjects[fg.ID] = fg
 		}
 	}
 	for _, bot := range mapState.bots {
 		botRect := Rectangle{MinX: bot.Pos.X, MinY: bot.Pos.Y, MaxX: bot.Pos.X + bot.Dims.Width, MaxY: bot.Pos.Y + bot.Dims.Height}
 		if rectsOverlap(player.AOI, botRect) {
-			botData := map[string]interface{}{
-				"id":           bot.ID,
-				"Pos":          bot.Pos,
-				"Dims":         bot.Dims,
-				"Type":         "bot",
-				"behavior":     bot.Behavior,
-				"direction":    int(bot.Direction),
-				"mode":         int(bot.Mode),
-				"life":         bot.Life,
-				"maxLife":      bot.MaxLife,
-				"objectLayers": bot.ObjectLayers,
+			botData := VisibleBot{
+				ID:           bot.ID,
+				Pos:          bot.Pos,
+				Dims:         bot.Dims,
+				Type:         "bot",
+				Behavior:     bot.Behavior,
+				Direction:    bot.Direction,
+				Mode:         bot.Mode,
+				Life:         bot.Life,
+				MaxLife:      bot.MaxLife,
+				ObjectLayers: bot.ObjectLayers,
 			}
 			if bot.IsGhost() {
 				remaining := time.Until(bot.RespawnTime).Seconds()
 				if remaining > 0 {
-					botData["respawnIn"] = math.Ceil(remaining)
+					respawnIn := math.Ceil(remaining)
+					botData.RespawnIn = &respawnIn
 				}
 			}
-			visibleGridObjectsMap[bot.ID] = botData
+			visibleGridObjects[bot.ID] = botData
 		}
 	}
-	playerObj := map[string]interface{}{
-		"id":             player.ID,
-		"MapID":          player.MapID,
-		"Pos":            player.Pos,
-		"Dims":           player.Dims,
-		"path":           player.Path,
-		"targetPos":      player.TargetPos,
-		"AOI":            player.AOI,
-		"direction":      int(player.Direction),
-		"mode":           int(player.Mode),
-		"onPortal":       player.OnPortal,
-		"activePortalID": player.ActivePortalID,
-		"life":           player.Life,
-		"maxLife":        player.MaxLife,
-		"sumStatsLimit":  player.SumStatsLimit,
-		"objectLayers":   player.ObjectLayers,
+
+	playerObj := PlayerObject{
+		ID:             player.ID,
+		MapID:          player.MapID,
+		Pos:            player.Pos,
+		Dims:           player.Dims,
+		Path:           player.Path,
+		TargetPos:      player.TargetPos,
+		AOI:            player.AOI,
+		Direction:      player.Direction,
+		Mode:           player.Mode,
+		OnPortal:       player.OnPortal,
+		ActivePortalID: player.ActivePortalID,
+		Life:           player.Life,
+		MaxLife:        player.MaxLife,
+		SumStatsLimit:  player.SumStatsLimit,
+		ObjectLayers:   player.ObjectLayers,
 	}
 	if player.IsGhost() {
 		remaining := time.Until(player.RespawnTime).Seconds()
 		if remaining > 0 {
-			playerObj["respawnIn"] = math.Ceil(remaining)
+			respawnIn := math.Ceil(remaining)
+			playerObj.RespawnIn = &respawnIn
 		}
 	}
-	payloadMap := map[string]interface{}{
-		"playerID":           player.ID,
-		"player":             playerObj,
-		"visiblePlayers":     visiblePlayersMap,
-		"visibleGridObjects": visibleGridObjectsMap,
+
+	payloadMap := AOIUpdatePayload{
+		PlayerID:           player.ID,
+		Player:             playerObj,
+		VisiblePlayers:     visiblePlayers,
+		VisibleGridObjects: visibleGridObjects,
 	}
+
 	message, err := json.Marshal(map[string]interface{}{"type": "aoi_update", "payload": payloadMap})
 	if err != nil {
 		log.Printf("Error marshaling AOI update: %v", err)
