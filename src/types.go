@@ -130,6 +130,7 @@ type PortalState struct {
 	ID           string        `json:"id"`
 	Pos          Point         `json:"Pos"`
 	Dims         Dimensions    `json:"Dims"`
+	Type         string        `json:"Type"`
 	PortalConfig *PortalConfig `json:"-"`
 	Label        string        `json:"PortalLabel"`
 }

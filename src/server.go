@@ -27,12 +27,12 @@ func NewGameServer() *GameServer {
 		cameraSmoothing:  0.15,
 		cameraZoom:       2,
 		// production immersive settings
-		defaultWidthScreenFactor:  0.9,
-		defaultHeightScreenFactor: 0.9,
-		devUi:                     false,
-		// defaultWidthScreenFactor:    0.1,
-		// defaultHeightScreenFactor:   0.9,
-		// devUi:                       true,
+		// defaultWidthScreenFactor:  0.9,
+		// defaultHeightScreenFactor: 0.9,
+		// devUi:                     false,
+		defaultWidthScreenFactor:    0.1,
+		defaultHeightScreenFactor:   0.9,
+		devUi:                       true,
 		botsPerMap:                  10,
 		botAggroRange:               10.0,
 		entityBaseMaxLife:           100.0,
@@ -316,7 +316,13 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 	for _, portal := range mapState.portals {
 		portalRect := Rectangle{MinX: portal.Pos.X, MinY: portal.Pos.Y, MaxX: portal.Pos.X + portal.Dims.Width, MaxY: portal.Pos.Y + portal.Dims.Height}
 		if rectsOverlap(player.AOI, portalRect) {
-			visibleGridObjects[portal.ID] = portal
+			visibleGridObjects[portal.ID] = ObjectState{
+				ID:          portal.ID,
+				Pos:         portal.Pos,
+				Dims:        portal.Dims,
+				Type:        "portal",
+				PortalLabel: portal.Label,
+			}
 		}
 	}
 	for _, fg := range mapState.foregrounds {
