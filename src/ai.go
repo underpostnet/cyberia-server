@@ -63,6 +63,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				delete(mapState.bots, botID)
 				continue // Skip further processing for this bot
 			}
+			s.handleBotSkills(bot, mapState, Point{X: bot.Pos.X, Y: bot.Pos.Y})
 			// For bullets, we don't need to call updateBotPosition or other AI logic
 			// as their movement is simple and direct.
 			continue

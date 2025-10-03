@@ -80,22 +80,29 @@ func (s *GameServer) executeBotDoppelgangerSkill(bot *BotState, mapState *MapSta
 	// Range stat increases the doppelganger's lifetime in milliseconds.
 	botLifetime := (10 * time.Second) + (time.Duration(botStats.Range) * time.Millisecond)
 
-	// The doppelganger should only have the active skin of the caster.
+	// The doppelganger should ideally have the active skin of the caster.
+	// If no active skin is found, fall back to the first active layer of any type.
 	var doppelgangerLayers []ObjectLayerState
+	var fallbackLayer *ObjectLayerState
 	for _, layer := range bot.ObjectLayers {
 		if layer.Active {
+			if fallbackLayer == nil {
+				fallbackLayer = &layer // Save the first active layer we find.
+			}
 			if itemData, ok := s.objectLayerDataCache[layer.ItemID]; ok {
 				if itemData.Data.Item.Type == "skin" {
 					// Found the active skin. This is the only layer the doppelganger gets.
-					doppelgangerLayers = []ObjectLayerState{{
-						ItemID:   layer.ItemID,
-						Active:   true,
-						Quantity: 1,
-					}}
+					doppelgangerLayers = []ObjectLayerState{layer}
 					break
 				}
 			}
 		}
+	}
+
+	// If no active skin was found but we found another active layer, use that.
+	if len(doppelgangerLayers) == 0 && fallbackLayer != nil {
+		// log.Printf("Bot %s has no active skin for doppelganger, using fallback item '%s'.", bot.ID, fallbackLayer.ItemID)
+		doppelgangerLayers = []ObjectLayerState{*fallbackLayer}
 	}
 
 	doppelgangerBot := &BotState{

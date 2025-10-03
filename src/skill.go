@@ -18,7 +18,7 @@ var SkillConfig = map[string][]SkillDefinition{
 	"atlas_pistol_mk2": {{ItemIDs: []string{"atlas_pistol_mk2_bullet"}, LogicEventID: "atlas_pistol_mk2_logic"}},
 	"coin":             {{LogicEventID: "coin_drop_or_transaction"}},
 	// "purple":           {{LogicEventID: "doppelganger"}},
-	"atlas_pistol_mk2_bullet": {{LogicEventID: "doppelganger"}},
+	// "atlas_pistol_mk2_bullet": {{LogicEventID: "doppelganger"}},
 }
 
 // HandlePlayerActionSkills checks if a player's action triggers any skills
