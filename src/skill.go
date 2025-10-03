@@ -95,3 +95,25 @@ func (s *GameServer) HandleOnKillSkills(killerBot *BotState, victim interface{},
 	s.executeCoinDropOnKill(caster, victim, s)
 
 }
+
+// GetAssociatedSkillItemIDs returns a unique list of item IDs associated with a given item's skills.
+func (s *GameServer) GetAssociatedSkillItemIDs(itemID string) []string {
+	// Use a map to store unique item IDs to avoid duplicates.
+	associatedIDs := make(map[string]struct{})
+
+	if skillDefs, ok := SkillConfig[itemID]; ok {
+		for _, skillDef := range skillDefs {
+			for _, id := range skillDef.ItemIDs {
+				associatedIDs[id] = struct{}{}
+			}
+		}
+	}
+
+	// Convert map keys to a slice.
+	result := make([]string, 0, len(associatedIDs))
+	for id := range associatedIDs {
+		result = append(result, id)
+	}
+
+	return result
+}

@@ -355,6 +355,30 @@ func (c *Client) readPump(server *GameServer) {
 				// --- Step 4: After all corrections, recalculate stats that affect the player state directly. ---
 				server.ApplyResistanceStat(player, server.maps[player.MapID])
 			}()
+		} else if msg["type"] == "get_items_ids" {
+			payload, ok := msg["payload"].(map[string]interface{})
+			if !ok {
+				log.Printf("Invalid get_items_ids payload format for player %s", c.playerID)
+				continue
+			}
+			itemId, ok := payload["itemId"].(string)
+			if !ok {
+				log.Printf("Invalid itemId in get_items_ids payload for player %s", c.playerID)
+				continue
+			}
+
+			associatedIDs := server.GetAssociatedSkillItemIDs(itemId)
+
+			responsePayload := map[string]interface{}{
+				"requestedItemId":   itemId,
+				"associatedItemIds": associatedIDs,
+			}
+			responseMsg, err := json.Marshal(map[string]interface{}{"type": "skill_item_ids", "payload": responsePayload})
+			if err != nil {
+				log.Printf("Error marshaling skill_item_ids response: %v", err)
+				continue
+			}
+			c.send <- responseMsg
 		}
 	}
 }
