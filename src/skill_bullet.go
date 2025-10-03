@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// executePlayerBulletSkill contains the specific logic for the "atlas_pistol_mk2_bullet" skill.
+// executePlayerBulletSkill contains the specific logic for the "atlas_pistol_mk2_logic" skill.
 // It has a chance to spawn a temporary, fast-moving "bullet" bot in the player's current direction.
 func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *MapState, itemID string, target Point) {
 	playerStats := s.CalculateStats(player, mapState)
@@ -76,10 +76,10 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 	mapState.bots[bulletBot.ID] = bulletBot
 	// Apply resistance stat from caster and bullet's own items.
 	s.ApplyResistanceStat(bulletBot, mapState)
-	// log.Printf("Player %s triggered skill 'atlas_pistol_mk2_bullet', spawning bullet bot %s", player.ID, bulletBot.ID)
+	// log.Printf("Player %s triggered skill 'atlas_pistol_mk2_logic', spawning bullet bot %s", player.ID, bulletBot.ID)
 }
 
-// executeBotBulletSkill contains the specific logic for the "atlas_pistol_mk2_bullet" skill, triggered by a bot.
+// executeBotBulletSkill contains the specific logic for the "atlas_pistol_mk2_logic" skill, triggered by a bot.
 // It has a chance to spawn a temporary, fast-moving "bullet" bot towards the bot's target.
 // NOTE: This is called from within updateBots, which is already under a server-wide mutex.
 func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, itemID string, target Point) {
@@ -145,5 +145,5 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, it
 	mapState.bots[bulletBot.ID] = bulletBot
 	// Apply resistance stat from caster and bullet's own items.
 	s.ApplyResistanceStat(bulletBot, mapState)
-	// log.Printf("Bot %s triggered skill 'atlas_pistol_mk2_bullet', spawning bullet bot %s", bot.ID, bulletBot.ID)
+	// log.Printf("Bot %s triggered skill 'atlas_pistol_mk2_logic', spawning bullet bot %s", bot.ID, bulletBot.ID)
 }

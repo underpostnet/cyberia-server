@@ -8,7 +8,7 @@ import (
 // This provides a declarative way to associate items with behaviors.
 var SkillConfig = map[string][]string{
 	// "anon":             {"doppelganger"},
-	"atlas_pistol_mk2": {"atlas_pistol_mk2_bullet"},
+	"atlas_pistol_mk2": {"atlas_pistol_mk2_logic"},
 	"coin":             {"coin_drop_or_transaction"},
 	// "purple": {"doppelganger"},
 }
@@ -28,7 +28,7 @@ func (s *GameServer) HandlePlayerActionSkills(player *PlayerState, mapState *Map
 				switch skillID {
 				case "doppelganger":
 					s.executePlayerDoppelgangerSkill(player, mapState, layer.ItemID)
-				case "atlas_pistol_mk2_bullet":
+				case "atlas_pistol_mk2_logic":
 					s.executePlayerBulletSkill(player, mapState, layer.ItemID, target)
 				// Future skills like "teleport_burst" or "invisibility" could be added here.
 				default:
@@ -53,7 +53,7 @@ func (s *GameServer) handleBotSkills(bot *BotState, mapState *MapState, target P
 				switch skillID {
 				case "doppelganger":
 					s.executeBotDoppelgangerSkill(bot, mapState, layer.ItemID)
-				case "atlas_pistol_mk2_bullet":
+				case "atlas_pistol_mk2_logic":
 					s.executeBotBulletSkill(bot, mapState, layer.ItemID, target)
 				// Future skills could be added here.
 				default:
