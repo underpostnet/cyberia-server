@@ -25,8 +25,23 @@ func (s *GameServer) executePlayerDoppelgangerSkill(player *PlayerState, mapStat
 	// Range stat increases the doppelganger's lifetime in milliseconds.
 	botLifetime := (10 * time.Second) + (time.Duration(playerStats.Range) * time.Millisecond)
 
-	// The doppelganger inherits the caster's object layers, but we add the skill item that triggered it.
-	doppelgangerLayers := append(player.ObjectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+	// The doppelganger should only have the active skin of the caster.
+	var doppelgangerLayers []ObjectLayerState
+	for _, layer := range player.ObjectLayers {
+		if layer.Active {
+			if itemData, ok := s.objectLayerDataCache[layer.ItemID]; ok {
+				if itemData.Data.Item.Type == "skin" {
+					// Found the active skin. This is the only layer the doppelganger gets.
+					doppelgangerLayers = []ObjectLayerState{{
+						ItemID:   layer.ItemID,
+						Active:   true,
+						Quantity: 1,
+					}}
+					break
+				}
+			}
+		}
+	}
 
 	doppelgangerBot := &BotState{
 		ID:           uuid.New().String(),
@@ -65,8 +80,23 @@ func (s *GameServer) executeBotDoppelgangerSkill(bot *BotState, mapState *MapSta
 	// Range stat increases the doppelganger's lifetime in milliseconds.
 	botLifetime := (10 * time.Second) + (time.Duration(botStats.Range) * time.Millisecond)
 
-	// The doppelganger inherits the caster's object layers, but we add the skill item that triggered it.
-	doppelgangerLayers := append(bot.ObjectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+	// The doppelganger should only have the active skin of the caster.
+	var doppelgangerLayers []ObjectLayerState
+	for _, layer := range bot.ObjectLayers {
+		if layer.Active {
+			if itemData, ok := s.objectLayerDataCache[layer.ItemID]; ok {
+				if itemData.Data.Item.Type == "skin" {
+					// Found the active skin. This is the only layer the doppelganger gets.
+					doppelgangerLayers = []ObjectLayerState{{
+						ItemID:   layer.ItemID,
+						Active:   true,
+						Quantity: 1,
+					}}
+					break
+				}
+			}
+		}
+	}
 
 	doppelgangerBot := &BotState{
 		ID:           uuid.New().String(),
