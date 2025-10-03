@@ -35,6 +35,9 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			continue
 		}
 
+		// Recalculate stats to update MaxLife based on current equipment.
+		s.ApplyResistanceStat(bot, mapState)
+
 		// Check for expiration
 		if !bot.ExpiresAt.IsZero() && time.Now().After(bot.ExpiresAt) {
 			delete(mapState.bots, botID)
