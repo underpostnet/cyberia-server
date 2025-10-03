@@ -4,13 +4,20 @@ import (
 	"log"
 )
 
-// SkillConfig maps an ItemID to a list of SkillIDs that can be triggered.
+// SkillDefinition defines the properties of a skill, including the logic to execute
+// and any associated item IDs (e.g., for spawned entities like bullets).
+type SkillDefinition struct {
+	ItemIDs      []string
+	LogicEventID string
+}
+
+// SkillConfig maps a triggering ItemID to a list of SkillDefinitions.
 // This provides a declarative way to associate items with behaviors.
-var SkillConfig = map[string][]string{
-	// "anon":             {"doppelganger"},
-	"atlas_pistol_mk2": {"atlas_pistol_mk2_logic"},
-	"coin":             {"coin_drop_or_transaction"},
-	// "purple": {"doppelganger"},
+var SkillConfig = map[string][]SkillDefinition{
+	"anon":             {{LogicEventID: "doppelganger"}},
+	"atlas_pistol_mk2": {{ItemIDs: []string{"atlas_pistol_mk2_bullet"}, LogicEventID: "atlas_pistol_mk2_logic"}},
+	"coin":             {{LogicEventID: "coin_drop_or_transaction"}},
+	"purple":           {{LogicEventID: "doppelganger"}},
 }
 
 // HandlePlayerActionSkills checks if a player's action triggers any skills
@@ -22,17 +29,17 @@ func (s *GameServer) HandlePlayerActionSkills(player *PlayerState, mapState *Map
 		}
 
 		// Check if the active item has any associated skills in our config
-		if skillIDs, ok := SkillConfig[layer.ItemID]; ok {
-			for _, skillID := range skillIDs {
+		if skillDefs, ok := SkillConfig[layer.ItemID]; ok {
+			for _, skillDef := range skillDefs {
 				// Execute the skill logic based on its ID
-				switch skillID {
+				switch skillDef.LogicEventID {
 				case "doppelganger":
 					s.executePlayerDoppelgangerSkill(player, mapState, layer.ItemID)
 				case "atlas_pistol_mk2_logic":
-					s.executePlayerBulletSkill(player, mapState, layer.ItemID, target)
+					s.executePlayerBulletSkill(player, mapState, skillDef, target)
 				// Future skills like "teleport_burst" or "invisibility" could be added here.
 				default:
-					log.Printf("Unknown skillID '%s' for item '%s'", skillID, layer.ItemID)
+					log.Printf("Unknown LogicEventID '%s' for item '%s'", skillDef.LogicEventID, layer.ItemID)
 				}
 			}
 		}
@@ -47,17 +54,17 @@ func (s *GameServer) handleBotSkills(bot *BotState, mapState *MapState, target P
 		}
 
 		// Check if the active item has any associated skills in our config
-		if skillIDs, ok := SkillConfig[layer.ItemID]; ok {
-			for _, skillID := range skillIDs {
+		if skillDefs, ok := SkillConfig[layer.ItemID]; ok {
+			for _, skillDef := range skillDefs {
 				// Execute the skill logic based on its ID
-				switch skillID {
+				switch skillDef.LogicEventID {
 				case "doppelganger":
 					s.executeBotDoppelgangerSkill(bot, mapState, layer.ItemID)
 				case "atlas_pistol_mk2_logic":
-					s.executeBotBulletSkill(bot, mapState, layer.ItemID, target)
+					s.executeBotBulletSkill(bot, mapState, skillDef, target)
 				// Future skills could be added here.
 				default:
-					log.Printf("Unknown skillID '%s' for item '%s' on bot %s", skillID, layer.ItemID, bot.ID)
+					log.Printf("Unknown LogicEventID '%s' for item '%s' on bot %s", skillDef.LogicEventID, layer.ItemID, bot.ID)
 				}
 			}
 		}

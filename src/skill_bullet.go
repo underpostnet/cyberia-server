@@ -1,6 +1,7 @@
 package game
 
 import (
+	"log"
 	"math"
 	"math/rand"
 	"time"
@@ -10,9 +11,14 @@ import (
 
 // executePlayerBulletSkill contains the specific logic for the "atlas_pistol_mk2_logic" skill.
 // It has a chance to spawn a temporary, fast-moving "bullet" bot in the player's current direction.
-func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *MapState, itemID string, target Point) {
+func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *MapState, skillDef SkillDefinition, target Point) {
 	playerStats := s.CalculateStats(player, mapState)
 
+	if len(skillDef.ItemIDs) == 0 {
+		log.Printf("Skill 'atlas_pistol_mk2_logic' triggered for player %s but no bullet ItemID was defined in SkillConfig.", player.ID)
+		return
+	}
+	bulletItemID := skillDef.ItemIDs[0]
 	const bulletSpawnChance = 0.25 // 25% chance
 	// Intelligence stat increases the chance of the skill activating.
 	// We'll model this as a linear increase, capping the effective chance at 95%.
@@ -67,7 +73,7 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 		Behavior:     "bullet",        // New behavior type for straight-line movement
 		Direction:    bulletDirection, // Use the calculated direction to the target
 		ExpiresAt:    time.Now().Add(bulletLifetime),
-		ObjectLayers: []ObjectLayerState{{ItemID: "atlas_pistol_mk2_bullet", Active: true, Quantity: 1}},
+		ObjectLayers: []ObjectLayerState{{ItemID: bulletItemID, Active: true, Quantity: 1}},
 		CasterID:     player.ID,
 		MaxLife:      bulletBaseLife, // Initial MaxLife before resistance is applied
 		Life:         bulletBaseLife,
@@ -82,9 +88,14 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 // executeBotBulletSkill contains the specific logic for the "atlas_pistol_mk2_logic" skill, triggered by a bot.
 // It has a chance to spawn a temporary, fast-moving "bullet" bot towards the bot's target.
 // NOTE: This is called from within updateBots, which is already under a server-wide mutex.
-func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, itemID string, target Point) {
+func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, skillDef SkillDefinition, target Point) {
 	botStats := s.CalculateStats(bot, mapState)
 
+	if len(skillDef.ItemIDs) == 0 {
+		log.Printf("Skill 'atlas_pistol_mk2_logic' triggered for bot %s but no bullet ItemID was defined in SkillConfig.", bot.ID)
+		return
+	}
+	bulletItemID := skillDef.ItemIDs[0]
 	const bulletSpawnChance = 0.25 // 25% chance
 	// Intelligence stat increases the chance of the skill activating.
 	// We'll model this as a linear increase, capping the effective chance at 95%.
@@ -136,7 +147,7 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, it
 		Behavior:     "bullet",        // New behavior type for straight-line movement
 		Direction:    bulletDirection, // Use the calculated direction to the target
 		ExpiresAt:    time.Now().Add(bulletLifetime),
-		ObjectLayers: []ObjectLayerState{{ItemID: "atlas_pistol_mk2_bullet", Active: true, Quantity: 1}},
+		ObjectLayers: []ObjectLayerState{{ItemID: bulletItemID, Active: true, Quantity: 1}},
 		CasterID:     bot.ID,
 		MaxLife:      bulletBaseLife, // Initial MaxLife before resistance is applied
 		Life:         bulletBaseLife,
