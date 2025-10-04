@@ -1,26 +1,32 @@
 package game
 
+import "time"
+
+// -----------------------------------------------------------------------------------------
 // Description of passive stats mechanics:
+// -----------------------------------------------------------------------------------------
 
 // Effect (Collision damage) — Amount of life removed when
 // an entity collides or deals an impact. Measured in life points.
 
 // Resistance — Adds to the owner's maximum life (survivability cap).
-// This value is summed with the entity's base max life.
+// This value is summed with the entity's base max life. and
+// Increase Amount of life restored when a regeneration event occurs
+// (adds directly to current life).
 
-// Agility — Reduces the cooldown time between actions, allowing for more frequent actions.
-// Measured in milliseconds of cooldown reduction.
+// Agility — Increase speed of movements entities.
 
 // Range — Lifetime of a caster/summoned entity, measured in milliseconds.
 
-import "time"
-
 // Intelligence — Probability-based stat that increases chance to
-// spawn/trigger a caster-bot or to trigger life-regeneration events.
-// Expressed as a probability or chance modifier.
+// spawn/trigger a summoned entity.
 
-// Utility — Amount of life restored when a regeneration event occurs
-// (adds directly to current life).
+// Utility — Reduces the cooldown time between actions, allowing for more frequent actions.
+// Measured in milliseconds of cooldown reduction. and increase chance to
+// trigger life-regeneration events.Expressed as a probability or chance modifier.
+
+// -----------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------
 
 // ComputedStats holds the final, summed values of all passive stats for an entity.
 // These values are calculated on-demand from the entity's active object layers
