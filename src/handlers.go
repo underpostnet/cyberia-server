@@ -82,23 +82,23 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	s.ApplyResistanceStat(playerState, startMapState)
 	playerState.Life = playerState.MaxLife * 0.5 // Set life to 50% of final max life
 
-	initPayload := map[string]interface{}{
-		"gridW":                     startMapState.gridW,
-		"gridH":                     startMapState.gridH,
-		"defaultObjectWidth":        s.defaultObjWidth,
-		"defaultObjectHeight":       s.defaultObjHeight,
-		"cellSize":                  s.cellSize,
-		"fps":                       s.fps,
-		"interpolationMs":           s.interpolationMs,
-		"aoiRadius":                 s.aoiRadius,
-		"colors":                    s.colors,
-		"cameraSmoothing":           s.cameraSmoothing,
-		"cameraZoom":                s.cameraZoom,
-		"defaultWidthScreenFactor":  s.defaultWidthScreenFactor,
-		"defaultHeightScreenFactor": s.defaultHeightScreenFactor,
-		"devUi":                     s.devUi,
-		"sumStatsLimit":             playerState.SumStatsLimit,
-		"objectLayers":              playerState.ObjectLayers,
+	initPayload := InitPayload{
+		GridW:                     startMapState.gridW,
+		GridH:                     startMapState.gridH,
+		DefaultObjectWidth:        s.defaultObjWidth,
+		DefaultObjectHeight:       s.defaultObjHeight,
+		CellSize:                  s.cellSize,
+		Fps:                       s.fps,
+		InterpolationMs:           s.interpolationMs,
+		AoiRadius:                 s.aoiRadius,
+		Colors:                    s.colors,
+		CameraSmoothing:           s.cameraSmoothing,
+		CameraZoom:                s.cameraZoom,
+		DefaultWidthScreenFactor:  s.defaultWidthScreenFactor,
+		DefaultHeightScreenFactor: s.defaultHeightScreenFactor,
+		DevUi:                     s.devUi,
+		SumStatsLimit:             playerState.SumStatsLimit,
+		ObjectLayers:              playerState.ObjectLayers,
 	}
 	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
 	select {

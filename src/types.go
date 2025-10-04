@@ -261,3 +261,22 @@ type ColorRGBA struct {
 	B int `json:"b"`
 	A int `json:"a"`
 }
+
+type InitPayload struct {
+	GridW                     int                  `json:"gridW"`
+	GridH                     int                  `json:"gridH"`
+	DefaultObjectWidth        float64              `json:"defaultObjectWidth"`
+	DefaultObjectHeight       float64              `json:"defaultObjectHeight"`
+	CellSize                  float64              `json:"cellSize"`
+	Fps                       int                  `json:"fps"`
+	InterpolationMs           int                  `json:"interpolationMs"`
+	AoiRadius                 float64              `json:"aoiRadius"`
+	Colors                    map[string]ColorRGBA `json:"colors"`
+	CameraSmoothing           float64              `json:"cameraSmoothing"`
+	CameraZoom                float64              `json:"cameraZoom"`
+	DefaultWidthScreenFactor  float64              `json:"defaultWidthScreenFactor"`
+	DefaultHeightScreenFactor float64              `json:"defaultHeightScreenFactor"`
+	DevUi                     bool                 `json:"devUi"`
+	SumStatsLimit             int                  `json:"sumStatsLimit"`
+	ObjectLayers              []ObjectLayerState   `json:"objectLayers"`
+}
