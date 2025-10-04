@@ -6,24 +6,22 @@ import "time"
 // Description of passive stats mechanics:
 // -----------------------------------------------------------------------------------------
 
-// Effect (Collision damage) — Amount of life removed when
-// an entity collides or deals an impact. Measured in life points.
+// Effect — Amount of life removed when an entity collides or deals an impact.
+// Measured in life points.
 
-// Resistance — Adds to the owner's maximum life (survivability cap).
-// This value is summed with the entity's base max life. and
-// Increase Amount of life restored when a regeneration event occurs
-// (adds directly to current life).
+// Resistance — Adds to the owner's maximum life (survivability cap). This value
+// is summed with the entity's base max life. It also increases the amount of
+// life restored when a regeneration event occurs (adds directly to current life).
 
-// Agility — Increase speed of movements entities.
+// Agility — Increases the movement speed of entities.
 
-// Range — Lifetime of a caster/summoned entity, measured in milliseconds.
+// Range — Increases the lifetime of a cast/summoned entity, measured in milliseconds.
 
-// Intelligence — Probability-based stat that increases chance to
+// Intelligence — Probability-based stat that increases the chance to
 // spawn/trigger a summoned entity.
 
-// Utility — Reduces the cooldown time between actions, allowing for more frequent actions.
-// Measured in milliseconds of cooldown reduction. and increase chance to
-// trigger life-regeneration events.Expressed as a probability or chance modifier.
+// Utility — Reduces the cooldown time between actions, allowing for more frequent
+// actions. It also increases the chance to trigger life-regeneration events.
 
 // -----------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------
@@ -33,11 +31,11 @@ import "time"
 // and, if applicable, inherited from its caster.
 type ComputedStats struct {
 	Effect       float64 // Collision damage dealt.
-	Resistance   float64 // Bonus to maximum life.
-	Agility      float64 // Affects action/input rates (conceptual).
-	Range        float64 // Modifies lifetime of summoned entities.
-	Intelligence float64 // Influences probability-based skills (e.g., spawn chance, regen chance).
-	Utility      float64 // Modifies quantity of effects (e.g., life regenerated).
+	Resistance   float64 // Bonus to maximum life and regeneration amount.
+	Agility      float64 // Increases movement speed.
+	Range        float64 // Increases lifetime of summoned entities.
+	Intelligence float64 // Increases chance to spawn/trigger summoned entities.
+	Utility      float64 // Reduces action cooldowns and increases life-regen chance.
 }
 
 // CalculateStats computes the final stat values for a given StatSource.
@@ -112,15 +110,24 @@ func (s *GameServer) ApplyResistanceStat(entity interface{}, mapState *MapState)
 }
 
 // CalculateActionCooldown computes the effective action cooldown for an entity
-// based on its Agility stat.
+// based on its Utility stat.
 func (s *GameServer) CalculateActionCooldown(stats ComputedStats) time.Duration {
-	// Agility stat reduces the base cooldown, measured in milliseconds.
-	agilityBonus := time.Duration(stats.Agility) * time.Millisecond
-	currentCooldown := s.entityBaseActionCooldown - agilityBonus
+	// Utility stat reduces the base cooldown, measured in milliseconds.
+	utilityReduction := time.Duration(stats.Utility) * time.Millisecond
+	currentCooldown := s.entityBaseActionCooldown - utilityReduction
 
 	// Ensure the cooldown does not fall below the minimum defined threshold.
 	if currentCooldown < s.entityBaseMinActionCooldown {
 		return s.entityBaseMinActionCooldown
 	}
 	return currentCooldown
+}
+
+// CalculateMovementSpeed computes the effective movement speed for an entity
+// based on its Agility stat. Speed is measured in grid units per second.
+func (s *GameServer) CalculateMovementSpeed(stats ComputedStats) float64 {
+	// Agility stat increases the base speed.
+	// We'll model this as a percentage increase: 1 Agility = +1% speed.
+	speedMultiplier := 1.0 + (stats.Agility / 100.0)
+	return s.entityBaseSpeed * speedMultiplier
 }

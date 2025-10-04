@@ -11,13 +11,13 @@ import (
 // NewGameServer creates a new game server.
 func NewGameServer() *GameServer {
 	gs := &GameServer{
-		maps:           make(map[int]*MapState),
-		clients:        make(map[string]*Client),
-		register:       make(chan *Client),
-		unregister:     make(chan *Client),
-		aoiRadius:      15.0,
-		portalHoldTime: 2 * time.Second,
-		playerSpeed:    24.0,
+		maps:            make(map[int]*MapState),
+		clients:         make(map[string]*Client),
+		register:        make(chan *Client),
+		unregister:      make(chan *Client),
+		aoiRadius:       25.0,
+		portalHoldTime:  2 * time.Second,
+		entityBaseSpeed: 24.0,
 
 		cellSize:         12.0,
 		fps:              60,
@@ -134,12 +134,15 @@ func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapStat
 		return
 	}
 
+	playerStats := s.CalculateStats(player, mapState)
+	speed := s.CalculateMovementSpeed(playerStats)
+
 	if player.Mode == WALKING && len(player.Path) > 0 {
 		targetNode := player.Path[0]
 		dx := float64(targetNode.X) - player.Pos.X
 		dy := float64(targetNode.Y) - player.Pos.Y
 		dist := math.Sqrt(dx*dx + dy*dy)
-		step := s.playerSpeed / 10.0
+		step := speed / (1000.0 / 100.0) // speed per tick (100ms)
 
 		if dist < step {
 			player.Pos = Point{X: float64(targetNode.X), Y: float64(targetNode.Y)}

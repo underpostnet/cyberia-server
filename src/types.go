@@ -226,7 +226,6 @@ type GameServer struct {
 	unregister     chan *Client
 	aoiRadius      float64
 	portalHoldTime time.Duration
-	playerSpeed    float64
 
 	cellSize         float64
 	fps              int
@@ -244,13 +243,14 @@ type GameServer struct {
 	devUi bool
 
 	// bot related defaults
-	botsPerMap        int
-	botAggroRange     float64
-	entityBaseMaxLife float64
+	botsPerMap    int
+	botAggroRange float64
 
 	// Caches
 	objectLayerDataCache map[string]*ObjectLayer
 
+	entityBaseSpeed             float64
+	entityBaseMaxLife           float64
 	entityBaseActionCooldown    time.Duration
 	entityBaseMinActionCooldown time.Duration
 }

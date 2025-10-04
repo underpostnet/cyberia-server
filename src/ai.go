@@ -44,12 +44,14 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			continue
 		}
 
+		botStats := s.CalculateStats(bot, mapState)
+
 		// --- NEW BULLET BEHAVIOR ---
 		// Bullet bots move in a straight line and are removed if they go out of bounds.
 		if bot.Behavior == "bullet" {
-			// Bullets move at twice player speed. playerSpeed is in units per second.
+			// Bullets move at twice base entity speed. entityBaseSpeed is in units per second.
 			// The game loop runs at 10 FPS (100ms per tick), so we divide by 10 to get movement per tick.
-			bulletStep := (s.playerSpeed * 2.0) / 10.0
+			bulletStep := (s.entityBaseSpeed * 2.0) / (1000.0 / 100.0)
 			// Calculate movement vector from bot's direction
 			dirX, dirY := getDirectionVector(bot.Direction)
 
@@ -103,7 +105,6 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 				// Hostile bots that are idle (not moving) have a chance to use a skill.
 				if bot.Mode == IDLE && bot.ExpiresAt.IsZero() {
-					botStats := s.CalculateStats(bot, mapState)
 					cooldown := s.CalculateActionCooldown(botStats)
 					if time.Since(bot.lastAction) >= cooldown {
 						s.handleBotSkills(bot, mapState, nearestPlayer.Pos)
@@ -130,7 +131,6 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 							// Skill activation for permanent bots acquiring a player target
 							if bot.ExpiresAt.IsZero() {
-								botStats := s.CalculateStats(bot, mapState)
 								cooldown := s.CalculateActionCooldown(botStats)
 								if time.Since(bot.lastAction) >= cooldown {
 									s.handleBotSkills(bot, mapState, nearestPlayer.Pos)
@@ -163,7 +163,6 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 							// Skill activation for permanent bots taking a wander "action"
 							if bot.ExpiresAt.IsZero() {
-								botStats := s.CalculateStats(bot, mapState)
 								cooldown := s.CalculateActionCooldown(botStats)
 								if time.Since(bot.lastAction) >= cooldown {
 									s.handleBotSkills(bot, mapState, Point{X: float64(target.X), Y: float64(target.Y)})
@@ -194,7 +193,6 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 						// Skill activation for permanent bots taking a wander "action"
 						if bot.ExpiresAt.IsZero() {
-							botStats := s.CalculateStats(bot, mapState)
 							cooldown := s.CalculateActionCooldown(botStats)
 							if time.Since(bot.lastAction) >= cooldown {
 								s.handleBotSkills(bot, mapState, Point{X: float64(target.X), Y: float64(target.Y)})
@@ -206,7 +204,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			}
 		}
 		// Move bot along its path
-		s.updateBotPosition(bot, mapState)
+		s.updateBotPosition(bot, mapState, botStats)
 
 		// --- LAYER RESTRICTION & VALIDATION LOGIC ---
 		activeLayerCount := 0
@@ -277,13 +275,15 @@ func (s *GameServer) updateBots(mapState *MapState) {
 }
 
 // update bot movement similar to players
-func (s *GameServer) updateBotPosition(bot *BotState, mapState *MapState) {
+func (s *GameServer) updateBotPosition(bot *BotState, mapState *MapState, stats ComputedStats) {
+	speed := s.CalculateMovementSpeed(stats)
+
 	if bot.Mode == WALKING && len(bot.Path) > 0 {
 		targetNode := bot.Path[0]
 		dx := float64(targetNode.X) - bot.Pos.X
 		dy := float64(targetNode.Y) - bot.Pos.Y
 		dist := math.Sqrt(dx*dx + dy*dy)
-		step := s.playerSpeed / 10.0
+		step := speed / (1000.0 / 100.0) // speed per tick (100ms)
 
 		if dist < step {
 			bot.Pos = Point{X: float64(targetNode.X), Y: float64(targetNode.Y)}

@@ -165,7 +165,7 @@ func (c *Client) readPump(server *GameServer) {
 				continue
 			}
 
-			// Rate-limit player actions based on Agility.
+			// Rate-limit player actions based on Utility.
 			playerStats := server.CalculateStats(player, mapState)
 			cooldown := server.CalculateActionCooldown(playerStats)
 			if time.Since(c.lastAction) < cooldown {

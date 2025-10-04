@@ -57,7 +57,7 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 	// The bullet is created and then moved in the same game loop before being sent to the client.
 	// By spawning it one "step" behind its intended origin, it will appear at the correct
 	// location on the first frame it's rendered.
-	bulletStep := (s.playerSpeed * 2.0) / 10.0
+	bulletStep := (s.entityBaseSpeed * 2.0) / (1000.0 / 100.0)
 	dirX, dirY := getDirectionVector(bulletDirection)
 
 	// The desired position on the first rendered frame is the player's position.
@@ -132,7 +132,7 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, sk
 	// The bullet is created and then moved in the same game loop before being sent to the client.
 	// By spawning it one "step" behind its intended origin, it will appear at the correct
 	// location on the first frame it's rendered.
-	bulletStep := (s.playerSpeed * 2.0) / 10.0
+	bulletStep := (s.entityBaseSpeed * 2.0) / (1000.0 / 100.0)
 	dirX, dirY := getDirectionVector(bulletDirection)
 
 	// The desired position on the first rendered frame is the bot's position.
