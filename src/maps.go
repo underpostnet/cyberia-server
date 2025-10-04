@@ -190,7 +190,7 @@ func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
 			SpawnRadius: spawnRadius,
 			AggroRange:  s.botAggroRange,
 			MaxLife:     maxLife,
-			Life:        maxLife * 0.5, // Set life to 50% of max life
+			Life:        maxLife * 0.5,
 			LifeRegen:   lifeRegen,
 			ObjectLayers: []ObjectLayerState{
 				{ItemID: "purple", Active: true, Quantity: 1},
@@ -202,6 +202,10 @@ func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
 			bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: "atlas_pistol_mk2", Active: true, Quantity: 1})
 		}
 
+		// Apply initial stats (like Resistance for MaxLife) after creation.
+		s.ApplyResistanceStat(bot, ms)
+		bot.Life = bot.MaxLife * 0.5
+
 		// initial wandering path: random point within spawn radius
 		target := s.randomPointWithinRadius(ms, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
 		if target.X >= 0 {
@@ -212,8 +216,5 @@ func (s *GameServer) instantiateBots(ms *MapState, mapID int) {
 			}
 		}
 		ms.bots[bot.ID] = bot
-
-		// Apply initial stats (like Resistance for MaxLife) after creation.
-		s.ApplyResistanceStat(bot, ms)
 	}
 }

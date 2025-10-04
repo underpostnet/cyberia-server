@@ -119,7 +119,10 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState) {
 
 	player.ObjectLayers = []ObjectLayerState{{ItemID: ghostItemID, Active: true, Quantity: 1}}
 	player.RespawnTime = time.Now().Add(respawnDuration)
-	player.Mode = IDLE // Stop movement
+	// Recalculate stats for the ghost state to ensure consistency.
+	// This will primarily affect MaxLife.
+	s.ApplyResistanceStat(player, s.maps[player.MapID]) // This assumes player.MapID is correct and map exists.
+	player.Mode = IDLE                                  // Stop movement
 }
 
 // handleBotDeath sets a bot to a dead state.
@@ -131,6 +134,9 @@ func (s *GameServer) handleBotDeath(bot *BotState) {
 
 	bot.ObjectLayers = []ObjectLayerState{{ItemID: ghostItemID, Active: true, Quantity: 1}}
 	bot.RespawnTime = time.Now().Add(respawnDuration)
+	// Recalculate stats for the ghost state to ensure consistency.
+	// This will primarily affect MaxLife.
+	s.ApplyResistanceStat(bot, s.maps[bot.MapID])
 	bot.Mode = IDLE // Stop movement
 }
 
@@ -139,9 +145,10 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 	// Respawn players
 	for _, player := range mapState.players {
 		if !player.RespawnTime.IsZero() && time.Now().After(player.RespawnTime) {
-			player.Life = player.MaxLife
 			player.ObjectLayers = player.PreRespawnObjectLayers
 			player.PreRespawnObjectLayers = nil
+			s.ApplyResistanceStat(player, mapState) // Recalculate stats with restored items.
+			player.Life = player.MaxLife
 			player.RespawnTime = time.Time{}
 		}
 	}
@@ -149,9 +156,10 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 	// Respawn bots
 	for _, bot := range mapState.bots {
 		if !bot.RespawnTime.IsZero() && time.Now().After(bot.RespawnTime) {
-			bot.Life = bot.MaxLife
 			bot.ObjectLayers = bot.PreRespawnObjectLayers
 			bot.PreRespawnObjectLayers = nil
+			s.ApplyResistanceStat(bot, mapState) // Recalculate stats with restored items.
+			bot.Life = bot.MaxLife
 			bot.RespawnTime = time.Time{}
 
 			// Reset coin quantity for respawned bots.

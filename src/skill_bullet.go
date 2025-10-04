@@ -82,6 +82,7 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 	mapState.bots[bulletBot.ID] = bulletBot
 	// Apply resistance stat from caster and bullet's own items.
 	s.ApplyResistanceStat(bulletBot, mapState)
+	bulletBot.Life = bulletBot.MaxLife // Spawn with full life based on final MaxLife
 	// log.Printf("Player %s triggered skill 'atlas_pistol_mk2_logic', spawning bullet bot %s", player.ID, bulletBot.ID)
 }
 
@@ -156,5 +157,6 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, sk
 	mapState.bots[bulletBot.ID] = bulletBot
 	// Apply resistance stat from caster and bullet's own items.
 	s.ApplyResistanceStat(bulletBot, mapState)
+	bulletBot.Life = bulletBot.MaxLife // Spawn with full life based on final MaxLife
 	// log.Printf("Bot %s triggered skill 'atlas_pistol_mk2_logic', spawning bullet bot %s", bot.ID, bulletBot.ID)
 }
