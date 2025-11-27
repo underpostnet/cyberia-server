@@ -3,12 +3,14 @@ package api
 import (
 	"net/http"
 
+	game "cyberia-server/src"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
 // NewAPIRouter builds the /api router with middlewares and routes.
-func NewAPIRouter(cfg Config, db *DB) chi.Router {
+func NewAPIRouter(cfg Config, db *DB, gameServer *game.GameServer) chi.Router {
 	r := chi.NewRouter()
 
 	// Middlewares
@@ -17,9 +19,10 @@ func NewAPIRouter(cfg Config, db *DB) chi.Router {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	// Object layers and users
+	// Object layers, users, and metrics
 	ol := NewObjectLayerHandler(cfg, db)
 	uh := NewUserHandler(cfg, db)
+	mh := NewMetricsHandler(cfg, db, gameServer)
 	r.Route("/v1", func(sub chi.Router) {
 		// Health
 		sub.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -29,6 +32,7 @@ func NewAPIRouter(cfg Config, db *DB) chi.Router {
 		})
 		ol.Routes(sub)
 		uh.Routes(sub)
+		mh.Routes(sub)
 	})
 
 	return r

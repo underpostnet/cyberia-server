@@ -1,0 +1,713 @@
+{
+  "info": {
+    "name": "Cyberia Server Metrics API",
+    "description": "Comprehensive metrics collection for Cyberia Game Server including entity tracking, WebSocket status, object layers, and health monitoring",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{auth_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health & Status Endpoints",
+      "description": "Monitor overall server health and operational status",
+      "item": [
+        {
+          "name": "Complete Metrics",
+          "description": "Get comprehensive metrics including entities, object layers, WebSocket status, workload, and health status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/metrics",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "metrics"
+              ]
+            },
+            "description": "Returns complete metrics response including:\n- Overall health status (healthy/ok/warning/degraded/critical/down/maintenance)\n- Health description explaining current state\n- Total entities connected to WebSocket server\n- Entity breakdown by type (players, bots, floors, obstacles, portals, foregrounds)\n- Total object layers: sum of all ObjectLayerState entries across all entities\n- Active object layers: count of ObjectLayerState entries with Active==true\n- Inactive object layers: count of ObjectLayerState entries with Active==false\n- WebSocket server status (running/stopping/error/crashed)\n- Active connections count synchronized from game server\n- WebSocket uptime in seconds\n- Workload metrics and load percentage\n- Server uptime"
+          },
+          "response": [
+            {
+              "name": "Metrics Response - Server Ready (No Connections)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"timestamp\": \"2024-01-15T10:30:45Z\",\n  \"health\": \"healthy\",\n  \"health_description\": \"Server ready and operational - awaiting connections\",\n  \"entities\": {\n    \"total_entities\": 0,\n    \"entities_by_type\": [\n      {\n        \"type\": \"player\",\n        \"count\": 0,\n        \"total_object_layers\": 0,\n        \"active_object_layers\": 0,\n        \"inactive_object_layers\": 0\n      },\n      {\n        \"type\": \"bot\",\n        \"count\": 0,\n        \"total_object_layers\": 0,\n        \"active_object_layers\": 0,\n        \"inactive_object_layers\": 0\n      },\n      {\n        \"type\": \"floor\",\n        \"count\": 0,\n        \"total_object_layers\": 0,\n        \"active_object_layers\": 0,\n        \"inactive_object_layers\": 0\n      },\n      {\n        \"type\": \"obstacle\",\n        \"count\": 0,\n        \"total_object_layers\": 0,\n        \"active_object_layers\": 0,\n        \"inactive_object_layers\": 0\n      },\n      {\n        \"type\": \"foreground\",\n        \"count\": 0,\n        \"total_object_layers\": 0,\n        \"active_object_layers\": 0,\n        \"inactive_object_layers\": 0\n      },\n      {\n        \"type\": \"portal\",\n        \"count\": 0,\n        \"total_object_layers\": 0,\n        \"active_object_layers\": 0,\n        \"inactive_object_layers\": 0\n      }\n    ],\n    \"total_object_layers\": 0,\n    \"active_object_layers\": 0,\n    \"inactive_object_layers\": 0,\n    \"avg_object_layers_per_entity\": 0\n  },\n  \"websocket\": {\n    \"status\": \"running\",\n    \"active_connections\": 0,\n    \"uptime_sec\": 125\n  },\n  \"workload\": {\n    \"load_percentage\": 0,\n    \"max_entity_capacity\": 3000,\n    \"max_object_layers\": 10000,\n    \"current_load\": \"low\"\n  }\n}"
+            },
+            {
+              "name": "Metrics Response - With Active Connections",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"timestamp\": \"2024-01-15T10:30:45Z\",\n  \"health\": \"healthy\",\n  \"health_description\": \"All systems operational with active connections\",\n  \"entities\": {\n    \"total_entities\": 150,\n    \"entities_by_type\": [\n      {\n        \"type\": \"player\",\n        \"count\": 12,\n        \"total_object_layers\": 48,\n        \"active_object_layers\": 36,\n        \"inactive_object_layers\": 12\n      },\n      {\n        \"type\": \"bot\",\n        \"count\": 45,\n        \"total_object_layers\": 135,\n        \"active_object_layers\": 90,\n        \"inactive_object_layers\": 45\n      },\n      {\n        \"type\": \"floor\",\n        \"count\": 78,\n        \"total_object_layers\": 156,\n        \"active_object_layers\": 156,\n        \"inactive_object_layers\": 0\n      },\n      {\n        \"type\": \"obstacle\",\n        \"count\": 8,\n        \"total_object_layers\": 8,\n        \"active_object_layers\": 8,\n        \"inactive_object_layers\": 0\n      },\n      {\n        \"type\": \"foreground\",\n        \"count\": 5,\n        \"total_object_layers\": 5,\n        \"active_object_layers\": 5,\n        \"inactive_object_layers\": 0\n      },\n      {\n        \"type\": \"portal\",\n        \"count\": 2,\n        \"total_object_layers\": 2,\n        \"active_object_layers\": 2,\n        \"inactive_object_layers\": 0\n      }\n    ],\n    \"total_object_layers\": 354,\n    \"active_object_layers\": 297,\n    \"inactive_object_layers\": 57,\n    \"avg_object_layers_per_entity\": 2.36\n  },\n  \"websocket\": {\n    \"status\": \"running\",\n    \"active_connections\": 12,\n    \"uptime_sec\": 86400\n  },\n  \"workload\": {\n    \"load_percentage\": 35.4,\n    \"max_entity_capacity\": 3000,\n    \"max_object_layers\": 10000,\n    \"current_load\": \"low\"\n  }\n}"
+            },
+            {
+              "name": "Metrics Response - Warning State",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"timestamp\": \"2024-01-15T10:30:45Z\",\n  \"health\": \"warning\",\n  \"health_description\": \"Entity or object layer count approaching threshold limits - monitor for escalation\",\n  \"entities\": {\n    \"total_entities\": 850,\n    \"entities_by_type\": [\n      {\n        \"type\": \"player\",\n        \"count\": 120,\n        \"total_object_layers\": 480,\n        \"active_object_layers\": 360,\n        \"inactive_object_layers\": 120\n      },\n      {\n        \"type\": \"bot\",\n        \"count\": 600,\n        \"total_object_layers\": 1800,\n        \"active_object_layers\": 1200,\n        \"inactive_object_layers\": 600\n      },\n      {\n        \"type\": \"floor\",\n        \"count\": 78,\n        \"total_object_layers\": 156,\n        \"active_object_layers\": 156,\n        \"inactive_object_layers\": 0\n      },\n      {\n        \"type\": \"obstacle\",\n        \"count\": 8,\n        \"total_object_layers\": 8,\n        \"active_object_layers\": 8,\n        \"inactive_object_layers\": 0\n      },\n      {\n        \"type\": \"foreground\",\n        \"count\": 5,\n        \"total_object_layers\": 5,\n        \"active_object_layers\": 5,\n        \"inactive_object_layers\": 0\n      },\n      {\n        \"type\": \"portal\",\n        \"count\": 40,\n        \"total_object_layers\": 40,\n        \"active_object_layers\": 40,\n        \"inactive_object_layers\": 0\n      }\n    ],\n    \"total_object_layers\": 2489,\n    \"active_object_layers\": 1769,\n    \"inactive_object_layers\": 720,\n    \"avg_object_layers_per_entity\": 2.93\n  },\n  \"websocket\": {\n    \"status\": \"running\",\n    \"active_connections\": 120,\n    \"uptime_sec\": 86400\n  },\n  \"workload\": {\n    \"load_percentage\": 82.97,\n    \"max_entity_capacity\": 3000,\n    \"max_object_layers\": 10000,\n    \"current_load\": \"medium\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Health Status Only",
+          "description": "Get current health status of the server with description",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/metrics/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "metrics",
+                "health"
+              ]
+            },
+            "description": "Returns health status information:\n- Status: healthy/ok/warning/degraded/critical/down/maintenance\n- Description of current health state with context and recommendations\n- Server uptime\n- Timestamp of check"
+          },
+          "response": [
+            {
+              "name": "Health Response - Server Ready",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/health",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "health"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"timestamp\": \"2024-01-15T10:30:45Z\",\n  \"health\": \"healthy\",\n  \"description\": \"Server ready and operational - awaiting connections\",\n  \"uptime_sec\": 125\n}"
+            },
+            {
+              "name": "Health Response - Active and Healthy",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/health",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "health"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"timestamp\": \"2024-01-15T10:30:45Z\",\n  \"health\": \"healthy\",\n  \"description\": \"All systems operational with active connections\",\n  \"uptime_sec\": 86400\n}"
+            },
+            {
+              "name": "Health Response - Warning",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/health",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "health"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"timestamp\": \"2024-01-15T10:30:45Z\",\n  \"health\": \"warning\",\n  \"description\": \"Entity or object layer count approaching threshold limits - monitor for escalation\",\n  \"uptime_sec\": 86400\n}"
+            },
+            {
+              "name": "Health Response - Degraded",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/health",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "health"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"timestamp\": \"2024-01-15T10:30:45Z\",\n  \"health\": \"degraded\",\n  \"description\": \"System workload is high (70-90%) with entity/layer counts approaching thresholds - reduced functionality expected\",\n  \"uptime_sec\": 86400\n}"
+            },
+            {
+              "name": "Health Response - Critical",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/health",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "health"
+                  ]
+                }
+              },
+              "status": "SERVICE_UNAVAILABLE",
+              "code": 503,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"timestamp\": \"2024-01-15T10:30:45Z\",\n  \"health\": \"critical\",\n  \"description\": \"Entity count exceeds critical threshold (>950) - immediate action required\",\n  \"uptime_sec\": 86400\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Entity Metrics",
+      "description": "Monitor connected entities and object layers",
+      "item": [
+        {
+          "name": "Entity Metrics",
+          "description": "Get detailed metrics for all connected entities and their object layers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/metrics/entities",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "metrics",
+                "entities"
+              ]
+            },
+            "description": "Returns entity metrics including:\n- Total number of connected entities (workload indicator)\n- Breakdown by entity type: player, bot, floor, obstacle, foreground, portal\n- Object layer count per entity type based on ObjectLayerState list from entity runtime state\n- total_object_layers: count of all ObjectLayerState entries in entity.ObjectLayers arrays\n- active_object_layers: count of ObjectLayerState entries where Active field == true\n- inactive_object_layers: count of ObjectLayerState entries where Active field == false\n- Average object layers per entity\n\nWorkload Considerations:\n- Total entities loaded: affects server CPU and memory\n- Total object layers loaded: impacts rendering pipeline and network traffic\n- Active vs inactive ratio: indicates which equipped items are currently active vs inactive in player/bot inventories\n- Helps determine if server is approaching capacity thresholds (3000 entities max, 10000 object layers max)"
+          },
+          "response": [
+            {
+              "name": "Entity Metrics - Empty Server",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/entities",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "entities"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"total_entities\": 0,\n  \"entities_by_type\": [\n    {\n      \"type\": \"player\",\n      \"count\": 0,\n      \"total_object_layers\": 0,\n      \"active_object_layers\": 0,\n      \"inactive_object_layers\": 0\n    },\n    {\n      \"type\": \"bot\",\n      \"count\": 0,\n      \"total_object_layers\": 0,\n      \"active_object_layers\": 0,\n      \"inactive_object_layers\": 0\n    },\n    {\n      \"type\": \"floor\",\n      \"count\": 0,\n      \"total_object_layers\": 0,\n      \"active_object_layers\": 0,\n      \"inactive_object_layers\": 0\n    },\n    {\n      \"type\": \"obstacle\",\n      \"count\": 0,\n      \"total_object_layers\": 0,\n      \"active_object_layers\": 0,\n      \"inactive_object_layers\": 0\n    },\n    {\n      \"type\": \"foreground\",\n      \"count\": 0,\n      \"total_object_layers\": 0,\n      \"active_object_layers\": 0,\n      \"inactive_object_layers\": 0\n    },\n    {\n      \"type\": \"portal\",\n      \"count\": 0,\n      \"total_object_layers\": 0,\n      \"active_object_layers\": 0,\n      \"inactive_object_layers\": 0\n    }\n  ],\n  \"total_object_layers\": 0,\n  \"active_object_layers\": 0,\n  \"inactive_object_layers\": 0,\n  \"avg_object_layers_per_entity\": 0\n}"
+            },
+            {
+              "name": "Entity Metrics - With Load",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/entities",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "entities"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"total_entities\": 850,\n  \"entities_by_type\": [\n    {\n      \"type\": \"player\",\n      \"count\": 120,\n      \"total_object_layers\": 480,\n      \"active_object_layers\": 360,\n      \"inactive_object_layers\": 120\n    },\n    {\n      \"type\": \"bot\",\n      \"count\": 600,\n      \"total_object_layers\": 1800,\n      \"active_object_layers\": 1200,\n      \"inactive_object_layers\": 600\n    },\n    {\n      \"type\": \"floor\",\n      \"count\": 78,\n      \"total_object_layers\": 78,\n      \"active_object_layers\": 78,\n      \"inactive_object_layers\": 0\n    },\n    {\n      \"type\": \"obstacle\",\n      \"count\": 8,\n      \"total_object_layers\": 0,\n      \"active_object_layers\": 0,\n      \"inactive_object_layers\": 0\n    },\n    {\n      \"type\": \"foreground\",\n      \"count\": 5,\n      \"total_object_layers\": 0,\n      \"active_object_layers\": 0,\n      \"inactive_object_layers\": 0\n    },\n    {\n      \"type\": \"portal\",\n      \"count\": 40,\n      \"total_object_layers\": 0,\n      \"active_object_layers\": 0,\n      \"inactive_object_layers\": 0\n    }\n  ],\n  \"total_object_layers\": 2358,\n  \"active_object_layers\": 1638,\n  \"inactive_object_layers\": 720,\n  \"avg_object_layers_per_entity\": 2.78\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "WebSocket Server Status",
+      "description": "Monitor WebSocket connection status and metrics",
+      "item": [
+        {
+          "name": "WebSocket Status",
+          "description": "Get current WebSocket server status and connection metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/metrics/websocket",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "metrics",
+                "websocket"
+              ]
+            },
+            "description": "Returns WebSocket server metrics:\n- Server status: running (normal operation), stopping (graceful shutdown), error/crashed (failed unexpectedly)\n- Active connections: current number of connected clients (synced from game server in real-time)\n- Total connections: cumulative connections since server start\n- Bytes sent/received: network traffic metrics\n- Uptime: time server has been running in seconds\n- Last error: if any, shows error message and timestamp\n\nThresholds and Alerts:\n- Active connections = 0 with status running: server ready, awaiting connections\n- Active connections > 500: monitor performance\n- Active connections > 900: warning condition\n- Status = error/crashed: critical alert, immediate investigation needed\n- Status = stopping: maintenance mode, no new connections accepted"
+          },
+          "response": [
+            {
+              "name": "WebSocket Status - Running (No Connections)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/websocket",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "websocket"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"timestamp\": \"2024-01-15T10:30:45Z\",\n  \"websocket\": {\n    \"status\": \"running\",\n    \"active_connections\": 0,\n    \"uptime_sec\": 125\n  }\n}"
+            },
+            {
+              "name": "WebSocket Status - Running (With Connections)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/websocket",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "websocket"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"timestamp\": \"2024-01-15T10:30:45Z\",\n  \"websocket\": {\n    \"status\": \"running\",\n    \"active_connections\": 12,\n    \"uptime_sec\": 86400\n  }\n}"
+            },
+            {
+              "name": "WebSocket Status - Error with Last Error Info",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/websocket",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "websocket"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"timestamp\": \"2024-01-15T10:30:45Z\",\n  \"websocket\": {\n    \"status\": \"error\",\n    \"active_connections\": 0,\n    \"uptime_sec\": 86400,\n    \"last_error_message\": \"Connection pool exhausted - max clients reached\",\n    \"last_error_time\": \"2024-01-15T10:30:40Z\"\n  }\n}"
+            },
+            {
+              "name": "WebSocket Status - Stopping (Graceful Shutdown)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/websocket",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "websocket"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"timestamp\": \"2024-01-15T10:30:45Z\",\n  \"websocket\": {\n    \"status\": \"stopping\",\n    \"active_connections\": 8,\n    \"uptime_sec\": 86400\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Workload Metrics",
+      "description": "Monitor system workload and capacity",
+      "item": [
+        {
+          "name": "Workload Status",
+          "description": "Get current system workload metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/metrics/workload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "metrics",
+                "workload"
+              ]
+            },
+            "description": "Returns workload metrics based on loaded entities and object layers:\n- Load percentage: calculated from both entities and object layers (0-100%)\n- Max entity capacity: maximum entities allowed (3000)\n- Max object layers: maximum object layers allowed (10000)\n- Current load level: low (<40%), medium (40-70%), high (70-90%), critical (>90%)\n\nHealth Status Mapping Based on Workload:\n- Low (0-40%): System operating optimally, excellent performance\n- Medium (40-70%): Normal operation, acceptable load\n- High (70-90%): Approaching limits, monitor performance, consider optimization\n- Critical (>90%): Service degraded, immediate action needed\n\nThresholds Consideration:\n- Total entities loaded (players, bots, floors, obstacles, portals, foregrounds)\n- Total object layers (sum of all entity object layers)\n- Load percentage based on max of: (entities/3000)*100 OR (object_layers/10000)*100\n- Both metrics weighted equally to determine overall system load"
+          },
+          "response": [
+            {
+              "name": "Workload Response - Low",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/workload",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "workload"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"load_percentage\": 5,\n  \"max_entity_capacity\": 3000,\n  \"max_object_layers\": 10000,\n  \"current_load\": \"low\"\n}"
+            },
+            {
+              "name": "Workload Response - Medium",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/workload",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "workload"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"load_percentage\": 54.2,\n  \"max_entity_capacity\": 3000,\n  \"max_object_layers\": 10000,\n  \"current_load\": \"medium\"\n}"
+            },
+            {
+              "name": "Workload Response - High",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/workload",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "workload"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"load_percentage\": 78.5,\n  \"max_entity_capacity\": 3000,\n  \"max_object_layers\": 10000,\n  \"current_load\": \"high\"\n}"
+            },
+            {
+              "name": "Workload Response - Critical",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/metrics/workload",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "metrics",
+                    "workload"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"load_percentage\": 96.2,\n  \"max_entity_capacity\": 3000,\n  \"max_object_layers\": 10000,\n  \"current_load\": \"critical\"\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "your_jwt_token_here",
+      "type": "string"
+    }
+  ]
+}

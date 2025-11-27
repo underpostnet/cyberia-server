@@ -89,7 +89,7 @@ func main() {
 	r.Handle("/*", game.StaticFileServer(staticDir, "/index.html"))
 
 	// Mount REST API under /api
-	r.Mount("/api", api.NewAPIRouter(cfg, db))
+	r.Mount("/api", api.NewAPIRouter(cfg, db, s))
 	// Keep websocket endpoint
 	r.HandleFunc("/ws", s.HandleConnections)
 

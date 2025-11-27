@@ -403,3 +403,289 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		log.Printf("Client %s message channel is full.", player.ID)
 	}
 }
+
+// ===== Metrics Methods =====
+
+// GetEntityCounts returns counts of all entity types connected to the game server
+func (s *GameServer) GetEntityCounts() map[string]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	counts := map[string]int{
+		"players":     0,
+		"bots":        0,
+		"floors":      0,
+		"obstacles":   0,
+		"foregrounds": 0,
+		"portals":     0,
+		"total":       0,
+	}
+
+	for _, mapState := range s.maps {
+		counts["players"] += len(mapState.players)
+		counts["bots"] += len(mapState.bots)
+		counts["floors"] += len(mapState.floors)
+		counts["obstacles"] += len(mapState.obstacles)
+		counts["foregrounds"] += len(mapState.foregrounds)
+		counts["portals"] += len(mapState.portals)
+	}
+
+	counts["total"] = counts["players"] + counts["bots"] + counts["floors"] +
+		counts["obstacles"] + counts["foregrounds"] + counts["portals"]
+
+	return counts
+}
+
+// GetConnectedClientsCount returns the number of currently connected WebSocket clients
+func (s *GameServer) GetConnectedClientsCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.clients)
+}
+
+// GetTotalObjectLayers returns the total count of object layers across all entities
+func (s *GameServer) GetTotalObjectLayers() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	total := 0
+	for _, mapState := range s.maps {
+		for _, player := range mapState.players {
+			total += len(player.ObjectLayers)
+		}
+		for _, bot := range mapState.bots {
+			total += len(bot.ObjectLayers)
+		}
+		for _, floor := range mapState.floors {
+			total += len(floor.ObjectLayers)
+		}
+	}
+	return total
+}
+
+// GetActiveObjectLayers returns the count of active object layers
+func (s *GameServer) GetActiveObjectLayers() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	total := 0
+	for _, mapState := range s.maps {
+		for _, player := range mapState.players {
+			for _, layer := range player.ObjectLayers {
+				if layer.Active {
+					total++
+				}
+			}
+		}
+		for _, bot := range mapState.bots {
+			for _, layer := range bot.ObjectLayers {
+				if layer.Active {
+					total++
+				}
+			}
+		}
+		for _, floor := range mapState.floors {
+			for _, layer := range floor.ObjectLayers {
+				if layer.Active {
+					total++
+				}
+			}
+		}
+	}
+	return total
+}
+
+// GetInactiveObjectLayers returns the count of inactive object layers
+func (s *GameServer) GetInactiveObjectLayers() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	total := 0
+	for _, mapState := range s.maps {
+		for _, player := range mapState.players {
+			for _, layer := range player.ObjectLayers {
+				if !layer.Active {
+					total++
+				}
+			}
+		}
+		for _, bot := range mapState.bots {
+			for _, layer := range bot.ObjectLayers {
+				if !layer.Active {
+					total++
+				}
+			}
+		}
+		for _, floor := range mapState.floors {
+			for _, layer := range floor.ObjectLayers {
+				if !layer.Active {
+					total++
+				}
+			}
+		}
+	}
+	return total
+}
+
+// GetMapStats returns statistics for a specific map
+func (s *GameServer) GetMapStats(mapID int) map[string]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	stats := map[string]int{
+		"players":     0,
+		"bots":        0,
+		"floors":      0,
+		"obstacles":   0,
+		"foregrounds": 0,
+		"portals":     0,
+	}
+
+	mapState, ok := s.maps[mapID]
+	if !ok {
+		return stats
+	}
+
+	stats["players"] = len(mapState.players)
+	stats["bots"] = len(mapState.bots)
+	stats["floors"] = len(mapState.floors)
+	stats["obstacles"] = len(mapState.obstacles)
+	stats["foregrounds"] = len(mapState.foregrounds)
+	stats["portals"] = len(mapState.portals)
+
+	return stats
+}
+
+// GetServerHealth returns basic server health information
+func (s *GameServer) GetServerHealth() map[string]interface{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	health := map[string]interface{}{
+		"running":              true,
+		"connected_clients":    len(s.clients),
+		"total_maps":           len(s.maps),
+		"total_entities":       0,
+		"total_object_layers":  0,
+		"active_object_layers": 0,
+	}
+
+	totalEntities := 0
+	totalObjLayers := 0
+	activeObjLayers := 0
+
+	for _, mapState := range s.maps {
+		totalEntities += len(mapState.players) + len(mapState.bots) + len(mapState.floors) +
+			len(mapState.obstacles) + len(mapState.foregrounds) + len(mapState.portals)
+
+		for _, player := range mapState.players {
+			totalObjLayers += len(player.ObjectLayers)
+			for _, layer := range player.ObjectLayers {
+				if layer.Active {
+					activeObjLayers++
+				}
+			}
+		}
+		for _, bot := range mapState.bots {
+			totalObjLayers += len(bot.ObjectLayers)
+			for _, layer := range bot.ObjectLayers {
+				if layer.Active {
+					activeObjLayers++
+				}
+			}
+		}
+		for _, floor := range mapState.floors {
+			totalObjLayers += len(floor.ObjectLayers)
+			for _, layer := range floor.ObjectLayers {
+				if layer.Active {
+					activeObjLayers++
+				}
+			}
+		}
+	}
+
+	health["total_entities"] = totalEntities
+	health["total_object_layers"] = totalObjLayers
+	health["active_object_layers"] = activeObjLayers
+
+	return health
+}
+
+// GetPlayerObjectLayers returns object layer counts for all players
+// Active = ObjectLayerState.Active == true
+// Inactive = ObjectLayerState.Active == false
+func (s *GameServer) GetPlayerObjectLayers() ObjectLayerCount {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	count := ObjectLayerCount{Total: 0, Active: 0, Inactive: 0}
+
+	for _, mapState := range s.maps {
+		for _, player := range mapState.players {
+			for _, layer := range player.ObjectLayers {
+				count.Total++
+				if layer.Active {
+					count.Active++
+				} else {
+					count.Inactive++
+				}
+			}
+		}
+	}
+	return count
+}
+
+// GetBotObjectLayers returns object layer counts for all bots
+// Active = ObjectLayerState.Active == true
+// Inactive = ObjectLayerState.Active == false
+func (s *GameServer) GetBotObjectLayers() ObjectLayerCount {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	count := ObjectLayerCount{Total: 0, Active: 0, Inactive: 0}
+
+	for _, mapState := range s.maps {
+		for _, bot := range mapState.bots {
+			for _, layer := range bot.ObjectLayers {
+				count.Total++
+				if layer.Active {
+					count.Active++
+				} else {
+					count.Inactive++
+				}
+			}
+		}
+	}
+	return count
+}
+
+// GetFloorObjectLayers returns object layer counts for all floors
+// Active = ObjectLayerState.Active == true
+// Inactive = ObjectLayerState.Active == false
+func (s *GameServer) GetFloorObjectLayers() ObjectLayerCount {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	count := ObjectLayerCount{Total: 0, Active: 0, Inactive: 0}
+
+	for _, mapState := range s.maps {
+		for _, floor := range mapState.floors {
+			for _, layer := range floor.ObjectLayers {
+				count.Total++
+				if layer.Active {
+					count.Active++
+				} else {
+					count.Inactive++
+				}
+			}
+		}
+	}
+	return count
+}
+
+// ObjectLayerCount is a helper struct returned by object layer counting methods
+type ObjectLayerCount struct {
+	Total    int
+	Active   int
+	Inactive int
+}
