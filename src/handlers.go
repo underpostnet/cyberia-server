@@ -268,6 +268,12 @@ func (c *Client) readPump(server *GameServer) {
 					return
 				}
 
+				// Check if player is dead - only allow ghost item to be activated while dead
+				if (player.IsGhost() || player.Life <= 0) && active && itemId != "ghost" {
+					log.Printf("Player %s is dead and cannot activate non-ghost item '%s'.", c.playerID, itemId)
+					return
+				}
+
 				var targetItemIndex = -1
 				for i := range player.ObjectLayers {
 					if player.ObjectLayers[i].ItemID == itemId {

@@ -213,6 +213,16 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		firstSkinIndex := -1
 		activeSkinCount := 0
 
+		// Check if bot is dead - only allow ghost item to be active while dead
+		if bot.IsGhost() || bot.Life <= 0 {
+			for i := range bot.ObjectLayers {
+				if bot.ObjectLayers[i].ItemID != "ghost" && bot.ObjectLayers[i].Active {
+					bot.ObjectLayers[i].Active = false
+					log.Printf("Bot %s is dead. Deactivating non-ghost item '%s'.", bot.ID, bot.ObjectLayers[i].ItemID)
+				}
+			}
+		}
+
 		// First pass: enforce max layers and unique types by deactivating violators.
 		for i := range bot.ObjectLayers {
 			layer := &bot.ObjectLayers[i] // Work with a pointer to modify

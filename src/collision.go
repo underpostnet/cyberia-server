@@ -117,7 +117,27 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState) {
 	copy(layersToSave, player.ObjectLayers)
 	player.PreRespawnObjectLayers = layersToSave
 
-	player.ObjectLayers = []ObjectLayerState{{ItemID: ghostItemID, Active: true, Quantity: 1}}
+	// Deactivate all existing object layers
+	for i := range player.ObjectLayers {
+		player.ObjectLayers[i].Active = false
+	}
+
+	// Check if ghost item already exists in object layers
+	ghostExists := false
+	for i := range player.ObjectLayers {
+		if player.ObjectLayers[i].ItemID == ghostItemID {
+			player.ObjectLayers[i].Active = true
+			player.ObjectLayers[i].Quantity = 1
+			ghostExists = true
+			break
+		}
+	}
+
+	// If ghost item doesn't exist, add it
+	if !ghostExists {
+		player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: ghostItemID, Active: true, Quantity: 1})
+	}
+
 	player.RespawnTime = time.Now().Add(respawnDuration)
 	// Recalculate stats for the ghost state to ensure consistency.
 	// This will primarily affect MaxLife.
@@ -132,7 +152,27 @@ func (s *GameServer) handleBotDeath(bot *BotState) {
 	copy(layersToSave, bot.ObjectLayers)
 	bot.PreRespawnObjectLayers = layersToSave
 
-	bot.ObjectLayers = []ObjectLayerState{{ItemID: ghostItemID, Active: true, Quantity: 1}}
+	// Deactivate all existing object layers
+	for i := range bot.ObjectLayers {
+		bot.ObjectLayers[i].Active = false
+	}
+
+	// Check if ghost item already exists in object layers
+	ghostExists := false
+	for i := range bot.ObjectLayers {
+		if bot.ObjectLayers[i].ItemID == ghostItemID {
+			bot.ObjectLayers[i].Active = true
+			bot.ObjectLayers[i].Quantity = 1
+			ghostExists = true
+			break
+		}
+	}
+
+	// If ghost item doesn't exist, add it
+	if !ghostExists {
+		bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: ghostItemID, Active: true, Quantity: 1})
+	}
+
 	bot.RespawnTime = time.Now().Add(respawnDuration)
 	// Recalculate stats for the ghost state to ensure consistency.
 	// This will primarily affect MaxLife.
