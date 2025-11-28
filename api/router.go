@@ -20,7 +20,7 @@ func NewAPIRouter(cfg Config, db *DB, gameServer *game.GameServer) chi.Router {
 	r.Use(middleware.Recoverer)
 
 	// Object layers, users, and metrics
-	ol := NewObjectLayerHandler(cfg, db)
+	ol := NewObjectLayerHandler(cfg, db, gameServer)
 	uh := NewUserHandler(cfg, db)
 	mh := NewMetricsHandler(cfg, db, gameServer)
 	r.Route("/v1", func(sub chi.Router) {

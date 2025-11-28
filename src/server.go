@@ -71,6 +71,18 @@ func (s *GameServer) SetObjectLayerCache(cache map[string]*ObjectLayer) {
 	log.Printf("Object layer cache set with %d items.", len(s.objectLayerDataCache))
 }
 
+// UpdateObjectLayerCache updates specific entries in the object layer cache.
+// This is used to refresh cache entries with the latest database data.
+func (s *GameServer) UpdateObjectLayerCache(updates map[string]*ObjectLayer) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for itemID, layer := range updates {
+		s.objectLayerDataCache[itemID] = layer
+	}
+	log.Printf("Object layer cache updated with %d items.", len(updates))
+}
+
 func (s *GameServer) Run() {
 	go s.listenForClients()
 	go s.gameLoop()

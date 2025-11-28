@@ -20,16 +20,18 @@ import (
 
 // ObjectLayerHandler groups dependencies.
 type ObjectLayerHandler struct {
-	cfg Config
-	db  *DB
-	col *mongo.Collection
+	cfg        Config
+	db         *DB
+	col        *mongo.Collection
+	gameServer *game.GameServer
 }
 
-func NewObjectLayerHandler(cfg Config, db *DB) *ObjectLayerHandler {
+func NewObjectLayerHandler(cfg Config, db *DB, gameServer *game.GameServer) *ObjectLayerHandler {
 	return &ObjectLayerHandler{
-		cfg: cfg,
-		db:  db,
-		col: db.Collection("objectlayers"),
+		cfg:        cfg,
+		db:         db,
+		col:        db.Collection("objectlayers"),
+		gameServer: gameServer,
 	}
 }
 
@@ -42,6 +44,7 @@ func (h *ObjectLayerHandler) Routes(r chi.Router) {
 	r.With(AuthMiddleware(h.cfg), RequireRole(RoleModerator)).Post("/object-layers", h.Create)
 	r.With(AuthMiddleware(h.cfg), RequireRole(RoleModerator)).Put("/object-layers/{id}", h.Update)
 	r.With(AuthMiddleware(h.cfg), RequireRole(RoleAdmin)).Delete("/object-layers/{id}", h.Delete)
+	r.With(AuthMiddleware(h.cfg), RequireRole(RoleModerator)).Post("/object-layers/recache", h.Recache)
 }
 
 // List GET /object-layers?page=1&page_size=20
@@ -177,6 +180,72 @@ func (h *ObjectLayerHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Recache POST /object-layers/recache
+// Accepts an array of item IDs and updates the websocket server cache with fresh database data
+func (h *ObjectLayerHandler) Recache(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		ItemIDs []string `json:"item_ids"`
+	}
+	if err := decodeJSONStrict(r, &payload); err != nil {
+		errorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if len(payload.ItemIDs) == 0 {
+		errorJSON(w, http.StatusBadRequest, "item_ids array cannot be empty")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	// Fetch all object layers matching the provided item IDs
+	filter := bson.M{"data.item.id": bson.M{"$in": payload.ItemIDs}}
+	cur, err := h.col.Find(ctx, filter)
+	if err != nil {
+		errorJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer cur.Close(ctx)
+
+	var layers []game.ObjectLayer
+	if err := cur.All(ctx, &layers); err != nil {
+		errorJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Build a map of fetched item IDs for tracking
+	fetchedIDs := make(map[string]bool)
+	cacheUpdates := make(map[string]*game.ObjectLayer)
+
+	for i := range layers {
+		itemID := layers[i].Data.Item.ID
+		fetchedIDs[itemID] = true
+		cacheUpdates[itemID] = &layers[i]
+	}
+
+	// Update the game server cache
+	if h.gameServer != nil {
+		h.gameServer.UpdateObjectLayerCache(cacheUpdates)
+	}
+
+	// Determine which IDs were not found
+	var notFound []string
+	for _, requestedID := range payload.ItemIDs {
+		if !fetchedIDs[requestedID] {
+			notFound = append(notFound, requestedID)
+		}
+	}
+
+	response := bson.M{
+		"updated":   len(cacheUpdates),
+		"requested": len(payload.ItemIDs),
+		"not_found": notFound,
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 // CheckObjectLayersByType verifies the integrity of object layers for a specific item type
