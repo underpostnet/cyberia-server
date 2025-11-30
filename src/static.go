@@ -18,6 +18,17 @@ func StaticFileServer(dir string, fallbackPath string) http.Handler {
 
 	// Return a handler that serves the files or falls back to index.html for SPAs
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Add CORS headers for cross-origin requests
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type")
+
+		// Handle preflight requests
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		// Check if the requested path is a file that exists
 		if _, err := os.Stat(dir + r.URL.Path); err == nil {
 			fs.ServeHTTP(w, r)
