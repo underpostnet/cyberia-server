@@ -34,7 +34,7 @@ func SeedDefaultAdmin(ctx context.Context, cfg Config, db *DB) error {
 		return nil
 	}
 
-	log.Printf("[INFO] Seeding admin with: Email='%s', Username='%s', Password='%s'", email, username, cfg.AdminPassword)
+	// log.Printf("[INFO] Seeding admin with: Email='%s', Username='%s', Password='%s'", email, username, cfg.AdminPassword)
 
 	// 1. Remove all existing admins to ensure a clean slate for admin privileges
 	if _, err := col.DeleteMany(ctx, bson.M{"role": RoleAdmin}); err != nil {
