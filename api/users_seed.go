@@ -21,21 +21,39 @@ func SeedDefaultAdmin(ctx context.Context, cfg Config, db *DB) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	// Is there any admin?
-	count, err := col.CountDocuments(ctx, bson.M{"role": RoleAdmin})
-	if err != nil {
-		return err
-	}
-	if count > 0 {
+	email := strings.TrimSpace(strings.ToLower(cfg.AdminEmail))
+	username := strings.TrimSpace(cfg.AdminUsername)
+
+	if email == "" || username == "" {
+		log.Println("[WARN] Admin seed skipped: invalid ADMIN_EMAIL or ADMIN_USERNAME")
 		return nil
 	}
 
-	email := strings.TrimSpace(strings.ToLower(cfg.AdminEmail))
-	username := strings.TrimSpace(cfg.AdminUsername)
-	if email == "" || username == "" || len(cfg.AdminPassword) < 6 {
-		log.Println("[WARN] Admin seed skipped: invalid ADMIN_* config values")
+	if err := ValidatePassword(cfg.AdminPassword); err != nil {
+		log.Printf("[WARN] Admin seed skipped: invalid ADMIN_PASSWORD: %v", err)
 		return nil
 	}
+
+	log.Printf("[INFO] Seeding admin with: Email='%s', Username='%s', Password='%s'", email, username, cfg.AdminPassword)
+
+	// 1. Remove all existing admins to ensure a clean slate for admin privileges
+	if _, err := col.DeleteMany(ctx, bson.M{"role": RoleAdmin}); err != nil {
+		return err
+	}
+
+	// 2. Remove any user (even non-admins) that conflicts with the target admin credentials
+	// This prevents duplicate key errors if a regular user has the admin's email or username.
+	conflictFilter := bson.M{
+		"$or": []bson.M{
+			{"email": email},
+			{"username": username},
+		},
+	}
+	if _, err := col.DeleteMany(ctx, conflictFilter); err != nil {
+		return err
+	}
+
+	// 3. Create the default admin user
 	pwHash, err := bcrypt.GenerateFromPassword([]byte(cfg.AdminPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return err
@@ -52,15 +70,44 @@ func SeedDefaultAdmin(ctx context.Context, cfg Config, db *DB) error {
 		// tolerate duplicate key errors in case of races
 		var we mongo.WriteException
 		if errors.As(err, &we) {
+			isDup := false
 			for _, e := range we.WriteErrors {
 				if e.Code == 11000 {
-					log.Println("[INFO] Admin already exists (dup key)")
-					return nil
+					isDup = true
+					break
 				}
 			}
+			if isDup {
+				log.Println("[INFO] Admin already exists (dup key)")
+			} else {
+				return err
+			}
+		} else {
+			return err
 		}
-		return err
+	} else {
+		log.Println("[INFO] Seeded default admin user")
 	}
-	log.Println("[INFO] Seeded default admin user")
+
+	// 4. List all admins to verify
+	cursor, err := col.Find(ctx, bson.M{"role": RoleAdmin})
+	if err != nil {
+		log.Printf("[ERROR] Failed to list admins: %v", err)
+		return nil
+	}
+	defer cursor.Close(ctx)
+
+	var admins []User
+	if err := cursor.All(ctx, &admins); err != nil {
+		log.Printf("[ERROR] Failed to decode admins: %v", err)
+		return nil
+	}
+
+	log.Println("----- Current Admins in DB -----")
+	for _, admin := range admins {
+		log.Printf("ID: %s | Username: %s | Email: %s | Role: %s", admin.ID.Hex(), admin.Username, admin.Email, admin.Role)
+	}
+	log.Println("--------------------------------")
+
 	return nil
 }

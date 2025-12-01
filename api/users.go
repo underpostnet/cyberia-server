@@ -70,8 +70,12 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	in.Email = strings.TrimSpace(strings.ToLower(in.Email))
 	in.Username = strings.TrimSpace(in.Username)
-	if in.Email == "" || in.Username == "" || len(in.Password) < 6 {
-		errorJSON(w, http.StatusBadRequest, "email, username, password (min 6) required")
+	if in.Email == "" || in.Username == "" {
+		errorJSON(w, http.StatusBadRequest, "email and username required")
+		return
+	}
+	if err := ValidatePassword(in.Password); err != nil {
+		errorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	pwHash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
@@ -167,7 +171,7 @@ func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	filter := bson.M{}
-	opts := options.Find().SetSkip(int64((page-1)*pageSize)).SetLimit(int64(pageSize)).SetSort(bson.D{{Key: "_id", Value: -1}})
+	opts := options.Find().SetSkip(int64((page - 1) * pageSize)).SetLimit(int64(pageSize)).SetSort(bson.D{{Key: "_id", Value: -1}})
 	cur, err := h.col.Find(ctx, filter, opts)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, err.Error())
