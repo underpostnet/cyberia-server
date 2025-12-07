@@ -31,7 +31,7 @@ jobs:
             set -e
             echo "Starting remote deploy"
             cd /home/dd/engine
-            underpost run pull
-            underpost run secret
-            node bin/build dd-cyberia conf
-            underpost run instance --node-name $HOSTNAME 'dd-cyberia,mmo-server'
+            sudo -n -- /bin/bash -lc "node bin run pull"
+            sudo -n -- /bin/bash -lc "node bin run secret"
+            sudo -n -- /bin/bash -lc "node bin/build dd-cyberia conf"
+            sudo -n -- /bin/bash -lc "node bin run instance --node-name $HOSTNAME 'dd-cyberia,mmo-server' --log-type underpost"
