@@ -41,23 +41,13 @@ func SeedDefaultAdmin(ctx context.Context, cfg Config, db *DB) error {
 		return err
 	}
 
-	// 2. Remove any user (even non-admins) that conflicts with the target admin credentials
-	// This prevents duplicate key errors if a regular user has the admin's email or username.
-	conflictFilter := bson.M{
-		"$or": []bson.M{
-			{"email": email},
-			{"username": username},
-		},
-	}
-	if _, err := col.DeleteMany(ctx, conflictFilter); err != nil {
-		return err
-	}
-
-	// 3. Create the default admin user
+	// 2. Create the default admin user
 	pwHash, err := bcrypt.GenerateFromPassword([]byte(cfg.AdminPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
+
+	// 3. Try to insert the admin; if there's a conflict, update the existing user to admin
 	u := User{
 		Email:        email,
 		Username:     username,
@@ -67,7 +57,7 @@ func SeedDefaultAdmin(ctx context.Context, cfg Config, db *DB) error {
 		UpdatedAt:    time.Now(),
 	}
 	if _, err := col.InsertOne(ctx, u); err != nil {
-		// tolerate duplicate key errors in case of races
+		// Check if it's a duplicate key error
 		var we mongo.WriteException
 		if errors.As(err, &we) {
 			isDup := false
@@ -78,7 +68,20 @@ func SeedDefaultAdmin(ctx context.Context, cfg Config, db *DB) error {
 				}
 			}
 			if isDup {
-				log.Println("[INFO] Admin already exists (dup key)")
+				// A user with this email already exists, update them to admin
+				updateFilter := bson.M{"email": email}
+				update := bson.M{
+					"$set": bson.M{
+						"username":      username,
+						"password_hash": string(pwHash),
+						"role":          RoleAdmin,
+						"updated_at":    time.Now(),
+					},
+				}
+				if _, err := col.UpdateOne(ctx, updateFilter, update); err != nil {
+					return err
+				}
+				log.Println("[INFO] Updated existing user to admin")
 			} else {
 				return err
 			}
