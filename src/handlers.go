@@ -224,7 +224,7 @@ func (c *Client) readPump(server *GameServer) {
 				usedTarget = closest
 			}
 
-			if newPath != nil && len(newPath) > 0 {
+			if len(newPath) > 0 {
 				first := newPath[0]
 				server.mu.Lock()
 				player.Path = newPath
