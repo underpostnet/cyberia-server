@@ -11,16 +11,23 @@ import (
 	game "cyberia-server/src"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/joho/godotenv"
 )
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
+	// Load .env file if present (does not override already-set env vars)
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found or failed to load, relying on environment variables.")
+	}
+
 	// Core game server
 	s := game.NewGameServer()
 
-	// TODO: www.cyberiaonline.com object layer api integration
-	// s.SetObjectLayerCache()
+	// Authenticate with www.cyberiaonline.com and fetch object layer metadata into cache.
+	// Requires CYBERIA_API_EMAIL and CYBERIA_API_PASSWORD env vars.
+	s.SetObjectLayerCache()
 
 	go s.Run()
 

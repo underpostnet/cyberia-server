@@ -62,25 +62,52 @@ func NewGameServer() *GameServer {
 	return gs
 }
 
-// SetObjectLayerCache sets the cache for object layer data.
-// This is called from main after the server is created and data is loaded.
-func (s *GameServer) SetObjectLayerCache(cache map[string]*ObjectLayer) {
+// SetObjectLayerCache authenticates with the Cyberia API (www.cyberiaonline.com),
+// fetches all object layer metadata, and populates the in-memory cache.
+// Credentials are read from CYBERIA_API_EMAIL and CYBERIA_API_PASSWORD env vars.
+// If fetching fails the server continues with an empty cache and logs a warning.
+func (s *GameServer) SetObjectLayerCache() {
+	cache, err := FetchAllObjectLayers()
+	if err != nil {
+		log.Printf("WARNING: SetObjectLayerCache failed: %v — server will run with an empty object layer cache.", err)
+		return
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.objectLayerDataCache = cache
 	log.Printf("Object layer cache set with %d items.", len(s.objectLayerDataCache))
+
+	// Count cached object layers per item type
+	typeCounts := make(map[string]int)
+	for _, layer := range s.objectLayerDataCache {
+		itemType := layer.Data.Item.Type
+		if itemType == "" {
+			itemType = "(unknown)"
+		}
+		typeCounts[itemType]++
+	}
+	log.Println("Object layer cache breakdown by item type:")
+	for itemType, count := range typeCounts {
+		log.Printf("  %-20s %d", itemType, count)
+	}
 }
 
-// UpdateObjectLayerCache updates specific entries in the object layer cache.
-// This is used to refresh cache entries with the latest database data.
-func (s *GameServer) UpdateObjectLayerCache(updates map[string]*ObjectLayer) {
+// UpdateObjectLayerCache re-fetches all object layers from the Cyberia API
+// and merges them into the existing cache (adding new entries, updating existing ones).
+func (s *GameServer) UpdateObjectLayerCache() {
+	cache, err := FetchAllObjectLayers()
+	if err != nil {
+		log.Printf("WARNING: UpdateObjectLayerCache failed: %v", err)
+		return
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	for itemID, layer := range updates {
+	for itemID, layer := range cache {
 		s.objectLayerDataCache[itemID] = layer
 	}
-	log.Printf("Object layer cache updated with %d items.", len(updates))
+	log.Printf("Object layer cache updated with %d items.", len(cache))
 }
 
 func (s *GameServer) Run() {
