@@ -34,4 +34,4 @@ jobs:
             sudo -n -- /bin/bash -lc "node bin run pull"
             sudo -n -- /bin/bash -lc "node bin run secret"
             sudo -n -- /bin/bash -lc "node bin/build dd-cyberia conf"
-            sudo -n -- /bin/bash -lc "node bin run instance --node-name $HOSTNAME 'dd-cyberia,mmo-server' --log-type underpost"
+            sudo -n -- /bin/bash -lc "node bin run instance --tls --node-name $HOSTNAME 'dd-cyberia,mmo-server' --log-type underpost"
