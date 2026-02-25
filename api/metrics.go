@@ -84,8 +84,6 @@ type MetricsResponse struct {
 
 // MetricsHandler manages metrics collection and reporting
 type MetricsHandler struct {
-	cfg              Config
-	db               *DB
 	gameServer       *game.GameServer
 	mu               sync.RWMutex
 	serverStartTime  time.Time
@@ -100,11 +98,9 @@ type MetricsHandler struct {
 }
 
 // NewMetricsHandler creates a new metrics handler
-func NewMetricsHandler(cfg Config, db *DB, gameServer *game.GameServer) *MetricsHandler {
+func NewMetricsHandler(gameServer *game.GameServer) *MetricsHandler {
 	now := time.Now()
 	return &MetricsHandler{
-		cfg:                          cfg,
-		db:                           db,
 		gameServer:                   gameServer,
 		serverStartTime:              now,
 		warningEntityThreshold:       800,  // Warning at 80% capacity
