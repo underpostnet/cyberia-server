@@ -44,7 +44,7 @@ type ObjectLayer struct {
 	ID                        string          `json:"_id,omitempty"`
 	Data                      ObjectLayerData `json:"data"`
 	Cid                       string          `json:"cid,omitempty"`
-	ObjectLayerRenderFramesId string          `json:"objectLayerRenderFramesId,omitempty"`
+	ObjectLayerRenderFramesId interface{}     `json:"objectLayerRenderFramesId,omitempty"`
 	AtlasSpriteSheetId        interface{}     `json:"atlasSpriteSheetId,omitempty"`
 	Sha256                    string          `json:"sha256"`
 	CreatedAt                 time.Time       `json:"createdAt,omitempty"`
