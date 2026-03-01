@@ -56,11 +56,10 @@ type ObjectLayerState struct {
 }
 
 type ObjectState struct {
-	ID          string     `json:"id"`
-	Pos         Point      `json:"Pos"`
-	Dims        Dimensions `json:"Dims"`
-	Type        string     `json:"Type"`
-	PortalLabel string     `json:"PortalLabel,omitempty"`
+	ID   string     `json:"id"`
+	Pos  Point      `json:"Pos"`
+	Dims Dimensions `json:"Dims"`
+	Type string     `json:"Type"`
 }
 
 type PlayerState struct {
