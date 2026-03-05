@@ -29,12 +29,26 @@ type Item struct {
 	Activable   bool   `json:"activable"`
 }
 
+// Ledger holds blockchain protocol metadata linking the visual object-layer
+// prefab to its economic reality (token standard + smart-contract address).
+type Ledger struct {
+	Type    string `json:"type"`              // ERC20, ERC721, OFF_CHAIN
+	Address string `json:"address,omitempty"` // Solidity contract address
+}
+
+// Render holds IPFS content identifiers for the consolidated atlas sprite sheet.
+type Render struct {
+	Cid         string `json:"cid,omitempty"`         // IPFS CID for the atlas PNG
+	MetadataCid string `json:"metadataCid,omitempty"` // IPFS CID for the atlas metadata JSON
+}
+
 // ObjectLayerData groups the data for an ObjectLayer.
 type ObjectLayerData struct {
-	Stats               Stats  `json:"stats"`
-	Item                Item   `json:"item"`
-	Seed                string `json:"seed"`
-	AtlasSpriteSheetCid string `json:"atlasSpriteSheetCid,omitempty"`
+	Stats  Stats   `json:"stats"`
+	Item   Item    `json:"item"`
+	Ledger *Ledger `json:"ledger,omitempty"`
+	Render *Render `json:"render,omitempty"`
+	Seed   string  `json:"seed"`
 }
 
 // ObjectLayer is the top level schema for an object layer.
