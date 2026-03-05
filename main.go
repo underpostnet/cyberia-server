@@ -46,12 +46,17 @@ func main() {
 	// Keep websocket endpoint
 	r.HandleFunc("/ws", s.HandleConnections)
 
+	port := os.Getenv("SERVER_PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	srv := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":" + port,
 		Handler: r,
 	}
 
-	log.Println("Server started on :8080")
+	log.Printf("Server started on :%s", port)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal("ListenAndServe:", err)
 	}
