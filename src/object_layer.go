@@ -48,7 +48,6 @@ type ObjectLayerData struct {
 	Item   Item    `json:"item"`
 	Ledger *Ledger `json:"ledger,omitempty"`
 	Render *Render `json:"render,omitempty"`
-	Seed   string  `json:"seed"`
 }
 
 // ObjectLayer is the top level schema for an object layer.
