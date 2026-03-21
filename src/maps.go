@@ -144,6 +144,7 @@ func (ms *MapState) generatePortals(numPortals int) []*PortalState {
 			ID:   uuid.New().String(),
 			Pos:  Point{X: float64(posI.X), Y: float64(posI.Y)},
 			Dims: dims,
+			Type: "portal",
 		}
 		portals = append(portals, portal)
 		for y := posI.Y; y < posI.Y+int(dims.Height); y++ {
