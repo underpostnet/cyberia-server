@@ -5,8 +5,6 @@ package grpcclient
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"io"
 	"log"
@@ -18,20 +16,15 @@ import (
 	game "cyberia-server/src"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 )
 
 // Config holds connection parameters for the Engine gRPC server.
+// gRPC runs over the Kubernetes internal network (ClusterIP) — always insecure.
 type Config struct {
 	// Address is host:port of the Engine gRPC server (default "localhost:50051").
 	Address string
-
-	// TLS paths — leave empty for insecure (development).
-	CACertPath     string
-	ClientCertPath string
-	ClientKeyPath  string
 
 	// ConnectTimeout is the dial deadline (default 10s).
 	ConnectTimeout time.Duration
@@ -80,15 +73,7 @@ func New(cfg Config) (*Client, error) {
 		}),
 	}
 
-	if cfg.CACertPath != "" {
-		tc, err := buildTLS(cfg)
-		if err != nil {
-			return nil, fmt.Errorf("grpcclient: tls config: %w", err)
-		}
-		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tc)))
-	} else {
-		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	}
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.ConnectTimeout)
 	defer cancel()
@@ -366,35 +351,4 @@ func protoFrameList(frames []*pb.FrameMetadata) []game.FrameMeta {
 		}
 	}
 	return out
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// TLS helper
-// ═══════════════════════════════════════════════════════════════════
-
-func buildTLS(cfg Config) (*tls.Config, error) {
-	caCert, err := os.ReadFile(cfg.CACertPath)
-	if err != nil {
-		return nil, fmt.Errorf("read CA cert: %w", err)
-	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(caCert) {
-		return nil, fmt.Errorf("failed to append CA cert")
-	}
-
-	tc := &tls.Config{
-		RootCAs:    pool,
-		MinVersion: tls.VersionTLS12,
-	}
-
-	// mTLS: load client cert+key if provided
-	if cfg.ClientCertPath != "" && cfg.ClientKeyPath != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.ClientCertPath, cfg.ClientKeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("load client cert: %w", err)
-		}
-		tc.Certificates = []tls.Certificate{cert}
-	}
-
-	return tc, nil
 }

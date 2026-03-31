@@ -35,7 +35,9 @@ func main() {
 	// Set INSTANCE_CODE (e.g. "cyberia-main") to load a specific instance.
 	instanceCode := os.Getenv("INSTANCE_CODE")
 	if grpcAddr := os.Getenv("ENGINE_GRPC_ADDRESS"); grpcAddr != "" {
-		gc, err := grpcclient.New(grpcclient.Config{Address: grpcAddr})
+		gc, err := grpcclient.New(grpcclient.Config{
+			Address: grpcAddr,
+		})
 		if err != nil {
 			log.Printf("WARNING: gRPC client dial failed: %v — server will run with empty world.", err)
 		} else {

@@ -1,7 +1,7 @@
 #!/bin/bash
-# Script to deploy Cyberia Server via SSH
+# Deploy Cyberia Server via GitHub Actions workflow dispatch
+set -e
 
-cd /home/dd/cyberia-server
-git reset
-underpost cmt . cd ssh-cyberia-server --empty
+cd /home/dd/engine/cyberia-server
 underpost push . underpostnet/cyberia-server
+gh workflow run cyberia-server.cd.yml -R underpostnet/cyberia-server -f job=deploy
