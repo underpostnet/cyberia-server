@@ -364,6 +364,9 @@ message MapDataMessage {
 
 message GetMapDataRequest {
   string map_code = 1;
+  // Code of the Go instance making the request — used by the Engine
+  // to update the cyberia-global-map-code-registry live tracking table.
+  string instance_code = 2;
 }
 
 message GetMapDataResponse {

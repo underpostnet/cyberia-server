@@ -179,11 +179,13 @@ func (c *Client) FetchFullInstance(ctx context.Context, instanceCode string) (*p
 }
 
 // FetchMapData returns map data for a single map code.
-func (c *Client) FetchMapData(ctx context.Context, mapCode string) (*pb.MapDataMessage, error) {
+// instanceCode identifies the calling Go server instance so the Engine can
+// update the global map-code registry for live tracking.
+func (c *Client) FetchMapData(ctx context.Context, mapCode, instanceCode string) (*pb.MapDataMessage, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.CallTimeout)
 	defer cancel()
 
-	resp, err := c.svc.GetMapData(ctx, &pb.GetMapDataRequest{MapCode: mapCode})
+	resp, err := c.svc.GetMapData(ctx, &pb.GetMapDataRequest{MapCode: mapCode, InstanceCode: instanceCode})
 	if err != nil {
 		return nil, fmt.Errorf("GetMapData(%s): %w", mapCode, err)
 	}
