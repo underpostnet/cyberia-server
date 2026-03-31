@@ -27,7 +27,9 @@ func (s *GameServer) HandlePlayerActionSkills(player *PlayerState, mapState *Map
 						s.executePlayerDoppelgangerSkill(player, mapState, layer.ItemID)
 					case "atlas_pistol_mk2_logic":
 						s.executePlayerBulletSkill(player, mapState, target)
-					// Future skills like "teleport_burst" or "invisibility" could be added here.
+					case "coin_drop_or_transaction":
+						// Economy mechanic: coin transfer is triggered automatically on kill
+						// via HandleOnKillSkills → executeCoinDropOnKill. No manual action needed.
 					default:
 						log.Printf("Unknown logicEventID '%s' for item '%s'", logicID, layer.ItemID)
 					}
@@ -53,7 +55,9 @@ func (s *GameServer) handleBotSkills(bot *BotState, mapState *MapState, target P
 						s.executeBotDoppelgangerSkill(bot, mapState, layer.ItemID)
 					case "atlas_pistol_mk2_logic":
 						s.executeBotBulletSkill(bot, mapState, target)
-					// Future skills could be added here.
+					case "coin_drop_or_transaction":
+						// Economy mechanic: coin transfer is triggered automatically on kill
+						// via HandleOnKillSkills → executeCoinDropOnKill. No manual action needed.
 					default:
 						log.Printf("Unknown logicEventID '%s' for item '%s' on bot %s", logicID, layer.ItemID, bot.ID)
 					}

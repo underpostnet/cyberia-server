@@ -20,8 +20,8 @@ import "time"
 // Intelligence — Probability-based stat that increases the chance to
 // spawn/trigger a summoned entity.
 
-// Utility — Reduces the cooldown time between actions, allowing for more frequent
-// actions. It also increases the chance to trigger life-regeneration events.
+// Utility — Reduces the cooldown time between actions as a percentage (1 Utility = 1% reduction),
+// allowing for more frequent actions. It also increases the chance to trigger life-regeneration events.
 
 // -----------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------
@@ -112,9 +112,13 @@ func (s *GameServer) ApplyResistanceStat(entity interface{}, mapState *MapState)
 // CalculateActionCooldown computes the effective action cooldown for an entity
 // based on its Utility stat.
 func (s *GameServer) CalculateActionCooldown(stats ComputedStats) time.Duration {
-	// Utility stat reduces the base cooldown, measured in milliseconds.
-	utilityReduction := time.Duration(stats.Utility) * time.Millisecond
-	currentCooldown := s.entityBaseActionCooldown - utilityReduction
+	// Utility stat reduces the base cooldown as a percentage: 1 Utility = 1% reduction.
+	// Consistent with Agility (1% speed) and Intelligence (1% spawn chance).
+	reductionFactor := 1.0 - (stats.Utility / 100.0)
+	if reductionFactor < 0 {
+		reductionFactor = 0
+	}
+	currentCooldown := time.Duration(float64(s.entityBaseActionCooldown) * reductionFactor)
 
 	// Ensure the cooldown does not fall below the minimum defined threshold.
 	if currentCooldown < s.entityBaseMinActionCooldown {

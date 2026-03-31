@@ -45,11 +45,62 @@ Go game server for **Cyberia Online MMO**. Manages real-time multiplayer state v
 - **gRPC Data Pipeline**: All game configuration, maps, entities, ObjectLayers, and AtlasSpriteSheets loaded from the Engine at startup via gRPC
 - **Hot-Reload**: ObjectLayer cache diffing via sha256 manifests — surgical in-memory replacement without restart
 - **Fallback Instance**: When the requested instance is not found in MongoDB, the Engine (`grpc-server.js`) returns a minimal playable instance with a 64×64 floor grid and default config. The Go server always requires gRPC — it exits on connection failure
-- **Item-based Skill System**: Skills are configured per-instance via `skillConfig[]` (triggerItemId → logicEventId mapping)
+- **Item-based Skill System**: Skills are configured per-instance via `skillConfig[]` (`triggerItemId` → `logicEventIds[]` ordered array mapping)
 - **A\* Pathfinding**: Grid-based pathfinding for player movement and bot AI
 - **Dynamic Bot AI**: Bots with passive/hostile behaviors using pathfinding and the skill system
-- **Per-Entity Color**: Each entity color is resolved from a named palette (`PLAYER`, `OTHER_PLAYER`, `BOT`, etc.) configured per-instance via `gameConfig.colors[]`. Used for solid-color rendering when no sprite sheets are available
-- **`SkillRules` config**: Bullet and doppelganger tuning parameters (spawn chances, lifetimes, sizes, speeds) are grouped under `gameConfig.skillRules` in MongoDB and transmitted as a nested proto message
+- **Per-Entity Color**: Each entity color is resolved from a named palette (`PLAYER`, `OTHER_PLAYER`, `BOT`, etc.) configured per-instance via `colors[]`. Used for solid-color rendering when no sprite sheets are available
+- **`SkillRules` config**: Bullet and doppelganger tuning parameters (spawn chances, lifetimes, sizes, speeds) are grouped under `skillRules` in `CyberiaInstanceConf` and transmitted as a nested proto message
+- **Off-chain Economy**: Coin quantities are tracked in-memory as `ObjectLayerState.Quantity` on entity object layers. Blockchain integration is **not active** — the economy operates fully off-chain
+
+## Passive Stats System
+
+Each `ObjectLayer` item carries a `Stats` struct. The server computes an entity's effective stats by summing all **active** layers' stat values, then recursively adding the caster's stats if the entity was summoned (e.g. a bullet or doppelganger inherits its caster's stats).
+
+| Stat             | Effect                                                      | Formula                                                                                                  |
+| ---------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Effect**       | Life removed on collision/impact                            | Damage dealt = `bulletStats.Effect`; "thorns" reverse damage applies to the attacker                     |
+| **Resistance**   | Expands `MaxLife` cap and increases regen heal amount       | `MaxLife = entityBaseMaxLife + Resistance`                                                               |
+| **Agility**      | Movement speed multiplier                                   | `speed = entityBaseSpeed × (1 + Agility / 100)`                                                          |
+| **Range**        | Lifetime of summoned entities (bullets, doppelgangers)      | `ExpiresAt += Range ms`                                                                                  |
+| **Intelligence** | Spawn probability for summoned entities                     | `P(spawn) = min(baseChance + Intelligence / 100, maxChance)`                                             |
+| **Utility**      | Action cooldown reduction + probabilistic life regen chance | `cooldown = baseCooldown × (1 − Utility / 100)`; `P(regen) = min(baseChance + Utility / 100, maxChance)` |
+
+All percentage formulas are consistent: **1 stat point = 1%** scaling across Effect, Agility, Intelligence, and Utility.
+
+## Skill System
+
+Skills map a **trigger item** (the active `ObjectLayer` item equipped by a player or bot) to an ordered list of **logic event IDs**. This mapping is configured per-instance in `CyberiaInstanceConf.skillConfig[]` and transmitted to the Go server via gRPC at startup.
+
+```
+ObjectLayer item (equipped + active)
+    └─ skillConfig: triggerItemId → logicEventIds[]
+           ├─ "atlas_pistol_mk2_logic"   → executePlayerBulletSkill / executeBotBulletSkill
+           ├─ "doppelganger"             → executePlayerDoppelgangerSkill / executeBotDoppelgangerSkill
+           └─ "coin_drop_or_transaction" → no-op on action (fires automatically on kill via HandleOnKillSkills)
+```
+
+**Skill trigger flow:**
+
+1. Player sends `player_action` WebSocket message (rate-limited by `CalculateActionCooldown`)
+2. `HandlePlayerActionSkills` iterates active `ObjectLayers`, checks each `ItemID` against `skillConfig`
+3. For each matching `SkillDefinition`, iterates `LogicEventIDs` in order and dispatches to the corresponding handler
+4. Bots follow the same path via `handleBotSkills`, called when they acquire a new target or wander
+
+**Economy skill (`coin_drop_or_transaction`):**  
+Registered in `skillConfig` so the C client's `skillMap` correctly associates the coin item. The actual loot transfer (`executeCoinDropOnKill`) fires automatically when a bullet kills an entity — no player action required.
+
+**`SkillRules` tuning parameters** (all configurable per-instance):
+
+| Parameter                         | Description                                             |
+| --------------------------------- | ------------------------------------------------------- |
+| `bulletSpawnChance`               | Base probability of spawning a bullet on each action    |
+| `bulletLifetimeMs`                | Base bullet travel duration before expiry               |
+| `bulletWidth/Height`              | Bullet hitbox dimensions (grid units)                   |
+| `bulletSpeedMultiplier`           | Bullet speed as a multiple of `entityBaseSpeed`         |
+| `doppelgangerSpawnChance`         | Base probability of spawning a doppelganger clone       |
+| `doppelgangerLifetimeMs`          | Doppelganger wander duration before expiry              |
+| `doppelgangerSpawnRadius`         | Wander radius around the caster's position (grid units) |
+| `doppelgangerInitialLifeFraction` | Fraction of `entityBaseMaxLife` the clone spawns with   |
 
 ## Installation
 
