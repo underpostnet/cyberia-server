@@ -135,7 +135,7 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState) {
 	player.RespawnTime = time.Now().Add(s.respawnDuration)
 	// Recalculate stats for the ghost state to ensure consistency.
 	// This will primarily affect MaxLife.
-	s.ApplyResistanceStat(player, s.maps[player.MapID]) // This assumes player.MapID is correct and map exists.
+	s.ApplyResistanceStat(player, s.maps[player.MapCode]) // This assumes player.MapCode is correct and map exists.
 	player.Mode = IDLE                                  // Stop movement
 }
 
@@ -170,7 +170,7 @@ func (s *GameServer) handleBotDeath(bot *BotState) {
 	bot.RespawnTime = time.Now().Add(s.respawnDuration)
 	// Recalculate stats for the ghost state to ensure consistency.
 	// This will primarily affect MaxLife.
-	s.ApplyResistanceStat(bot, s.maps[bot.MapID])
+	s.ApplyResistanceStat(bot, s.maps[bot.MapCode])
 	bot.Mode = IDLE // Stop movement
 }
 

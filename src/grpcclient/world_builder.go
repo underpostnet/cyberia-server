@@ -47,10 +47,12 @@ func NewWorldBuilder(client *Client, server *game.GameServer) *WorldBuilder {
 // LoadAll performs the initial full load via gRPC GetFullInstance.
 // It fetches the instance graph, all maps, entities, and object layers,
 // then builds the game world and populates the object layer cache.
+// When INSTANCE_CODE is not set the Engine is queried with the code "default"
+// and returns a minimal fallback instance.
 func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 	if wb.InstanceCode == "" {
-		log.Println("[WorldBuilder] No INSTANCE_CODE set, falling back to ObjectLayerBatch-only load.")
-		return wb.loadObjectLayersOnly(ctx)
+		wb.InstanceCode = "default"
+		log.Printf("[WorldBuilder] INSTANCE_CODE not set — requesting fallback instance from Engine (code=%q).", wb.InstanceCode)
 	}
 
 	log.Printf("[WorldBuilder] Loading full instance %q via gRPC...", wb.InstanceCode)
@@ -68,23 +70,14 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 		log.Println("[WorldBuilder] WARNING: no instance config in gRPC response.")
 	}
 
-	// Build object layer cache from the response
+	// Build object layer cache exclusively from the instance response.
+	// getFullInstance already includes OLs for map entity items AND
+	// skillConfig spawnedItemIds — no global batch fetch needed.
 	cache := make(map[string]*game.ObjectLayer, len(resp.GetObjectLayers()))
 	for _, olMsg := range resp.GetObjectLayers() {
 		ol := protoToObjectLayer(olMsg)
 		if ol.Data.Item.ID != "" {
 			cache[ol.Data.Item.ID] = ol
-		}
-	}
-
-	// Also fetch all remaining ObjectLayers (items not referenced by this instance
-	// but still needed for stats calculation, e.g. weapon items on players)
-	allCache, err := wb.client.FetchObjectLayerBatch(ctx, "")
-	if err != nil {
-		log.Printf("[WorldBuilder] WARNING: ObjectLayerBatch failed: %v — using instance OLs only.", err)
-	} else {
-		for itemID, ol := range allCache {
-			cache[itemID] = ol
 		}
 	}
 
@@ -102,13 +95,22 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 	// Build the game world from instance data
 	wb.server.BuildWorldFromInstance(resp.GetInstance(), resp.GetMaps(), resp.GetObjectLayers())
 
-	// Fetch all atlas sprite sheets via gRPC batch
-	atlasCache, err := wb.client.FetchAtlasSpriteSheetBatch(ctx)
-	if err != nil {
-		log.Printf("[WorldBuilder] WARNING: AtlasSpriteSheetBatch failed: %v — atlas metadata unavailable.", err)
-	} else {
-		wb.server.ReplaceAtlasCache(atlasCache)
+	// Fetch atlas sprite sheets only for the item IDs present in the instance cache.
+	// This avoids pulling the entire atlas catalog for items the instance never uses.
+	atlasCache := make(map[string]*game.AtlasData, len(cache))
+	for itemID := range cache {
+		msg, err := wb.client.FetchAtlasSpriteSheet(ctx, itemID)
+		if err != nil {
+			log.Printf("[WorldBuilder] WARNING: atlas fetch failed for %q: %v", itemID, err)
+			continue
+		}
+		ad := protoToAtlasData(msg)
+		if ad.ItemKey != "" {
+			atlasCache[ad.ItemKey] = ad
+		}
 	}
+	log.Printf("gRPC: fetched %d AtlasSpriteSheets for instance items.", len(atlasCache))
+	wb.server.ReplaceAtlasCache(atlasCache)
 
 	log.Printf("[WorldBuilder] Full instance load complete: %d ObjectLayers, %d AtlasSheets cached.",
 		len(cache), len(atlasCache))

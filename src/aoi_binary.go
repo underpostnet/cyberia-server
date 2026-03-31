@@ -9,7 +9,7 @@
 //
 //	Header (5 bytes):
 //	  [0]       u8   msgType  (0x01 = aoi_update, 0x02 = init_data, 0x03 = full_aoi)
-//	  [1..2]    u16  mapID
+//	  [1..2]    u16  reserved (always 0)
 //	  [3..4]    u16  entityCount (number of entity blocks that follow)
 //
 //	Per-entity block (variable length):
@@ -52,7 +52,7 @@
 //	    f32  aoiMinX, aoiMinY, aoiMaxX, aoiMaxY
 //	    u8   onPortal (0/1)
 //	    u16  sumStatsLimit
-//	    u16  mapID
+//	    u8+str mapCode (length-prefixed map code string)
 //	    u8   pathLen
 //	    per path point: i16 x, i16 y
 //	    i16  targetPosX, targetPosY
@@ -253,7 +253,7 @@ func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState) {
 		e.putU8(0)
 	}
 	e.putU16(uint16(p.SumStatsLimit))
-	e.putU16(uint16(p.MapID))
+	e.putString(p.MapCode)
 
 	pathLen := len(p.Path)
 	if pathLen > 255 {
@@ -278,7 +278,7 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 
 	headerPos := enc.pos
 	enc.putU8(MsgTypeFullAOI)
-	enc.putU16(uint16(player.MapID))
+	enc.putU16(0) // reserved
 	enc.putU16(0) // placeholder entity count
 
 	entityCount := 0

@@ -235,9 +235,27 @@ message DefaultObjectLayerState {
 }
 
 message SkillConfigEntry {
-  string          trigger_item_id = 1;   // item that triggers the skill
-  repeated string spawned_item_ids = 2;  // item IDs for spawned entities (e.g. bullet)
-  string          logic_event_id  = 3;   // skill handler key
+  string          trigger_item_id  = 1;   // item that triggers the skill
+  repeated string spawned_item_ids = 2;   // item IDs for spawned entities (e.g. bullet)
+  string          logic_event_id   = 3;   // skill handler key ("doppelganger", "atlas_pistol_mk2_logic", …)
+}
+
+// SkillRules groups the numeric tuning parameters for each skill archetype.
+// These are instance-level defaults; individual SkillConfigEntry entries define
+// WHICH items trigger WHICH logic, while SkillRules defines HOW that logic behaves.
+message SkillRules {
+  // ── Bullet skill ──
+  double bullet_spawn_chance       = 1;  // base probability [0,1] per action tick
+  int32  bullet_lifetime_ms        = 2;  // base bullet TTL in ms (Range stat adds extra)
+  double bullet_width              = 3;  // bullet entity width in grid cells
+  double bullet_height             = 4;  // bullet entity height in grid cells
+  double bullet_speed_multiplier   = 5;  // multiplier applied on top of entity_base_speed
+
+  // ── Doppelganger skill ──
+  double doppelganger_spawn_chance          = 6;  // base probability [0,1] per action tick
+  int32  doppelganger_lifetime_ms           = 7;  // base doppelganger TTL in ms (Range adds extra)
+  double doppelganger_spawn_radius          = 8;  // wander radius around spawn point in cells
+  double doppelganger_initial_life_fraction = 9;  // fraction of entity_base_max_life at spawn
 }
 
 message InstanceConfig {
@@ -291,25 +309,25 @@ message InstanceConfig {
   double life_regen_chance             = 33;
   double max_chance                    = 34;
 
-  // ── Skill config ──
-  double bullet_spawn_chance           = 35;
-  int32  bullet_lifetime_ms            = 36;
-  double bullet_width                  = 37;
-  double bullet_height                 = 38;
-  double bullet_speed_multiplier       = 39;
-  double doppelganger_spawn_chance     = 40;
-  int32  doppelganger_lifetime_ms      = 41;
-  double doppelganger_spawn_radius     = 42;
-  double doppelganger_initial_life_fraction = 43;
+  // ── Skill tuning (grouped) ──
+  // Fields 35–43 and 46 are reserved — previously held flat bullet/doppelganger
+  // params and default_player_color. Replaced by skill_rules (47) and the PLAYER
+  // key in the colors repeated field.
+  reserved 35, 36, 37, 38, 39, 40, 41, 42, 43, 46;
+  reserved "bullet_spawn_chance", "bullet_lifetime_ms", "bullet_width",
+           "bullet_height", "bullet_speed_multiplier",
+           "doppelganger_spawn_chance", "doppelganger_lifetime_ms",
+           "doppelganger_spawn_radius", "doppelganger_initial_life_fraction",
+           "default_player_color";
 
   // ── Floor defaults ──
   string default_floor_item_id         = 44;
 
-  // ── Skill map ──
+  // ── Skill map (trigger → logic + items) ──
   repeated SkillConfigEntry skill_config = 45;
 
-  // ── Player color (fallback when no object layers / sprites) ──
-  ColorEntry default_player_color        = 46;
+  // ── Skill tuning parameters ──
+  SkillRules skill_rules                 = 47;
 }
 
 // ═══════════════════════════════════════════════════════════════════

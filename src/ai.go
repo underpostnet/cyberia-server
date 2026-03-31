@@ -50,8 +50,12 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		// Bullet bots move in a straight line and are removed if they go out of bounds.
 		if bot.Behavior == "bullet" {
 			// Bullets move at configured speed multiplier. entityBaseSpeed is in units per second.
-			// The game loop runs at 10 FPS (100ms per tick), so we divide by 10 to get movement per tick.
-			bulletStep := (s.entityBaseSpeed * s.bulletSpeedMultiplier) / (1000.0 / 100.0)
+			// Bullets move at configured speed; divide by the actual game loop FPS to get units per tick.
+			loopFps := float64(s.fps)
+			if loopFps <= 0 {
+				loopFps = 60
+			}
+			bulletStep := (s.entityBaseSpeed * s.bulletSpeedMultiplier) / loopFps
 			// Calculate movement vector from bot's direction
 			dirX, dirY := getDirectionVector(bot.Direction)
 
@@ -293,7 +297,7 @@ func (s *GameServer) updateBotPosition(bot *BotState, mapState *MapState, stats 
 		dx := float64(targetNode.X) - bot.Pos.X
 		dy := float64(targetNode.Y) - bot.Pos.Y
 		dist := math.Sqrt(dx*dx + dy*dy)
-		step := speed / (1000.0 / 100.0) // speed per tick (100ms)
+		step := speed / float64(s.fps) // cells per tick at current FPS
 
 		if dist < step {
 			bot.Pos = Point{X: float64(targetNode.X), Y: float64(targetNode.Y)}

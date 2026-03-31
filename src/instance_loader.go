@@ -38,29 +38,19 @@ func (s *GameServer) BuildWorldFromInstance(
 	log.Printf("[InstanceLoader] Building world for instance %q (%d maps, %d object layers)",
 		instance.GetCode(), len(mapMsgs), len(olMsgs))
 
-	// Build map-code → int-index mapping (deterministic order from instance)
-	mapCodeToIndex := make(map[string]int)
-	for i, code := range instance.GetMapCodes() {
-		mapCodeToIndex[code] = i
-	}
-
 	// Build map-code → MapDataMessage lookup
 	mapMsgByCode := make(map[string]*pb.MapDataMessage)
 	for _, m := range mapMsgs {
 		mapMsgByCode[m.GetCode()] = m
 	}
 
-	// Reset maps
-	s.maps = make(map[int]*MapState)
+	// Reset maps (keyed by map code)
+	s.maps = make(map[string]*MapState)
 
 	allPortals := make(map[string][]portalEntry) // mapCode → portals
 
 	// Phase 1: Build each map
 	for _, mapCode := range instance.GetMapCodes() {
-		mapIdx, ok := mapCodeToIndex[mapCode]
-		if !ok {
-			continue
-		}
 		mapMsg, ok := mapMsgByCode[mapCode]
 		if !ok {
 			log.Printf("[InstanceLoader] WARNING: map code %q in instance but not in gRPC response", mapCode)
@@ -94,7 +84,7 @@ func (s *GameServer) BuildWorldFromInstance(
 			case "floor":
 				s.buildFloor(ms, ent)
 			case "bot":
-				s.buildBot(ms, mapIdx, ent)
+				s.buildBot(ms, mapCode, ent)
 			case "obstacle":
 				s.buildObstacle(ms, ent)
 			case "foreground":
@@ -114,36 +104,7 @@ func (s *GameServer) BuildWorldFromInstance(
 			}
 		}
 
-		// If no floors were defined, generate a default floor grid
-		if len(ms.floors) == 0 {
-			ms.generateFloors(10, 10, s.defaultFloorItemID)
-		}
-
-		// If no obstacles were defined, generate random ones
-		if len(ms.obstacles) == 0 {
-			portalRects := make([]Rectangle, 0, len(ms.portals))
-			for _, p := range ms.portals {
-				portalRects = append(portalRects, Rectangle{
-					MinX: p.Pos.X, MinY: p.Pos.Y,
-					MaxX: p.Pos.X + p.Dims.Width, MaxY: p.Pos.Y + p.Dims.Height,
-				})
-			}
-			ms.pathfinder.GenerateObstacles(100, portalRects)
-			ms.obstacles = ms.pathfinder.obstacles
-
-			// Generate foregrounds above obstacles
-			for _, obs := range ms.obstacles {
-				fg := ObjectState{
-					ID:   uuid.New().String(),
-					Pos:  Point{X: obs.Pos.X, Y: obs.Pos.Y - obs.Dims.Height},
-					Dims: obs.Dims,
-					Type: "foreground",
-				}
-				ms.foregrounds[fg.ID] = fg
-			}
-		}
-
-		s.maps[mapIdx] = ms
+		s.maps[mapCode] = ms
 	}
 
 	// Phase 2: Link portals using instance portal edges
@@ -151,8 +112,8 @@ func (s *GameServer) BuildWorldFromInstance(
 		srcMapCode := edge.GetSourceMapCode()
 		dstMapCode := edge.GetTargetMapCode()
 
-		_, srcOk := mapCodeToIndex[srcMapCode]
-		dstIdx, dstOk := mapCodeToIndex[dstMapCode]
+		_, srcOk := s.maps[srcMapCode]
+		_, dstOk := s.maps[dstMapCode]
 		if !srcOk || !dstOk {
 			log.Printf("[InstanceLoader] WARNING: portal edge references unknown map: %q → %q", srcMapCode, dstMapCode)
 			continue
@@ -169,24 +130,24 @@ func (s *GameServer) BuildWorldFromInstance(
 		}
 
 		srcPortal.PortalConfig = &PortalConfig{
-			DestMapID:   dstIdx,
+			DestMapCode: dstMapCode,
 			SpawnRadius: s.portalSpawnRadius,
 		}
 
 		if dstPortal != nil {
-			srcPortal.Label = fmt.Sprintf("Map %d, Pos: (%d, %d)",
-				dstIdx, int(dstPortal.Pos.X), int(dstPortal.Pos.Y))
+			srcPortal.Label = fmt.Sprintf("%s, Pos: (%d, %d)",
+				dstMapCode, int(dstPortal.Pos.X), int(dstPortal.Pos.Y))
 		} else {
-			srcPortal.Label = fmt.Sprintf("Map %d", dstIdx)
+			srcPortal.Label = dstMapCode
 		}
 	}
 
 	log.Printf("[InstanceLoader] World built: %d maps loaded.", len(s.maps))
 
 	// Log entity counts per map
-	for idx, ms := range s.maps {
-		log.Printf("[InstanceLoader]   Map %d: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots",
-			idx, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots))
+	for code, ms := range s.maps {
+		log.Printf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots",
+			code, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots))
 	}
 }
 
@@ -214,13 +175,13 @@ func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 			ItemID: itemID, Active: true, Quantity: 1,
 		})
 	}
-	if len(floor.ObjectLayers) == 0 {
+	if len(floor.ObjectLayers) == 0 && s.defaultFloorItemID != "" {
 		floor.ObjectLayers = []ObjectLayerState{{ItemID: s.defaultFloorItemID, Active: true, Quantity: 1}}
 	}
 	ms.floors[floor.ID] = floor
 }
 
-func (s *GameServer) buildBot(ms *MapState, mapID int, ent *pb.EntityMessage) {
+func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessage) {
 	dims := Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())}
 	if dims.Width <= 0 {
 		dims.Width = float64(rand.Intn(4) + 1)
@@ -274,7 +235,7 @@ func (s *GameServer) buildBot(ms *MapState, mapID int, ent *pb.EntityMessage) {
 
 	bot := &BotState{
 		ID:           uuid.New().String(),
-		MapID:        mapID,
+		MapCode:      mapCode,
 		Pos:          startPos,
 		Dims:         dims,
 		Path:         []PointI{},
@@ -387,9 +348,11 @@ func (ms *MapState) generateFloors(rows, cols int, floorItemID string) {
 				Pos:  Point{X: float64(c) * tileWidth, Y: float64(r) * tileHeight},
 				Dims: Dimensions{Width: tileWidth, Height: tileHeight},
 				Type: "floor",
-				ObjectLayers: []ObjectLayerState{
+			}
+			if floorItemID != "" {
+				floor.ObjectLayers = []ObjectLayerState{
 					{ItemID: floorItemID, Active: true, Quantity: 1},
-				},
+				}
 			}
 			ms.floors[floor.ID] = floor
 		}

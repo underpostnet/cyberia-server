@@ -44,7 +44,7 @@ func (s *GameServer) executePlayerDoppelgangerSkill(player *PlayerState, mapStat
 
 	doppelgangerBot := &BotState{
 		ID:           uuid.New().String(),
-		MapID:        player.MapID,
+		MapCode:      player.MapCode,
 		Pos:          player.Pos,
 		Dims:         player.Dims,
 		Behavior:     "passive",
@@ -105,7 +105,7 @@ func (s *GameServer) executeBotDoppelgangerSkill(bot *BotState, mapState *MapSta
 
 	doppelgangerBot := &BotState{
 		ID:           uuid.New().String(),
-		MapID:        bot.MapID,
+		MapCode:      bot.MapCode,
 		Pos:          bot.Pos,
 		Dims:         bot.Dims,
 		Behavior:     "passive",

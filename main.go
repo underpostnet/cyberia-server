@@ -31,41 +31,42 @@ func main() {
 	}
 
 	// ── Data loading: gRPC ──────────
-	// Set ENGINE_GRPC_ADDRESS (e.g. "engine:50051") to use gRPC.
-	// Set INSTANCE_CODE (e.g. "cyberia-main") to load a specific instance.
+	// ENGINE_GRPC_ADDRESS selects the Engine gRPC endpoint.
+	// Defaults to localhost:50051 for local/dev runs (same default as grpcclient).
+	// The server exits if the Engine is unreachable — no fallback world is generated.
 	instanceCode := os.Getenv("INSTANCE_CODE")
-	if grpcAddr := os.Getenv("ENGINE_GRPC_ADDRESS"); grpcAddr != "" {
+	grpcAddr := os.Getenv("ENGINE_GRPC_ADDRESS")
+	if grpcAddr == "" {
+		grpcAddr = "localhost:50051"
+		log.Printf("ENGINE_GRPC_ADDRESS not set — defaulting to %s", grpcAddr)
+	}
+	{
 		gc, err := grpcclient.New(grpcclient.Config{
 			Address: grpcAddr,
 		})
 		if err != nil {
-			log.Printf("WARNING: gRPC client dial failed: %v — server will run with empty world.", err)
-		} else {
-			wb := grpcclient.NewWorldBuilder(gc, s)
-			wb.InstanceCode = instanceCode
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			if err := wb.LoadAll(ctx); err != nil {
-				log.Printf("WARNING: gRPC full load failed: %v — server will run with empty world.", err)
-			}
-			cancel()
-
-			// Start hot-reload loop if configured
-			reloadSec := os.Getenv("ENGINE_GRPC_RELOAD_INTERVAL_SEC")
-			if reloadSec != "" {
-				if sec, err := strconv.Atoi(reloadSec); err == nil && sec > 0 {
-					wb.ReloadInterval = time.Duration(sec) * time.Second
-					wb.StartReloadLoop()
-					defer wb.Stop()
-				}
-			}
-			defer gc.Close()
+			log.Fatalf("Engine gRPC required: dial %s failed: %v", grpcAddr, err)
 		}
-	} else {
-		log.Println("ENGINE_GRPC_ADDRESS not set — server will run with empty world.")
-	}
+		wb := grpcclient.NewWorldBuilder(gc, s)
+		wb.InstanceCode = instanceCode
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		if err := wb.LoadAll(ctx); err != nil {
+			cancel()
+			log.Fatalf("Engine gRPC world load failed: %v — Engine must be running before starting cyberia-server.", err)
+		}
+		cancel()
 
-	// Ensure at least one map exists so player connections don't panic.
-	s.EnsurePlayableState()
+		// Start hot-reload loop if configured
+		reloadSec := os.Getenv("ENGINE_GRPC_RELOAD_INTERVAL_SEC")
+		if reloadSec != "" {
+			if sec, err := strconv.Atoi(reloadSec); err == nil && sec > 0 {
+				wb.ReloadInterval = time.Duration(sec) * time.Second
+				wb.StartReloadLoop()
+				defer wb.Stop()
+			}
+		}
+		defer gc.Close()
+	}
 
 	go s.Run()
 
@@ -86,7 +87,7 @@ func main() {
 
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
-		port = "8080"
+		port = "8081"
 	}
 
 	srv := &http.Server{

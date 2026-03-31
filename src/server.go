@@ -13,7 +13,7 @@ import (
 // All configuration must be applied via ApplyInstanceConfig from gRPC data.
 func NewGameServer() *GameServer {
 	gs := &GameServer{
-		maps:                 make(map[int]*MapState),
+		maps:                 make(map[string]*MapState),
 		clients:              make(map[string]*Client),
 		register:             make(chan *Client),
 		unregister:           make(chan *Client),
@@ -105,31 +105,25 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	s.lifeRegenChance = cfg.GetLifeRegenChance()
 	s.maxChance = cfg.GetMaxChance()
 
-	// Skill params
-	s.bulletSpawnChance = cfg.GetBulletSpawnChance()
-	s.bulletLifetimeMs = int(cfg.GetBulletLifetimeMs())
-	s.bulletWidth = cfg.GetBulletWidth()
-	s.bulletHeight = cfg.GetBulletHeight()
-	s.bulletSpeedMultiplier = cfg.GetBulletSpeedMultiplier()
-	s.doppelgangerSpawnChance = cfg.GetDoppelgangerSpawnChance()
-	s.doppelgangerLifetimeMs = int(cfg.GetDoppelgangerLifetimeMs())
-	s.doppelgangerSpawnRadius = cfg.GetDoppelgangerSpawnRadius()
-	s.doppelgangerInitialLifeFraction = cfg.GetDoppelgangerInitialLifeFraction()
+	// Skill params (nested under SkillRules in proto)
+	sr := cfg.GetSkillRules()
+	if sr == nil {
+		sr = &pb.SkillRules{}
+	}
+	s.bulletSpawnChance = sr.GetBulletSpawnChance()
+	s.bulletLifetimeMs = int(sr.GetBulletLifetimeMs())
+	s.bulletWidth = sr.GetBulletWidth()
+	s.bulletHeight = sr.GetBulletHeight()
+	s.bulletSpeedMultiplier = sr.GetBulletSpeedMultiplier()
+	s.doppelgangerSpawnChance = sr.GetDoppelgangerSpawnChance()
+	s.doppelgangerLifetimeMs = int(sr.GetDoppelgangerLifetimeMs())
+	s.doppelgangerSpawnRadius = sr.GetDoppelgangerSpawnRadius()
+	s.doppelgangerInitialLifeFraction = sr.GetDoppelgangerInitialLifeFraction()
 
 	// Floor defaults
 	s.defaultFloorItemID = cfg.GetDefaultFloorItemId()
 
-	// Player color (fallback when no object layers / sprites)
-	if pc := cfg.GetDefaultPlayerColor(); pc != nil {
-		s.defaultPlayerColor = ColorRGBA{
-			R: int(pc.GetR()),
-			G: int(pc.GetG()),
-			B: int(pc.GetB()),
-			A: int(pc.GetA()),
-		}
-	} else {
-		s.defaultPlayerColor = ColorRGBA{R: 0, G: 255, B: 0, A: 255}
-	}
+	// Player color is read from the named PLAYER entry in s.colors at use-time.
 
 	// Skill map
 	s.skillConfig = make(map[string][]SkillDefinition, len(cfg.GetSkillConfig()))
@@ -202,79 +196,6 @@ func (s *GameServer) SetEngineApiBaseUrl(url string) {
 	log.Printf("Engine API base URL set to: %s", url)
 }
 
-// EnsurePlayableState creates a minimal empty map with default config
-// if no maps were loaded. This prevents panics on player connect when
-// gRPC is unavailable or returns no instance data.
-func (s *GameServer) EnsurePlayableState() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if len(s.maps) > 0 {
-		return
-	}
-
-	log.Println("[GameServer] No maps loaded — creating fallback empty map.")
-
-	// Apply minimal defaults if no config was applied
-	if s.entityBaseMaxLife <= 0 {
-		s.cellSize = 32
-		s.fps = 10
-		s.interpolationMs = 100
-		s.defaultObjWidth = 1
-		s.defaultObjHeight = 1
-		s.cameraSmoothing = 0.1
-		s.cameraZoom = 1.0
-		s.defaultWidthScreenFactor = 1
-		s.defaultHeightScreenFactor = 1
-		s.aoiRadius = 300
-		s.entityBaseSpeed = 200
-		s.entityBaseMaxLife = 100
-		s.entityBaseActionCooldown = 500 * time.Millisecond
-		s.entityBaseMinActionCooldown = 100 * time.Millisecond
-		s.defaultPlayerWidth = 1
-		s.defaultPlayerHeight = 1
-		s.playerBaseLifeRegenMin = 0.5
-		s.playerBaseLifeRegenMax = 1.5
-		s.sumStatsLimit = 500
-		s.maxActiveLayers = 4
-		s.initialLifeFraction = 1.0
-		s.respawnDuration = 3 * time.Second
-		s.collisionLifeLoss = 10
-		s.lifeRegenChance = 300
-		s.maxChance = 10000
-		s.defaultCoinQuantity = 1
-		s.portalHoldTime = time.Second
-		s.portalSpawnRadius = 3
-		s.defaultPlayerColor = ColorRGBA{R: 0, G: 255, B: 0, A: 255}
-		s.colors = map[string]ColorRGBA{
-			"background": {R: 30, G: 30, B: 30, A: 255},
-			"obstacle":   {R: 80, G: 80, B: 80, A: 255},
-		}
-	}
-
-	gridW, gridH := 16, 16
-	ms := &MapState{
-		gridW:       gridW,
-		gridH:       gridH,
-		players:     make(map[string]*PlayerState),
-		portals:     make(map[string]*PortalState),
-		obstacles:   make(map[string]ObjectState),
-		foregrounds: make(map[string]ObjectState),
-		floors:      make(map[string]*FloorState),
-		pathfinder:  NewPathfinder(gridW, gridH),
-		bots:        make(map[string]*BotState),
-	}
-
-	// Generate floors and obstacles
-	ms.generateFloors(10, 10, s.defaultFloorItemID)
-	ms.pathfinder.GenerateObstacles(100, nil)
-	ms.obstacles = ms.pathfinder.obstacles
-
-	s.maps[0] = ms
-	log.Printf("[GameServer] Fallback map created: %dx%d grid, %d floors, %d obstacles.",
-		gridW, gridH, len(ms.floors), len(ms.obstacles))
-}
-
 func (s *GameServer) Run() {
 	go s.listenForClients()
 	go s.gameLoop()
@@ -294,7 +215,7 @@ func (s *GameServer) listenForClients() {
 				delete(s.clients, client.playerID)
 				playerState := client.playerState
 				if playerState != nil {
-					mapState, ok := s.maps[playerState.MapID]
+					mapState, ok := s.maps[playerState.MapCode]
 					if ok {
 						delete(mapState.players, client.playerID)
 					}
@@ -307,7 +228,11 @@ func (s *GameServer) listenForClients() {
 }
 
 func (s *GameServer) gameLoop() {
-	ticker := time.NewTicker(100 * time.Millisecond) // 10 FPS
+	fps := s.fps
+	if fps <= 0 {
+		fps = 60
+	}
+	ticker := time.NewTicker(time.Duration(1000/fps) * time.Millisecond)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -346,7 +271,7 @@ func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapStat
 		dx := float64(targetNode.X) - player.Pos.X
 		dy := float64(targetNode.Y) - player.Pos.Y
 		dist := math.Sqrt(dx*dx + dy*dy)
-		step := speed / (1000.0 / 100.0) // speed per tick (100ms)
+		step := speed / float64(s.fps) // cells per tick at current FPS
 
 		if dist < step {
 			player.Pos = Point{X: float64(targetNode.X), Y: float64(targetNode.Y)}
@@ -418,10 +343,10 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 		log.Println("Teleportation failed: Portal config is nil.")
 		return
 	}
-	destMapID := portal.PortalConfig.DestMapID
-	destMapState, ok := s.maps[destMapID]
+	destMapCode := portal.PortalConfig.DestMapCode
+	destMapState, ok := s.maps[destMapCode]
 	if !ok {
-		log.Printf("Teleportation failed: Destination map %d not found.", destMapID)
+		log.Printf("Teleportation failed: Destination map %q not found.", destMapCode)
 		return
 	}
 
@@ -436,11 +361,11 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 		log.Printf("Could not find a walkable spawn point: %v", err)
 		return
 	}
-	currentMapState, ok := s.maps[player.MapID]
+	currentMapState, ok := s.maps[player.MapCode]
 	if ok {
 		delete(currentMapState.players, player.ID)
 	}
-	player.MapID = destMapID
+	player.MapCode = destMapCode
 	player.Pos = Point{X: float64(destPosI.X), Y: float64(destPosI.Y)}
 	player.TargetPos = PointI{}
 	player.Path = []PointI{}
@@ -464,9 +389,9 @@ func (s *GameServer) updateAOIs(mapState *MapState) {
 }
 
 func (s *GameServer) sendAOI(player *PlayerState) {
-	mapState, ok := s.maps[player.MapID]
+	mapState, ok := s.maps[player.MapCode]
 	if !ok {
-		log.Printf("Map %d not found for player %s.", player.MapID, player.ID)
+		log.Printf("Map %q not found for player %s.", player.MapCode, player.ID)
 		return
 	}
 
@@ -602,7 +527,7 @@ func (s *GameServer) GetInactiveObjectLayers() int {
 }
 
 // GetMapStats returns statistics for a specific map
-func (s *GameServer) GetMapStats(mapID int) map[string]int {
+func (s *GameServer) GetMapStats(mapCode string) map[string]int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -615,7 +540,7 @@ func (s *GameServer) GetMapStats(mapID int) map[string]int {
 		"portals":     0,
 	}
 
-	mapState, ok := s.maps[mapID]
+	mapState, ok := s.maps[mapCode]
 	if !ok {
 		return stats
 	}

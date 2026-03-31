@@ -64,7 +64,7 @@ type ObjectState struct {
 
 type PlayerState struct {
 	ID                     string             `json:"id"`
-	MapID                  int                `json:"MapID"`
+	MapCode                string             `json:"MapCode"`
 	Pos                    Point              `json:"Pos"`
 	Dims                   Dimensions         `json:"Dims"`
 	Color                  ColorRGBA          `json:"color"`
@@ -96,7 +96,7 @@ type FloorState struct {
 
 type BotState struct {
 	ID                     string             `json:"id"`
-	MapID                  int                `json:"MapID"`
+	MapCode                string             `json:"MapCode"`
 	Pos                    Point              `json:"Pos"`
 	Dims                   Dimensions         `json:"Dims"`
 	Color                  ColorRGBA          `json:"color"`
@@ -122,7 +122,7 @@ type BotState struct {
 }
 
 type PortalConfig struct {
-	DestMapID   int
+	DestMapCode string
 	SpawnRadius float64
 }
 
@@ -157,7 +157,7 @@ type Client struct {
 
 type GameServer struct {
 	mu             sync.Mutex
-	maps           map[int]*MapState
+	maps           map[string]*MapState
 	clients        map[string]*Client
 	register       chan *Client
 	unregister     chan *Client
@@ -232,13 +232,10 @@ type GameServer struct {
 	// Floor defaults
 	defaultFloorItemID string
 
-	// Player color (fallback when no object layers / sprites)
-	defaultPlayerColor ColorRGBA
-
 	// Portal defaults
 	portalSpawnRadius float64
 
-	// Skill map (runtime)
+	// Skill map (runtime): trigger item ID → []SkillDefinition
 	skillConfig map[string][]SkillDefinition
 }
 
@@ -267,4 +264,5 @@ type InitPayload struct {
 	SumStatsLimit             int                  `json:"sumStatsLimit"`
 	ObjectLayers              []ObjectLayerState   `json:"objectLayers"`
 	Color                     ColorRGBA            `json:"color"`
+	SkillMap                  map[string][]string  `json:"skillMap"`
 }

@@ -25,8 +25,8 @@ Go game server for **Cyberia Online MMO**. Manages real-time multiplayer state v
 │  Go Game Server (this repo)                                    │
 │  ├─ gRPC client → WorldBuilder → ApplyInstanceConfig           │
 │  ├─ In-memory game state (maps, entities, pathfinding)         │
-│  ├─ WebSocket (:8080/ws) → binary AOI protocol                 │
-│  ├─ REST API (:8080/api/v1/*) → health, metrics                │
+│  ├─ WebSocket (:8081/ws) → binary AOI protocol                 │
+│  ├─ REST API (:8081/api/v1/*) → health, metrics                │
 │  └─ Static file server (WASM client via STATIC_DIR)            │
 └────────────────────┬───────────────────────────────────────────┘
                      │ WebSocket (binary)
@@ -44,11 +44,12 @@ Go game server for **Cyberia Online MMO**. Manages real-time multiplayer state v
 - **Binary AOI Protocol**: Compact binary WebSocket messages with only render-essential data (positions, directions, modes, colors, item stacks)
 - **gRPC Data Pipeline**: All game configuration, maps, entities, ObjectLayers, and AtlasSpriteSheets loaded from the Engine at startup via gRPC
 - **Hot-Reload**: ObjectLayer cache diffing via sha256 manifests — surgical in-memory replacement without restart
-- **Fallback Instance**: If no instance exists in the database or gRPC is unavailable, the server creates a minimal empty map with auto-generated floors and obstacles for immediate multiplayer testing
+- **Fallback Instance**: When the requested instance is not found in MongoDB, the Engine (`grpc-server.js`) returns a minimal playable instance with a 64×64 floor grid and default config. The Go server always requires gRPC — it exits on connection failure
 - **Item-based Skill System**: Skills are configured per-instance via `skillConfig[]` (triggerItemId → logicEventId mapping)
 - **A\* Pathfinding**: Grid-based pathfinding for player movement and bot AI
 - **Dynamic Bot AI**: Bots with passive/hostile behaviors using pathfinding and the skill system
-- **Per-Entity Color**: Players and bots have an RGBA color for solid-color rendering when no sprite sheets are available
+- **Per-Entity Color**: Each entity color is resolved from a named palette (`PLAYER`, `OTHER_PLAYER`, `BOT`, etc.) configured per-instance via `gameConfig.colors[]`. Used for solid-color rendering when no sprite sheets are available
+- **`SkillRules` config**: Bullet and doppelganger tuning parameters (spawn chances, lifetimes, sizes, speeds) are grouped under `gameConfig.skillRules` in MongoDB and transmitted as a nested proto message
 
 ## Installation
 
@@ -58,17 +59,17 @@ go mod tidy
 
 ## Environment Variables
 
-| Variable                          | Default             | Description                                         |
-| --------------------------------- | ------------------- | --------------------------------------------------- |
-| `ENGINE_GRPC_ADDRESS`             | _(empty → no gRPC)_ | Engine gRPC server address (e.g. `localhost:50051`) |
-| `INSTANCE_CODE`                   | _(empty)_           | Instance code to load (e.g. `cyberia-main`)         |
-| `ENGINE_API_BASE_URL`             | _(empty)_           | Engine HTTP URL (forwarded to clients)              |
-| `ENGINE_GRPC_RELOAD_INTERVAL_SEC` | _(disabled)_        | ObjectLayer hot-reload interval in seconds          |
-| `SERVER_PORT`                     | `8080`              | HTTP/WS listen port                                 |
-| `STATIC_DIR`                      | `./public`          | Static file directory (WASM client)                 |
-| `ENGINE_GRPC_CA_CERT`             | _(empty)_           | CA certificate for mTLS                             |
-| `ENGINE_GRPC_CLIENT_CERT`         | _(empty)_           | Client certificate for mTLS                         |
-| `ENGINE_GRPC_CLIENT_KEY`          | _(empty)_           | Client private key for mTLS                         |
+| Variable                          | Default           | Description                                                             |
+| --------------------------------- | ----------------- | ----------------------------------------------------------------------- |
+| `ENGINE_GRPC_ADDRESS`             | `localhost:50051` | Engine gRPC server address — **required** (server exits if unreachable) |
+| `INSTANCE_CODE`                   | `default`         | Instance code to load (`default` → Engine returns fallback)             |
+| `ENGINE_API_BASE_URL`             | _(empty)_         | Engine HTTP URL (forwarded to clients)                                  |
+| `ENGINE_GRPC_RELOAD_INTERVAL_SEC` | _(disabled)_      | ObjectLayer hot-reload interval in seconds                              |
+| `SERVER_PORT`                     | `8081`            | HTTP/WS listen port                                                     |
+| `STATIC_DIR`                      | `./public`        | Static file directory (WASM client)                                     |
+| `ENGINE_GRPC_CA_CERT`             | _(empty)_         | CA certificate for mTLS                                                 |
+| `ENGINE_GRPC_CLIENT_CERT`         | _(empty)_         | Client certificate for mTLS                                             |
+| `ENGINE_GRPC_CLIENT_KEY`          | _(empty)_         | Client private key for mTLS                                             |
 
 ## Development
 
@@ -78,7 +79,7 @@ Create a `.env` file:
 ENGINE_GRPC_ADDRESS=localhost:50051
 INSTANCE_CODE=cyberia-main
 ENGINE_API_BASE_URL=http://localhost:4005
-SERVER_PORT=8080
+SERVER_PORT=8081
 ```
 
 Run (requires Node.js Engine running with gRPC on :50051):
@@ -87,16 +88,7 @@ Run (requires Node.js Engine running with gRPC on :50051):
 go run main.go
 ```
 
-### Without Engine (standalone)
-
-The server runs without gRPC. It creates a fallback empty map for multiplayer testing:
-
-```sh
-# No .env needed — server starts with empty world + fallback map
-go run main.go
-```
-
-Players connect via WebSocket and appear as solid colored rectangles (no sprites, no items).
+> **Note**: The Engine must be running before starting `cyberia-server`. If `INSTANCE_CODE` is not set or doesn't match a database record, the Engine returns a minimal fallback instance automatically — the Go server will still start successfully.
 
 ### Full local development stack
 
@@ -104,7 +96,7 @@ Players connect via WebSocket and appear as solid colored rectangles (no sprites
 # Terminal 1: Engine (gRPC :50051 + REST :4005)
 cd /home/dd/engine && npm run dev
 
-# Terminal 2: Go server (WS :8080)
+# Terminal 2: Go server (WS :8081)
 cd /home/dd/engine/cyberia-server && go run main.go
 
 # Terminal 3: C/WASM client (HTTP :8082)
@@ -121,7 +113,7 @@ cd /home/dd/engine/cyberia-client
 make -f Web.mk clean && make -f Web.mk web
 cp -r bin/web/debug/* /home/dd/engine/cyberia-server/public/
 
-# Go server serves both WS and static files on :8080
+# Go server serves both WS and static files on :8081
 cd /home/dd/engine/cyberia-server
 STATIC_DIR=./public go run main.go
 ```
@@ -132,7 +124,7 @@ STATIC_DIR=./public go run main.go
 ENGINE_GRPC_ADDRESS=<engine-clusterIP>:50051 \
 INSTANCE_CODE=cyberia-main \
 ENGINE_API_BASE_URL=https://www.cyberiaonline.com \
-SERVER_PORT=8080 \
+SERVER_PORT=8081 \
 STATIC_DIR=./public \
 ./cyberia-server
 ```

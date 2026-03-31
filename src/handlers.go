@@ -21,6 +21,26 @@ type OLMeta struct {
 	IsStateless   bool            `json:"is_stateless"`
 }
 
+// buildSkillMap returns a compact { triggerItemId → [spawnedItemIds] } map
+// derived from the server's skillConfig — sent to clients in init_data.
+func (s *GameServer) buildSkillMap() map[string][]string {
+	out := make(map[string][]string, len(s.skillConfig))
+	for triggerID, defs := range s.skillConfig {
+		combined := make(map[string]struct{})
+		for _, def := range defs {
+			for _, id := range def.ItemIDs {
+				combined[id] = struct{}{}
+			}
+		}
+		ids := make([]string, 0, len(combined))
+		for id := range combined {
+			ids = append(ids, id)
+		}
+		out[triggerID] = ids
+	}
+	return out
+}
+
 // buildOLMetadataMap creates the map[itemID] → OLMeta for the metadata message.
 // Must be called while s.olMu is held (read).
 func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
@@ -61,11 +81,23 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 
+	if len(s.maps) == 0 {
+		log.Println("[HandleConnections] No maps loaded — rejecting connection. Ensure INSTANCE_CODE is set and Engine gRPC is reachable.")
+		conn.Close()
+		s.mu.Unlock()
+		return
+	}
+
 	playerID := uuid.New().String()
 	playerDims := Dimensions{Width: s.defaultPlayerWidth, Height: s.defaultPlayerHeight}
 
-	startMapID := rand.Intn(len(s.maps))
-	startMapState := s.maps[startMapID]
+	// Pick a random starting map by code
+	mapCodes := make([]string, 0, len(s.maps))
+	for code := range s.maps {
+		mapCodes = append(mapCodes, code)
+	}
+	startMapCode := mapCodes[rand.Intn(len(mapCodes))]
+	startMapState := s.maps[startMapCode]
 	startPosI, err := startMapState.pathfinder.findRandomWalkablePoint(playerDims)
 	if err != nil {
 		log.Printf("Could not place new player: %v", err)
@@ -81,10 +113,10 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 
 	playerState := &PlayerState{
 		ID:            playerID,
-		MapID:         startMapID,
+		MapCode:       startMapCode,
 		Pos:           Point{X: float64(startPosI.X), Y: float64(startPosI.Y)},
 		Dims:          playerDims,
-		Color:         s.defaultPlayerColor,
+		Color:         s.colors["PLAYER"],
 		Path:          []PointI{},
 		TargetPos:     PointI{-1, -1},
 		Direction:     NONE,
@@ -128,6 +160,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		SumStatsLimit:             playerState.SumStatsLimit,
 		ObjectLayers:              playerState.ObjectLayers,
 		Color:                     playerState.Color,
+		SkillMap:                  s.buildSkillMap(),
 	}
 	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
 	select {
@@ -188,7 +221,7 @@ func (c *Client) readPump(server *GameServer) {
 			targetY := payload["targetY"].(float64)
 
 			server.mu.Lock()
-			player, ok := server.maps[c.playerState.MapID].players[c.playerID]
+			player, ok := server.maps[c.playerState.MapCode].players[c.playerID]
 			if !ok {
 				log.Println("Player not found in map")
 				server.mu.Unlock()
@@ -201,7 +234,7 @@ func (c *Client) readPump(server *GameServer) {
 				continue
 			}
 
-			mapState, ok := server.maps[player.MapID]
+			mapState, ok := server.maps[player.MapCode]
 			if !ok {
 				log.Println("Player map not found")
 				server.mu.Unlock()
@@ -308,9 +341,9 @@ func (c *Client) readPump(server *GameServer) {
 			func() { // Use a closure to manage the lock with defer
 				defer server.mu.Unlock()
 
-				player, ok := server.maps[c.playerState.MapID].players[c.playerID]
+				player, ok := server.maps[c.playerState.MapCode].players[c.playerID]
 				if !ok {
-					log.Printf("Player %s not found in map %d for item activation", c.playerID, c.playerState.MapID)
+					log.Printf("Player %s not found in map %q for item activation", c.playerID, c.playerState.MapCode)
 					return
 				}
 
@@ -402,7 +435,7 @@ func (c *Client) readPump(server *GameServer) {
 				}
 
 				// --- Step 4: After all corrections, recalculate stats that affect the player state directly. ---
-				server.ApplyResistanceStat(player, server.maps[player.MapID])
+				server.ApplyResistanceStat(player, server.maps[player.MapCode])
 			}()
 		} else if msg["type"] == "get_items_ids" {
 			payload, ok := msg["payload"].(map[string]interface{})
