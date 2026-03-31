@@ -11,16 +11,6 @@ type SkillDefinition struct {
 	LogicEventID string
 }
 
-// SkillConfig maps a triggering ItemID to a list of SkillDefinitions.
-// This provides a declarative way to associate items with behaviors.
-var SkillConfig = map[string][]SkillDefinition{
-	// "anon":             {{LogicEventID: "doppelganger"}},
-	"atlas_pistol_mk2": {{ItemIDs: []string{"atlas_pistol_mk2_bullet"}, LogicEventID: "atlas_pistol_mk2_logic"}},
-	"coin":             {{LogicEventID: "coin_drop_or_transaction"}},
-	// "purple":           {{LogicEventID: "doppelganger"}},
-	// "atlas_pistol_mk2_bullet": {{LogicEventID: "doppelganger"}},
-}
-
 // HandlePlayerActionSkills checks if a player's action triggers any skills
 // based on their active items and calls the corresponding skill logic.
 func (s *GameServer) HandlePlayerActionSkills(player *PlayerState, mapState *MapState, target Point) {
@@ -30,7 +20,7 @@ func (s *GameServer) HandlePlayerActionSkills(player *PlayerState, mapState *Map
 		}
 
 		// Check if the active item has any associated skills in our config
-		if skillDefs, ok := SkillConfig[layer.ItemID]; ok {
+		if skillDefs, ok := s.skillConfig[layer.ItemID]; ok {
 			for _, skillDef := range skillDefs {
 				// Execute the skill logic based on its ID
 				switch skillDef.LogicEventID {
@@ -55,7 +45,7 @@ func (s *GameServer) handleBotSkills(bot *BotState, mapState *MapState, target P
 		}
 
 		// Check if the active item has any associated skills in our config
-		if skillDefs, ok := SkillConfig[layer.ItemID]; ok {
+		if skillDefs, ok := s.skillConfig[layer.ItemID]; ok {
 			for _, skillDef := range skillDefs {
 				// Execute the skill logic based on its ID
 				switch skillDef.LogicEventID {
@@ -102,7 +92,7 @@ func (s *GameServer) GetAssociatedSkillItemIDs(itemID string) []string {
 	// Use a map to store unique item IDs to avoid duplicates.
 	associatedIDs := make(map[string]struct{})
 
-	if skillDefs, ok := SkillConfig[itemID]; ok {
+	if skillDefs, ok := s.skillConfig[itemID]; ok {
 		for _, skillDef := range skillDefs {
 			for _, id := range skillDef.ItemIDs {
 				associatedIDs[id] = struct{}{}

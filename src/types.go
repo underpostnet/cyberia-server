@@ -67,6 +67,7 @@ type PlayerState struct {
 	MapID                  int                `json:"MapID"`
 	Pos                    Point              `json:"Pos"`
 	Dims                   Dimensions         `json:"Dims"`
+	Color                  ColorRGBA          `json:"color"`
 	Path                   []PointI           `json:"path"`
 	TargetPos              PointI             `json:"targetPos"`
 	AOI                    Rectangle          `json:"AOI"`
@@ -98,6 +99,7 @@ type BotState struct {
 	MapID                  int                `json:"MapID"`
 	Pos                    Point              `json:"Pos"`
 	Dims                   Dimensions         `json:"Dims"`
+	Color                  ColorRGBA          `json:"color"`
 	Path                   []PointI           `json:"path"`
 	TargetPos              PointI             `json:"targetPos"`
 	Direction              Direction          `json:"direction"`
@@ -134,6 +136,7 @@ type PortalState struct {
 }
 
 type MapState struct {
+	mu           sync.RWMutex
 	pathfinder   *Pathfinder
 	obstacles    map[string]ObjectState
 	foregrounds  map[string]ObjectState
@@ -177,10 +180,10 @@ type GameServer struct {
 	devUi bool
 
 	// bot related defaults
-	botsPerMap    int
 	botAggroRange float64
 
-	// Caches
+	// Caches (protected by olMu)
+	olMu                 sync.RWMutex
 	objectLayerDataCache map[string]*ObjectLayer
 	atlasDataCache       map[string]*AtlasData // keyed by item key
 
@@ -191,6 +194,52 @@ type GameServer struct {
 	entityBaseMaxLife           float64
 	entityBaseActionCooldown    time.Duration
 	entityBaseMinActionCooldown time.Duration
+
+	// Player defaults
+	defaultPlayerWidth    float64
+	defaultPlayerHeight   float64
+	playerBaseLifeRegenMin float64
+	playerBaseLifeRegenMax float64
+	sumStatsLimit         int
+	maxActiveLayers       int
+	initialLifeFraction   float64
+	defaultPlayerObjectLayers []ObjectLayerState
+
+	// Combat / death
+	respawnDuration  time.Duration
+	ghostItemID      string
+	collisionLifeLoss float64
+
+	// Economy
+	coinItemID          string
+	defaultCoinQuantity int
+
+	// Regen
+	lifeRegenChance float64
+	maxChance       float64
+
+	// Skill config
+	bulletSpawnChance           float64
+	bulletLifetimeMs            int
+	bulletWidth                 float64
+	bulletHeight                float64
+	bulletSpeedMultiplier       float64
+	doppelgangerSpawnChance     float64
+	doppelgangerLifetimeMs      int
+	doppelgangerSpawnRadius     float64
+	doppelgangerInitialLifeFraction float64
+
+	// Floor defaults
+	defaultFloorItemID string
+
+	// Player color (fallback when no object layers / sprites)
+	defaultPlayerColor ColorRGBA
+
+	// Portal defaults
+	portalSpawnRadius float64
+
+	// Skill map (runtime)
+	skillConfig map[string][]SkillDefinition
 }
 
 type ColorRGBA struct {
@@ -217,4 +266,5 @@ type InitPayload struct {
 	DevUi                     bool                 `json:"devUi"`
 	SumStatsLimit             int                  `json:"sumStatsLimit"`
 	ObjectLayers              []ObjectLayerState   `json:"objectLayers"`
+	Color                     ColorRGBA            `json:"color"`
 }

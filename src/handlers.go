@@ -22,8 +22,10 @@ type OLMeta struct {
 }
 
 // buildOLMetadataMap creates the map[itemID] → OLMeta for the metadata message.
-// Must be called while s.mu is held.
+// Must be called while s.olMu is held (read).
 func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
+	s.olMu.RLock()
+	defer s.olMu.RUnlock()
 	out := make(map[string]*OLMeta, len(s.objectLayerDataCache))
 	for itemID, ol := range s.objectLayerDataCache {
 		out[itemID] = &OLMeta{
@@ -34,6 +36,14 @@ func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
 		}
 	}
 	return out
+}
+
+// buildAtlasCacheSnapshot returns a read-locked snapshot of the atlas cache.
+func (s *GameServer) buildAtlasCacheSnapshot() map[string]*AtlasData {
+	s.olMu.RLock()
+	defer s.olMu.RUnlock()
+	// Return the map directly — it's only replaced atomically
+	return s.atlasDataCache
 }
 
 // HandleConnections handles WebSocket connections.
@@ -52,8 +62,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 
 	playerID := uuid.New().String()
-	// playerDims := Dimensions{Width: float64(rand.Intn(4) + 1), Height: float64(rand.Intn(4) + 1)}
-	playerDims := Dimensions{Width: 3, Height: 3}
+	playerDims := Dimensions{Width: s.defaultPlayerWidth, Height: s.defaultPlayerHeight}
 
 	startMapID := rand.Intn(len(s.maps))
 	startMapState := s.maps[startMapID]
@@ -64,29 +73,27 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		return
 	}
-	lifeRegen := rand.Float64()*9 + 1 // 1 to 10 life points
+	lifeRegen := s.playerBaseLifeRegenMin + rand.Float64()*(s.playerBaseLifeRegenMax-s.playerBaseLifeRegenMin)
+
+	// Copy default object layers from config
+	playerOLs := make([]ObjectLayerState, len(s.defaultPlayerObjectLayers))
+	copy(playerOLs, s.defaultPlayerObjectLayers)
 
 	playerState := &PlayerState{
 		ID:            playerID,
 		MapID:         startMapID,
 		Pos:           Point{X: float64(startPosI.X), Y: float64(startPosI.Y)},
 		Dims:          playerDims,
+		Color:         s.defaultPlayerColor,
 		Path:          []PointI{},
 		TargetPos:     PointI{-1, -1},
 		Direction:     NONE,
 		Mode:          IDLE,
-		SumStatsLimit: 100,
-		ObjectLayers: []ObjectLayerState{
-			{ItemID: "anon", Active: true, Quantity: 1},
-			{ItemID: "atlas_pistol_mk2", Active: true, Quantity: 1},
-			{ItemID: "punk", Active: false, Quantity: 1},
-			{ItemID: "coin", Active: false, Quantity: 10},
-			{ItemID: "wason", Active: false, Quantity: 1},
-			{ItemID: "alex", Active: false, Quantity: 1},
-		},
-		MaxLife:   s.entityBaseMaxLife, // Base life, will be modified by stats
-		Life:      s.entityBaseMaxLife * 0.5,
-		LifeRegen: lifeRegen,
+		SumStatsLimit: s.sumStatsLimit,
+		ObjectLayers:  playerOLs,
+		MaxLife:       s.entityBaseMaxLife,
+		Life:          s.entityBaseMaxLife * s.initialLifeFraction,
+		LifeRegen:     lifeRegen,
 	}
 	client := &Client{
 		conn:        conn,
@@ -101,7 +108,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 
 	// Apply initial stats (like Resistance for MaxLife) after creation.
 	s.ApplyResistanceStat(playerState, startMapState)
-	playerState.Life = playerState.MaxLife * 0.5 // Set life to 50% of final max life
+	playerState.Life = playerState.MaxLife * s.initialLifeFraction // Set life based on config fraction
 
 	initPayload := InitPayload{
 		GridW:                     startMapState.gridW,
@@ -120,6 +127,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		DevUi:                     s.devUi,
 		SumStatsLimit:             playerState.SumStatsLimit,
 		ObjectLayers:              playerState.ObjectLayers,
+		Color:                     playerState.Color,
 	}
 	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
 	select {
@@ -132,7 +140,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// This replaces the client's REST calls to the Engine API for OL/Atlas metadata.
 	metaPayload := map[string]interface{}{
 		"objectLayers": s.buildOLMetadataMap(),
-		"atlasData":    s.atlasDataCache,
+		"atlasData":    s.buildAtlasCacheSnapshot(),
 		"apiBaseUrl":   s.engineApiBaseUrl,
 	}
 	metaMsg, _ := json.Marshal(map[string]interface{}{"type": "metadata", "payload": metaPayload})
@@ -307,7 +315,7 @@ func (c *Client) readPump(server *GameServer) {
 				}
 
 				// Check if player is dead - only allow ghost item to be activated while dead
-				if (player.IsGhost() || player.Life <= 0) && active && itemId != "ghost" {
+				if (player.IsGhost() || player.Life <= 0) && active && itemId != server.ghostItemID {
 					log.Printf("Player %s is dead and cannot activate non-ghost item '%s'.", c.playerID, itemId)
 					return
 				}
@@ -333,7 +341,7 @@ func (c *Client) readPump(server *GameServer) {
 				// --- Step 2: If activating a unique-type item, deactivate others of the same type (handles swapping) ---
 				if active {
 					var requestedItemType string
-					if itemData, ok := server.objectLayerDataCache[itemId]; ok {
+					if itemData, ok := server.GetObjectLayerData(itemId); ok {
 						requestedItemType = itemData.Data.Item.Type
 					}
 
@@ -343,7 +351,7 @@ func (c *Client) readPump(server *GameServer) {
 								continue // Don't touch the item we just activated.
 							}
 							var currentItemType string
-							if itemData, ok := server.objectLayerDataCache[player.ObjectLayers[i].ItemID]; ok {
+							if itemData, ok := server.GetObjectLayerData(player.ObjectLayers[i].ItemID); ok {
 								currentItemType = itemData.Data.Item.Type
 							}
 							if currentItemType == requestedItemType && player.ObjectLayers[i].Active {
@@ -363,7 +371,7 @@ func (c *Client) readPump(server *GameServer) {
 				// First pass to count active layers/skins and find the first available skin
 				for i, layer := range player.ObjectLayers {
 					var isSkin bool
-					if itemData, ok := server.objectLayerDataCache[layer.ItemID]; ok && itemData.Data.Item.Type == "skin" {
+					if itemData, ok := server.GetObjectLayerData(layer.ItemID); ok && itemData.Data.Item.Type == "skin" {
 						isSkin = true
 					}
 
@@ -387,9 +395,9 @@ func (c *Client) readPump(server *GameServer) {
 					log.Printf("Player %s tried to deactivate the last skin. Force-activating skin '%s' to maintain a valid state.", c.playerID, player.ObjectLayers[firstSkinIndex].ItemID)
 				}
 
-				// Correction 2: Player cannot have more than 4 active items. Revert the activation if this rule is broken.
-				if activeLayerCount > 4 {
-					log.Printf("Player %s has more than 4 active items after request. Reverting activation of '%s'.", c.playerID, itemId)
+				// Correction 2: Player cannot have more than maxActiveLayers active items. Revert the activation if this rule is broken.
+				if activeLayerCount > server.maxActiveLayers {
+					log.Printf("Player %s has more than %d active items after request. Reverting activation of '%s'.", c.playerID, server.maxActiveLayers, itemId)
 					player.ObjectLayers[targetItemIndex].Active = originalState // Revert the specific change
 				}
 

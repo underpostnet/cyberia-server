@@ -116,7 +116,7 @@ func (s *GameServer) BuildWorldFromInstance(
 
 		// If no floors were defined, generate a default floor grid
 		if len(ms.floors) == 0 {
-			ms.generateFloors(10, 10)
+			ms.generateFloors(10, 10, s.defaultFloorItemID)
 		}
 
 		// If no obstacles were defined, generate random ones
@@ -170,7 +170,7 @@ func (s *GameServer) BuildWorldFromInstance(
 
 		srcPortal.PortalConfig = &PortalConfig{
 			DestMapID:   dstIdx,
-			SpawnRadius: 2.0,
+			SpawnRadius: s.portalSpawnRadius,
 		}
 
 		if dstPortal != nil {
@@ -215,7 +215,7 @@ func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 		})
 	}
 	if len(floor.ObjectLayers) == 0 {
-		floor.ObjectLayers = []ObjectLayerState{{ItemID: "grass", Active: true, Quantity: 1}}
+		floor.ObjectLayers = []ObjectLayerState{{ItemID: s.defaultFloorItemID, Active: true, Quantity: 1}}
 	}
 	ms.floors[floor.ID] = floor
 }
@@ -237,7 +237,7 @@ func (s *GameServer) buildBot(ms *MapState, mapID int, ent *pb.EntityMessage) {
 		maxLife = ent.GetMaxLife()
 	}
 
-	lifeRegen := rand.Float64()*9 + 1
+	lifeRegen := s.playerBaseLifeRegenMin + rand.Float64()*(s.playerBaseLifeRegenMax-s.playerBaseLifeRegenMin)
 	if ent.GetLifeRegen() > 0 {
 		lifeRegen = ent.GetLifeRegen()
 	}
@@ -264,7 +264,7 @@ func (s *GameServer) buildBot(ms *MapState, mapID int, ent *pb.EntityMessage) {
 	// If the bot has a weapon-type item → hostile, otherwise passive
 	behavior := "passive"
 	for _, ol := range objectLayers {
-		if data, ok := s.objectLayerDataCache[ol.ItemID]; ok {
+		if data, ok := s.GetObjectLayerData(ol.ItemID); ok {
 			if data.Data.Item.Type == "weapon" {
 				behavior = "hostile"
 				break
@@ -286,14 +286,14 @@ func (s *GameServer) buildBot(ms *MapState, mapID int, ent *pb.EntityMessage) {
 		SpawnRadius:  spawnRadius,
 		AggroRange:   aggroRange,
 		MaxLife:      maxLife,
-		Life:         maxLife * 0.5,
+		Life:         maxLife * s.initialLifeFraction,
 		LifeRegen:    lifeRegen,
 		ObjectLayers: objectLayers,
 	}
 
 	// Apply initial stats
 	s.ApplyResistanceStat(bot, ms)
-	bot.Life = bot.MaxLife * 0.5
+	bot.Life = bot.MaxLife * s.initialLifeFraction
 
 	// Initial wandering path
 	target := s.randomPointWithinRadius(ms, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
@@ -373,7 +373,7 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 }
 
 // generateFloors creates a default floor grid if no floors are in the DB.
-func (ms *MapState) generateFloors(rows, cols int) {
+func (ms *MapState) generateFloors(rows, cols int, floorItemID string) {
 	if rows <= 0 || cols <= 0 {
 		return
 	}
@@ -388,7 +388,7 @@ func (ms *MapState) generateFloors(rows, cols int) {
 				Dims: Dimensions{Width: tileWidth, Height: tileHeight},
 				Type: "floor",
 				ObjectLayers: []ObjectLayerState{
-					{ItemID: "grass", Active: true, Quantity: 1},
+					{ItemID: floorItemID, Active: true, Quantity: 1},
 				},
 			}
 			ms.floors[floor.ID] = floor

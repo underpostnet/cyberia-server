@@ -23,7 +23,7 @@ func (s *GameServer) executeCoinDropOnKill(caster interface{}, victim interface{
 	}
 
 	for i := range victimObjectLayers {
-		if victimObjectLayers[i].ItemID == "coin" {
+		if victimObjectLayers[i].ItemID == s.coinItemID {
 			victimCoinLayer = &victimObjectLayers[i]
 			break
 		}
@@ -59,21 +59,21 @@ func (s *GameServer) findOrCreateCoinLayer(entity interface{}) (*ObjectLayerStat
 	switch e := entity.(type) {
 	case *PlayerState:
 		for i := range e.ObjectLayers {
-			if e.ObjectLayers[i].ItemID == "coin" {
+			if e.ObjectLayers[i].ItemID == s.coinItemID {
 				return &e.ObjectLayers[i], e.ID
 			}
 		}
 		// If player doesn't have a coin layer, add one.
-		e.ObjectLayers = append(e.ObjectLayers, ObjectLayerState{ItemID: "coin", Active: false, Quantity: 0})
+		e.ObjectLayers = append(e.ObjectLayers, ObjectLayerState{ItemID: s.coinItemID, Active: false, Quantity: 0})
 		return &e.ObjectLayers[len(e.ObjectLayers)-1], e.ID
 	case *BotState:
 		for i := range e.ObjectLayers {
-			if e.ObjectLayers[i].ItemID == "coin" {
+			if e.ObjectLayers[i].ItemID == s.coinItemID {
 				return &e.ObjectLayers[i], e.ID
 			}
 		}
 		// If bot doesn't have a coin layer, add one.
-		e.ObjectLayers = append(e.ObjectLayers, ObjectLayerState{ItemID: "coin", Active: false, Quantity: 0})
+		e.ObjectLayers = append(e.ObjectLayers, ObjectLayerState{ItemID: s.coinItemID, Active: false, Quantity: 0})
 		return &e.ObjectLayers[len(e.ObjectLayers)-1], e.ID
 	default:
 		return nil, ""

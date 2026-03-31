@@ -1,6 +1,5 @@
 .vscode
 *.log
-public
 cyberia-server
 engine-cyberia
 .env

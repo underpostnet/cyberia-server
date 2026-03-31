@@ -5,67 +5,150 @@ import (
 	"math"
 	"math/rand"
 	"time"
+
+	pb "cyberia-server/proto"
 )
 
-// NewGameServer creates a new game server.
+// NewGameServer creates an empty game server with no hardcoded defaults.
+// All configuration must be applied via ApplyInstanceConfig from gRPC data.
 func NewGameServer() *GameServer {
 	gs := &GameServer{
-		maps:            make(map[int]*MapState),
-		clients:         make(map[string]*Client),
-		register:        make(chan *Client),
-		unregister:      make(chan *Client),
-		aoiRadius:       15.0,
-		portalHoldTime:  2 * time.Second,
-		entityBaseSpeed: 24.0,
-
-		cellSize:         12.0,
-		fps:              60,
-		interpolationMs:  200,
-		defaultObjWidth:  1.0,
-		defaultObjHeight: 1.0,
-		cameraSmoothing:  0.15,
-		cameraZoom:       2,
-		// production immersive settings
-		defaultWidthScreenFactor:  0.9,
-		defaultHeightScreenFactor: 0.9,
-		devUi:                     false,
-		// defaultWidthScreenFactor:    0.1,
-		// defaultHeightScreenFactor:   0.9,
-		// devUi:                       true,
-		botsPerMap:                  10,
-		botAggroRange:               10.0,
-		entityBaseMaxLife:           100.0,
-		entityBaseActionCooldown:    200 * time.Millisecond,
-		entityBaseMinActionCooldown: 50 * time.Millisecond,
-		colors: map[string]ColorRGBA{
-			"BACKGROUND":       {R: 0, G: 0, B: 0, A: 255},
-			"GRID_BACKGROUND":  {R: 128, G: 128, B: 128, A: 255},
-			"FLOOR_BACKGROUND": {R: 0, G: 255, B: 0, A: 255},
-			"OBSTACLE":         {R: 100, G: 100, B: 100, A: 255},
-			"FOREGROUND":       {R: 60, G: 140, B: 60, A: 220},
-			"PLAYER":           {R: 0, G: 200, B: 255, A: 255},
-			"OTHER_PLAYER":     {R: 255, G: 100, B: 0, A: 255},
-			"PATH":             {R: 255, G: 255, B: 0, A: 128},
-			"TARGET":           {R: 255, G: 255, B: 0, A: 255},
-			"AOI":              {R: 255, G: 0, B: 255, A: 51},
-			"DEBUG_TEXT":       {R: 220, G: 220, B: 220, A: 255},
-			"ERROR_TEXT":       {R: 255, G: 50, B: 50, A: 255},
-			"PORTAL":           {R: 180, G: 50, B: 255, A: 180},
-			"PORTAL_LABEL":     {R: 240, G: 240, B: 240, A: 255},
-			"UI_TEXT":          {R: 255, G: 255, B: 255, A: 255},
-			"MAP_BOUNDARY":     {R: 255, G: 255, B: 255, A: 255},
-		},
+		maps:                 make(map[int]*MapState),
+		clients:              make(map[string]*Client),
+		register:             make(chan *Client),
+		unregister:           make(chan *Client),
 		objectLayerDataCache: make(map[string]*ObjectLayer),
 		atlasDataCache:       make(map[string]*AtlasData),
+		colors:               make(map[string]ColorRGBA),
+		skillConfig:          make(map[string][]SkillDefinition),
 	}
 	return gs
+}
+
+// ApplyInstanceConfig applies the gRPC InstanceConfig to the game server.
+// This replaces all hardcoded defaults — called during LoadAll and hot-reload.
+func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
+	if cfg == nil {
+		log.Println("[GameServer] WARNING: ApplyInstanceConfig called with nil config")
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Rendering / camera
+	s.cellSize = cfg.GetCellSize()
+	s.fps = int(cfg.GetFps())
+	s.interpolationMs = int(cfg.GetInterpolationMs())
+	s.defaultObjWidth = cfg.GetDefaultObjWidth()
+	s.defaultObjHeight = cfg.GetDefaultObjHeight()
+	s.cameraSmoothing = cfg.GetCameraSmoothing()
+	s.cameraZoom = cfg.GetCameraZoom()
+	s.defaultWidthScreenFactor = cfg.GetDefaultWidthScreenFactor()
+	s.defaultHeightScreenFactor = cfg.GetDefaultHeightScreenFactor()
+	s.devUi = cfg.GetDevUi()
+
+	// Colors
+	s.colors = make(map[string]ColorRGBA, len(cfg.GetColors()))
+	for _, c := range cfg.GetColors() {
+		s.colors[c.GetKey()] = ColorRGBA{
+			R: int(c.GetR()),
+			G: int(c.GetG()),
+			B: int(c.GetB()),
+			A: int(c.GetA()),
+		}
+	}
+
+	// World / AOI
+	s.aoiRadius = cfg.GetAoiRadius()
+	s.portalHoldTime = time.Duration(cfg.GetPortalHoldTimeMs()) * time.Millisecond
+	s.portalSpawnRadius = cfg.GetPortalSpawnRadius()
+
+	// Entity base stats
+	s.entityBaseSpeed = cfg.GetEntityBaseSpeed()
+	s.entityBaseMaxLife = cfg.GetEntityBaseMaxLife()
+	s.entityBaseActionCooldown = time.Duration(cfg.GetEntityBaseActionCooldownMs()) * time.Millisecond
+	s.entityBaseMinActionCooldown = time.Duration(cfg.GetEntityBaseMinActionCooldownMs()) * time.Millisecond
+
+	// Bot defaults
+	s.botAggroRange = cfg.GetBotAggroRange()
+
+	// Player defaults
+	s.defaultPlayerWidth = cfg.GetDefaultPlayerWidth()
+	s.defaultPlayerHeight = cfg.GetDefaultPlayerHeight()
+	s.playerBaseLifeRegenMin = cfg.GetPlayerBaseLifeRegenMin()
+	s.playerBaseLifeRegenMax = cfg.GetPlayerBaseLifeRegenMax()
+	s.sumStatsLimit = int(cfg.GetSumStatsLimit())
+	s.maxActiveLayers = int(cfg.GetMaxActiveLayers())
+	s.initialLifeFraction = cfg.GetInitialLifeFraction()
+
+	// Default player object layers
+	s.defaultPlayerObjectLayers = make([]ObjectLayerState, 0, len(cfg.GetDefaultPlayerObjectLayers()))
+	for _, ol := range cfg.GetDefaultPlayerObjectLayers() {
+		s.defaultPlayerObjectLayers = append(s.defaultPlayerObjectLayers, ObjectLayerState{
+			ItemID:   ol.GetItemId(),
+			Active:   ol.GetActive(),
+			Quantity: int(ol.GetQuantity()),
+		})
+	}
+
+	// Combat / death
+	s.respawnDuration = time.Duration(cfg.GetRespawnDurationMs()) * time.Millisecond
+	s.ghostItemID = cfg.GetGhostItemId()
+	s.collisionLifeLoss = cfg.GetCollisionLifeLoss()
+
+	// Economy
+	s.coinItemID = cfg.GetCoinItemId()
+	s.defaultCoinQuantity = int(cfg.GetDefaultCoinQuantity())
+
+	// Regen
+	s.lifeRegenChance = cfg.GetLifeRegenChance()
+	s.maxChance = cfg.GetMaxChance()
+
+	// Skill params
+	s.bulletSpawnChance = cfg.GetBulletSpawnChance()
+	s.bulletLifetimeMs = int(cfg.GetBulletLifetimeMs())
+	s.bulletWidth = cfg.GetBulletWidth()
+	s.bulletHeight = cfg.GetBulletHeight()
+	s.bulletSpeedMultiplier = cfg.GetBulletSpeedMultiplier()
+	s.doppelgangerSpawnChance = cfg.GetDoppelgangerSpawnChance()
+	s.doppelgangerLifetimeMs = int(cfg.GetDoppelgangerLifetimeMs())
+	s.doppelgangerSpawnRadius = cfg.GetDoppelgangerSpawnRadius()
+	s.doppelgangerInitialLifeFraction = cfg.GetDoppelgangerInitialLifeFraction()
+
+	// Floor defaults
+	s.defaultFloorItemID = cfg.GetDefaultFloorItemId()
+
+	// Player color (fallback when no object layers / sprites)
+	if pc := cfg.GetDefaultPlayerColor(); pc != nil {
+		s.defaultPlayerColor = ColorRGBA{
+			R: int(pc.GetR()),
+			G: int(pc.GetG()),
+			B: int(pc.GetB()),
+			A: int(pc.GetA()),
+		}
+	} else {
+		s.defaultPlayerColor = ColorRGBA{R: 0, G: 255, B: 0, A: 255}
+	}
+
+	// Skill map
+	s.skillConfig = make(map[string][]SkillDefinition, len(cfg.GetSkillConfig()))
+	for _, sc := range cfg.GetSkillConfig() {
+		s.skillConfig[sc.GetTriggerItemId()] = append(s.skillConfig[sc.GetTriggerItemId()], SkillDefinition{
+			ItemIDs:      sc.GetSpawnedItemIds(),
+			LogicEventID: sc.GetLogicEventId(),
+		})
+	}
+
+	log.Printf("[GameServer] Instance config applied: cellSize=%.1f, fps=%d, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d colors, %d skills, %d default player layers",
+		s.cellSize, s.fps, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.colors), len(s.skillConfig), len(s.defaultPlayerObjectLayers))
 }
 
 // ReplaceObjectLayerCache atomically replaces the entire cache.
 // Used by WorldBuilder for initial full load via gRPC.
 func (s *GameServer) ReplaceObjectLayerCache(cache map[string]*ObjectLayer) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.olMu.Lock()
+	defer s.olMu.Unlock()
 	s.objectLayerDataCache = cache
 
 	typeCounts := make(map[string]int)
@@ -85,8 +168,8 @@ func (s *GameServer) ReplaceObjectLayerCache(cache map[string]*ObjectLayer) {
 // PatchObjectLayerCache applies incremental updates and deletions.
 // Used by WorldBuilder for hot-reload via gRPC manifest diffing.
 func (s *GameServer) PatchObjectLayerCache(updates map[string]*ObjectLayer, deletions []string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.olMu.Lock()
+	defer s.olMu.Unlock()
 	for itemID, ol := range updates {
 		s.objectLayerDataCache[itemID] = ol
 	}
@@ -97,10 +180,18 @@ func (s *GameServer) PatchObjectLayerCache(updates map[string]*ObjectLayer, dele
 
 // ReplaceAtlasCache atomically replaces the atlas sprite sheet cache.
 func (s *GameServer) ReplaceAtlasCache(cache map[string]*AtlasData) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.olMu.Lock()
+	defer s.olMu.Unlock()
 	s.atlasDataCache = cache
 	log.Printf("Atlas data cache replaced with %d items.", len(cache))
+}
+
+// GetObjectLayerData returns an ObjectLayer by item ID (read-locked).
+func (s *GameServer) GetObjectLayerData(itemID string) (*ObjectLayer, bool) {
+	s.olMu.RLock()
+	defer s.olMu.RUnlock()
+	ol, ok := s.objectLayerDataCache[itemID]
+	return ol, ok
 }
 
 // SetEngineApiBaseUrl sets the Engine API base URL forwarded to clients.
@@ -109,6 +200,79 @@ func (s *GameServer) SetEngineApiBaseUrl(url string) {
 	defer s.mu.Unlock()
 	s.engineApiBaseUrl = url
 	log.Printf("Engine API base URL set to: %s", url)
+}
+
+// EnsurePlayableState creates a minimal empty map with default config
+// if no maps were loaded. This prevents panics on player connect when
+// gRPC is unavailable or returns no instance data.
+func (s *GameServer) EnsurePlayableState() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.maps) > 0 {
+		return
+	}
+
+	log.Println("[GameServer] No maps loaded — creating fallback empty map.")
+
+	// Apply minimal defaults if no config was applied
+	if s.entityBaseMaxLife <= 0 {
+		s.cellSize = 32
+		s.fps = 10
+		s.interpolationMs = 100
+		s.defaultObjWidth = 1
+		s.defaultObjHeight = 1
+		s.cameraSmoothing = 0.1
+		s.cameraZoom = 1.0
+		s.defaultWidthScreenFactor = 1
+		s.defaultHeightScreenFactor = 1
+		s.aoiRadius = 300
+		s.entityBaseSpeed = 200
+		s.entityBaseMaxLife = 100
+		s.entityBaseActionCooldown = 500 * time.Millisecond
+		s.entityBaseMinActionCooldown = 100 * time.Millisecond
+		s.defaultPlayerWidth = 1
+		s.defaultPlayerHeight = 1
+		s.playerBaseLifeRegenMin = 0.5
+		s.playerBaseLifeRegenMax = 1.5
+		s.sumStatsLimit = 500
+		s.maxActiveLayers = 4
+		s.initialLifeFraction = 1.0
+		s.respawnDuration = 3 * time.Second
+		s.collisionLifeLoss = 10
+		s.lifeRegenChance = 300
+		s.maxChance = 10000
+		s.defaultCoinQuantity = 1
+		s.portalHoldTime = time.Second
+		s.portalSpawnRadius = 3
+		s.defaultPlayerColor = ColorRGBA{R: 0, G: 255, B: 0, A: 255}
+		s.colors = map[string]ColorRGBA{
+			"background": {R: 30, G: 30, B: 30, A: 255},
+			"obstacle":   {R: 80, G: 80, B: 80, A: 255},
+		}
+	}
+
+	gridW, gridH := 16, 16
+	ms := &MapState{
+		gridW:       gridW,
+		gridH:       gridH,
+		players:     make(map[string]*PlayerState),
+		portals:     make(map[string]*PortalState),
+		obstacles:   make(map[string]ObjectState),
+		foregrounds: make(map[string]ObjectState),
+		floors:      make(map[string]*FloorState),
+		pathfinder:  NewPathfinder(gridW, gridH),
+		bots:        make(map[string]*BotState),
+	}
+
+	// Generate floors and obstacles
+	ms.generateFloors(10, 10, s.defaultFloorItemID)
+	ms.pathfinder.GenerateObstacles(100, nil)
+	ms.obstacles = ms.pathfinder.obstacles
+
+	s.maps[0] = ms
+	log.Printf("[GameServer] Fallback map created: %dx%d grid, %d floors, %d obstacles.",
+		gridW, gridH, len(ms.floors), len(ms.obstacles))
 }
 
 func (s *GameServer) Run() {

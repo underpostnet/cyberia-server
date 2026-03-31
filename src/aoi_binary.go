@@ -19,7 +19,7 @@
 //	                  bit 4:    has life data
 //	                  bit 5:    has respawn timer
 //	                  bit 6:    has behavior string (bots)
-//	                  bit 7:    reserved
+//	                  bit 7:    has color data (4 bytes RGBA)
 //	  [1..36]   36B  id (UUID string, zero-padded)
 //	  -- if removed, stop here --
 //	  [37..40]  f32  posX
@@ -36,6 +36,11 @@
 //	  -- if bit 6 (has behavior):
 //	    u8   behaviorLen
 //	    str  behavior
+//	  -- if bit 7 (has color):
+//	    u8   r
+//	    u8   g
+//	    u8   b
+//	    u8   a
 //	  -- item ID stack (IDs only — no active/quantity):
 //	    u8   itemIdCount
 //	    per item:
@@ -76,6 +81,7 @@ const (
 	FlagHasLife     byte = 0x10 // bit 4
 	FlagHasRespawn  byte = 0x20 // bit 5
 	FlagHasBehavior byte = 0x40 // bit 6
+	FlagHasColor    byte = 0x80 // bit 7
 
 	maxBinaryBufSize = 64 * 1024 // 64 KB per AOI message
 )
@@ -164,7 +170,7 @@ func (e *BinaryAOIEncoder) writeEntityBase(flags byte, id string, pos Point, dim
 // ═══════════════════════════════════════════════════════════════════
 
 func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64) {
-	flags := EntityTypePlayer | FlagHasLife
+	flags := EntityTypePlayer | FlagHasLife | FlagHasColor
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
 	}
@@ -174,11 +180,15 @@ func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64) {
 	if respawnIn != nil {
 		e.putF32(*respawnIn)
 	}
+	e.putU8(byte(p.Color.R))
+	e.putU8(byte(p.Color.G))
+	e.putU8(byte(p.Color.B))
+	e.putU8(byte(p.Color.A))
 	e.writeItemIDs(p.ObjectLayers)
 }
 
 func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64) {
-	flags := EntityTypeBot | FlagHasLife | FlagHasBehavior
+	flags := EntityTypeBot | FlagHasLife | FlagHasBehavior | FlagHasColor
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
 	}
@@ -189,6 +199,10 @@ func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64) {
 		e.putF32(*respawnIn)
 	}
 	e.putString(b.Behavior)
+	e.putU8(byte(b.Color.R))
+	e.putU8(byte(b.Color.G))
+	e.putU8(byte(b.Color.B))
+	e.putU8(byte(b.Color.A))
 	e.writeItemIDs(b.ObjectLayers)
 }
 

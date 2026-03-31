@@ -49,9 +49,9 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		// --- NEW BULLET BEHAVIOR ---
 		// Bullet bots move in a straight line and are removed if they go out of bounds.
 		if bot.Behavior == "bullet" {
-			// Bullets move at twice base entity speed. entityBaseSpeed is in units per second.
+			// Bullets move at configured speed multiplier. entityBaseSpeed is in units per second.
 			// The game loop runs at 10 FPS (100ms per tick), so we divide by 10 to get movement per tick.
-			bulletStep := (s.entityBaseSpeed * 2.0) / (1000.0 / 100.0)
+			bulletStep := (s.entityBaseSpeed * s.bulletSpeedMultiplier) / (1000.0 / 100.0)
 			// Calculate movement vector from bot's direction
 			dirX, dirY := getDirectionVector(bot.Direction)
 
@@ -216,7 +216,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		// Check if bot is dead - only allow ghost item to be active while dead
 		if bot.IsGhost() || bot.Life <= 0 {
 			for i := range bot.ObjectLayers {
-				if bot.ObjectLayers[i].ItemID != "ghost" && bot.ObjectLayers[i].Active {
+				if bot.ObjectLayers[i].ItemID != s.ghostItemID && bot.ObjectLayers[i].Active {
 					bot.ObjectLayers[i].Active = false
 					log.Printf("Bot %s is dead. Deactivating non-ghost item '%s'.", bot.ID, bot.ObjectLayers[i].ItemID)
 				}
@@ -231,7 +231,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			}
 
 			var itemType string
-			if itemData, ok := s.objectLayerDataCache[layer.ItemID]; ok {
+			if itemData, ok := s.GetObjectLayerData(layer.ItemID); ok {
 				itemType = itemData.Data.Item.Type
 			} else {
 				itemType = "generic"
@@ -244,9 +244,9 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				continue
 			}
 
-			// Rule: max 4 active layers.
-			if activeLayerCount >= 4 {
-				log.Printf("Bot %s has more than 4 active layers. Deactivating item '%s'.", bot.ID, layer.ItemID)
+			// Rule: max active layers from config.
+			if activeLayerCount >= s.maxActiveLayers {
+				log.Printf("Bot %s has more than %d active layers. Deactivating item '%s'.", bot.ID, s.maxActiveLayers, layer.ItemID)
 				layer.Active = false
 				continue
 			}
@@ -258,7 +258,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		// Second pass: ensure bot has at least one active skin. This is a safeguard.
 		for i, layer := range bot.ObjectLayers {
 			var isSkin bool
-			if itemData, ok := s.objectLayerDataCache[layer.ItemID]; ok {
+			if itemData, ok := s.GetObjectLayerData(layer.ItemID); ok {
 				isSkin = itemData.Data.Item.Type == "skin"
 			}
 

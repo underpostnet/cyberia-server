@@ -60,6 +60,14 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 		return err
 	}
 
+	// Apply instance config to GameServer (must happen before building world)
+	if cfg := resp.GetConfig(); cfg != nil {
+		wb.server.ApplyInstanceConfig(cfg)
+		log.Println("[WorldBuilder] Applied instance config from gRPC.")
+	} else {
+		log.Println("[WorldBuilder] WARNING: no instance config in gRPC response.")
+	}
+
 	// Build object layer cache from the response
 	cache := make(map[string]*game.ObjectLayer, len(resp.GetObjectLayers()))
 	for _, olMsg := range resp.GetObjectLayers() {

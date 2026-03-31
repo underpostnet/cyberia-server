@@ -1275,8 +1275,9 @@ func (x *GetFullInstanceRequest) GetInstanceCode() string {
 type GetFullInstanceResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Instance      *InstanceMessage       `protobuf:"bytes,1,opt,name=instance,proto3" json:"instance,omitempty"`
-	Maps          []*MapDataMessage      `protobuf:"bytes,2,rep,name=maps,proto3" json:"maps,omitempty"`                                     // pre-populated for convenience
-	ObjectLayers  []*ObjectLayerMessage  `protobuf:"bytes,3,rep,name=object_layers,json=objectLayers,proto3" json:"object_layers,omitempty"` // all OLs referenced by entities
+	Maps          []*MapDataMessage      `protobuf:"bytes,2,rep,name=maps,proto3" json:"maps,omitempty"`
+	ObjectLayers  []*ObjectLayerMessage  `protobuf:"bytes,3,rep,name=object_layers,json=objectLayers,proto3" json:"object_layers,omitempty"`
+	Config        *InstanceConfig        `protobuf:"bytes,4,opt,name=config,proto3" json:"config,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1332,6 +1333,625 @@ func (x *GetFullInstanceResponse) GetObjectLayers() []*ObjectLayerMessage {
 	return nil
 }
 
+func (x *GetFullInstanceResponse) GetConfig() *InstanceConfig {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+type ColorEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	R             int32                  `protobuf:"varint,2,opt,name=r,proto3" json:"r,omitempty"`
+	G             int32                  `protobuf:"varint,3,opt,name=g,proto3" json:"g,omitempty"`
+	B             int32                  `protobuf:"varint,4,opt,name=b,proto3" json:"b,omitempty"`
+	A             int32                  `protobuf:"varint,5,opt,name=a,proto3" json:"a,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ColorEntry) Reset() {
+	*x = ColorEntry{}
+	mi := &file_proto_cyberia_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ColorEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ColorEntry) ProtoMessage() {}
+
+func (x *ColorEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_cyberia_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ColorEntry.ProtoReflect.Descriptor instead.
+func (*ColorEntry) Descriptor() ([]byte, []int) {
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ColorEntry) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *ColorEntry) GetR() int32 {
+	if x != nil {
+		return x.R
+	}
+	return 0
+}
+
+func (x *ColorEntry) GetG() int32 {
+	if x != nil {
+		return x.G
+	}
+	return 0
+}
+
+func (x *ColorEntry) GetB() int32 {
+	if x != nil {
+		return x.B
+	}
+	return 0
+}
+
+func (x *ColorEntry) GetA() int32 {
+	if x != nil {
+		return x.A
+	}
+	return 0
+}
+
+type DefaultObjectLayerState struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ItemId        string                 `protobuf:"bytes,1,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"`
+	Active        bool                   `protobuf:"varint,2,opt,name=active,proto3" json:"active,omitempty"`
+	Quantity      int32                  `protobuf:"varint,3,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DefaultObjectLayerState) Reset() {
+	*x = DefaultObjectLayerState{}
+	mi := &file_proto_cyberia_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DefaultObjectLayerState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DefaultObjectLayerState) ProtoMessage() {}
+
+func (x *DefaultObjectLayerState) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_cyberia_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DefaultObjectLayerState.ProtoReflect.Descriptor instead.
+func (*DefaultObjectLayerState) Descriptor() ([]byte, []int) {
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *DefaultObjectLayerState) GetItemId() string {
+	if x != nil {
+		return x.ItemId
+	}
+	return ""
+}
+
+func (x *DefaultObjectLayerState) GetActive() bool {
+	if x != nil {
+		return x.Active
+	}
+	return false
+}
+
+func (x *DefaultObjectLayerState) GetQuantity() int32 {
+	if x != nil {
+		return x.Quantity
+	}
+	return 0
+}
+
+type SkillConfigEntry struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	TriggerItemId  string                 `protobuf:"bytes,1,opt,name=trigger_item_id,json=triggerItemId,proto3" json:"trigger_item_id,omitempty"`    // item that triggers the skill
+	SpawnedItemIds []string               `protobuf:"bytes,2,rep,name=spawned_item_ids,json=spawnedItemIds,proto3" json:"spawned_item_ids,omitempty"` // item IDs for spawned entities (e.g. bullet)
+	LogicEventId   string                 `protobuf:"bytes,3,opt,name=logic_event_id,json=logicEventId,proto3" json:"logic_event_id,omitempty"`       // skill handler key
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *SkillConfigEntry) Reset() {
+	*x = SkillConfigEntry{}
+	mi := &file_proto_cyberia_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SkillConfigEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SkillConfigEntry) ProtoMessage() {}
+
+func (x *SkillConfigEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_cyberia_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SkillConfigEntry.ProtoReflect.Descriptor instead.
+func (*SkillConfigEntry) Descriptor() ([]byte, []int) {
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *SkillConfigEntry) GetTriggerItemId() string {
+	if x != nil {
+		return x.TriggerItemId
+	}
+	return ""
+}
+
+func (x *SkillConfigEntry) GetSpawnedItemIds() []string {
+	if x != nil {
+		return x.SpawnedItemIds
+	}
+	return nil
+}
+
+func (x *SkillConfigEntry) GetLogicEventId() string {
+	if x != nil {
+		return x.LogicEventId
+	}
+	return ""
+}
+
+type InstanceConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ── Rendering / camera ──
+	CellSize                  float64       `protobuf:"fixed64,1,opt,name=cell_size,json=cellSize,proto3" json:"cell_size,omitempty"`
+	Fps                       int32         `protobuf:"varint,2,opt,name=fps,proto3" json:"fps,omitempty"`
+	InterpolationMs           int32         `protobuf:"varint,3,opt,name=interpolation_ms,json=interpolationMs,proto3" json:"interpolation_ms,omitempty"`
+	DefaultObjWidth           float64       `protobuf:"fixed64,4,opt,name=default_obj_width,json=defaultObjWidth,proto3" json:"default_obj_width,omitempty"`
+	DefaultObjHeight          float64       `protobuf:"fixed64,5,opt,name=default_obj_height,json=defaultObjHeight,proto3" json:"default_obj_height,omitempty"`
+	CameraSmoothing           float64       `protobuf:"fixed64,6,opt,name=camera_smoothing,json=cameraSmoothing,proto3" json:"camera_smoothing,omitempty"`
+	CameraZoom                float64       `protobuf:"fixed64,7,opt,name=camera_zoom,json=cameraZoom,proto3" json:"camera_zoom,omitempty"`
+	DefaultWidthScreenFactor  float64       `protobuf:"fixed64,8,opt,name=default_width_screen_factor,json=defaultWidthScreenFactor,proto3" json:"default_width_screen_factor,omitempty"`
+	DefaultHeightScreenFactor float64       `protobuf:"fixed64,9,opt,name=default_height_screen_factor,json=defaultHeightScreenFactor,proto3" json:"default_height_screen_factor,omitempty"`
+	DevUi                     bool          `protobuf:"varint,10,opt,name=dev_ui,json=devUi,proto3" json:"dev_ui,omitempty"`
+	Colors                    []*ColorEntry `protobuf:"bytes,11,rep,name=colors,proto3" json:"colors,omitempty"`
+	// ── World / AOI ──
+	AoiRadius         float64 `protobuf:"fixed64,12,opt,name=aoi_radius,json=aoiRadius,proto3" json:"aoi_radius,omitempty"`
+	PortalHoldTimeMs  int32   `protobuf:"varint,13,opt,name=portal_hold_time_ms,json=portalHoldTimeMs,proto3" json:"portal_hold_time_ms,omitempty"`
+	PortalSpawnRadius float64 `protobuf:"fixed64,14,opt,name=portal_spawn_radius,json=portalSpawnRadius,proto3" json:"portal_spawn_radius,omitempty"`
+	// ── Entity base stats ──
+	EntityBaseSpeed               float64 `protobuf:"fixed64,15,opt,name=entity_base_speed,json=entityBaseSpeed,proto3" json:"entity_base_speed,omitempty"`
+	EntityBaseMaxLife             float64 `protobuf:"fixed64,16,opt,name=entity_base_max_life,json=entityBaseMaxLife,proto3" json:"entity_base_max_life,omitempty"`
+	EntityBaseActionCooldownMs    int32   `protobuf:"varint,17,opt,name=entity_base_action_cooldown_ms,json=entityBaseActionCooldownMs,proto3" json:"entity_base_action_cooldown_ms,omitempty"`
+	EntityBaseMinActionCooldownMs int32   `protobuf:"varint,18,opt,name=entity_base_min_action_cooldown_ms,json=entityBaseMinActionCooldownMs,proto3" json:"entity_base_min_action_cooldown_ms,omitempty"`
+	// ── Bot defaults ──
+	BotAggroRange float64 `protobuf:"fixed64,19,opt,name=bot_aggro_range,json=botAggroRange,proto3" json:"bot_aggro_range,omitempty"`
+	// ── Player defaults ──
+	DefaultPlayerWidth        float64                    `protobuf:"fixed64,20,opt,name=default_player_width,json=defaultPlayerWidth,proto3" json:"default_player_width,omitempty"`
+	DefaultPlayerHeight       float64                    `protobuf:"fixed64,21,opt,name=default_player_height,json=defaultPlayerHeight,proto3" json:"default_player_height,omitempty"`
+	PlayerBaseLifeRegenMin    float64                    `protobuf:"fixed64,22,opt,name=player_base_life_regen_min,json=playerBaseLifeRegenMin,proto3" json:"player_base_life_regen_min,omitempty"`
+	PlayerBaseLifeRegenMax    float64                    `protobuf:"fixed64,23,opt,name=player_base_life_regen_max,json=playerBaseLifeRegenMax,proto3" json:"player_base_life_regen_max,omitempty"`
+	SumStatsLimit             int32                      `protobuf:"varint,24,opt,name=sum_stats_limit,json=sumStatsLimit,proto3" json:"sum_stats_limit,omitempty"`
+	MaxActiveLayers           int32                      `protobuf:"varint,25,opt,name=max_active_layers,json=maxActiveLayers,proto3" json:"max_active_layers,omitempty"`
+	InitialLifeFraction       float64                    `protobuf:"fixed64,26,opt,name=initial_life_fraction,json=initialLifeFraction,proto3" json:"initial_life_fraction,omitempty"`
+	DefaultPlayerObjectLayers []*DefaultObjectLayerState `protobuf:"bytes,27,rep,name=default_player_object_layers,json=defaultPlayerObjectLayers,proto3" json:"default_player_object_layers,omitempty"`
+	// ── Combat / death ──
+	RespawnDurationMs int32   `protobuf:"varint,28,opt,name=respawn_duration_ms,json=respawnDurationMs,proto3" json:"respawn_duration_ms,omitempty"`
+	GhostItemId       string  `protobuf:"bytes,29,opt,name=ghost_item_id,json=ghostItemId,proto3" json:"ghost_item_id,omitempty"`
+	CollisionLifeLoss float64 `protobuf:"fixed64,30,opt,name=collision_life_loss,json=collisionLifeLoss,proto3" json:"collision_life_loss,omitempty"`
+	// ── Economy ──
+	CoinItemId          string `protobuf:"bytes,31,opt,name=coin_item_id,json=coinItemId,proto3" json:"coin_item_id,omitempty"`
+	DefaultCoinQuantity int32  `protobuf:"varint,32,opt,name=default_coin_quantity,json=defaultCoinQuantity,proto3" json:"default_coin_quantity,omitempty"`
+	// ── Regen ──
+	LifeRegenChance float64 `protobuf:"fixed64,33,opt,name=life_regen_chance,json=lifeRegenChance,proto3" json:"life_regen_chance,omitempty"`
+	MaxChance       float64 `protobuf:"fixed64,34,opt,name=max_chance,json=maxChance,proto3" json:"max_chance,omitempty"`
+	// ── Skill config ──
+	BulletSpawnChance               float64 `protobuf:"fixed64,35,opt,name=bullet_spawn_chance,json=bulletSpawnChance,proto3" json:"bullet_spawn_chance,omitempty"`
+	BulletLifetimeMs                int32   `protobuf:"varint,36,opt,name=bullet_lifetime_ms,json=bulletLifetimeMs,proto3" json:"bullet_lifetime_ms,omitempty"`
+	BulletWidth                     float64 `protobuf:"fixed64,37,opt,name=bullet_width,json=bulletWidth,proto3" json:"bullet_width,omitempty"`
+	BulletHeight                    float64 `protobuf:"fixed64,38,opt,name=bullet_height,json=bulletHeight,proto3" json:"bullet_height,omitempty"`
+	BulletSpeedMultiplier           float64 `protobuf:"fixed64,39,opt,name=bullet_speed_multiplier,json=bulletSpeedMultiplier,proto3" json:"bullet_speed_multiplier,omitempty"`
+	DoppelgangerSpawnChance         float64 `protobuf:"fixed64,40,opt,name=doppelganger_spawn_chance,json=doppelgangerSpawnChance,proto3" json:"doppelganger_spawn_chance,omitempty"`
+	DoppelgangerLifetimeMs          int32   `protobuf:"varint,41,opt,name=doppelganger_lifetime_ms,json=doppelgangerLifetimeMs,proto3" json:"doppelganger_lifetime_ms,omitempty"`
+	DoppelgangerSpawnRadius         float64 `protobuf:"fixed64,42,opt,name=doppelganger_spawn_radius,json=doppelgangerSpawnRadius,proto3" json:"doppelganger_spawn_radius,omitempty"`
+	DoppelgangerInitialLifeFraction float64 `protobuf:"fixed64,43,opt,name=doppelganger_initial_life_fraction,json=doppelgangerInitialLifeFraction,proto3" json:"doppelganger_initial_life_fraction,omitempty"`
+	// ── Floor defaults ──
+	DefaultFloorItemId string `protobuf:"bytes,44,opt,name=default_floor_item_id,json=defaultFloorItemId,proto3" json:"default_floor_item_id,omitempty"`
+	// ── Skill map ──
+	SkillConfig []*SkillConfigEntry `protobuf:"bytes,45,rep,name=skill_config,json=skillConfig,proto3" json:"skill_config,omitempty"`
+	// ── Player color (fallback when no object layers / sprites) ──
+	DefaultPlayerColor *ColorEntry `protobuf:"bytes,46,opt,name=default_player_color,json=defaultPlayerColor,proto3" json:"default_player_color,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *InstanceConfig) Reset() {
+	*x = InstanceConfig{}
+	mi := &file_proto_cyberia_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InstanceConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InstanceConfig) ProtoMessage() {}
+
+func (x *InstanceConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_cyberia_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InstanceConfig.ProtoReflect.Descriptor instead.
+func (*InstanceConfig) Descriptor() ([]byte, []int) {
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *InstanceConfig) GetCellSize() float64 {
+	if x != nil {
+		return x.CellSize
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetFps() int32 {
+	if x != nil {
+		return x.Fps
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetInterpolationMs() int32 {
+	if x != nil {
+		return x.InterpolationMs
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetDefaultObjWidth() float64 {
+	if x != nil {
+		return x.DefaultObjWidth
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetDefaultObjHeight() float64 {
+	if x != nil {
+		return x.DefaultObjHeight
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetCameraSmoothing() float64 {
+	if x != nil {
+		return x.CameraSmoothing
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetCameraZoom() float64 {
+	if x != nil {
+		return x.CameraZoom
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetDefaultWidthScreenFactor() float64 {
+	if x != nil {
+		return x.DefaultWidthScreenFactor
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetDefaultHeightScreenFactor() float64 {
+	if x != nil {
+		return x.DefaultHeightScreenFactor
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetDevUi() bool {
+	if x != nil {
+		return x.DevUi
+	}
+	return false
+}
+
+func (x *InstanceConfig) GetColors() []*ColorEntry {
+	if x != nil {
+		return x.Colors
+	}
+	return nil
+}
+
+func (x *InstanceConfig) GetAoiRadius() float64 {
+	if x != nil {
+		return x.AoiRadius
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetPortalHoldTimeMs() int32 {
+	if x != nil {
+		return x.PortalHoldTimeMs
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetPortalSpawnRadius() float64 {
+	if x != nil {
+		return x.PortalSpawnRadius
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetEntityBaseSpeed() float64 {
+	if x != nil {
+		return x.EntityBaseSpeed
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetEntityBaseMaxLife() float64 {
+	if x != nil {
+		return x.EntityBaseMaxLife
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetEntityBaseActionCooldownMs() int32 {
+	if x != nil {
+		return x.EntityBaseActionCooldownMs
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetEntityBaseMinActionCooldownMs() int32 {
+	if x != nil {
+		return x.EntityBaseMinActionCooldownMs
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetBotAggroRange() float64 {
+	if x != nil {
+		return x.BotAggroRange
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetDefaultPlayerWidth() float64 {
+	if x != nil {
+		return x.DefaultPlayerWidth
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetDefaultPlayerHeight() float64 {
+	if x != nil {
+		return x.DefaultPlayerHeight
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetPlayerBaseLifeRegenMin() float64 {
+	if x != nil {
+		return x.PlayerBaseLifeRegenMin
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetPlayerBaseLifeRegenMax() float64 {
+	if x != nil {
+		return x.PlayerBaseLifeRegenMax
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetSumStatsLimit() int32 {
+	if x != nil {
+		return x.SumStatsLimit
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetMaxActiveLayers() int32 {
+	if x != nil {
+		return x.MaxActiveLayers
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetInitialLifeFraction() float64 {
+	if x != nil {
+		return x.InitialLifeFraction
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetDefaultPlayerObjectLayers() []*DefaultObjectLayerState {
+	if x != nil {
+		return x.DefaultPlayerObjectLayers
+	}
+	return nil
+}
+
+func (x *InstanceConfig) GetRespawnDurationMs() int32 {
+	if x != nil {
+		return x.RespawnDurationMs
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetGhostItemId() string {
+	if x != nil {
+		return x.GhostItemId
+	}
+	return ""
+}
+
+func (x *InstanceConfig) GetCollisionLifeLoss() float64 {
+	if x != nil {
+		return x.CollisionLifeLoss
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetCoinItemId() string {
+	if x != nil {
+		return x.CoinItemId
+	}
+	return ""
+}
+
+func (x *InstanceConfig) GetDefaultCoinQuantity() int32 {
+	if x != nil {
+		return x.DefaultCoinQuantity
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetLifeRegenChance() float64 {
+	if x != nil {
+		return x.LifeRegenChance
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetMaxChance() float64 {
+	if x != nil {
+		return x.MaxChance
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetBulletSpawnChance() float64 {
+	if x != nil {
+		return x.BulletSpawnChance
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetBulletLifetimeMs() int32 {
+	if x != nil {
+		return x.BulletLifetimeMs
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetBulletWidth() float64 {
+	if x != nil {
+		return x.BulletWidth
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetBulletHeight() float64 {
+	if x != nil {
+		return x.BulletHeight
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetBulletSpeedMultiplier() float64 {
+	if x != nil {
+		return x.BulletSpeedMultiplier
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetDoppelgangerSpawnChance() float64 {
+	if x != nil {
+		return x.DoppelgangerSpawnChance
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetDoppelgangerLifetimeMs() int32 {
+	if x != nil {
+		return x.DoppelgangerLifetimeMs
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetDoppelgangerSpawnRadius() float64 {
+	if x != nil {
+		return x.DoppelgangerSpawnRadius
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetDoppelgangerInitialLifeFraction() float64 {
+	if x != nil {
+		return x.DoppelgangerInitialLifeFraction
+	}
+	return 0
+}
+
+func (x *InstanceConfig) GetDefaultFloorItemId() string {
+	if x != nil {
+		return x.DefaultFloorItemId
+	}
+	return ""
+}
+
+func (x *InstanceConfig) GetSkillConfig() []*SkillConfigEntry {
+	if x != nil {
+		return x.SkillConfig
+	}
+	return nil
+}
+
+func (x *InstanceConfig) GetDefaultPlayerColor() *ColorEntry {
+	if x != nil {
+		return x.DefaultPlayerColor
+	}
+	return nil
+}
+
 type EntityMessage struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	EntityType         string                 `protobuf:"bytes,1,opt,name=entity_type,json=entityType,proto3" json:"entity_type,omitempty"`
@@ -1352,7 +1972,7 @@ type EntityMessage struct {
 
 func (x *EntityMessage) Reset() {
 	*x = EntityMessage{}
-	mi := &file_proto_cyberia_proto_msgTypes[18]
+	mi := &file_proto_cyberia_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1364,7 +1984,7 @@ func (x *EntityMessage) String() string {
 func (*EntityMessage) ProtoMessage() {}
 
 func (x *EntityMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[18]
+	mi := &file_proto_cyberia_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1377,7 +1997,7 @@ func (x *EntityMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntityMessage.ProtoReflect.Descriptor instead.
 func (*EntityMessage) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{18}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *EntityMessage) GetEntityType() string {
@@ -1473,7 +2093,7 @@ type MapDataMessage struct {
 
 func (x *MapDataMessage) Reset() {
 	*x = MapDataMessage{}
-	mi := &file_proto_cyberia_proto_msgTypes[19]
+	mi := &file_proto_cyberia_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1485,7 +2105,7 @@ func (x *MapDataMessage) String() string {
 func (*MapDataMessage) ProtoMessage() {}
 
 func (x *MapDataMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[19]
+	mi := &file_proto_cyberia_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1498,7 +2118,7 @@ func (x *MapDataMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MapDataMessage.ProtoReflect.Descriptor instead.
 func (*MapDataMessage) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{19}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *MapDataMessage) GetMongoId() string {
@@ -1566,7 +2186,7 @@ type GetMapDataRequest struct {
 
 func (x *GetMapDataRequest) Reset() {
 	*x = GetMapDataRequest{}
-	mi := &file_proto_cyberia_proto_msgTypes[20]
+	mi := &file_proto_cyberia_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1578,7 +2198,7 @@ func (x *GetMapDataRequest) String() string {
 func (*GetMapDataRequest) ProtoMessage() {}
 
 func (x *GetMapDataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[20]
+	mi := &file_proto_cyberia_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1591,7 +2211,7 @@ func (x *GetMapDataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMapDataRequest.ProtoReflect.Descriptor instead.
 func (*GetMapDataRequest) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{20}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GetMapDataRequest) GetMapCode() string {
@@ -1610,7 +2230,7 @@ type GetMapDataResponse struct {
 
 func (x *GetMapDataResponse) Reset() {
 	*x = GetMapDataResponse{}
-	mi := &file_proto_cyberia_proto_msgTypes[21]
+	mi := &file_proto_cyberia_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1622,7 +2242,7 @@ func (x *GetMapDataResponse) String() string {
 func (*GetMapDataResponse) ProtoMessage() {}
 
 func (x *GetMapDataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[21]
+	mi := &file_proto_cyberia_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1635,7 +2255,7 @@ func (x *GetMapDataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMapDataResponse.ProtoReflect.Descriptor instead.
 func (*GetMapDataResponse) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{21}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetMapDataResponse) GetMap() *MapDataMessage {
@@ -1653,7 +2273,7 @@ type PingRequest struct {
 
 func (x *PingRequest) Reset() {
 	*x = PingRequest{}
-	mi := &file_proto_cyberia_proto_msgTypes[22]
+	mi := &file_proto_cyberia_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1665,7 +2285,7 @@ func (x *PingRequest) String() string {
 func (*PingRequest) ProtoMessage() {}
 
 func (x *PingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[22]
+	mi := &file_proto_cyberia_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1678,7 +2298,7 @@ func (x *PingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingRequest.ProtoReflect.Descriptor instead.
 func (*PingRequest) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{22}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{26}
 }
 
 type PingResponse struct {
@@ -1690,7 +2310,7 @@ type PingResponse struct {
 
 func (x *PingResponse) Reset() {
 	*x = PingResponse{}
-	mi := &file_proto_cyberia_proto_msgTypes[23]
+	mi := &file_proto_cyberia_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1702,7 +2322,7 @@ func (x *PingResponse) String() string {
 func (*PingResponse) ProtoMessage() {}
 
 func (x *PingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[23]
+	mi := &file_proto_cyberia_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1715,7 +2335,7 @@ func (x *PingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingResponse.ProtoReflect.Descriptor instead.
 func (*PingResponse) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{23}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *PingResponse) GetServerTimeMs() int64 {
@@ -1735,7 +2355,7 @@ type ObjectLayerManifestEntry struct {
 
 func (x *ObjectLayerManifestEntry) Reset() {
 	*x = ObjectLayerManifestEntry{}
-	mi := &file_proto_cyberia_proto_msgTypes[24]
+	mi := &file_proto_cyberia_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1747,7 +2367,7 @@ func (x *ObjectLayerManifestEntry) String() string {
 func (*ObjectLayerManifestEntry) ProtoMessage() {}
 
 func (x *ObjectLayerManifestEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[24]
+	mi := &file_proto_cyberia_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1760,7 +2380,7 @@ func (x *ObjectLayerManifestEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObjectLayerManifestEntry.ProtoReflect.Descriptor instead.
 func (*ObjectLayerManifestEntry) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{24}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ObjectLayerManifestEntry) GetItemId() string {
@@ -1785,7 +2405,7 @@ type GetObjectLayerManifestRequest struct {
 
 func (x *GetObjectLayerManifestRequest) Reset() {
 	*x = GetObjectLayerManifestRequest{}
-	mi := &file_proto_cyberia_proto_msgTypes[25]
+	mi := &file_proto_cyberia_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1797,7 +2417,7 @@ func (x *GetObjectLayerManifestRequest) String() string {
 func (*GetObjectLayerManifestRequest) ProtoMessage() {}
 
 func (x *GetObjectLayerManifestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[25]
+	mi := &file_proto_cyberia_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1810,7 +2430,7 @@ func (x *GetObjectLayerManifestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetObjectLayerManifestRequest.ProtoReflect.Descriptor instead.
 func (*GetObjectLayerManifestRequest) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{25}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{29}
 }
 
 type GetObjectLayerManifestResponse struct {
@@ -1822,7 +2442,7 @@ type GetObjectLayerManifestResponse struct {
 
 func (x *GetObjectLayerManifestResponse) Reset() {
 	*x = GetObjectLayerManifestResponse{}
-	mi := &file_proto_cyberia_proto_msgTypes[26]
+	mi := &file_proto_cyberia_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1834,7 +2454,7 @@ func (x *GetObjectLayerManifestResponse) String() string {
 func (*GetObjectLayerManifestResponse) ProtoMessage() {}
 
 func (x *GetObjectLayerManifestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[26]
+	mi := &file_proto_cyberia_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1847,7 +2467,7 @@ func (x *GetObjectLayerManifestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetObjectLayerManifestResponse.ProtoReflect.Descriptor instead.
 func (*GetObjectLayerManifestResponse) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{26}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *GetObjectLayerManifestResponse) GetEntries() []*ObjectLayerManifestEntry {
@@ -1965,11 +2585,79 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\rtopology_mode\x18\b \x01(\tR\ftopologyMode\x12\x12\n" +
 	"\x04seed\x18\t \x01(\tR\x04seed\"=\n" +
 	"\x16GetFullInstanceRequest\x12#\n" +
-	"\rinstance_code\x18\x01 \x01(\tR\finstanceCode\"\xbe\x01\n" +
+	"\rinstance_code\x18\x01 \x01(\tR\finstanceCode\"\xef\x01\n" +
 	"\x17GetFullInstanceResponse\x124\n" +
 	"\binstance\x18\x01 \x01(\v2\x18.cyberia.InstanceMessageR\binstance\x12+\n" +
 	"\x04maps\x18\x02 \x03(\v2\x17.cyberia.MapDataMessageR\x04maps\x12@\n" +
-	"\robject_layers\x18\x03 \x03(\v2\x1b.cyberia.ObjectLayerMessageR\fobjectLayers\"\xe1\x02\n" +
+	"\robject_layers\x18\x03 \x03(\v2\x1b.cyberia.ObjectLayerMessageR\fobjectLayers\x12/\n" +
+	"\x06config\x18\x04 \x01(\v2\x17.cyberia.InstanceConfigR\x06config\"V\n" +
+	"\n" +
+	"ColorEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\f\n" +
+	"\x01r\x18\x02 \x01(\x05R\x01r\x12\f\n" +
+	"\x01g\x18\x03 \x01(\x05R\x01g\x12\f\n" +
+	"\x01b\x18\x04 \x01(\x05R\x01b\x12\f\n" +
+	"\x01a\x18\x05 \x01(\x05R\x01a\"f\n" +
+	"\x17DefaultObjectLayerState\x12\x17\n" +
+	"\aitem_id\x18\x01 \x01(\tR\x06itemId\x12\x16\n" +
+	"\x06active\x18\x02 \x01(\bR\x06active\x12\x1a\n" +
+	"\bquantity\x18\x03 \x01(\x05R\bquantity\"\x8a\x01\n" +
+	"\x10SkillConfigEntry\x12&\n" +
+	"\x0ftrigger_item_id\x18\x01 \x01(\tR\rtriggerItemId\x12(\n" +
+	"\x10spawned_item_ids\x18\x02 \x03(\tR\x0espawnedItemIds\x12$\n" +
+	"\x0elogic_event_id\x18\x03 \x01(\tR\flogicEventId\"\xe9\x11\n" +
+	"\x0eInstanceConfig\x12\x1b\n" +
+	"\tcell_size\x18\x01 \x01(\x01R\bcellSize\x12\x10\n" +
+	"\x03fps\x18\x02 \x01(\x05R\x03fps\x12)\n" +
+	"\x10interpolation_ms\x18\x03 \x01(\x05R\x0finterpolationMs\x12*\n" +
+	"\x11default_obj_width\x18\x04 \x01(\x01R\x0fdefaultObjWidth\x12,\n" +
+	"\x12default_obj_height\x18\x05 \x01(\x01R\x10defaultObjHeight\x12)\n" +
+	"\x10camera_smoothing\x18\x06 \x01(\x01R\x0fcameraSmoothing\x12\x1f\n" +
+	"\vcamera_zoom\x18\a \x01(\x01R\n" +
+	"cameraZoom\x12=\n" +
+	"\x1bdefault_width_screen_factor\x18\b \x01(\x01R\x18defaultWidthScreenFactor\x12?\n" +
+	"\x1cdefault_height_screen_factor\x18\t \x01(\x01R\x19defaultHeightScreenFactor\x12\x15\n" +
+	"\x06dev_ui\x18\n" +
+	" \x01(\bR\x05devUi\x12+\n" +
+	"\x06colors\x18\v \x03(\v2\x13.cyberia.ColorEntryR\x06colors\x12\x1d\n" +
+	"\n" +
+	"aoi_radius\x18\f \x01(\x01R\taoiRadius\x12-\n" +
+	"\x13portal_hold_time_ms\x18\r \x01(\x05R\x10portalHoldTimeMs\x12.\n" +
+	"\x13portal_spawn_radius\x18\x0e \x01(\x01R\x11portalSpawnRadius\x12*\n" +
+	"\x11entity_base_speed\x18\x0f \x01(\x01R\x0fentityBaseSpeed\x12/\n" +
+	"\x14entity_base_max_life\x18\x10 \x01(\x01R\x11entityBaseMaxLife\x12B\n" +
+	"\x1eentity_base_action_cooldown_ms\x18\x11 \x01(\x05R\x1aentityBaseActionCooldownMs\x12I\n" +
+	"\"entity_base_min_action_cooldown_ms\x18\x12 \x01(\x05R\x1dentityBaseMinActionCooldownMs\x12&\n" +
+	"\x0fbot_aggro_range\x18\x13 \x01(\x01R\rbotAggroRange\x120\n" +
+	"\x14default_player_width\x18\x14 \x01(\x01R\x12defaultPlayerWidth\x122\n" +
+	"\x15default_player_height\x18\x15 \x01(\x01R\x13defaultPlayerHeight\x12:\n" +
+	"\x1aplayer_base_life_regen_min\x18\x16 \x01(\x01R\x16playerBaseLifeRegenMin\x12:\n" +
+	"\x1aplayer_base_life_regen_max\x18\x17 \x01(\x01R\x16playerBaseLifeRegenMax\x12&\n" +
+	"\x0fsum_stats_limit\x18\x18 \x01(\x05R\rsumStatsLimit\x12*\n" +
+	"\x11max_active_layers\x18\x19 \x01(\x05R\x0fmaxActiveLayers\x122\n" +
+	"\x15initial_life_fraction\x18\x1a \x01(\x01R\x13initialLifeFraction\x12a\n" +
+	"\x1cdefault_player_object_layers\x18\x1b \x03(\v2 .cyberia.DefaultObjectLayerStateR\x19defaultPlayerObjectLayers\x12.\n" +
+	"\x13respawn_duration_ms\x18\x1c \x01(\x05R\x11respawnDurationMs\x12\"\n" +
+	"\rghost_item_id\x18\x1d \x01(\tR\vghostItemId\x12.\n" +
+	"\x13collision_life_loss\x18\x1e \x01(\x01R\x11collisionLifeLoss\x12 \n" +
+	"\fcoin_item_id\x18\x1f \x01(\tR\n" +
+	"coinItemId\x122\n" +
+	"\x15default_coin_quantity\x18  \x01(\x05R\x13defaultCoinQuantity\x12*\n" +
+	"\x11life_regen_chance\x18! \x01(\x01R\x0flifeRegenChance\x12\x1d\n" +
+	"\n" +
+	"max_chance\x18\" \x01(\x01R\tmaxChance\x12.\n" +
+	"\x13bullet_spawn_chance\x18# \x01(\x01R\x11bulletSpawnChance\x12,\n" +
+	"\x12bullet_lifetime_ms\x18$ \x01(\x05R\x10bulletLifetimeMs\x12!\n" +
+	"\fbullet_width\x18% \x01(\x01R\vbulletWidth\x12#\n" +
+	"\rbullet_height\x18& \x01(\x01R\fbulletHeight\x126\n" +
+	"\x17bullet_speed_multiplier\x18' \x01(\x01R\x15bulletSpeedMultiplier\x12:\n" +
+	"\x19doppelganger_spawn_chance\x18( \x01(\x01R\x17doppelgangerSpawnChance\x128\n" +
+	"\x18doppelganger_lifetime_ms\x18) \x01(\x05R\x16doppelgangerLifetimeMs\x12:\n" +
+	"\x19doppelganger_spawn_radius\x18* \x01(\x01R\x17doppelgangerSpawnRadius\x12K\n" +
+	"\"doppelganger_initial_life_fraction\x18+ \x01(\x01R\x1fdoppelgangerInitialLifeFraction\x121\n" +
+	"\x15default_floor_item_id\x18, \x01(\tR\x12defaultFloorItemId\x12<\n" +
+	"\fskill_config\x18- \x03(\v2\x19.cyberia.SkillConfigEntryR\vskillConfig\x12E\n" +
+	"\x14default_player_color\x18. \x01(\v2\x13.cyberia.ColorEntryR\x12defaultPlayerColor\"\xe1\x02\n" +
 	"\rEntityMessage\x12\x1f\n" +
 	"\ventity_type\x18\x01 \x01(\tR\n" +
 	"entityType\x12\x1e\n" +
@@ -2033,7 +2721,7 @@ func file_proto_cyberia_proto_rawDescGZIP() []byte {
 	return file_proto_cyberia_proto_rawDescData
 }
 
-var file_proto_cyberia_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_proto_cyberia_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_proto_cyberia_proto_goTypes = []any{
 	(*Vec2)(nil),                            // 0: cyberia.Vec2
 	(*Vec2I)(nil),                           // 1: cyberia.Vec2I
@@ -2053,15 +2741,19 @@ var file_proto_cyberia_proto_goTypes = []any{
 	(*InstanceMessage)(nil),                 // 15: cyberia.InstanceMessage
 	(*GetFullInstanceRequest)(nil),          // 16: cyberia.GetFullInstanceRequest
 	(*GetFullInstanceResponse)(nil),         // 17: cyberia.GetFullInstanceResponse
-	(*EntityMessage)(nil),                   // 18: cyberia.EntityMessage
-	(*MapDataMessage)(nil),                  // 19: cyberia.MapDataMessage
-	(*GetMapDataRequest)(nil),               // 20: cyberia.GetMapDataRequest
-	(*GetMapDataResponse)(nil),              // 21: cyberia.GetMapDataResponse
-	(*PingRequest)(nil),                     // 22: cyberia.PingRequest
-	(*PingResponse)(nil),                    // 23: cyberia.PingResponse
-	(*ObjectLayerManifestEntry)(nil),        // 24: cyberia.ObjectLayerManifestEntry
-	(*GetObjectLayerManifestRequest)(nil),   // 25: cyberia.GetObjectLayerManifestRequest
-	(*GetObjectLayerManifestResponse)(nil),  // 26: cyberia.GetObjectLayerManifestResponse
+	(*ColorEntry)(nil),                      // 18: cyberia.ColorEntry
+	(*DefaultObjectLayerState)(nil),         // 19: cyberia.DefaultObjectLayerState
+	(*SkillConfigEntry)(nil),                // 20: cyberia.SkillConfigEntry
+	(*InstanceConfig)(nil),                  // 21: cyberia.InstanceConfig
+	(*EntityMessage)(nil),                   // 22: cyberia.EntityMessage
+	(*MapDataMessage)(nil),                  // 23: cyberia.MapDataMessage
+	(*GetMapDataRequest)(nil),               // 24: cyberia.GetMapDataRequest
+	(*GetMapDataResponse)(nil),              // 25: cyberia.GetMapDataResponse
+	(*PingRequest)(nil),                     // 26: cyberia.PingRequest
+	(*PingResponse)(nil),                    // 27: cyberia.PingResponse
+	(*ObjectLayerManifestEntry)(nil),        // 28: cyberia.ObjectLayerManifestEntry
+	(*GetObjectLayerManifestRequest)(nil),   // 29: cyberia.GetObjectLayerManifestRequest
+	(*GetObjectLayerManifestResponse)(nil),  // 30: cyberia.GetObjectLayerManifestResponse
 }
 var file_proto_cyberia_proto_depIdxs = []int32{
 	2,  // 0: cyberia.ObjectLayerMessage.stats:type_name -> cyberia.Stats
@@ -2089,32 +2781,37 @@ var file_proto_cyberia_proto_depIdxs = []int32{
 	10, // 22: cyberia.AtlasSpriteSheetMessage.frames:type_name -> cyberia.DirectionFrames
 	14, // 23: cyberia.InstanceMessage.portals:type_name -> cyberia.PortalEdge
 	15, // 24: cyberia.GetFullInstanceResponse.instance:type_name -> cyberia.InstanceMessage
-	19, // 25: cyberia.GetFullInstanceResponse.maps:type_name -> cyberia.MapDataMessage
+	23, // 25: cyberia.GetFullInstanceResponse.maps:type_name -> cyberia.MapDataMessage
 	6,  // 26: cyberia.GetFullInstanceResponse.object_layers:type_name -> cyberia.ObjectLayerMessage
-	18, // 27: cyberia.MapDataMessage.entities:type_name -> cyberia.EntityMessage
-	19, // 28: cyberia.GetMapDataResponse.map:type_name -> cyberia.MapDataMessage
-	24, // 29: cyberia.GetObjectLayerManifestResponse.entries:type_name -> cyberia.ObjectLayerManifestEntry
-	16, // 30: cyberia.CyberiaDataService.GetFullInstance:input_type -> cyberia.GetFullInstanceRequest
-	20, // 31: cyberia.CyberiaDataService.GetMapData:input_type -> cyberia.GetMapDataRequest
-	7,  // 32: cyberia.CyberiaDataService.GetObjectLayerBatch:input_type -> cyberia.GetObjectLayerBatchRequest
-	8,  // 33: cyberia.CyberiaDataService.GetObjectLayer:input_type -> cyberia.GetObjectLayerRequest
-	12, // 34: cyberia.CyberiaDataService.GetAtlasSpriteSheet:input_type -> cyberia.GetAtlasSpriteSheetRequest
-	13, // 35: cyberia.CyberiaDataService.GetAtlasSpriteSheetBatch:input_type -> cyberia.GetAtlasSpriteSheetBatchRequest
-	22, // 36: cyberia.CyberiaDataService.Ping:input_type -> cyberia.PingRequest
-	25, // 37: cyberia.CyberiaDataService.GetObjectLayerManifest:input_type -> cyberia.GetObjectLayerManifestRequest
-	17, // 38: cyberia.CyberiaDataService.GetFullInstance:output_type -> cyberia.GetFullInstanceResponse
-	21, // 39: cyberia.CyberiaDataService.GetMapData:output_type -> cyberia.GetMapDataResponse
-	6,  // 40: cyberia.CyberiaDataService.GetObjectLayerBatch:output_type -> cyberia.ObjectLayerMessage
-	6,  // 41: cyberia.CyberiaDataService.GetObjectLayer:output_type -> cyberia.ObjectLayerMessage
-	11, // 42: cyberia.CyberiaDataService.GetAtlasSpriteSheet:output_type -> cyberia.AtlasSpriteSheetMessage
-	11, // 43: cyberia.CyberiaDataService.GetAtlasSpriteSheetBatch:output_type -> cyberia.AtlasSpriteSheetMessage
-	23, // 44: cyberia.CyberiaDataService.Ping:output_type -> cyberia.PingResponse
-	26, // 45: cyberia.CyberiaDataService.GetObjectLayerManifest:output_type -> cyberia.GetObjectLayerManifestResponse
-	38, // [38:46] is the sub-list for method output_type
-	30, // [30:38] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	21, // 27: cyberia.GetFullInstanceResponse.config:type_name -> cyberia.InstanceConfig
+	18, // 28: cyberia.InstanceConfig.colors:type_name -> cyberia.ColorEntry
+	19, // 29: cyberia.InstanceConfig.default_player_object_layers:type_name -> cyberia.DefaultObjectLayerState
+	20, // 30: cyberia.InstanceConfig.skill_config:type_name -> cyberia.SkillConfigEntry
+	18, // 31: cyberia.InstanceConfig.default_player_color:type_name -> cyberia.ColorEntry
+	22, // 32: cyberia.MapDataMessage.entities:type_name -> cyberia.EntityMessage
+	23, // 33: cyberia.GetMapDataResponse.map:type_name -> cyberia.MapDataMessage
+	28, // 34: cyberia.GetObjectLayerManifestResponse.entries:type_name -> cyberia.ObjectLayerManifestEntry
+	16, // 35: cyberia.CyberiaDataService.GetFullInstance:input_type -> cyberia.GetFullInstanceRequest
+	24, // 36: cyberia.CyberiaDataService.GetMapData:input_type -> cyberia.GetMapDataRequest
+	7,  // 37: cyberia.CyberiaDataService.GetObjectLayerBatch:input_type -> cyberia.GetObjectLayerBatchRequest
+	8,  // 38: cyberia.CyberiaDataService.GetObjectLayer:input_type -> cyberia.GetObjectLayerRequest
+	12, // 39: cyberia.CyberiaDataService.GetAtlasSpriteSheet:input_type -> cyberia.GetAtlasSpriteSheetRequest
+	13, // 40: cyberia.CyberiaDataService.GetAtlasSpriteSheetBatch:input_type -> cyberia.GetAtlasSpriteSheetBatchRequest
+	26, // 41: cyberia.CyberiaDataService.Ping:input_type -> cyberia.PingRequest
+	29, // 42: cyberia.CyberiaDataService.GetObjectLayerManifest:input_type -> cyberia.GetObjectLayerManifestRequest
+	17, // 43: cyberia.CyberiaDataService.GetFullInstance:output_type -> cyberia.GetFullInstanceResponse
+	25, // 44: cyberia.CyberiaDataService.GetMapData:output_type -> cyberia.GetMapDataResponse
+	6,  // 45: cyberia.CyberiaDataService.GetObjectLayerBatch:output_type -> cyberia.ObjectLayerMessage
+	6,  // 46: cyberia.CyberiaDataService.GetObjectLayer:output_type -> cyberia.ObjectLayerMessage
+	11, // 47: cyberia.CyberiaDataService.GetAtlasSpriteSheet:output_type -> cyberia.AtlasSpriteSheetMessage
+	11, // 48: cyberia.CyberiaDataService.GetAtlasSpriteSheetBatch:output_type -> cyberia.AtlasSpriteSheetMessage
+	27, // 49: cyberia.CyberiaDataService.Ping:output_type -> cyberia.PingResponse
+	30, // 50: cyberia.CyberiaDataService.GetObjectLayerManifest:output_type -> cyberia.GetObjectLayerManifestResponse
+	43, // [43:51] is the sub-list for method output_type
+	35, // [35:43] is the sub-list for method input_type
+	35, // [35:35] is the sub-list for extension type_name
+	35, // [35:35] is the sub-list for extension extendee
+	0,  // [0:35] is the sub-list for field type_name
 }
 
 func init() { file_proto_cyberia_proto_init() }
@@ -2128,7 +2825,7 @@ func file_proto_cyberia_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_cyberia_proto_rawDesc), len(file_proto_cyberia_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   27,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

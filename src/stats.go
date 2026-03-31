@@ -62,7 +62,7 @@ func (s *GameServer) CalculateStats(source interface{}, mapState *MapState) Comp
 		if !layer.Active {
 			continue
 		}
-		if data, ok := s.objectLayerDataCache[layer.ItemID]; ok {
+		if data, ok := s.GetObjectLayerData(layer.ItemID); ok {
 			totalStats.Effect += float64(data.Data.Stats.Effect)
 			totalStats.Resistance += float64(data.Data.Stats.Resistance)
 			totalStats.Agility += float64(data.Data.Stats.Agility)

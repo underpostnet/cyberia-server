@@ -13,9 +13,8 @@ import (
 func (s *GameServer) executePlayerDoppelgangerSkill(player *PlayerState, mapState *MapState, itemID string) {
 	playerStats := s.CalculateStats(player, mapState)
 
-	const doppelgangerSpawnChance = 0.25 // 25% chance
 	// Intelligence stat increases the chance of the skill activating.
-	if rand.Float64() >= math.Min(doppelgangerSpawnChance+(playerStats.Intelligence/100.0), 0.95) {
+	if rand.Float64() >= math.Min(s.doppelgangerSpawnChance+(playerStats.Intelligence/100.0), s.maxChance) {
 		return // Skill did not activate on this action
 	}
 
@@ -23,13 +22,13 @@ func (s *GameServer) executePlayerDoppelgangerSkill(player *PlayerState, mapStat
 	defer s.mu.Unlock()
 
 	// Range stat increases the doppelganger's lifetime in milliseconds.
-	botLifetime := (10 * time.Second) + (time.Duration(playerStats.Range) * time.Millisecond)
+	botLifetime := (time.Duration(s.doppelgangerLifetimeMs) * time.Millisecond) + (time.Duration(playerStats.Range) * time.Millisecond)
 
 	// The doppelganger should only have the active skin of the caster.
 	var doppelgangerLayers []ObjectLayerState
 	for _, layer := range player.ObjectLayers {
 		if layer.Active {
-			if itemData, ok := s.objectLayerDataCache[layer.ItemID]; ok {
+			if itemData, ok := s.GetObjectLayerData(layer.ItemID); ok {
 				if itemData.Data.Item.Type == "skin" {
 					// Found the active skin. This is the only layer the doppelganger gets.
 					doppelgangerLayers = []ObjectLayerState{{
@@ -50,12 +49,12 @@ func (s *GameServer) executePlayerDoppelgangerSkill(player *PlayerState, mapStat
 		Dims:         player.Dims,
 		Behavior:     "passive",
 		SpawnCenter:  player.Pos,
-		SpawnRadius:  5.0,
+		SpawnRadius:  s.doppelgangerSpawnRadius,
 		ObjectLayers: doppelgangerLayers,
 		ExpiresAt:    time.Now().Add(botLifetime),
 		CasterID:     player.ID, // Mark the player as the caster
 		MaxLife:      s.entityBaseMaxLife,
-		Life:         s.entityBaseMaxLife * 0.5, // Set life to 50% of base max life
+		Life:         s.entityBaseMaxLife * s.doppelgangerInitialLifeFraction,
 	}
 
 	mapState.bots[doppelgangerBot.ID] = doppelgangerBot
@@ -71,14 +70,13 @@ func (s *GameServer) executePlayerDoppelgangerSkill(player *PlayerState, mapStat
 func (s *GameServer) executeBotDoppelgangerSkill(bot *BotState, mapState *MapState, itemID string) {
 	botStats := s.CalculateStats(bot, mapState)
 
-	const doppelgangerSpawnChance = 0.25 // 25% chance
 	// Intelligence stat increases the chance of the skill activating.
-	if rand.Float64() >= math.Min(doppelgangerSpawnChance+(botStats.Intelligence/100.0), 0.95) {
+	if rand.Float64() >= math.Min(s.doppelgangerSpawnChance+(botStats.Intelligence/100.0), s.maxChance) {
 		return // Skill did not activate on this action
 	}
 
 	// Range stat increases the doppelganger's lifetime in milliseconds.
-	botLifetime := (10 * time.Second) + (time.Duration(botStats.Range) * time.Millisecond)
+	botLifetime := (time.Duration(s.doppelgangerLifetimeMs) * time.Millisecond) + (time.Duration(botStats.Range) * time.Millisecond)
 
 	// The doppelganger should ideally have the active skin of the caster.
 	// If no active skin is found, fall back to the first active layer of any type.
@@ -89,7 +87,7 @@ func (s *GameServer) executeBotDoppelgangerSkill(bot *BotState, mapState *MapSta
 			if fallbackLayer == nil {
 				fallbackLayer = &layer // Save the first active layer we find.
 			}
-			if itemData, ok := s.objectLayerDataCache[layer.ItemID]; ok {
+			if itemData, ok := s.GetObjectLayerData(layer.ItemID); ok {
 				if itemData.Data.Item.Type == "skin" {
 					// Found the active skin. This is the only layer the doppelganger gets.
 					doppelgangerLayers = []ObjectLayerState{layer}
@@ -112,12 +110,12 @@ func (s *GameServer) executeBotDoppelgangerSkill(bot *BotState, mapState *MapSta
 		Dims:         bot.Dims,
 		Behavior:     "passive",
 		SpawnCenter:  bot.Pos,
-		SpawnRadius:  5.0,
+		SpawnRadius:  s.doppelgangerSpawnRadius,
 		ObjectLayers: doppelgangerLayers,
 		ExpiresAt:    time.Now().Add(botLifetime),
 		CasterID:     bot.ID, // Mark the bot as the caster
 		MaxLife:      s.entityBaseMaxLife,
-		Life:         s.entityBaseMaxLife * 0.5, // Set life to 50% of base max life
+		Life:         s.entityBaseMaxLife * s.doppelgangerInitialLifeFraction,
 	}
 
 	mapState.bots[doppelgangerBot.ID] = doppelgangerBot

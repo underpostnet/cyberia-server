@@ -19,10 +19,9 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 		return
 	}
 	bulletItemID := skillDef.ItemIDs[0]
-	const bulletSpawnChance = 0.25 // 25% chance
 	// Intelligence stat increases the chance of the skill activating.
-	// We'll model this as a linear increase, capping the effective chance at 95%.
-	if rand.Float64() >= math.Min(bulletSpawnChance+(playerStats.Intelligence/100.0), 0.95) {
+	// We'll model this as a linear increase, capping the effective chance.
+	if rand.Float64() >= math.Min(s.bulletSpawnChance+(playerStats.Intelligence/100.0), s.maxChance) {
 		return // Skill did not activate on this action
 	}
 
@@ -49,15 +48,15 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 	defer s.mu.Unlock()
 
 	// Range stat increases the bullet's lifetime in milliseconds.
-	bulletLifetime := (5 * time.Second) + (time.Duration(playerStats.Range) * time.Millisecond)
-	bulletDims := Dimensions{Width: 2, Height: 2}
+	bulletLifetime := (time.Duration(s.bulletLifetimeMs) * time.Millisecond) + (time.Duration(playerStats.Range) * time.Millisecond)
+	bulletDims := Dimensions{Width: s.bulletWidth, Height: s.bulletHeight}
 	bulletBaseLife := s.entityBaseMaxLife
 
 	// Pre-compensate for the first tick's movement.
 	// The bullet is created and then moved in the same game loop before being sent to the client.
 	// By spawning it one "step" behind its intended origin, it will appear at the correct
 	// location on the first frame it's rendered.
-	bulletStep := (s.entityBaseSpeed * 2.0) / (1000.0 / 100.0)
+	bulletStep := (s.entityBaseSpeed * s.bulletSpeedMultiplier) / (1000.0 / 100.0)
 	dirX, dirY := getDirectionVector(bulletDirection)
 
 	// The desired position on the first rendered frame is the player's position.
@@ -97,10 +96,9 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, sk
 		return
 	}
 	bulletItemID := skillDef.ItemIDs[0]
-	const bulletSpawnChance = 0.25 // 25% chance
 	// Intelligence stat increases the chance of the skill activating.
-	// We'll model this as a linear increase, capping the effective chance at 95%.
-	if rand.Float64() >= math.Min(bulletSpawnChance+(botStats.Intelligence/100.0), 0.95) {
+	// We'll model this as a linear increase, capping the effective chance.
+	if rand.Float64() >= math.Min(s.bulletSpawnChance+(botStats.Intelligence/100.0), s.maxChance) {
 		return // Skill did not activate on this action
 	}
 
@@ -124,15 +122,15 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, sk
 	}
 
 	// Range stat increases the bullet's lifetime in milliseconds.
-	bulletLifetime := (5 * time.Second) + (time.Duration(botStats.Range) * time.Millisecond)
-	bulletDims := Dimensions{Width: 2, Height: 2}
+	bulletLifetime := (time.Duration(s.bulletLifetimeMs) * time.Millisecond) + (time.Duration(botStats.Range) * time.Millisecond)
+	bulletDims := Dimensions{Width: s.bulletWidth, Height: s.bulletHeight}
 	bulletBaseLife := s.entityBaseMaxLife
 
 	// Pre-compensate for the first tick's movement.
 	// The bullet is created and then moved in the same game loop before being sent to the client.
 	// By spawning it one "step" behind its intended origin, it will appear at the correct
 	// location on the first frame it's rendered.
-	bulletStep := (s.entityBaseSpeed * 2.0) / (1000.0 / 100.0)
+	bulletStep := (s.entityBaseSpeed * s.bulletSpeedMultiplier) / (1000.0 / 100.0)
 	dirX, dirY := getDirectionVector(bulletDirection)
 
 	// The desired position on the first rendered frame is the bot's position.

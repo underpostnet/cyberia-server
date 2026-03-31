@@ -8,9 +8,12 @@ import (
 
 // StaticFileServer serves static files from a given directory.
 func StaticFileServer(dir string, fallbackPath string) http.Handler {
-	// Check if the directory exists
+	// Create the directory if it does not exist
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		log.Fatalf("Static directory does not exist: %s", dir)
+		log.Printf("Static directory does not exist: %s — creating it.", dir)
+		if mkErr := os.MkdirAll(dir, 0755); mkErr != nil {
+			log.Fatalf("Failed to create static directory %s: %v", dir, mkErr)
+		}
 	}
 
 	// Create a file server handler

@@ -64,15 +64,18 @@ func main() {
 		log.Println("ENGINE_GRPC_ADDRESS not set — server will run with empty world.")
 	}
 
+	// Ensure at least one map exists so player connections don't panic.
+	s.EnsurePlayableState()
+
 	go s.Run()
 
 	r := chi.NewRouter()
 
-	// Use environment variable `STATIC_DIR` or default to `./` for static files.
+	// Use environment variable `STATIC_DIR` or default to `./public` for static files.
 	// This serves the static frontend application.
 	staticDir := os.Getenv("STATIC_DIR")
 	if staticDir == "" {
-		staticDir = "/home/dd/cyberia-server/public"
+		staticDir = "./public"
 	}
 	r.Handle("/*", game.StaticFileServer(staticDir, "/index.html"))
 

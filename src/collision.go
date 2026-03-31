@@ -4,11 +4,6 @@ import (
 	"time"
 )
 
-const (
-	respawnDuration = 10 * time.Second
-	ghostItemID     = "ghost"
-)
-
 // checkAABBCollision checks for collision between two axis-aligned bounding boxes.
 func checkAABBCollision(pos1 Point, dims1 Dimensions, pos2 Point, dims2 Dimensions) bool {
 	// Check for overlap on X axis
@@ -26,7 +21,6 @@ func checkAABBCollision(pos1 Point, dims1 Dimensions, pos2 Point, dims2 Dimensio
 // and handles death, removing the bullet upon impact.
 func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 	bulletsToDelete := []string{}
-	const collisionLifeLoss = 25.0 // Life lost by the bullet per tick of collision.
 
 	for bulletID, bullet := range mapState.bots {
 		if bullet.Behavior != "bullet" {
@@ -96,7 +90,7 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 
 		// If the bullet is colliding, it loses life.
 		if isColliding {
-			bullet.Life -= collisionLifeLoss
+			bullet.Life -= s.collisionLifeLoss
 			if bullet.Life <= 0 {
 				// Bullet is "dead" from collision damage, mark for deletion.
 				bulletsToDelete = append(bulletsToDelete, bulletID)
@@ -125,7 +119,7 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState) {
 	// Check if ghost item already exists in object layers
 	ghostExists := false
 	for i := range player.ObjectLayers {
-		if player.ObjectLayers[i].ItemID == ghostItemID {
+		if player.ObjectLayers[i].ItemID == s.ghostItemID {
 			player.ObjectLayers[i].Active = true
 			player.ObjectLayers[i].Quantity = 1
 			ghostExists = true
@@ -135,10 +129,10 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState) {
 
 	// If ghost item doesn't exist, add it
 	if !ghostExists {
-		player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: ghostItemID, Active: true, Quantity: 1})
+		player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: s.ghostItemID, Active: true, Quantity: 1})
 	}
 
-	player.RespawnTime = time.Now().Add(respawnDuration)
+	player.RespawnTime = time.Now().Add(s.respawnDuration)
 	// Recalculate stats for the ghost state to ensure consistency.
 	// This will primarily affect MaxLife.
 	s.ApplyResistanceStat(player, s.maps[player.MapID]) // This assumes player.MapID is correct and map exists.
@@ -160,7 +154,7 @@ func (s *GameServer) handleBotDeath(bot *BotState) {
 	// Check if ghost item already exists in object layers
 	ghostExists := false
 	for i := range bot.ObjectLayers {
-		if bot.ObjectLayers[i].ItemID == ghostItemID {
+		if bot.ObjectLayers[i].ItemID == s.ghostItemID {
 			bot.ObjectLayers[i].Active = true
 			bot.ObjectLayers[i].Quantity = 1
 			ghostExists = true
@@ -170,10 +164,10 @@ func (s *GameServer) handleBotDeath(bot *BotState) {
 
 	// If ghost item doesn't exist, add it
 	if !ghostExists {
-		bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: ghostItemID, Active: true, Quantity: 1})
+		bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: s.ghostItemID, Active: true, Quantity: 1})
 	}
 
-	bot.RespawnTime = time.Now().Add(respawnDuration)
+	bot.RespawnTime = time.Now().Add(s.respawnDuration)
 	// Recalculate stats for the ghost state to ensure consistency.
 	// This will primarily affect MaxLife.
 	s.ApplyResistanceStat(bot, s.maps[bot.MapID])
@@ -205,8 +199,8 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 			// Reset coin quantity for respawned bots.
 			var coinLayerFound bool
 			for i := range bot.ObjectLayers {
-				if bot.ObjectLayers[i].ItemID == "coin" {
-					bot.ObjectLayers[i].Quantity = 10
+				if bot.ObjectLayers[i].ItemID == s.coinItemID {
+					bot.ObjectLayers[i].Quantity = s.defaultCoinQuantity
 					coinLayerFound = true
 					break
 				}
@@ -214,7 +208,7 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 
 			if !coinLayerFound {
 				// If the bot somehow lost its coin layer, add it back on respawn.
-				bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: "coin", Active: false, Quantity: 10})
+				bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: s.coinItemID, Active: false, Quantity: s.defaultCoinQuantity})
 			}
 		}
 	}

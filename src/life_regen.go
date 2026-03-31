@@ -5,8 +5,6 @@ import (
 	"math/rand"
 )
 
-const lifeRegenChance = 0.35 // 35% chance to regenerate on action
-
 // handleProbabilisticRegen gives an entity a chance to regenerate life when they perform an action.
 // This is called when a player sets a target or a bot decides on a new path. The chance to trigger
 // is increased by Utility, and the amount regenerated is increased by Resistance.
@@ -14,8 +12,7 @@ func (s *GameServer) handleProbabilisticRegen(entity interface{}, mapState *MapS
 	stats := s.CalculateStats(entity, mapState)
 
 	// Utility stat increases the chance of the skill activating.
-	// We'll model this as a linear increase, capping the effective chance at 95%.
-	triggerChance := math.Min(lifeRegenChance+(stats.Utility/100.0), 0.95)
+	triggerChance := math.Min(s.lifeRegenChance+(stats.Utility/100.0), s.maxChance)
 
 	if rand.Float64() >= triggerChance {
 		return // Regeneration did not trigger
