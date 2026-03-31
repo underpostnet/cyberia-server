@@ -129,8 +129,7 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	s.skillConfig = make(map[string][]SkillDefinition, len(cfg.GetSkillConfig()))
 	for _, sc := range cfg.GetSkillConfig() {
 		s.skillConfig[sc.GetTriggerItemId()] = append(s.skillConfig[sc.GetTriggerItemId()], SkillDefinition{
-			ItemIDs:      sc.GetSpawnedItemIds(),
-			LogicEventID: sc.GetLogicEventId(),
+			LogicEventIDs: sc.GetLogicEventIds(),
 		})
 	}
 

@@ -235,9 +235,10 @@ message DefaultObjectLayerState {
 }
 
 message SkillConfigEntry {
-  string          trigger_item_id  = 1;   // item that triggers the skill
-  repeated string spawned_item_ids = 2;   // item IDs for spawned entities (e.g. bullet)
-  string          logic_event_id   = 3;   // skill handler key ("doppelganger", "atlas_pistol_mk2_logic", …)
+  string          trigger_item_id = 1;   // item that triggers the skill
+  reserved 2, 3;
+  reserved "spawned_item_ids", "logic_event_id";
+  repeated string logic_event_ids = 4;   // ordered list of skill handler keys to execute ("atlas_pistol_mk2_logic", "doppelganger", …)
 }
 
 // SkillRules groups the numeric tuning parameters for each skill archetype.

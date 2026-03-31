@@ -71,8 +71,7 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 	}
 
 	// Build object layer cache exclusively from the instance response.
-	// getFullInstance already includes OLs for map entity items AND
-	// skillConfig spawnedItemIds — no global batch fetch needed.
+	// getFullInstance already includes OLs for all map entity items.
 	cache := make(map[string]*game.ObjectLayer, len(resp.GetObjectLayers()))
 	for _, olMsg := range resp.GetObjectLayers() {
 		ol := protoToObjectLayer(olMsg)
