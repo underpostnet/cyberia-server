@@ -1,0 +1,354 @@
+// Package game — aoi_binary.go
+//
+// Minimal binary AOI protocol for WebSocket communication with the
+// C/WASM client. Only render-essential data is sent: positions,
+// directions, modes, life values, and item-ID stacks. The client
+// fetches atlas binaries from Engine-Cyberia REST independently.
+//
+// Wire format (little-endian):
+//
+//	Header (5 bytes):
+//	  [0]       u8   msgType  (0x01 = aoi_update, 0x02 = init_data, 0x03 = full_aoi)
+//	  [1..2]    u16  mapID
+//	  [3..4]    u16  entityCount (number of entity blocks that follow)
+//
+//	Per-entity block (variable length):
+//	  [0]       u8   flags
+//	                  bits 0-2: type (0=player, 1=bot, 2=floor, 3=obstacle, 4=portal, 5=foreground)
+//	                  bit 3:    removed (entity left AOI — only type+ID follows)
+//	                  bit 4:    has life data
+//	                  bit 5:    has respawn timer
+//	                  bit 6:    has behavior string (bots)
+//	                  bit 7:    reserved
+//	  [1..36]   36B  id (UUID string, zero-padded)
+//	  -- if removed, stop here --
+//	  [37..40]  f32  posX
+//	  [41..44]  f32  posY
+//	  [45..48]  f32  dimW
+//	  [49..52]  f32  dimH
+//	  [53]      u8   direction (0-8)
+//	  [54]      u8   mode (0=idle, 1=walking, 2=teleporting)
+//	  -- if bit 4 (has life):
+//	    f32  life
+//	    f32  maxLife
+//	  -- if bit 5 (has respawn):
+//	    f32  respawnIn (seconds)
+//	  -- if bit 6 (has behavior):
+//	    u8   behaviorLen
+//	    str  behavior
+//	  -- item ID stack (IDs only — no active/quantity):
+//	    u8   itemIdCount
+//	    per item:
+//	      u8   itemIdLen
+//	      str  itemId
+//
+//	Self-player section (appended after entity blocks):
+//	  Same entity block format, then:
+//	    f32  aoiMinX, aoiMinY, aoiMaxX, aoiMaxY
+//	    u8   onPortal (0/1)
+//	    u16  sumStatsLimit
+//	    u16  mapID
+//	    u8   pathLen
+//	    per path point: i16 x, i16 y
+//	    i16  targetPosX, targetPosY
+//	    u8+str activePortalID
+package game
+
+import (
+	"encoding/binary"
+	"math"
+	"time"
+)
+
+const (
+	MsgTypeAOIUpdate byte = 0x01
+	MsgTypeInitData  byte = 0x02
+	MsgTypeFullAOI   byte = 0x03
+
+	EntityTypePlayer     byte = 0
+	EntityTypeBot        byte = 1
+	EntityTypeFloor      byte = 2
+	EntityTypeObstacle   byte = 3
+	EntityTypePortal     byte = 4
+	EntityTypeForeground byte = 5
+
+	FlagRemoved     byte = 0x08 // bit 3
+	FlagHasLife     byte = 0x10 // bit 4
+	FlagHasRespawn  byte = 0x20 // bit 5
+	FlagHasBehavior byte = 0x40 // bit 6
+
+	maxBinaryBufSize = 64 * 1024 // 64 KB per AOI message
+)
+
+// BinaryAOIEncoder builds compact binary AOI messages.
+type BinaryAOIEncoder struct {
+	buf []byte
+	pos int
+}
+
+func NewBinaryAOIEncoder() *BinaryAOIEncoder {
+	return &BinaryAOIEncoder{buf: make([]byte, maxBinaryBufSize)}
+}
+
+func (e *BinaryAOIEncoder) Reset()       { e.pos = 0 }
+func (e *BinaryAOIEncoder) Bytes() []byte { return e.buf[:e.pos] }
+
+func (e *BinaryAOIEncoder) putU8(v byte) {
+	e.buf[e.pos] = v
+	e.pos++
+}
+
+func (e *BinaryAOIEncoder) putU16(v uint16) {
+	binary.LittleEndian.PutUint16(e.buf[e.pos:], v)
+	e.pos += 2
+}
+
+func (e *BinaryAOIEncoder) putI16(v int16) {
+	binary.LittleEndian.PutUint16(e.buf[e.pos:], uint16(v))
+	e.pos += 2
+}
+
+func (e *BinaryAOIEncoder) putF32(v float64) {
+	binary.LittleEndian.PutUint32(e.buf[e.pos:], math.Float32bits(float32(v)))
+	e.pos += 4
+}
+
+func (e *BinaryAOIEncoder) putString(s string) {
+	n := len(s)
+	if n > 255 {
+		n = 255
+	}
+	e.putU8(byte(n))
+	copy(e.buf[e.pos:], s[:n])
+	e.pos += n
+}
+
+func (e *BinaryAOIEncoder) putID(id string) {
+	n := len(id)
+	if n > 36 {
+		n = 36
+	}
+	copy(e.buf[e.pos:], id[:n])
+	for i := n; i < 36; i++ {
+		e.buf[e.pos+i] = 0
+	}
+	e.pos += 36
+}
+
+// writeItemIDs writes just the item ID strings — no active/quantity.
+func (e *BinaryAOIEncoder) writeItemIDs(layers []ObjectLayerState) {
+	n := len(layers)
+	if n > 255 {
+		n = 255
+	}
+	e.putU8(byte(n))
+	for i := 0; i < n; i++ {
+		e.putString(layers[i].ItemID)
+	}
+}
+
+// writeEntityBase writes the common per-entity fields.
+func (e *BinaryAOIEncoder) writeEntityBase(flags byte, id string, pos Point, dims Dimensions, dir Direction, mode ObjectLayerMode) {
+	e.putU8(flags)
+	e.putID(id)
+	e.putF32(pos.X)
+	e.putF32(pos.Y)
+	e.putF32(dims.Width)
+	e.putF32(dims.Height)
+	e.putU8(byte(dir))
+	e.putU8(byte(mode))
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Entity writers
+// ═══════════════════════════════════════════════════════════════════
+
+func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64) {
+	flags := EntityTypePlayer | FlagHasLife
+	if respawnIn != nil {
+		flags |= FlagHasRespawn
+	}
+	e.writeEntityBase(flags, p.ID, p.Pos, p.Dims, p.Direction, p.Mode)
+	e.putF32(p.Life)
+	e.putF32(p.MaxLife)
+	if respawnIn != nil {
+		e.putF32(*respawnIn)
+	}
+	e.writeItemIDs(p.ObjectLayers)
+}
+
+func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64) {
+	flags := EntityTypeBot | FlagHasLife | FlagHasBehavior
+	if respawnIn != nil {
+		flags |= FlagHasRespawn
+	}
+	e.writeEntityBase(flags, b.ID, b.Pos, b.Dims, b.Direction, b.Mode)
+	e.putF32(b.Life)
+	e.putF32(b.MaxLife)
+	if respawnIn != nil {
+		e.putF32(*respawnIn)
+	}
+	e.putString(b.Behavior)
+	e.writeItemIDs(b.ObjectLayers)
+}
+
+func (e *BinaryAOIEncoder) WriteFloor(f *FloorState) {
+	e.writeEntityBase(EntityTypeFloor, f.ID, f.Pos, f.Dims, NONE, IDLE)
+	e.writeItemIDs(f.ObjectLayers)
+}
+
+func (e *BinaryAOIEncoder) WriteObstacle(o ObjectState) {
+	e.writeEntityBase(EntityTypeObstacle, o.ID, o.Pos, o.Dims, NONE, IDLE)
+}
+
+func (e *BinaryAOIEncoder) WritePortal(p *PortalState) {
+	e.writeEntityBase(EntityTypePortal, p.ID, p.Pos, p.Dims, NONE, IDLE)
+	e.putString(p.Label)
+}
+
+func (e *BinaryAOIEncoder) WriteForeground(fg ObjectState) {
+	e.writeEntityBase(EntityTypeForeground, fg.ID, fg.Pos, fg.Dims, NONE, IDLE)
+}
+
+func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState) {
+	flags := EntityTypePlayer | FlagHasLife
+	var respawnIn *float64
+	if p.IsGhost() {
+		flags |= FlagHasRespawn
+		remaining := math.Ceil(time.Until(p.RespawnTime).Seconds())
+		if remaining > 0 {
+			respawnIn = &remaining
+		}
+	}
+	e.writeEntityBase(flags, p.ID, p.Pos, p.Dims, p.Direction, p.Mode)
+	e.putF32(p.Life)
+	e.putF32(p.MaxLife)
+	if respawnIn != nil {
+		e.putF32(*respawnIn)
+	}
+	e.writeItemIDs(p.ObjectLayers)
+
+	// Extended self-player fields
+	e.putF32(p.AOI.MinX)
+	e.putF32(p.AOI.MinY)
+	e.putF32(p.AOI.MaxX)
+	e.putF32(p.AOI.MaxY)
+	if p.OnPortal {
+		e.putU8(1)
+	} else {
+		e.putU8(0)
+	}
+	e.putU16(uint16(p.SumStatsLimit))
+	e.putU16(uint16(p.MapID))
+
+	pathLen := len(p.Path)
+	if pathLen > 255 {
+		pathLen = 255
+	}
+	e.putU8(byte(pathLen))
+	for i := 0; i < pathLen; i++ {
+		e.putI16(int16(p.Path[i].X))
+		e.putI16(int16(p.Path[i].Y))
+	}
+	e.putI16(int16(p.TargetPos.X))
+	e.putI16(int16(p.TargetPos.Y))
+	e.putString(p.ActivePortalID)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Full AOI encoder — replaces JSON sendAOI
+// ═══════════════════════════════════════════════════════════════════
+
+func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []byte {
+	enc := NewBinaryAOIEncoder()
+
+	headerPos := enc.pos
+	enc.putU8(MsgTypeFullAOI)
+	enc.putU16(uint16(player.MapID))
+	enc.putU16(0) // placeholder entity count
+
+	entityCount := 0
+
+	// Players
+	for _, op := range mapState.players {
+		if op.ID == player.ID {
+			continue
+		}
+		oRect := Rectangle{MinX: op.Pos.X, MinY: op.Pos.Y, MaxX: op.Pos.X + op.Dims.Width, MaxY: op.Pos.Y + op.Dims.Height}
+		if !rectsOverlap(player.AOI, oRect) {
+			continue
+		}
+		var respawnIn *float64
+		if op.IsGhost() {
+			r := math.Ceil(time.Until(op.RespawnTime).Seconds())
+			if r > 0 {
+				respawnIn = &r
+			}
+		}
+		enc.WritePlayer(op, respawnIn)
+		entityCount++
+	}
+
+	// Obstacles
+	for _, o := range mapState.obstacles {
+		oRect := Rectangle{MinX: o.Pos.X, MinY: o.Pos.Y, MaxX: o.Pos.X + o.Dims.Width, MaxY: o.Pos.Y + o.Dims.Height}
+		if rectsOverlap(player.AOI, oRect) {
+			enc.WriteObstacle(o)
+			entityCount++
+		}
+	}
+
+	// Floors
+	for _, f := range mapState.floors {
+		fRect := Rectangle{MinX: f.Pos.X, MinY: f.Pos.Y, MaxX: f.Pos.X + f.Dims.Width, MaxY: f.Pos.Y + f.Dims.Height}
+		if rectsOverlap(player.AOI, fRect) {
+			enc.WriteFloor(f)
+			entityCount++
+		}
+	}
+
+	// Portals
+	for _, p := range mapState.portals {
+		pRect := Rectangle{MinX: p.Pos.X, MinY: p.Pos.Y, MaxX: p.Pos.X + p.Dims.Width, MaxY: p.Pos.Y + p.Dims.Height}
+		if rectsOverlap(player.AOI, pRect) {
+			enc.WritePortal(p)
+			entityCount++
+		}
+	}
+
+	// Foregrounds
+	for _, fg := range mapState.foregrounds {
+		fgRect := Rectangle{MinX: fg.Pos.X, MinY: fg.Pos.Y, MaxX: fg.Pos.X + fg.Dims.Width, MaxY: fg.Pos.Y + fg.Dims.Height}
+		if rectsOverlap(player.AOI, fgRect) {
+			enc.WriteForeground(fg)
+			entityCount++
+		}
+	}
+
+	// Bots
+	for _, b := range mapState.bots {
+		bRect := Rectangle{MinX: b.Pos.X, MinY: b.Pos.Y, MaxX: b.Pos.X + b.Dims.Width, MaxY: b.Pos.Y + b.Dims.Height}
+		if !rectsOverlap(player.AOI, bRect) {
+			continue
+		}
+		var respawnIn *float64
+		if b.IsGhost() {
+			r := math.Ceil(time.Until(b.RespawnTime).Seconds())
+			if r > 0 {
+				respawnIn = &r
+			}
+		}
+		enc.WriteBot(b, respawnIn)
+		entityCount++
+	}
+
+	// Self-player (always last)
+	enc.WriteSelfPlayer(player)
+
+	// Patch entity count in header
+	binary.LittleEndian.PutUint16(enc.buf[headerPos+3:], uint16(entityCount))
+
+	result := make([]byte, enc.pos)
+	copy(result, enc.buf[:enc.pos])
+	return result
+}

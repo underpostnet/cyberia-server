@@ -1,0 +1,275 @@
+// Protocol Buffers schema for Cyberia Online gRPC data pipeline.
+//
+// This service runs on the Engine-Cyberia (Node.js) side.
+// The Cyberia-Server (Go) acts as the gRPC **client**, calling
+// these RPCs to fetch game data for world reconstruction.
+//
+// Design rules:
+//   1. Read-only — no create / update / delete.
+//   2. Batch-friendly — large collections streamed or paginated.
+//   3. Live-reload aware — version fields let the Go server detect
+//      stale data and perform surgical in-memory replacement.
+
+syntax = "proto3";
+
+package cyberia;
+
+option go_package = "cyberia-server/proto";
+
+// ═══════════════════════════════════════════════════════════════════
+// Service definition
+// ═══════════════════════════════════════════════════════════════════
+
+service CyberiaDataService {
+  // ── Instance / World Graph ──────────────────────────────────────
+  // Returns the full instance graph (maps + portals) for a given
+  // instance code.  Used at startup or during hot-reload.
+  rpc GetFullInstance(GetFullInstanceRequest) returns (GetFullInstanceResponse);
+
+  // ── Maps ────────────────────────────────────────────────────────
+  // Returns map data (grid, entities, metadata) for one map code.
+  rpc GetMapData(GetMapDataRequest) returns (GetMapDataResponse);
+
+  // ── Object Layers ───────────────────────────────────────────────
+  // Streams all ObjectLayers in the database.
+  // Useful for initial cache warm-up on the Go server.
+  rpc GetObjectLayerBatch(GetObjectLayerBatchRequest) returns (stream ObjectLayerMessage);
+
+  // Returns a single ObjectLayer by item ID.
+  rpc GetObjectLayer(GetObjectLayerRequest) returns (ObjectLayerMessage);
+
+  // ── Atlas Sprite Sheets ─────────────────────────────────────────
+  // Returns atlas metadata (frame positions, dimensions) for an item.
+  // The actual PNG binary is served via REST (/api/file/blob/:fileId).
+  rpc GetAtlasSpriteSheet(GetAtlasSpriteSheetRequest) returns (AtlasSpriteSheetMessage);
+
+  // Streams all AtlasSpriteSheets in the database.
+  // Used at startup to populate the Go server's atlas cache.
+  rpc GetAtlasSpriteSheetBatch(GetAtlasSpriteSheetBatchRequest) returns (stream AtlasSpriteSheetMessage);
+
+  // ── Reload / Health ─────────────────────────────────────────────
+  // Lightweight ping to check Engine liveness before hot-reload.
+  rpc Ping(PingRequest) returns (PingResponse);
+
+  // Returns a manifest of all ObjectLayer item IDs + sha256 hashes
+  // so the Go server can diff against its cache and only re-fetch
+  // what changed (incremental hot-reload).
+  rpc GetObjectLayerManifest(GetObjectLayerManifestRequest) returns (GetObjectLayerManifestResponse);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Common value types
+// ═══════════════════════════════════════════════════════════════════
+
+message Vec2 {
+  double x = 1;
+  double y = 2;
+}
+
+message Vec2I {
+  int32 x = 1;
+  int32 y = 2;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ObjectLayer messages
+// ═══════════════════════════════════════════════════════════════════
+
+message Stats {
+  int32 effect       = 1;
+  int32 resistance   = 2;
+  int32 agility      = 3;
+  int32 range        = 4;
+  int32 intelligence = 5;
+  int32 utility      = 6;
+}
+
+message ItemInfo {
+  string id          = 1;
+  string type        = 2;
+  string description = 3;
+  bool   activable   = 4;
+}
+
+message Ledger {
+  string type     = 1; // ERC1155 | OFF_CHAIN
+  string address  = 2;
+  string token_id = 3;
+}
+
+message Render {
+  string cid          = 1; // IPFS CID atlas PNG
+  string metadata_cid = 2; // IPFS CID atlas metadata JSON
+}
+
+message ObjectLayerMessage {
+  string  mongo_id        = 1; // MongoDB _id
+  Stats   stats           = 2;
+  ItemInfo item           = 3;
+  Ledger  ledger          = 4;
+  Render  render          = 5;
+  string  sha256          = 6;
+  string  cid             = 7; // IPFS CID of the OL data JSON
+
+  // Animation metadata (populated from ObjectLayerRenderFrames ref)
+  int32   frame_duration  = 8; // ms per frame
+  bool    is_stateless    = 9;
+}
+
+// ── ObjectLayer requests ──────────────────────────────────────────
+
+message GetObjectLayerBatchRequest {
+  // Optional: filter by item type (e.g. "skin", "weapon").
+  // Empty = return all.
+  string item_type_filter = 1;
+}
+
+message GetObjectLayerRequest {
+  string item_id = 1;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Atlas Sprite Sheet messages
+// ═══════════════════════════════════════════════════════════════════
+
+message FrameMetadata {
+  int32 x           = 1;
+  int32 y           = 2;
+  int32 width       = 3;
+  int32 height      = 4;
+  int32 frame_index = 5;
+}
+
+message DirectionFrames {
+  repeated FrameMetadata up_idle            = 1;
+  repeated FrameMetadata down_idle          = 2;
+  repeated FrameMetadata right_idle         = 3;
+  repeated FrameMetadata left_idle          = 4;
+  repeated FrameMetadata up_right_idle      = 5;
+  repeated FrameMetadata down_right_idle    = 6;
+  repeated FrameMetadata up_left_idle       = 7;
+  repeated FrameMetadata down_left_idle     = 8;
+  repeated FrameMetadata default_idle       = 9;
+  repeated FrameMetadata up_walking         = 10;
+  repeated FrameMetadata down_walking       = 11;
+  repeated FrameMetadata right_walking      = 12;
+  repeated FrameMetadata left_walking       = 13;
+  repeated FrameMetadata up_right_walking   = 14;
+  repeated FrameMetadata down_right_walking = 15;
+  repeated FrameMetadata up_left_walking    = 16;
+  repeated FrameMetadata down_left_walking  = 17;
+  repeated FrameMetadata none_idle          = 18;
+}
+
+message AtlasSpriteSheetMessage {
+  string          mongo_id        = 1;
+  string          file_id         = 2;  // File doc _id for REST blob fetch
+  string          cid             = 3;  // IPFS CID of atlas PNG
+  string          item_key        = 4;
+  int32           atlas_width     = 5;
+  int32           atlas_height    = 6;
+  int32           cell_pixel_dim  = 7;
+  DirectionFrames frames          = 8;
+}
+
+message GetAtlasSpriteSheetRequest {
+  string item_key = 1;
+}
+
+message GetAtlasSpriteSheetBatchRequest {
+  // Empty = return all atlas sprite sheets.
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Instance / world graph messages
+// ═══════════════════════════════════════════════════════════════════
+
+message PortalEdge {
+  string source_map_code = 1;
+  int32  source_cell_x   = 2;
+  int32  source_cell_y   = 3;
+  string target_map_code = 4;
+  int32  target_cell_x   = 5;
+  int32  target_cell_y   = 6;
+}
+
+message InstanceMessage {
+  string              mongo_id       = 1;
+  string              code           = 2;
+  string              name           = 3;
+  string              description    = 4;
+  repeated string     tags           = 5;
+  repeated string     map_codes      = 6; // vertex set
+  repeated PortalEdge portals        = 7; // edge set
+  string              topology_mode  = 8;
+  string              seed           = 9;
+}
+
+message GetFullInstanceRequest {
+  string instance_code = 1;
+}
+
+message GetFullInstanceResponse {
+  InstanceMessage               instance   = 1;
+  repeated MapDataMessage       maps       = 2; // pre-populated for convenience
+  repeated ObjectLayerMessage   object_layers = 3; // all OLs referenced by entities
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Map messages
+// ═══════════════════════════════════════════════════════════════════
+
+message EntityMessage {
+  string          entity_type = 1;
+  int32           init_cell_x = 2;
+  int32           init_cell_y = 3;
+  int32           dim_x       = 4;
+  int32           dim_y       = 5;
+  string          color       = 6;
+  repeated string object_layer_item_ids = 7;
+
+  // Bot-specific fields
+  double          spawn_radius = 8;  // wandering radius (0 = use server default)
+  double          aggro_range  = 9;  // aggro detection range (0 = use server default)
+  double          max_life     = 10; // base max life (0 = use server default)
+  double          life_regen   = 11; // life regen rate (0 = use server default)
+}
+
+message MapDataMessage {
+  string                  mongo_id    = 1;
+  string                  code        = 2;
+  string                  name        = 3;
+  int32                   grid_x      = 4;
+  int32                   grid_y      = 5;
+  int32                   cell_width  = 6;
+  int32                   cell_height = 7;
+  repeated EntityMessage  entities    = 8;
+}
+
+message GetMapDataRequest {
+  string map_code = 1;
+}
+
+message GetMapDataResponse {
+  MapDataMessage map = 1;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Reload / health messages
+// ═══════════════════════════════════════════════════════════════════
+
+message PingRequest {}
+message PingResponse {
+  int64 server_time_ms = 1;
+}
+
+message ObjectLayerManifestEntry {
+  string item_id = 1;
+  string sha256  = 2;
+}
+
+message GetObjectLayerManifestRequest {}
+
+message GetObjectLayerManifestResponse {
+  repeated ObjectLayerManifestEntry entries = 1;
+}

@@ -120,9 +120,8 @@ type BotState struct {
 }
 
 type PortalConfig struct {
-	DestMapID       int
-	DestPortalIndex int
-	SpawnRadius     float64
+	DestMapID   int
+	SpawnRadius float64
 }
 
 type PortalState struct {
@@ -143,70 +142,6 @@ type MapState struct {
 	players      map[string]*PlayerState
 	bots         map[string]*BotState
 	gridW, gridH int
-}
-
-// AOI (Area of Interest) update payload structures
-// These structs ensure correct JSON marshaling with field tags.
-
-type VisiblePlayer struct {
-	ID           string             `json:"id"`
-	Pos          Point              `json:"Pos"`
-	Dims         Dimensions         `json:"Dims"`
-	Type         string             `json:"Type"`
-	Direction    Direction          `json:"direction"`
-	Mode         ObjectLayerMode    `json:"mode"`
-	ObjectLayers []ObjectLayerState `json:"objectLayers"`
-	Life         float64            `json:"life"`
-	MaxLife      float64            `json:"maxLife"`
-	RespawnIn    *float64           `json:"respawnIn,omitempty"`
-}
-
-type VisibleBot struct {
-	ID           string             `json:"id"`
-	Pos          Point              `json:"Pos"`
-	Dims         Dimensions         `json:"Dims"`
-	Type         string             `json:"Type"`
-	Behavior     string             `json:"behavior"`
-	Direction    Direction          `json:"direction"`
-	Mode         ObjectLayerMode    `json:"mode"`
-	Life         float64            `json:"life"`
-	MaxLife      float64            `json:"maxLife"`
-	ObjectLayers []ObjectLayerState `json:"objectLayers"`
-	RespawnIn    *float64           `json:"respawnIn,omitempty"`
-}
-
-type VisibleFloor struct {
-	ID           string             `json:"id"`
-	Pos          Point              `json:"Pos"`
-	Dims         Dimensions         `json:"Dims"`
-	Type         string             `json:"Type"`
-	ObjectLayers []ObjectLayerState `json:"objectLayers"`
-}
-
-type PlayerObject struct {
-	ID             string             `json:"id"`
-	MapID          int                `json:"MapID"`
-	Pos            Point              `json:"Pos"`
-	Dims           Dimensions         `json:"Dims"`
-	Path           []PointI           `json:"path"`
-	TargetPos      PointI             `json:"targetPos"`
-	AOI            Rectangle          `json:"AOI"`
-	Direction      Direction          `json:"direction"`
-	Mode           ObjectLayerMode    `json:"mode"`
-	OnPortal       bool               `json:"onPortal"`
-	ActivePortalID string             `json:"activePortalID"`
-	Life           float64            `json:"life"`
-	MaxLife        float64            `json:"maxLife"`
-	SumStatsLimit  int                `json:"sumStatsLimit"`
-	ObjectLayers   []ObjectLayerState `json:"objectLayers"`
-	RespawnIn      *float64           `json:"respawnIn,omitempty"`
-}
-
-type AOIUpdatePayload struct {
-	PlayerID           string                   `json:"playerID"`
-	Player             PlayerObject             `json:"player"`
-	VisiblePlayers     map[string]VisiblePlayer `json:"visiblePlayers"`
-	VisibleGridObjects map[string]interface{}   `json:"visibleGridObjects"`
 }
 
 type Client struct {
@@ -247,6 +182,10 @@ type GameServer struct {
 
 	// Caches
 	objectLayerDataCache map[string]*ObjectLayer
+	atlasDataCache       map[string]*AtlasData // keyed by item key
+
+	// Engine API base URL — forwarded to clients for binary blob fetches.
+	engineApiBaseUrl string
 
 	entityBaseSpeed             float64
 	entityBaseMaxLife           float64

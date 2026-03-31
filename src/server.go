@@ -1,7 +1,6 @@
 package game
 
 import (
-	"encoding/json"
 	"log"
 	"math"
 	"math/rand"
@@ -57,57 +56,59 @@ func NewGameServer() *GameServer {
 			"MAP_BOUNDARY":     {R: 255, G: 255, B: 255, A: 255},
 		},
 		objectLayerDataCache: make(map[string]*ObjectLayer),
+		atlasDataCache:       make(map[string]*AtlasData),
 	}
-	gs.createMaps()
 	return gs
 }
 
-// SetObjectLayerCache authenticates with the Cyberia API (www.cyberiaonline.com),
-// fetches all object layer metadata, and populates the in-memory cache.
-// Credentials are read from CYBERIA_API_EMAIL and CYBERIA_API_PASSWORD env vars.
-// If fetching fails the server continues with an empty cache and logs a warning.
-func (s *GameServer) SetObjectLayerCache() {
-	cache, err := FetchAllObjectLayers()
-	if err != nil {
-		log.Printf("WARNING: SetObjectLayerCache failed: %v — server will run with an empty object layer cache.", err)
-		return
-	}
-
+// ReplaceObjectLayerCache atomically replaces the entire cache.
+// Used by WorldBuilder for initial full load via gRPC.
+func (s *GameServer) ReplaceObjectLayerCache(cache map[string]*ObjectLayer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.objectLayerDataCache = cache
-	log.Printf("Object layer cache set with %d items.", len(s.objectLayerDataCache))
 
-	// Count cached object layers per item type
 	typeCounts := make(map[string]int)
-	for _, layer := range s.objectLayerDataCache {
+	for _, layer := range cache {
 		itemType := layer.Data.Item.Type
 		if itemType == "" {
 			itemType = "(unknown)"
 		}
 		typeCounts[itemType]++
 	}
-	log.Println("Object layer cache breakdown by item type:")
+	log.Printf("Object layer cache replaced with %d items.", len(cache))
 	for itemType, count := range typeCounts {
 		log.Printf("  %-20s %d", itemType, count)
 	}
 }
 
-// UpdateObjectLayerCache re-fetches all object layers from the Cyberia API
-// and merges them into the existing cache (adding new entries, updating existing ones).
-func (s *GameServer) UpdateObjectLayerCache() {
-	cache, err := FetchAllObjectLayers()
-	if err != nil {
-		log.Printf("WARNING: UpdateObjectLayerCache failed: %v", err)
-		return
-	}
-
+// PatchObjectLayerCache applies incremental updates and deletions.
+// Used by WorldBuilder for hot-reload via gRPC manifest diffing.
+func (s *GameServer) PatchObjectLayerCache(updates map[string]*ObjectLayer, deletions []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for itemID, layer := range cache {
-		s.objectLayerDataCache[itemID] = layer
+	for itemID, ol := range updates {
+		s.objectLayerDataCache[itemID] = ol
 	}
-	log.Printf("Object layer cache updated with %d items.", len(cache))
+	for _, itemID := range deletions {
+		delete(s.objectLayerDataCache, itemID)
+	}
+}
+
+// ReplaceAtlasCache atomically replaces the atlas sprite sheet cache.
+func (s *GameServer) ReplaceAtlasCache(cache map[string]*AtlasData) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.atlasDataCache = cache
+	log.Printf("Atlas data cache replaced with %d items.", len(cache))
+}
+
+// SetEngineApiBaseUrl sets the Engine API base URL forwarded to clients.
+func (s *GameServer) SetEngineApiBaseUrl(url string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.engineApiBaseUrl = url
+	log.Printf("Engine API base URL set to: %s", url)
 }
 
 func (s *GameServer) Run() {
@@ -254,20 +255,18 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 		return
 	}
 	destMapID := portal.PortalConfig.DestMapID
-	destPortalIndex := portal.PortalConfig.DestPortalIndex
-	if destMapID >= len(allMapsPortals) || destPortalIndex >= len(allMapsPortals[destMapID]) {
-		log.Printf("Teleportation failed: Destination portal index out of bounds. MapID: %d, PortalIndex: %d", destMapID, destPortalIndex)
-		return
-	}
-	destPortal := allMapsPortals[destMapID][destPortalIndex]
 	destMapState, ok := s.maps[destMapID]
 	if !ok {
 		log.Printf("Teleportation failed: Destination map %d not found.", destMapID)
 		return
 	}
-	rand.Seed(time.Now().UnixNano())
-	spawnX := destPortal.Pos.X + (destPortal.Dims.Width / 2) + rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
-	spawnY := destPortal.Pos.Y + (destPortal.Dims.Height / 2) + rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
+
+	// Find a walkable spawn point near the center of the destination map
+	spawnX := float64(destMapState.gridW) / 2.0
+	spawnY := float64(destMapState.gridH) / 2.0
+	spawnX += rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
+	spawnY += rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
+
 	destPosI, err := destMapState.pathfinder.findClosestWalkablePoint(PointI{X: int(spawnX), Y: int(spawnY)}, player.Dims)
 	if err != nil {
 		log.Printf("Could not find a walkable spawn point: %v", err)
@@ -307,129 +306,7 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		return
 	}
 
-	visiblePlayers := make(map[string]VisiblePlayer)
-	for _, otherPlayer := range mapState.players {
-		if otherPlayer.ID == player.ID {
-			continue
-		}
-		otherRect := Rectangle{MinX: otherPlayer.Pos.X, MinY: otherPlayer.Pos.Y, MaxX: otherPlayer.Pos.X + otherPlayer.Dims.Width, MaxY: otherPlayer.Pos.Y + otherPlayer.Dims.Height}
-		if rectsOverlap(player.AOI, otherRect) {
-			playerData := VisiblePlayer{
-				ID:           otherPlayer.ID,
-				Pos:          otherPlayer.Pos,
-				Dims:         otherPlayer.Dims,
-				Type:         "player",
-				Direction:    otherPlayer.Direction,
-				Mode:         otherPlayer.Mode,
-				ObjectLayers: otherPlayer.ObjectLayers,
-				Life:         otherPlayer.Life,
-				MaxLife:      otherPlayer.MaxLife,
-			}
-			if otherPlayer.IsGhost() {
-				remaining := time.Until(otherPlayer.RespawnTime).Seconds()
-				if remaining > 0 {
-					respawnIn := math.Ceil(remaining)
-					playerData.RespawnIn = &respawnIn
-				}
-			}
-			visiblePlayers[otherPlayer.ID] = playerData
-		}
-	}
-
-	visibleGridObjects := make(map[string]interface{})
-	for _, obstacle := range mapState.obstacles {
-		obstacleRect := Rectangle{MinX: obstacle.Pos.X, MinY: obstacle.Pos.Y, MaxX: obstacle.Pos.X + obstacle.Dims.Width, MaxY: obstacle.Pos.Y + obstacle.Dims.Height}
-		if rectsOverlap(player.AOI, obstacleRect) {
-			visibleGridObjects[obstacle.ID] = obstacle
-		}
-	}
-	for _, floor := range mapState.floors {
-		floorRect := Rectangle{MinX: floor.Pos.X, MinY: floor.Pos.Y, MaxX: floor.Pos.X + floor.Dims.Width, MaxY: floor.Pos.Y + floor.Dims.Height}
-		if rectsOverlap(player.AOI, floorRect) {
-			visibleGridObjects[floor.ID] = VisibleFloor{
-				ID:           floor.ID,
-				Pos:          floor.Pos,
-				Dims:         floor.Dims,
-				Type:         "floor",
-				ObjectLayers: floor.ObjectLayers,
-			}
-		}
-	}
-	for _, portal := range mapState.portals {
-		portalRect := Rectangle{MinX: portal.Pos.X, MinY: portal.Pos.Y, MaxX: portal.Pos.X + portal.Dims.Width, MaxY: portal.Pos.Y + portal.Dims.Height}
-		if rectsOverlap(player.AOI, portalRect) {
-			visibleGridObjects[portal.ID] = portal
-		}
-	}
-	for _, fg := range mapState.foregrounds {
-		fgRect := Rectangle{MinX: fg.Pos.X, MinY: fg.Pos.Y, MaxX: fg.Pos.X + fg.Dims.Width, MaxY: fg.Pos.Y + fg.Dims.Height}
-		if rectsOverlap(player.AOI, fgRect) {
-			visibleGridObjects[fg.ID] = fg
-		}
-	}
-	for _, bot := range mapState.bots {
-		botRect := Rectangle{MinX: bot.Pos.X, MinY: bot.Pos.Y, MaxX: bot.Pos.X + bot.Dims.Width, MaxY: bot.Pos.Y + bot.Dims.Height}
-		if rectsOverlap(player.AOI, botRect) {
-			botData := VisibleBot{
-				ID:           bot.ID,
-				Pos:          bot.Pos,
-				Dims:         bot.Dims,
-				Type:         "bot",
-				Behavior:     bot.Behavior,
-				Direction:    bot.Direction,
-				Mode:         bot.Mode,
-				Life:         bot.Life,
-				MaxLife:      bot.MaxLife,
-				ObjectLayers: bot.ObjectLayers,
-			}
-			if bot.IsGhost() {
-				remaining := time.Until(bot.RespawnTime).Seconds()
-				if remaining > 0 {
-					respawnIn := math.Ceil(remaining)
-					botData.RespawnIn = &respawnIn
-				}
-			}
-			visibleGridObjects[bot.ID] = botData
-		}
-	}
-
-	playerObj := PlayerObject{
-		ID:             player.ID,
-		MapID:          player.MapID,
-		Pos:            player.Pos,
-		Dims:           player.Dims,
-		Path:           player.Path,
-		TargetPos:      player.TargetPos,
-		AOI:            player.AOI,
-		Direction:      player.Direction,
-		Mode:           player.Mode,
-		OnPortal:       player.OnPortal,
-		ActivePortalID: player.ActivePortalID,
-		Life:           player.Life,
-		MaxLife:        player.MaxLife,
-		SumStatsLimit:  player.SumStatsLimit,
-		ObjectLayers:   player.ObjectLayers,
-	}
-	if player.IsGhost() {
-		remaining := time.Until(player.RespawnTime).Seconds()
-		if remaining > 0 {
-			respawnIn := math.Ceil(remaining)
-			playerObj.RespawnIn = &respawnIn
-		}
-	}
-
-	payloadMap := AOIUpdatePayload{
-		PlayerID:           player.ID,
-		Player:             playerObj,
-		VisiblePlayers:     visiblePlayers,
-		VisibleGridObjects: visibleGridObjects,
-	}
-
-	message, err := json.Marshal(map[string]interface{}{"type": "aoi_update", "payload": payloadMap})
-	if err != nil {
-		log.Printf("Error marshaling AOI update: %v", err)
-		return
-	}
+	message := s.EncodeBinaryAOI(player, mapState)
 	select {
 	case player.Client.send <- message:
 	default:

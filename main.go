@@ -1,22 +1,22 @@
 package main
 
 import (
+	"context"
 	"log"
-	"math/rand"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	api "cyberia-server/api"
 	game "cyberia-server/src"
+	"cyberia-server/src/grpcclient"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"
 )
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-
 	// Load .env file if present (does not override already-set env vars)
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found or failed to load, relying on environment variables.")
@@ -25,9 +25,42 @@ func main() {
 	// Core game server
 	s := game.NewGameServer()
 
-	// Authenticate with www.cyberiaonline.com and fetch object layer metadata into cache.
-	// Requires CYBERIA_API_EMAIL and CYBERIA_API_PASSWORD env vars.
-	s.SetObjectLayerCache()
+	// Set the engine API base URL (forwarded to clients for binary blob fetches)
+	if apiUrl := os.Getenv("ENGINE_API_BASE_URL"); apiUrl != "" {
+		s.SetEngineApiBaseUrl(apiUrl)
+	}
+
+	// ── Data loading: gRPC ──────────
+	// Set ENGINE_GRPC_ADDRESS (e.g. "engine:50051") to use gRPC.
+	// Set INSTANCE_CODE (e.g. "cyberia-main") to load a specific instance.
+	instanceCode := os.Getenv("INSTANCE_CODE")
+	if grpcAddr := os.Getenv("ENGINE_GRPC_ADDRESS"); grpcAddr != "" {
+		gc, err := grpcclient.New(grpcclient.Config{Address: grpcAddr})
+		if err != nil {
+			log.Printf("WARNING: gRPC client dial failed: %v — server will run with empty world.", err)
+		} else {
+			wb := grpcclient.NewWorldBuilder(gc, s)
+			wb.InstanceCode = instanceCode
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			if err := wb.LoadAll(ctx); err != nil {
+				log.Printf("WARNING: gRPC full load failed: %v — server will run with empty world.", err)
+			}
+			cancel()
+
+			// Start hot-reload loop if configured
+			reloadSec := os.Getenv("ENGINE_GRPC_RELOAD_INTERVAL_SEC")
+			if reloadSec != "" {
+				if sec, err := strconv.Atoi(reloadSec); err == nil && sec > 0 {
+					wb.ReloadInterval = time.Duration(sec) * time.Second
+					wb.StartReloadLoop()
+					defer wb.Stop()
+				}
+			}
+			defer gc.Close()
+		}
+	} else {
+		log.Println("ENGINE_GRPC_ADDRESS not set — server will run with empty world.")
+	}
 
 	go s.Run()
 

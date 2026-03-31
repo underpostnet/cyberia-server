@@ -416,34 +416,3 @@ func (h *MetricsHandler) determineHealth(entityMetrics EntityMetrics, workloadMe
 
 	return HealthOk, "System operational within normal parameters"
 }
-
-// UpdateWebSocketMetrics updates WebSocket connection metrics and connection counts
-func (h *MetricsHandler) UpdateWebSocketMetrics(status WebSocketStatus, activeConnections int) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	h.webSocketMetrics.Status = status
-	h.webSocketMetrics.ActiveConnections = activeConnections
-
-	// Update uptime regardless of status
-	h.webSocketMetrics.UptimeSec = int64(time.Since(h.serverStartTime).Seconds())
-}
-
-// RecordWebSocketError records a WebSocket error
-func (h *MetricsHandler) RecordWebSocketError(errorMsg string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	now := time.Now()
-	h.webSocketMetrics.Status = WebSocketError
-	h.webSocketMetrics.LastErrorMessage = errorMsg
-	h.webSocketMetrics.LastErrorTime = &now
-}
-
-// SetWebSocketStatus sets the WebSocket status
-func (h *MetricsHandler) SetWebSocketStatus(status WebSocketStatus) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	h.webSocketMetrics.Status = status
-}

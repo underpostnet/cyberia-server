@@ -12,6 +12,30 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// OLMeta is the JSON shape sent to the client for each ObjectLayer.
+// Matches the client's parse_object_layer_json expectations.
+type OLMeta struct {
+	Sha256        string          `json:"sha256"`
+	Data          ObjectLayerData `json:"data"`
+	FrameDuration int             `json:"frame_duration"`
+	IsStateless   bool            `json:"is_stateless"`
+}
+
+// buildOLMetadataMap creates the map[itemID] → OLMeta for the metadata message.
+// Must be called while s.mu is held.
+func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
+	out := make(map[string]*OLMeta, len(s.objectLayerDataCache))
+	for itemID, ol := range s.objectLayerDataCache {
+		out[itemID] = &OLMeta{
+			Sha256:        ol.Sha256,
+			Data:          ol.Data,
+			FrameDuration: ol.FrameDuration,
+			IsStateless:   ol.IsStateless,
+		}
+	}
+	return out
+}
+
 // HandleConnections handles WebSocket connections.
 func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
@@ -102,6 +126,20 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	case client.send <- initMsg:
 	default:
 		log.Printf("Client %s init channel full.", client.playerID)
+	}
+
+	// Send metadata message with all ObjectLayer + Atlas data for client-side caching.
+	// This replaces the client's REST calls to the Engine API for OL/Atlas metadata.
+	metaPayload := map[string]interface{}{
+		"objectLayers": s.buildOLMetadataMap(),
+		"atlasData":    s.atlasDataCache,
+		"apiBaseUrl":   s.engineApiBaseUrl,
+	}
+	metaMsg, _ := json.Marshal(map[string]interface{}{"type": "metadata", "payload": metaPayload})
+	select {
+	case client.send <- metaMsg:
+	default:
+		log.Printf("Client %s metadata channel full.", client.playerID)
 	}
 
 	s.mu.Unlock()
@@ -401,7 +439,12 @@ func (c *Client) writePump() {
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			w, err := c.conn.NextWriter(websocket.TextMessage)
+			// Detect message type: binary AOI starts with 0x01-0x03, JSON starts with '{'
+			msgType := websocket.TextMessage
+			if len(message) > 0 && message[0] != '{' && message[0] != '[' {
+				msgType = websocket.BinaryMessage
+			}
+			w, err := c.conn.NextWriter(msgType)
 			if err != nil {
 				return
 			}
