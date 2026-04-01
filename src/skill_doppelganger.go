@@ -55,6 +55,7 @@ func (s *GameServer) executePlayerDoppelgangerSkill(player *PlayerState, mapStat
 		CasterID:     player.ID, // Mark the player as the caster
 		MaxLife:      s.entityBaseMaxLife,
 		Life:         s.entityBaseMaxLife * s.doppelgangerInitialLifeFraction,
+		Color:        player.Color,
 	}
 
 	mapState.bots[doppelgangerBot.ID] = doppelgangerBot
@@ -116,6 +117,7 @@ func (s *GameServer) executeBotDoppelgangerSkill(bot *BotState, mapState *MapSta
 		CasterID:     bot.ID, // Mark the bot as the caster
 		MaxLife:      s.entityBaseMaxLife,
 		Life:         s.entityBaseMaxLife * s.doppelgangerInitialLifeFraction,
+		Color:        bot.Color,
 	}
 
 	mapState.bots[doppelgangerBot.ID] = doppelgangerBot

@@ -110,6 +110,13 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// Copy default object layers from config
 	playerOLs := make([]ObjectLayerState, len(s.defaultPlayerObjectLayers))
 	copy(playerOLs, s.defaultPlayerObjectLayers)
+	// If no default layers are configured use the instance-level user default
+	// visual (atlas if present, solid PLAYER colour otherwise).
+	if len(playerOLs) == 0 {
+		if d, ok := s.entityDefaults["player"]; ok && d.LiveItemID != "" {
+			playerOLs = []ObjectLayerState{{ItemID: d.LiveItemID, Active: true, Quantity: 1}}
+		}
+	}
 
 	playerState := &PlayerState{
 		ID:            playerID,
@@ -151,7 +158,8 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		Fps:                       s.fps,
 		InterpolationMs:           s.interpolationMs,
 		AoiRadius:                 s.aoiRadius,
-		Colors:                    s.colors,
+		Colors:          s.colors,
+		EntityDefaults:  s.buildEntityDefaultsSlice(),
 		CameraSmoothing:           s.cameraSmoothing,
 		CameraZoom:                s.cameraZoom,
 		DefaultWidthScreenFactor:  s.defaultWidthScreenFactor,

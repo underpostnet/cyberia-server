@@ -94,11 +94,9 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 
 	// Combat / death
 	s.respawnDuration = time.Duration(cfg.GetRespawnDurationMs()) * time.Millisecond
-	s.ghostItemID = cfg.GetGhostItemId()
 	s.collisionLifeLoss = cfg.GetCollisionLifeLoss()
 
 	// Economy
-	s.coinItemID = cfg.GetCoinItemId()
 	s.defaultCoinQuantity = int(cfg.GetDefaultCoinQuantity())
 
 	// Regen
@@ -120,8 +118,25 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	s.doppelgangerSpawnRadius = sr.GetDoppelgangerSpawnRadius()
 	s.doppelgangerInitialLifeFraction = sr.GetDoppelgangerInitialLifeFraction()
 
-	// Floor defaults
-	s.defaultFloorItemID = cfg.GetDefaultFloorItemId()
+	// Per-entity-type visual defaults — build lookup map and derive convenience aliases.
+	s.entityDefaults = make(map[string]EntityTypeDefaultConfig, len(cfg.GetEntityDefaults()))
+	for _, etd := range cfg.GetEntityDefaults() {
+		s.entityDefaults[etd.GetEntityType()] = EntityTypeDefaultConfig{
+			EntityType: etd.GetEntityType(),
+			LiveItemID: etd.GetLiveItemId(),
+			DeadItemID: etd.GetDeadItemId(),
+			ColorKey:   etd.GetColorKey(),
+		}
+	}
+	if d, ok := s.entityDefaults["player"]; ok {
+		s.ghostItemID = d.DeadItemID
+	}
+	if d, ok := s.entityDefaults["coin"]; ok {
+		s.coinItemID = d.LiveItemID
+	}
+	if d, ok := s.entityDefaults["floor"]; ok {
+		s.defaultFloorItemID = d.LiveItemID
+	}
 
 	// Player color is read from the named PLAYER entry in s.colors at use-time.
 
@@ -133,8 +148,18 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 		})
 	}
 
-	log.Printf("[GameServer] Instance config applied: cellSize=%.1f, fps=%d, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d colors, %d skills, %d default player layers",
-		s.cellSize, s.fps, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.colors), len(s.skillConfig), len(s.defaultPlayerObjectLayers))
+	log.Printf("[GameServer] Instance config applied: cellSize=%.1f, fps=%d, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d colors, %d skills, %d default player layers, %d entityDefaults, floorItem=%q, ghostItem=%q, coinItem=%q",
+		s.cellSize, s.fps, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.colors), len(s.skillConfig), len(s.defaultPlayerObjectLayers), len(s.entityDefaults), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
+}
+
+// buildEntityDefaultsSlice converts the internal entityDefaults map into an
+// ordered slice suitable for JSON serialisation in the init payload.
+func (s *GameServer) buildEntityDefaultsSlice() []EntityTypeDefaultConfig {
+	result := make([]EntityTypeDefaultConfig, 0, len(s.entityDefaults))
+	for _, d := range s.entityDefaults {
+		result = append(result, d)
+	}
+	return result
 }
 
 // ReplaceObjectLayerCache atomically replaces the entire cache.

@@ -14,6 +14,9 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 	playerStats := s.CalculateStats(player, mapState)
 
 	bulletItemID := "atlas_pistol_mk2_bullet"
+	if d, ok := s.entityDefaults["bullet"]; ok && d.LiveItemID != "" {
+		bulletItemID = d.LiveItemID
+	}
 	// Intelligence stat increases the chance of the skill activating.
 	// We'll model this as a linear increase, capping the effective chance.
 	if rand.Float64() >= math.Min(s.bulletSpawnChance+(playerStats.Intelligence/100.0), s.maxChance) {
@@ -71,6 +74,7 @@ func (s *GameServer) executePlayerBulletSkill(player *PlayerState, mapState *Map
 		CasterID:     player.ID,
 		MaxLife:      bulletBaseLife, // Initial MaxLife before resistance is applied
 		Life:         bulletBaseLife,
+		Color:        s.colors["BULLET"],
 	}
 
 	mapState.bots[bulletBot.ID] = bulletBot
@@ -87,6 +91,9 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, ta
 	botStats := s.CalculateStats(bot, mapState)
 
 	bulletItemID := "atlas_pistol_mk2_bullet"
+	if d, ok := s.entityDefaults["bullet"]; ok && d.LiveItemID != "" {
+		bulletItemID = d.LiveItemID
+	}
 	// Intelligence stat increases the chance of the skill activating.
 	// We'll model this as a linear increase, capping the effective chance.
 	if rand.Float64() >= math.Min(s.bulletSpawnChance+(botStats.Intelligence/100.0), s.maxChance) {
@@ -141,6 +148,7 @@ func (s *GameServer) executeBotBulletSkill(bot *BotState, mapState *MapState, ta
 		CasterID:     bot.ID,
 		MaxLife:      bulletBaseLife, // Initial MaxLife before resistance is applied
 		Life:         bulletBaseLife,
+		Color:        s.colors["BULLET"],
 	}
 
 	mapState.bots[bulletBot.ID] = bulletBot

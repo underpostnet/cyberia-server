@@ -232,11 +232,21 @@ type GameServer struct {
 	// Floor defaults
 	defaultFloorItemID string
 
+	// Per-entity-type visual defaults (live item, dead item, color key).
+	entityDefaults map[string]EntityTypeDefaultConfig
+
 	// Portal defaults
 	portalSpawnRadius float64
 
 	// Skill map (runtime): trigger item ID → []SkillDefinition
 	skillConfig map[string][]SkillDefinition
+}
+
+type EntityTypeDefaultConfig struct {
+        EntityType string `json:"entityType"`
+        LiveItemID string `json:"liveItemId"`
+        DeadItemID string `json:"deadItemId"`
+        ColorKey   string `json:"colorKey"`
 }
 
 type ColorRGBA struct {
@@ -255,8 +265,9 @@ type InitPayload struct {
 	Fps                       int                  `json:"fps"`
 	InterpolationMs           int                  `json:"interpolationMs"`
 	AoiRadius                 float64              `json:"aoiRadius"`
-	Colors                    map[string]ColorRGBA `json:"colors"`
-	CameraSmoothing           float64              `json:"cameraSmoothing"`
+	Colors          map[string]ColorRGBA      `json:"colors"`
+	EntityDefaults  []EntityTypeDefaultConfig `json:"entityDefaults"`
+	CameraSmoothing float64                   `json:"cameraSmoothing"`
 	CameraZoom                float64              `json:"cameraZoom"`
 	DefaultWidthScreenFactor  float64              `json:"defaultWidthScreenFactor"`
 	DefaultHeightScreenFactor float64              `json:"defaultHeightScreenFactor"`

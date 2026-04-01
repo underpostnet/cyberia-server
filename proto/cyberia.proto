@@ -299,11 +299,9 @@ message InstanceConfig {
 
   // ── Combat / death ──
   int32  respawn_duration_ms           = 28;
-  string ghost_item_id                 = 29;
   double collision_life_loss           = 30;
 
   // ── Economy ──
-  string coin_item_id                  = 31;
   int32  default_coin_quantity         = 32;
 
   // ── Regen ──
@@ -321,14 +319,34 @@ message InstanceConfig {
            "doppelganger_spawn_radius", "doppelganger_initial_life_fraction",
            "default_player_color";
 
-  // ── Floor defaults ──
-  string default_floor_item_id         = 44;
+  // Fields 29, 31, 44, 48–51 retired — superseded by entity_defaults (52).
+  reserved 29, 31, 44, 48, 49, 50, 51;
+  reserved "ghost_item_id", "coin_item_id", "default_floor_item_id",
+           "bot_default_item_id", "user_default_item_id",
+           "weapon_default_item_id", "bullet_default_item_id";
 
   // ── Skill map (trigger → logic + items) ──
   repeated SkillConfigEntry skill_config = 45;
 
   // ── Skill tuning parameters ──
   SkillRules skill_rules                 = 47;
+
+  // ── Entity type rendering defaults ─────────────────────────────────────────
+  // Structured per-entity-type configuration replacing the former flat item ID
+  // fields.  Each entry defines the live OL, dead OL, and palette colour key
+  // for one entity type ('player', 'bot', 'bullet', 'coin', 'floor', …).
+  // The Go server derives ghost/coin/floor item IDs from this repeated field.
+  repeated EntityTypeDefault entity_defaults = 52;
+}
+
+// ── Entity type defaults (per-entity visual + color configuration) ──────────
+// Replaces the former flat string fields: ghost_item_id (29), coin_item_id (31),
+// default_floor_item_id (44), bot_default_item_id (48), user_default_item_id (49).
+message EntityTypeDefault {
+  string entity_type  = 1; // matches entity_type_str / bot Behavior in game engine
+  string live_item_id = 2; // OL item ID for the alive/active state
+  string dead_item_id = 3; // OL item ID for the dead/ghost/respawning state
+  string color_key    = 4; // palette key for solid-color fallback (no OL items)
 }
 
 // ═══════════════════════════════════════════════════════════════════

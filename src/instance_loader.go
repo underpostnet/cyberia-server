@@ -175,8 +175,10 @@ func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 			ItemID: itemID, Active: true, Quantity: 1,
 		})
 	}
-	if len(floor.ObjectLayers) == 0 && s.defaultFloorItemID != "" {
-		floor.ObjectLayers = []ObjectLayerState{{ItemID: s.defaultFloorItemID, Active: true, Quantity: 1}}
+	if len(floor.ObjectLayers) == 0 {
+		if d, ok := s.entityDefaults["floor"]; ok && d.LiveItemID != "" {
+			floor.ObjectLayers = []ObjectLayerState{{ItemID: d.LiveItemID, Active: true, Quantity: 1}}
+		}
 	}
 	ms.floors[floor.ID] = floor
 }
@@ -220,6 +222,13 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 			ItemID: itemID, Active: true, Quantity: 1,
 		})
 	}
+	// If no items are assigned in the map definition use the instance-level
+	// bot default visual (atlas if present, solid BOT colour otherwise).
+	if len(objectLayers) == 0 {
+		if d, ok := s.entityDefaults["bot"]; ok && d.LiveItemID != "" {
+			objectLayers = []ObjectLayerState{{ItemID: d.LiveItemID, Active: true, Quantity: 1}}
+		}
+	}
 
 	// Determine behavior from object layers:
 	// If the bot has a weapon-type item → hostile, otherwise passive
@@ -250,6 +259,7 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 		Life:         maxLife * s.initialLifeFraction,
 		LifeRegen:    lifeRegen,
 		ObjectLayers: objectLayers,
+		Color:        s.colors["BOT"],
 	}
 
 	// Apply initial stats
