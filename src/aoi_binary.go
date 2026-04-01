@@ -213,6 +213,7 @@ func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64) {
 	e.putU8(byte(b.Color.B))
 	e.putU8(byte(b.Color.A))
 	e.writeItemIDs(b.ObjectLayers)
+	e.putString(b.CasterID)
 }
 
 func (e *BinaryAOIEncoder) WriteFloor(f *FloorState) {
