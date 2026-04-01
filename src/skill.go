@@ -1,9 +1,5 @@
 package game
 
-import (
-	"log"
-)
-
 // SkillDefinition defines the properties of a skill, including the ordered list of
 // logic handlers to execute when the trigger item is used.
 type SkillDefinition struct {
@@ -12,59 +8,15 @@ type SkillDefinition struct {
 
 // HandlePlayerActionSkills checks if a player's action triggers any skills
 // based on their active items and calls the corresponding skill logic.
+// Called from readPump (handlers.go) AFTER s.mu is released — callerHoldsLock = false.
 func (s *GameServer) HandlePlayerActionSkills(player *PlayerState, mapState *MapState, target Point) {
-	for _, layer := range player.ObjectLayers {
-		if !layer.Active {
-			continue
-		}
-
-		// Check if the active item has any associated skills in our config
-		if skillDefs, ok := s.skillConfig[layer.ItemID]; ok {
-			for _, skillDef := range skillDefs {
-				for _, logicID := range skillDef.LogicEventIDs {
-					switch logicID {
-					case "doppelganger":
-						s.executePlayerDoppelgangerSkill(player, mapState, layer.ItemID)
-					case "atlas_pistol_mk2_logic":
-								s.executePlayerProjectileSkill(player, mapState, target)
-					case "coin_drop_or_transaction":
-						// Economy mechanic: coin transfer is triggered automatically on kill
-						// via HandleOnKillSkills → executeCoinDropOnKill. No manual action needed.
-					default:
-						log.Printf("Unknown logicEventID '%s' for item '%s'", logicID, layer.ItemID)
-					}
-				}
-			}
-		}
-	}
+	s.dispatchSkillsForEntity(player, mapState, target, false)
 }
 
-// handleBotSkills checks and executes skills for a bot when it takes an "action" (like finding a new path).
+// handleBotSkills checks and executes skills for a bot when it takes an "action".
+// Called from updateBots (ai.go) which runs inside the game loop lock — callerHoldsLock = true.
 func (s *GameServer) handleBotSkills(bot *BotState, mapState *MapState, target Point) {
-	for _, layer := range bot.ObjectLayers {
-		if !layer.Active {
-			continue
-		}
-
-		// Check if the active item has any associated skills in our config
-		if skillDefs, ok := s.skillConfig[layer.ItemID]; ok {
-			for _, skillDef := range skillDefs {
-				for _, logicID := range skillDef.LogicEventIDs {
-					switch logicID {
-					case "doppelganger":
-						s.executeBotDoppelgangerSkill(bot, mapState, layer.ItemID)
-					case "atlas_pistol_mk2_logic":
-								s.executeBotProjectileSkill(bot, mapState, target)
-					case "coin_drop_or_transaction":
-						// Economy mechanic: coin transfer is triggered automatically on kill
-						// via HandleOnKillSkills → executeCoinDropOnKill. No manual action needed.
-					default:
-						log.Printf("Unknown logicEventID '%s' for item '%s' on bot %s", logicID, layer.ItemID, bot.ID)
-					}
-				}
-			}
-		}
-	}
+	s.dispatchSkillsForEntity(bot, mapState, target, true)
 }
 
 // HandleOnKillSkills checks for skills that trigger when an entity is killed by a bot

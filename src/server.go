@@ -148,6 +148,12 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 		})
 	}
 
+	// Stats cache (invalidated per-entity via StatsDirty flag + TTL expiry).
+	s.statsCache = make(map[string]statsCacheEntry)
+
+	// Register built-in skill handlers now that skillConfig is populated.
+	s.InitSkills()
+
 	log.Printf("[GameServer] Instance config applied: cellSize=%.1f, fps=%d, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d colors, %d skills, %d default player layers, %d entityDefaults, floorItem=%q, ghostItem=%q, coinItem=%q",
 		s.cellSize, s.fps, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.colors), len(s.skillConfig), len(s.defaultPlayerObjectLayers), len(s.entityDefaults), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
 }

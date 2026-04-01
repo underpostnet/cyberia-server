@@ -2,6 +2,18 @@ package game
 
 import "time"
 
+// defaultStatsCacheTTL is the fallback TTL for cached stats entries.
+// Even if StatsDirty is false, entries older than this are recalculated
+// to prevent stale values in edge cases.
+const defaultStatsCacheTTL = 250 * time.Millisecond
+
+// statsCacheEntry wraps a ComputedStats value with a timestamp so the
+// cache can expire entries after the configured TTL.
+type statsCacheEntry struct {
+	stats     ComputedStats
+	cachedAt  time.Time
+}
+
 // -----------------------------------------------------------------------------------------
 // Description of passive stats mechanics:
 // -----------------------------------------------------------------------------------------
@@ -41,20 +53,41 @@ type ComputedStats struct {
 // CalculateStats computes the final stat values for a given StatSource.
 // It sums the stats from the source's active object layers and recursively
 // adds the stats from its caster, if one exists.
+// Results are cached per entity and reused until StatsDirty is set or the
+// cache TTL expires (default 250ms), whichever comes first.
 func (s *GameServer) CalculateStats(source interface{}, mapState *MapState) ComputedStats {
 	var totalStats ComputedStats
 	var objectLayers []ObjectLayerState
 	var casterID string
+	var entityID string
+	var dirty bool
 
 	switch e := source.(type) {
 	case *PlayerState:
+		entityID = e.ID
 		objectLayers = e.ObjectLayers
 		casterID = "" // Players are not cast
+		dirty = e.StatsDirty
 	case *BotState:
+		entityID = e.ID
 		objectLayers = e.ObjectLayers
 		casterID = e.CasterID
+		dirty = e.StatsDirty
 	default:
 		return totalStats // Return zero stats for unknown types
+	}
+
+	// Return cached stats if the entity is not dirty and the TTL hasn't expired.
+	if !dirty {
+		if entry, ok := s.statsCache[entityID]; ok {
+			ttl := s.statsCacheTTL
+			if ttl == 0 {
+				ttl = defaultStatsCacheTTL
+			}
+			if time.Since(entry.cachedAt) < ttl {
+				return entry.stats
+			}
+		}
 	}
 
 	// 1. Sum stats from the entity's own active layers.
@@ -92,6 +125,18 @@ func (s *GameServer) CalculateStats(source interface{}, mapState *MapState) Comp
 			totalStats.Intelligence += casterStats.Intelligence
 			totalStats.Utility += casterStats.Utility
 		}
+	}
+
+	// Store in cache with current timestamp and clear dirty flag.
+	s.statsCache[entityID] = statsCacheEntry{
+		stats:    totalStats,
+		cachedAt: time.Now(),
+	}
+	switch e := source.(type) {
+	case *PlayerState:
+		e.StatsDirty = false
+	case *BotState:
+		e.StatsDirty = false
 	}
 
 	return totalStats
@@ -134,4 +179,18 @@ func (s *GameServer) CalculateMovementSpeed(stats ComputedStats) float64 {
 	// We'll model this as a percentage increase: 1 Agility = +1% speed.
 	speedMultiplier := 1.0 + (stats.Agility / 100.0)
 	return s.entityBaseSpeed * speedMultiplier
+}
+
+// InvalidateStats marks an entity as needing a stats re-calculation and
+// removes its entry from the cache. Call this whenever an entity's
+// ObjectLayers (active flags, additions, removals) change.
+func (s *GameServer) InvalidateStats(entity interface{}) {
+	switch e := entity.(type) {
+	case *PlayerState:
+		e.StatsDirty = true
+		delete(s.statsCache, e.ID)
+	case *BotState:
+		e.StatsDirty = true
+		delete(s.statsCache, e.ID)
+	}
 }

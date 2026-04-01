@@ -285,6 +285,9 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			bot.ObjectLayers[firstSkinIndex].Active = true
 			log.Printf("Bot %s had no active skins. Force-activated skin '%s'.", bot.ID, bot.ObjectLayers[firstSkinIndex].ItemID)
 		}
+
+		// If any layer was mutated above, ensure stats are recalculated next tick.
+		s.InvalidateStats(bot)
 	}
 }
 

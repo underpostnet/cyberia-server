@@ -445,6 +445,7 @@ func (c *Client) readPump(server *GameServer) {
 				}
 
 				// --- Step 4: After all corrections, recalculate stats that affect the player state directly. ---
+				server.InvalidateStats(player)
 				server.ApplyResistanceStat(player, server.maps[player.MapCode])
 			}()
 		} else if msg["type"] == "get_items_ids" {

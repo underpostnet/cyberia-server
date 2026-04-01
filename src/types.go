@@ -84,6 +84,7 @@ type PlayerState struct {
 	LifeRegen              float64            `json:"lifeRegen"`
 	RespawnTime            time.Time          `json:"-"`
 	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
+	StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
 }
 
 type FloorState struct {
@@ -119,6 +120,7 @@ type BotState struct {
 	RespawnTime            time.Time          `json:"-"`
 	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
 	CasterID               string             `json:"-"` // ID of the player or bot that created this bot
+	StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
 }
 
 type PortalConfig struct {
@@ -240,6 +242,11 @@ type GameServer struct {
 
 	// Skill map (runtime): trigger item ID → []SkillDefinition
 	skillConfig map[string][]SkillDefinition
+
+	// Stats cache: entityID → cached entry with TTL. Invalidated when StatsDirty is set
+	// or when the TTL (statsCacheTTL) expires.
+	statsCache    map[string]statsCacheEntry
+	statsCacheTTL time.Duration
 }
 
 type EntityTypeDefaultConfig struct {

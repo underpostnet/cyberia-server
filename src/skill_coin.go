@@ -48,6 +48,10 @@ func (s *GameServer) executeCoinDropOnKill(caster interface{}, victim interface{
 	casterCoinLayer.Quantity += amountToTransfer
 	victimCoinLayer.Quantity = 0
 
+	// Invalidate stats for both entities since their layers changed.
+	s.InvalidateStats(caster)
+	s.InvalidateStats(victim)
+
 	log.Printf("Caster %s triggered 'coin_drop_or_transaction', looting %d coins from %s.", casterID, amountToTransfer, victimID)
 
 }
