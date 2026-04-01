@@ -251,22 +251,28 @@ func (c *Client) readPump(server *GameServer) {
 				continue
 			}
 
-			// Rate-limit player actions based on Utility.
+			// Compute movement cooldown under lock but do NOT gate skills on it.
+			// TAP is the fundamental event: skills fire on every TAP (probability-
+			// gated), movement is a rendering side-effect gated by the cooldown.
 			playerStats := server.CalculateStats(player, mapState)
 			cooldown := server.CalculateActionCooldown(playerStats)
-			if time.Since(c.lastAction) < cooldown {
-				server.mu.Unlock()
-				continue // Action came too fast, ignore it.
+			movementReady := time.Since(c.lastAction) >= cooldown
+			if movementReady {
+				c.lastAction = time.Now()
 			}
-			c.lastAction = time.Now() // Update last action time
 
 			server.mu.Unlock()
 
-			// Handle probabilistic life regeneration on action
+			// --- Skills & regen fire on EVERY valid TAP ---
+			// Probability (Intelligence) is the natural limiter for skills;
+			// movement is a separate rendering concern gated by Utility cooldown.
 			server.handleProbabilisticRegen(player, mapState)
-
-			// Handle skills that trigger on player action
 			server.HandlePlayerActionSkills(player, mapState, Point{X: targetX, Y: targetY})
+
+			// Movement path is only recalculated when the cooldown allows.
+			if !movementReady {
+				continue
+			}
 
 			startPosI := PointI{X: int(math.Round(player.Pos.X)), Y: int(math.Round(player.Pos.Y))}
 			targetPosI := PointI{X: int(math.Round(targetX)), Y: int(math.Round(targetY))}
