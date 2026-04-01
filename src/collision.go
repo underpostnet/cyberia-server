@@ -116,20 +116,22 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState) {
 		player.ObjectLayers[i].Active = false
 	}
 
-	// Check if ghost item already exists in object layers
-	ghostExists := false
-	for i := range player.ObjectLayers {
-		if player.ObjectLayers[i].ItemID == s.ghostItemID {
-			player.ObjectLayers[i].Active = true
-			player.ObjectLayers[i].Quantity = 1
-			ghostExists = true
-			break
+	// Activate all dead item IDs from entity defaults
+	if d, ok := s.entityDefaults["player"]; ok {
+		for _, deadID := range d.DeadItemIDs {
+			found := false
+			for i := range player.ObjectLayers {
+				if player.ObjectLayers[i].ItemID == deadID {
+					player.ObjectLayers[i].Active = true
+					player.ObjectLayers[i].Quantity = 1
+					found = true
+					break
+				}
+			}
+			if !found {
+				player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: deadID, Active: true, Quantity: 1})
+			}
 		}
-	}
-
-	// If ghost item doesn't exist, add it
-	if !ghostExists {
-		player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: s.ghostItemID, Active: true, Quantity: 1})
 	}
 
 	player.RespawnTime = time.Now().Add(s.respawnDuration)
@@ -151,20 +153,22 @@ func (s *GameServer) handleBotDeath(bot *BotState) {
 		bot.ObjectLayers[i].Active = false
 	}
 
-	// Check if ghost item already exists in object layers
-	ghostExists := false
-	for i := range bot.ObjectLayers {
-		if bot.ObjectLayers[i].ItemID == s.ghostItemID {
-			bot.ObjectLayers[i].Active = true
-			bot.ObjectLayers[i].Quantity = 1
-			ghostExists = true
-			break
+	// Activate all dead item IDs from entity defaults
+	if d, ok := s.entityDefaults["bot"]; ok {
+		for _, deadID := range d.DeadItemIDs {
+			found := false
+			for i := range bot.ObjectLayers {
+				if bot.ObjectLayers[i].ItemID == deadID {
+					bot.ObjectLayers[i].Active = true
+					bot.ObjectLayers[i].Quantity = 1
+					found = true
+					break
+				}
+			}
+			if !found {
+				bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: deadID, Active: true, Quantity: 1})
+			}
 		}
-	}
-
-	// If ghost item doesn't exist, add it
-	if !ghostExists {
-		bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: s.ghostItemID, Active: true, Quantity: 1})
 	}
 
 	bot.RespawnTime = time.Now().Add(s.respawnDuration)
@@ -222,4 +226,16 @@ func (p *PlayerState) IsGhost() bool {
 // IsGhost checks if a bot is in a ghost state (i.e., dead and waiting to respawn).
 func (b *BotState) IsGhost() bool {
 	return !b.RespawnTime.IsZero()
+}
+
+// isDeadItemID returns true if itemID is among the DeadItemIDs for the given entity type.
+func (s *GameServer) isDeadItemID(entityType, itemID string) bool {
+	if d, ok := s.entityDefaults[entityType]; ok {
+		for _, id := range d.DeadItemIDs {
+			if id == itemID {
+				return true
+			}
+		}
+	}
+	return false
 }

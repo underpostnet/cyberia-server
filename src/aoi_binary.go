@@ -141,15 +141,24 @@ func (e *BinaryAOIEncoder) putID(id string) {
 	e.pos += 36
 }
 
-// writeItemIDs writes just the item ID strings — no active/quantity.
+// writeItemIDs writes item ID strings of active layers only — no active/quantity.
 func (e *BinaryAOIEncoder) writeItemIDs(layers []ObjectLayerState) {
-	n := len(layers)
-	if n > 255 {
-		n = 255
+	activeCount := 0
+	for i := range layers {
+		if layers[i].Active {
+			activeCount++
+		}
 	}
-	e.putU8(byte(n))
-	for i := 0; i < n; i++ {
-		e.putString(layers[i].ItemID)
+	if activeCount > 255 {
+		activeCount = 255
+	}
+	e.putU8(byte(activeCount))
+	written := 0
+	for i := range layers {
+		if layers[i].Active && written < activeCount {
+			e.putString(layers[i].ItemID)
+			written++
+		}
 	}
 }
 

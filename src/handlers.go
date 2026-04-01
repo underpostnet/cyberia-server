@@ -357,8 +357,8 @@ func (c *Client) readPump(server *GameServer) {
 					return
 				}
 
-				// Check if player is dead - only allow ghost item to be activated while dead
-				if (player.IsGhost() || player.Life <= 0) && active && itemId != server.ghostItemID {
+				// Check if player is dead - only allow dead item IDs to be activated while dead
+				if (player.IsGhost() || player.Life <= 0) && active && !server.isDeadItemID("player", itemId) {
 					log.Printf("Player %s is dead and cannot activate non-ghost item '%s'.", c.playerID, itemId)
 					return
 				}

@@ -217,12 +217,12 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		firstSkinIndex := -1
 		activeSkinCount := 0
 
-		// Check if bot is dead - only allow ghost item to be active while dead
+		// Check if bot is dead - only allow dead item IDs to be active while dead
 		if bot.IsGhost() || bot.Life <= 0 {
 			for i := range bot.ObjectLayers {
-				if bot.ObjectLayers[i].ItemID != s.ghostItemID && bot.ObjectLayers[i].Active {
+				if !s.isDeadItemID("bot", bot.ObjectLayers[i].ItemID) && bot.ObjectLayers[i].Active {
 					bot.ObjectLayers[i].Active = false
-					log.Printf("Bot %s is dead. Deactivating non-ghost item '%s'.", bot.ID, bot.ObjectLayers[i].ItemID)
+					log.Printf("Bot %s is dead. Deactivating non-dead item '%s'.", bot.ID, bot.ObjectLayers[i].ItemID)
 				}
 			}
 		}
