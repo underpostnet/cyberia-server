@@ -219,11 +219,11 @@ type GameServer struct {
 	maxChance       float64
 
 	// Skill config
-	bulletSpawnChance           float64
-	bulletLifetimeMs            int
-	bulletWidth                 float64
-	bulletHeight                float64
-	bulletSpeedMultiplier       float64
+	projectileSpawnChance           float64
+	projectileLifetimeMs            int
+	projectileWidth                 float64
+	projectileHeight                float64
+	projectileSpeedMultiplier       float64
 	doppelgangerSpawnChance     float64
 	doppelgangerLifetimeMs      int
 	doppelgangerSpawnRadius     float64

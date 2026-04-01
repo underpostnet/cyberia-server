@@ -108,11 +108,11 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	if sr == nil {
 		sr = &pb.SkillRules{}
 	}
-	s.bulletSpawnChance = sr.GetBulletSpawnChance()
-	s.bulletLifetimeMs = int(sr.GetBulletLifetimeMs())
-	s.bulletWidth = sr.GetBulletWidth()
-	s.bulletHeight = sr.GetBulletHeight()
-	s.bulletSpeedMultiplier = sr.GetBulletSpeedMultiplier()
+	s.projectileSpawnChance = sr.GetProjectileSpawnChance()
+	s.projectileLifetimeMs = int(sr.GetProjectileLifetimeMs())
+	s.projectileWidth = sr.GetProjectileWidth()
+	s.projectileHeight = sr.GetProjectileHeight()
+	s.projectileSpeedMultiplier = sr.GetProjectileSpeedMultiplier()
 	s.doppelgangerSpawnChance = sr.GetDoppelgangerSpawnChance()
 	s.doppelgangerLifetimeMs = int(sr.GetDoppelgangerLifetimeMs())
 	s.doppelgangerSpawnRadius = sr.GetDoppelgangerSpawnRadius()
@@ -264,7 +264,7 @@ func (s *GameServer) gameLoop() {
 		for _, mapState := range s.maps {
 			// Phase 1: Handle state changes (respawn, death from collisions)
 			s.handleRespawns(mapState)
-			s.handleBulletCollisions(mapState)
+			s.handleSkillCollisions(mapState)
 
 			// Phase 2: Update positions based on current state
 			for _, player := range mapState.players {

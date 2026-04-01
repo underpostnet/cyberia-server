@@ -245,12 +245,12 @@ message SkillConfigEntry {
 // These are instance-level defaults; individual SkillConfigEntry entries define
 // WHICH items trigger WHICH logic, while SkillRules defines HOW that logic behaves.
 message SkillRules {
-  // ── Bullet skill ──
-  double bullet_spawn_chance       = 1;  // base probability [0,1] per action tick
-  int32  bullet_lifetime_ms        = 2;  // base bullet TTL in ms (Range stat adds extra)
-  double bullet_width              = 3;  // bullet entity width in grid cells
-  double bullet_height             = 4;  // bullet entity height in grid cells
-  double bullet_speed_multiplier   = 5;  // multiplier applied on top of entity_base_speed
+  // ── Projectile skill ──
+  double projectile_spawn_chance       = 1;  // base probability [0,1] per action tick
+  int32  projectile_lifetime_ms        = 2;  // base projectile TTL in ms (Range stat adds extra)
+  double projectile_width              = 3;  // projectile entity width in grid cells
+  double projectile_height             = 4;  // projectile entity height in grid cells
+  double projectile_speed_multiplier   = 5;  // multiplier applied on top of entity_base_speed
 
   // ── Doppelganger skill ──
   double doppelganger_spawn_chance          = 6;  // base probability [0,1] per action tick
@@ -309,7 +309,7 @@ message InstanceConfig {
   double max_chance                    = 34;
 
   // ── Skill tuning (grouped) ──
-  // Fields 35–43 and 46 are reserved — previously held flat bullet/doppelganger
+  // Fields 35–43 and 46 are reserved — previously held flat projectile/doppelganger
   // params and default_player_color. Replaced by skill_rules (47) and the PLAYER
   // key in the colors repeated field.
   reserved 35, 36, 37, 38, 39, 40, 41, 42, 43, 46;
@@ -334,7 +334,7 @@ message InstanceConfig {
   // ── Entity type rendering defaults ─────────────────────────────────────────
   // Structured per-entity-type configuration replacing the former flat item ID
   // fields.  Each entry defines the live OL, dead OL, and palette colour key
-  // for one entity type ('player', 'bot', 'bullet', 'coin', 'floor', …).
+  // for one entity type ('player', 'bot', 'skill', 'coin', 'floor', …).
   // The Go server derives ghost/coin/floor item IDs from this repeated field.
   repeated EntityTypeDefault entity_defaults = 52;
 }

@@ -16,19 +16,19 @@ func checkAABBCollision(pos1 Point, dims1 Dimensions, pos2 Point, dims2 Dimensio
 	return false
 }
 
-// handleBulletCollisions manages collisions for 'bullet' behavior bots.
+// handleSkillCollisions manages collisions for 'skill' behavior bots (projectiles).
 // It checks for intersections with players and other bots, applies damage,
-// and handles death, removing the bullet upon impact.
-func (s *GameServer) handleBulletCollisions(mapState *MapState) {
-	bulletsToDelete := []string{}
+// and handles death, removing the projectile upon impact.
+func (s *GameServer) handleSkillCollisions(mapState *MapState) {
+	projectilesToDelete := []string{}
 
-	for bulletID, bullet := range mapState.bots {
-		if bullet.Behavior != "bullet" {
+	for projectileID, projectile := range mapState.bots {
+		if projectile.Behavior != "skill" {
 			continue
 		}
 
-		bulletStats := s.CalculateStats(bullet, mapState)
-		if bulletStats.Effect <= 0 {
+		projectileStats := s.CalculateStats(projectile, mapState)
+		if projectileStats.Effect <= 0 {
 			continue // No damage to deal.
 		}
 
@@ -39,22 +39,22 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 			if player.IsGhost() { // Don't hit dead/ghost players
 				continue
 			}
-			// Bullets should not damage their caster.
-			if player.ID == bullet.CasterID {
+			// Projectiles should not damage their caster.
+			if player.ID == projectile.CasterID {
 				continue
 			}
-			if checkAABBCollision(bullet.Pos, bullet.Dims, player.Pos, player.Dims) {
-				player.Life -= bulletStats.Effect
+			if checkAABBCollision(projectile.Pos, projectile.Dims, player.Pos, player.Dims) {
+				player.Life -= projectileStats.Effect
 				if player.Life <= 0 {
 					player.Life = 0
-					s.HandleOnKillSkills(bullet, player, mapState)
+					s.HandleOnKillSkills(projectile, player, mapState)
 					s.handlePlayerDeath(player)
 				}
 
-				// "Thorns" effect: The player's Effect stat damages the bullet.
+				// "Thorns" effect: The player's Effect stat damages the projectile.
 				playerStats := s.CalculateStats(player, mapState)
 				if playerStats.Effect > 0 {
-					bullet.Life -= playerStats.Effect
+					projectile.Life -= playerStats.Effect
 				}
 
 				isColliding = true
@@ -63,42 +63,42 @@ func (s *GameServer) handleBulletCollisions(mapState *MapState) {
 
 		// Check collision with other bots
 		for otherBotID, otherBot := range mapState.bots {
-			if bulletID == otherBotID || otherBot.Behavior == "bullet" || otherBot.IsGhost() {
-				continue // Don't collide with self, other bullets, or dead bots.
+			if projectileID == otherBotID || otherBot.Behavior == "skill" || otherBot.IsGhost() {
+				continue // Don't collide with self, other projectiles, or dead bots.
 			}
-			// Bullets should not damage their caster.
-			if otherBotID == bullet.CasterID {
+			// Projectiles should not damage their caster.
+			if otherBotID == projectile.CasterID {
 				continue
 			}
-			if checkAABBCollision(bullet.Pos, bullet.Dims, otherBot.Pos, otherBot.Dims) {
-				otherBot.Life -= bulletStats.Effect
+			if checkAABBCollision(projectile.Pos, projectile.Dims, otherBot.Pos, otherBot.Dims) {
+				otherBot.Life -= projectileStats.Effect
 				if otherBot.Life <= 0 {
 					otherBot.Life = 0
-					s.HandleOnKillSkills(bullet, otherBot, mapState)
+					s.HandleOnKillSkills(projectile, otherBot, mapState)
 					s.handleBotDeath(otherBot)
 				}
 
-				// "Thorns" effect: The other bot's Effect stat damages the bullet.
+				// "Thorns" effect: The other bot's Effect stat damages the projectile.
 				otherBotStats := s.CalculateStats(otherBot, mapState)
 				if otherBotStats.Effect > 0 {
-					bullet.Life -= otherBotStats.Effect
+					projectile.Life -= otherBotStats.Effect
 				}
 
 				isColliding = true
 			}
 		}
 
-		// If the bullet is colliding, it loses life.
+		// If the projectile is colliding, it loses life.
 		if isColliding {
-			bullet.Life -= s.collisionLifeLoss
-			if bullet.Life <= 0 {
-				// Bullet is "dead" from collision damage, mark for deletion.
-				bulletsToDelete = append(bulletsToDelete, bulletID)
+			projectile.Life -= s.collisionLifeLoss
+			if projectile.Life <= 0 {
+				// Projectile is "dead" from collision damage, mark for deletion.
+				projectilesToDelete = append(projectilesToDelete, projectileID)
 			}
 		}
 	}
 
-	for _, id := range bulletsToDelete {
+	for _, id := range projectilesToDelete {
 		delete(mapState.bots, id)
 	}
 }

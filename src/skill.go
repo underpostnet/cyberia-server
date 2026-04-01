@@ -26,7 +26,7 @@ func (s *GameServer) HandlePlayerActionSkills(player *PlayerState, mapState *Map
 					case "doppelganger":
 						s.executePlayerDoppelgangerSkill(player, mapState, layer.ItemID)
 					case "atlas_pistol_mk2_logic":
-						s.executePlayerBulletSkill(player, mapState, target)
+								s.executePlayerProjectileSkill(player, mapState, target)
 					case "coin_drop_or_transaction":
 						// Economy mechanic: coin transfer is triggered automatically on kill
 						// via HandleOnKillSkills → executeCoinDropOnKill. No manual action needed.
@@ -54,7 +54,7 @@ func (s *GameServer) handleBotSkills(bot *BotState, mapState *MapState, target P
 					case "doppelganger":
 						s.executeBotDoppelgangerSkill(bot, mapState, layer.ItemID)
 					case "atlas_pistol_mk2_logic":
-						s.executeBotBulletSkill(bot, mapState, target)
+								s.executeBotProjectileSkill(bot, mapState, target)
 					case "coin_drop_or_transaction":
 						// Economy mechanic: coin transfer is triggered automatically on kill
 						// via HandleOnKillSkills → executeCoinDropOnKill. No manual action needed.
@@ -69,8 +69,8 @@ func (s *GameServer) handleBotSkills(bot *BotState, mapState *MapState, target P
 
 // HandleOnKillSkills checks for skills that trigger when an entity is killed by a bot
 
-func (s *GameServer) HandleOnKillSkills(killerBot *BotState, victim interface{}, mapState *MapState) { // The killer is a bullet bot. The actual killer is the caster of the bullet.
-	// The killer is a bullet bot. The actual killer is the caster of the bullet.
+func (s *GameServer) HandleOnKillSkills(killerBot *BotState, victim interface{}, mapState *MapState) { // The killer is a skill projectile bot. The actual killer is the caster.
+	// The killer is a skill projectile bot. The actual killer is the caster.
 	if killerBot.CasterID == "" {
 		return
 	}

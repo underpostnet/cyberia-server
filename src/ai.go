@@ -46,35 +46,35 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 		botStats := s.CalculateStats(bot, mapState)
 
-		// --- NEW BULLET BEHAVIOR ---
-		// Bullet bots move in a straight line and are removed if they go out of bounds.
-		if bot.Behavior == "bullet" {
-			// Bullets move at configured speed multiplier. entityBaseSpeed is in units per second.
-			// Bullets move at configured speed; divide by the actual game loop FPS to get units per tick.
+		// --- SKILL PROJECTILE BEHAVIOR ---
+		// Skill projectile bots move in a straight line and are removed if they go out of bounds.
+		if bot.Behavior == "skill" {
+			// Projectiles move at configured speed multiplier. entityBaseSpeed is in units per second.
+			// Projectiles move at configured speed; divide by the actual game loop FPS to get units per tick.
 			loopFps := float64(s.fps)
 			if loopFps <= 0 {
 				loopFps = 60
 			}
-			bulletStep := (s.entityBaseSpeed * s.bulletSpeedMultiplier) / loopFps
+			projectileStep := (s.entityBaseSpeed * s.projectileSpeedMultiplier) / loopFps
 			// Calculate movement vector from bot's direction
 			dirX, dirY := getDirectionVector(bot.Direction)
 
 			// Update position
-			bot.Pos.X += dirX * bulletStep
-			bot.Pos.Y += dirY * bulletStep
+			bot.Pos.X += dirX * projectileStep
+			bot.Pos.Y += dirY * projectileStep
 
-			// Remove bullet if it goes out of map bounds
+			// Remove projectile if it goes out of map bounds
 			if bot.Pos.X < 0 || bot.Pos.X > float64(mapState.gridW) ||
 				bot.Pos.Y < 0 || bot.Pos.Y > float64(mapState.gridH) {
 				delete(mapState.bots, botID)
 				continue // Skip further processing for this bot
 			}
 			s.handleBotSkills(bot, mapState, Point{X: bot.Pos.X, Y: bot.Pos.Y})
-			// For bullets, we don't need to call updateBotPosition or other AI logic
+			// For skill projectiles, we don't need to call updateBotPosition or other AI logic
 			// as their movement is simple and direct.
 			continue
 		}
-		// --- END NEW BULLET BEHAVIOR ---
+		// --- END SKILL PROJECTILE BEHAVIOR ---
 
 		// Hostile logic: check for nearest player in aggro range
 		if bot.Behavior == "hostile" {
@@ -334,7 +334,7 @@ func (s *GameServer) updateBotDirection(bot *BotState, dirX, dirY float64) {
 }
 
 // getDirectionVector converts a Direction enum to a normalized (dx, dy) vector.
-// This helper is used for calculating bullet trajectories.
+// This helper is used for calculating projectile trajectories.
 func getDirectionVector(dir Direction) (float64, float64) {
 	// Normalize diagonal vectors to maintain consistent speed
 	const diag = 0.70710678118 // 1 / sqrt(2)
