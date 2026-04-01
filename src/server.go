@@ -122,20 +122,20 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	s.entityDefaults = make(map[string]EntityTypeDefaultConfig, len(cfg.GetEntityDefaults()))
 	for _, etd := range cfg.GetEntityDefaults() {
 		s.entityDefaults[etd.GetEntityType()] = EntityTypeDefaultConfig{
-			EntityType: etd.GetEntityType(),
-			LiveItemID: etd.GetLiveItemId(),
-			DeadItemID: etd.GetDeadItemId(),
-			ColorKey:   etd.GetColorKey(),
+			EntityType:  etd.GetEntityType(),
+			LiveItemIDs: etd.GetLiveItemIds(),
+			DeadItemIDs: etd.GetDeadItemIds(),
+			ColorKey:    etd.GetColorKey(),
 		}
 	}
-	if d, ok := s.entityDefaults["player"]; ok {
-		s.ghostItemID = d.DeadItemID
+	if d, ok := s.entityDefaults["player"]; ok && len(d.DeadItemIDs) > 0 {
+		s.ghostItemID = d.DeadItemIDs[0]
 	}
-	if d, ok := s.entityDefaults["coin"]; ok {
-		s.coinItemID = d.LiveItemID
+	if d, ok := s.entityDefaults["coin"]; ok && len(d.LiveItemIDs) > 0 {
+		s.coinItemID = d.LiveItemIDs[0]
 	}
-	if d, ok := s.entityDefaults["floor"]; ok {
-		s.defaultFloorItemID = d.LiveItemID
+	if d, ok := s.entityDefaults["floor"]; ok && len(d.LiveItemIDs) > 0 {
+		s.defaultFloorItemID = d.LiveItemIDs[0]
 	}
 
 	// Player color is read from the named PLAYER entry in s.colors at use-time.

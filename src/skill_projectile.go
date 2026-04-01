@@ -13,9 +13,9 @@ import (
 func (s *GameServer) executePlayerProjectileSkill(player *PlayerState, mapState *MapState, target Point) {
 	playerStats := s.CalculateStats(player, mapState)
 
-	projectileItemID := "atlas_pistol_mk2_bullet"
-	if d, ok := s.entityDefaults["skill"]; ok && d.LiveItemID != "" {
-		projectileItemID = d.LiveItemID
+	projectileItemIDs := []string{"atlas_pistol_mk2_bullet"}
+	if d, ok := s.entityDefaults["skill"]; ok && len(d.LiveItemIDs) > 0 {
+		projectileItemIDs = d.LiveItemIDs
 	}
 	// Intelligence stat increases the chance of the skill activating.
 	// We'll model this as a linear increase, capping the effective chance.
@@ -62,6 +62,11 @@ func (s *GameServer) executePlayerProjectileSkill(player *PlayerState, mapState 
 	spawnX := player.Pos.X - (dirX * projectileStep)
 	spawnY := player.Pos.Y - (dirY * projectileStep)
 
+	var projectileOLs []ObjectLayerState
+	for _, itemID := range projectileItemIDs {
+		projectileOLs = append(projectileOLs, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+	}
+
 	projectileBot := &BotState{
 		ID:           uuid.New().String(),
 		MapCode:      player.MapCode,
@@ -70,7 +75,7 @@ func (s *GameServer) executePlayerProjectileSkill(player *PlayerState, mapState 
 		Behavior:     "skill",
 		Direction:    projectileDirection,
 		ExpiresAt:    time.Now().Add(projectileLifetime),
-		ObjectLayers: []ObjectLayerState{{ItemID: projectileItemID, Active: true, Quantity: 1}},
+		ObjectLayers: projectileOLs,
 		CasterID:     player.ID,
 		MaxLife:      projectileBaseLife,
 		Life:         projectileBaseLife,
@@ -89,9 +94,9 @@ func (s *GameServer) executePlayerProjectileSkill(player *PlayerState, mapState 
 func (s *GameServer) executeBotProjectileSkill(bot *BotState, mapState *MapState, target Point) {
 	botStats := s.CalculateStats(bot, mapState)
 
-	projectileItemID := "atlas_pistol_mk2_bullet"
-	if d, ok := s.entityDefaults["skill"]; ok && d.LiveItemID != "" {
-		projectileItemID = d.LiveItemID
+	projectileItemIDs := []string{"atlas_pistol_mk2_bullet"}
+	if d, ok := s.entityDefaults["skill"]; ok && len(d.LiveItemIDs) > 0 {
+		projectileItemIDs = d.LiveItemIDs
 	}
 	// Intelligence stat increases the chance of the skill activating.
 	// We'll model this as a linear increase, capping the effective chance.
@@ -135,6 +140,11 @@ func (s *GameServer) executeBotProjectileSkill(bot *BotState, mapState *MapState
 	spawnX := bot.Pos.X - (dirX * projectileStep)
 	spawnY := bot.Pos.Y - (dirY * projectileStep)
 
+	var projectileOLs []ObjectLayerState
+	for _, itemID := range projectileItemIDs {
+		projectileOLs = append(projectileOLs, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+	}
+
 	projectileBot := &BotState{
 		ID:           uuid.New().String(),
 		MapCode:      bot.MapCode,
@@ -143,7 +153,7 @@ func (s *GameServer) executeBotProjectileSkill(bot *BotState, mapState *MapState
 		Behavior:     "skill",
 		Direction:    projectileDirection,
 		ExpiresAt:    time.Now().Add(projectileLifetime),
-		ObjectLayers: []ObjectLayerState{{ItemID: projectileItemID, Active: true, Quantity: 1}},
+		ObjectLayers: projectileOLs,
 		CasterID:     bot.ID,
 		MaxLife:      projectileBaseLife,
 		Life:         projectileBaseLife,

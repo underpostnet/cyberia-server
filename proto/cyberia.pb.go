@@ -1977,10 +1977,10 @@ func (x *InstanceConfig) GetEntityDefaults() []*EntityTypeDefault {
 // default_floor_item_id (44), bot_default_item_id (48), user_default_item_id (49).
 type EntityTypeDefault struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	EntityType    string                 `protobuf:"bytes,1,opt,name=entity_type,json=entityType,proto3" json:"entity_type,omitempty"`   // matches entity_type_str / bot Behavior in game engine
-	LiveItemId    string                 `protobuf:"bytes,2,opt,name=live_item_id,json=liveItemId,proto3" json:"live_item_id,omitempty"` // OL item ID for the alive/active state
-	DeadItemId    string                 `protobuf:"bytes,3,opt,name=dead_item_id,json=deadItemId,proto3" json:"dead_item_id,omitempty"` // OL item ID for the dead/ghost/respawning state
-	ColorKey      string                 `protobuf:"bytes,4,opt,name=color_key,json=colorKey,proto3" json:"color_key,omitempty"`         // palette key for solid-color fallback (no OL items)
+	EntityType    string                 `protobuf:"bytes,1,opt,name=entity_type,json=entityType,proto3" json:"entity_type,omitempty"`      // matches entity_type_str / bot Behavior in game engine
+	LiveItemIds   []string               `protobuf:"bytes,2,rep,name=live_item_ids,json=liveItemIds,proto3" json:"live_item_ids,omitempty"` // OL item IDs for the alive/active state
+	DeadItemIds   []string               `protobuf:"bytes,3,rep,name=dead_item_ids,json=deadItemIds,proto3" json:"dead_item_ids,omitempty"` // OL item IDs for the dead/ghost/respawning state
+	ColorKey      string                 `protobuf:"bytes,4,opt,name=color_key,json=colorKey,proto3" json:"color_key,omitempty"`            // palette key for solid-color fallback (no OL items)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2022,18 +2022,18 @@ func (x *EntityTypeDefault) GetEntityType() string {
 	return ""
 }
 
-func (x *EntityTypeDefault) GetLiveItemId() string {
+func (x *EntityTypeDefault) GetLiveItemIds() []string {
 	if x != nil {
-		return x.LiveItemId
+		return x.LiveItemIds
 	}
-	return ""
+	return nil
 }
 
-func (x *EntityTypeDefault) GetDeadItemId() string {
+func (x *EntityTypeDefault) GetDeadItemIds() []string {
 	if x != nil {
-		return x.DeadItemId
+		return x.DeadItemIds
 	}
-	return ""
+	return nil
 }
 
 func (x *EntityTypeDefault) GetColorKey() string {
@@ -2757,14 +2757,12 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\fskill_config\x18- \x03(\v2\x19.cyberia.SkillConfigEntryR\vskillConfig\x124\n" +
 	"\vskill_rules\x18/ \x01(\v2\x13.cyberia.SkillRulesR\n" +
 	"skillRules\x12C\n" +
-	"\x0fentity_defaults\x184 \x03(\v2\x1a.cyberia.EntityTypeDefaultR\x0eentityDefaultsJ\x04\b#\x10$J\x04\b$\x10%J\x04\b%\x10&J\x04\b&\x10'J\x04\b'\x10(J\x04\b(\x10)J\x04\b)\x10*J\x04\b*\x10+J\x04\b+\x10,J\x04\b.\x10/J\x04\b\x1d\x10\x1eJ\x04\b\x1f\x10 J\x04\b,\x10-J\x04\b0\x101J\x04\b1\x102J\x04\b2\x103J\x04\b3\x104R\x13bullet_spawn_chanceR\x12bullet_lifetime_msR\fbullet_widthR\rbullet_heightR\x17bullet_speed_multiplierR\x19doppelganger_spawn_chanceR\x18doppelganger_lifetime_msR\x19doppelganger_spawn_radiusR\"doppelganger_initial_life_fractionR\x14default_player_colorR\rghost_item_idR\fcoin_item_idR\x15default_floor_item_idR\x13bot_default_item_idR\x14user_default_item_idR\x16weapon_default_item_idR\x16bullet_default_item_id\"\x95\x01\n" +
+	"\x0fentity_defaults\x184 \x03(\v2\x1a.cyberia.EntityTypeDefaultR\x0eentityDefaultsJ\x04\b#\x10$J\x04\b$\x10%J\x04\b%\x10&J\x04\b&\x10'J\x04\b'\x10(J\x04\b(\x10)J\x04\b)\x10*J\x04\b*\x10+J\x04\b+\x10,J\x04\b.\x10/J\x04\b\x1d\x10\x1eJ\x04\b\x1f\x10 J\x04\b,\x10-J\x04\b0\x101J\x04\b1\x102J\x04\b2\x103J\x04\b3\x104R\x13bullet_spawn_chanceR\x12bullet_lifetime_msR\fbullet_widthR\rbullet_heightR\x17bullet_speed_multiplierR\x19doppelganger_spawn_chanceR\x18doppelganger_lifetime_msR\x19doppelganger_spawn_radiusR\"doppelganger_initial_life_fractionR\x14default_player_colorR\rghost_item_idR\fcoin_item_idR\x15default_floor_item_idR\x13bot_default_item_idR\x14user_default_item_idR\x16weapon_default_item_idR\x16bullet_default_item_id\"\x99\x01\n" +
 	"\x11EntityTypeDefault\x12\x1f\n" +
 	"\ventity_type\x18\x01 \x01(\tR\n" +
-	"entityType\x12 \n" +
-	"\flive_item_id\x18\x02 \x01(\tR\n" +
-	"liveItemId\x12 \n" +
-	"\fdead_item_id\x18\x03 \x01(\tR\n" +
-	"deadItemId\x12\x1b\n" +
+	"entityType\x12\"\n" +
+	"\rlive_item_ids\x18\x02 \x03(\tR\vliveItemIds\x12\"\n" +
+	"\rdead_item_ids\x18\x03 \x03(\tR\vdeadItemIds\x12\x1b\n" +
 	"\tcolor_key\x18\x04 \x01(\tR\bcolorKey\"\xe1\x02\n" +
 	"\rEntityMessage\x12\x1f\n" +
 	"\ventity_type\x18\x01 \x01(\tR\n" +

@@ -232,7 +232,7 @@ type GameServer struct {
 	// Floor defaults
 	defaultFloorItemID string
 
-	// Per-entity-type visual defaults (live item, dead item, color key).
+	// Per-entity-type visual defaults (live items, dead items, color key).
 	entityDefaults map[string]EntityTypeDefaultConfig
 
 	// Portal defaults
@@ -243,10 +243,10 @@ type GameServer struct {
 }
 
 type EntityTypeDefaultConfig struct {
-        EntityType string `json:"entityType"`
-        LiveItemID string `json:"liveItemId"`
-        DeadItemID string `json:"deadItemId"`
-        ColorKey   string `json:"colorKey"`
+        EntityType  string   `json:"entityType"`
+        LiveItemIDs []string `json:"liveItemIds"`
+        DeadItemIDs []string `json:"deadItemIds"`
+        ColorKey    string   `json:"colorKey"`
 }
 
 type ColorRGBA struct {

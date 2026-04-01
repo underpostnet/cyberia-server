@@ -176,8 +176,10 @@ func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 		})
 	}
 	if len(floor.ObjectLayers) == 0 {
-		if d, ok := s.entityDefaults["floor"]; ok && d.LiveItemID != "" {
-			floor.ObjectLayers = []ObjectLayerState{{ItemID: d.LiveItemID, Active: true, Quantity: 1}}
+		if d, ok := s.entityDefaults["floor"]; ok && len(d.LiveItemIDs) > 0 {
+			for _, itemID := range d.LiveItemIDs {
+				floor.ObjectLayers = append(floor.ObjectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+			}
 		}
 	}
 	ms.floors[floor.ID] = floor
@@ -225,8 +227,10 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 	// If no items are assigned in the map definition use the instance-level
 	// bot default visual (atlas if present, solid BOT colour otherwise).
 	if len(objectLayers) == 0 {
-		if d, ok := s.entityDefaults["bot"]; ok && d.LiveItemID != "" {
-			objectLayers = []ObjectLayerState{{ItemID: d.LiveItemID, Active: true, Quantity: 1}}
+		if d, ok := s.entityDefaults["bot"]; ok && len(d.LiveItemIDs) > 0 {
+			for _, itemID := range d.LiveItemIDs {
+				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+			}
 		}
 	}
 

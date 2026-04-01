@@ -113,8 +113,10 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// If no default layers are configured use the instance-level user default
 	// visual (atlas if present, solid PLAYER colour otherwise).
 	if len(playerOLs) == 0 {
-		if d, ok := s.entityDefaults["player"]; ok && d.LiveItemID != "" {
-			playerOLs = []ObjectLayerState{{ItemID: d.LiveItemID, Active: true, Quantity: 1}}
+		if d, ok := s.entityDefaults["player"]; ok && len(d.LiveItemIDs) > 0 {
+			for _, itemID := range d.LiveItemIDs {
+				playerOLs = append(playerOLs, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+			}
 		}
 	}
 

@@ -343,10 +343,10 @@ message InstanceConfig {
 // Replaces the former flat string fields: ghost_item_id (29), coin_item_id (31),
 // default_floor_item_id (44), bot_default_item_id (48), user_default_item_id (49).
 message EntityTypeDefault {
-  string entity_type  = 1; // matches entity_type_str / bot Behavior in game engine
-  string live_item_id = 2; // OL item ID for the alive/active state
-  string dead_item_id = 3; // OL item ID for the dead/ghost/respawning state
-  string color_key    = 4; // palette key for solid-color fallback (no OL items)
+  string entity_type    = 1; // matches entity_type_str / bot Behavior in game engine
+  repeated string live_item_ids = 2; // OL item IDs for the alive/active state
+  repeated string dead_item_ids = 3; // OL item IDs for the dead/ghost/respawning state
+  string color_key      = 4; // palette key for solid-color fallback (no OL items)
 }
 
 // ═══════════════════════════════════════════════════════════════════
