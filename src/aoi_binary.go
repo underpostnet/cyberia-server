@@ -52,6 +52,7 @@
 //	    f32  aoiMinX, aoiMinY, aoiMaxX, aoiMaxY
 //	    u8   onPortal (0/1)
 //	    u16  sumStatsLimit
+//	    u16  activeStatsSum
 //	    u8+str mapCode (length-prefixed map code string)
 //	    u8   pathLen
 //	    per path point: i16 x, i16 y
@@ -238,7 +239,7 @@ func (e *BinaryAOIEncoder) WriteForeground(fg ObjectState) {
 	e.writeEntityBase(EntityTypeForeground, fg.ID, fg.Pos, fg.Dims, NONE, IDLE)
 }
 
-func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState) {
+func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int) {
 	flags := EntityTypePlayer | FlagHasLife
 	var respawnIn *float64
 	if p.IsGhost() {
@@ -267,6 +268,7 @@ func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState) {
 		e.putU8(0)
 	}
 	e.putU16(uint16(p.SumStatsLimit))
+	e.putU16(uint16(activeStatsSum))
 	e.putString(p.MapCode)
 
 	pathLen := len(p.Path)
@@ -371,7 +373,10 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 	}
 
 	// Self-player (always last)
-	enc.WriteSelfPlayer(player)
+	playerStats := s.CalculateStats(player, mapState)
+	activeStatsSum := int(playerStats.Effect + playerStats.Resistance + playerStats.Agility +
+		playerStats.Range + playerStats.Intelligence + playerStats.Utility)
+	enc.WriteSelfPlayer(player, activeStatsSum)
 
 	// Patch entity count in header
 	binary.LittleEndian.PutUint16(enc.buf[headerPos+3:], uint16(entityCount))
