@@ -126,6 +126,9 @@ type BotState struct {
 type PortalConfig struct {
 	DestMapCode string
 	SpawnRadius float64
+	PortalMode  string  // inter-portal | inter-random | intra-random | intra-portal
+	DestCellX   float64 // target cell position (used by portal-to-portal modes)
+	DestCellY   float64
 }
 
 type PortalState struct {
@@ -133,8 +136,10 @@ type PortalState struct {
 	Pos          Point         `json:"Pos"`
 	Dims         Dimensions    `json:"Dims"`
 	Type         string        `json:"Type"`
+	Subtype      string        `json:"Subtype"` // inter-portal | inter-random | intra-random | intra-portal
 	PortalConfig *PortalConfig `json:"-"`
 	Label        string        `json:"PortalLabel"`
+	Color        ColorRGBA     `json:"color"`
 }
 
 type MapState struct {

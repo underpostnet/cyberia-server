@@ -1044,6 +1044,8 @@ type PortalEdge struct {
 	TargetMapCode string                 `protobuf:"bytes,4,opt,name=target_map_code,json=targetMapCode,proto3" json:"target_map_code,omitempty"`
 	TargetCellX   int32                  `protobuf:"varint,5,opt,name=target_cell_x,json=targetCellX,proto3" json:"target_cell_x,omitempty"`
 	TargetCellY   int32                  `protobuf:"varint,6,opt,name=target_cell_y,json=targetCellY,proto3" json:"target_cell_y,omitempty"`
+	// Transport behaviour: inter-portal | inter-random | intra-random | intra-portal
+	PortalMode    string `protobuf:"bytes,7,opt,name=portal_mode,json=portalMode,proto3" json:"portal_mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1118,6 +1120,13 @@ func (x *PortalEdge) GetTargetCellY() int32 {
 		return x.TargetCellY
 	}
 	return 0
+}
+
+func (x *PortalEdge) GetPortalMode() string {
+	if x != nil {
+		return x.PortalMode
+	}
+	return ""
 }
 
 type InstanceMessage struct {
@@ -2053,10 +2062,12 @@ type EntityMessage struct {
 	Color              string                 `protobuf:"bytes,6,opt,name=color,proto3" json:"color,omitempty"`
 	ObjectLayerItemIds []string               `protobuf:"bytes,7,rep,name=object_layer_item_ids,json=objectLayerItemIds,proto3" json:"object_layer_item_ids,omitempty"`
 	// Bot-specific fields
-	SpawnRadius   float64 `protobuf:"fixed64,8,opt,name=spawn_radius,json=spawnRadius,proto3" json:"spawn_radius,omitempty"` // wandering radius (0 = use server default)
-	AggroRange    float64 `protobuf:"fixed64,9,opt,name=aggro_range,json=aggroRange,proto3" json:"aggro_range,omitempty"`    // aggro detection range (0 = use server default)
-	MaxLife       float64 `protobuf:"fixed64,10,opt,name=max_life,json=maxLife,proto3" json:"max_life,omitempty"`            // base max life (0 = use server default)
-	LifeRegen     float64 `protobuf:"fixed64,11,opt,name=life_regen,json=lifeRegen,proto3" json:"life_regen,omitempty"`      // life regen rate (0 = use server default)
+	SpawnRadius float64 `protobuf:"fixed64,8,opt,name=spawn_radius,json=spawnRadius,proto3" json:"spawn_radius,omitempty"` // wandering radius (0 = use server default)
+	AggroRange  float64 `protobuf:"fixed64,9,opt,name=aggro_range,json=aggroRange,proto3" json:"aggro_range,omitempty"`    // aggro detection range (0 = use server default)
+	MaxLife     float64 `protobuf:"fixed64,10,opt,name=max_life,json=maxLife,proto3" json:"max_life,omitempty"`            // base max life (0 = use server default)
+	LifeRegen   float64 `protobuf:"fixed64,11,opt,name=life_regen,json=lifeRegen,proto3" json:"life_regen,omitempty"`      // life regen rate (0 = use server default)
+	// Portal-specific field
+	PortalSubtype string `protobuf:"bytes,12,opt,name=portal_subtype,json=portalSubtype,proto3" json:"portal_subtype,omitempty"` // inter-portal | inter-random | intra-random | intra-portal
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2166,6 +2177,13 @@ func (x *EntityMessage) GetLifeRegen() float64 {
 		return x.LifeRegen
 	}
 	return 0
+}
+
+func (x *EntityMessage) GetPortalSubtype() string {
+	if x != nil {
+		return x.PortalSubtype
+	}
+	return ""
 }
 
 type MapDataMessage struct {
@@ -2666,7 +2684,7 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\x06frames\x18\b \x01(\v2\x18.cyberia.DirectionFramesR\x06frames\"7\n" +
 	"\x1aGetAtlasSpriteSheetRequest\x12\x19\n" +
 	"\bitem_key\x18\x01 \x01(\tR\aitemKey\"!\n" +
-	"\x1fGetAtlasSpriteSheetBatchRequest\"\xec\x01\n" +
+	"\x1fGetAtlasSpriteSheetBatchRequest\"\x8d\x02\n" +
 	"\n" +
 	"PortalEdge\x12&\n" +
 	"\x0fsource_map_code\x18\x01 \x01(\tR\rsourceMapCode\x12\"\n" +
@@ -2674,7 +2692,9 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\rsource_cell_y\x18\x03 \x01(\x05R\vsourceCellY\x12&\n" +
 	"\x0ftarget_map_code\x18\x04 \x01(\tR\rtargetMapCode\x12\"\n" +
 	"\rtarget_cell_x\x18\x05 \x01(\x05R\vtargetCellX\x12\"\n" +
-	"\rtarget_cell_y\x18\x06 \x01(\x05R\vtargetCellY\"\x8f\x02\n" +
+	"\rtarget_cell_y\x18\x06 \x01(\x05R\vtargetCellY\x12\x1f\n" +
+	"\vportal_mode\x18\a \x01(\tR\n" +
+	"portalMode\"\x8f\x02\n" +
 	"\x0fInstanceMessage\x12\x19\n" +
 	"\bmongo_id\x18\x01 \x01(\tR\amongoId\x12\x12\n" +
 	"\x04code\x18\x02 \x01(\tR\x04code\x12\x12\n" +
@@ -2763,7 +2783,7 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"entityType\x12\"\n" +
 	"\rlive_item_ids\x18\x02 \x03(\tR\vliveItemIds\x12\"\n" +
 	"\rdead_item_ids\x18\x03 \x03(\tR\vdeadItemIds\x12\x1b\n" +
-	"\tcolor_key\x18\x04 \x01(\tR\bcolorKey\"\xe1\x02\n" +
+	"\tcolor_key\x18\x04 \x01(\tR\bcolorKey\"\x88\x03\n" +
 	"\rEntityMessage\x12\x1f\n" +
 	"\ventity_type\x18\x01 \x01(\tR\n" +
 	"entityType\x12\x1e\n" +
@@ -2779,7 +2799,8 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\bmax_life\x18\n" +
 	" \x01(\x01R\amaxLife\x12\x1d\n" +
 	"\n" +
-	"life_regen\x18\v \x01(\x01R\tlifeRegen\"\xf5\x01\n" +
+	"life_regen\x18\v \x01(\x01R\tlifeRegen\x12%\n" +
+	"\x0eportal_subtype\x18\f \x01(\tR\rportalSubtype\"\xf5\x01\n" +
 	"\x0eMapDataMessage\x12\x19\n" +
 	"\bmongo_id\x18\x01 \x01(\tR\amongoId\x12\x12\n" +
 	"\x04code\x18\x02 \x01(\tR\x04code\x12\x12\n" +

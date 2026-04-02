@@ -191,6 +191,8 @@ message PortalEdge {
   string target_map_code = 4;
   int32  target_cell_x   = 5;
   int32  target_cell_y   = 6;
+  // Transport behaviour: inter-portal | inter-random | intra-random | intra-portal
+  string portal_mode     = 7;
 }
 
 message InstanceMessage {
@@ -367,6 +369,9 @@ message EntityMessage {
   double          aggro_range  = 9;  // aggro detection range (0 = use server default)
   double          max_life     = 10; // base max life (0 = use server default)
   double          life_regen   = 11; // life regen rate (0 = use server default)
+
+  // Portal-specific field
+  string          portal_subtype = 12; // inter-portal | inter-random | intra-random | intra-portal
 }
 
 message MapDataMessage {

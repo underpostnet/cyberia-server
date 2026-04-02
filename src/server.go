@@ -380,11 +380,32 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 		return
 	}
 
-	// Find a walkable spawn point near the center of the destination map
-	spawnX := float64(destMapState.gridW) / 2.0
-	spawnY := float64(destMapState.gridH) / 2.0
-	spawnX += rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
-	spawnY += rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
+	// Determine spawn position based on portal mode
+	var spawnX, spawnY float64
+	mode := portal.PortalConfig.PortalMode
+	if mode == "" {
+		mode = "inter-portal"
+	}
+
+	switch mode {
+	case "inter-portal", "intra-portal":
+		// Spawn at the destination portal's position
+		spawnX = portal.PortalConfig.DestCellX
+		spawnY = portal.PortalConfig.DestCellY
+	case "inter-random", "intra-random":
+		// Spawn at a random position within the destination map
+		spawnX = rand.Float64() * float64(destMapState.gridW)
+		spawnY = rand.Float64() * float64(destMapState.gridH)
+	default:
+		spawnX = float64(destMapState.gridW) / 2.0
+		spawnY = float64(destMapState.gridH) / 2.0
+	}
+
+	// Apply spawn radius jitter for portal-to-portal modes
+	if mode == "inter-portal" || mode == "intra-portal" {
+		spawnX += rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
+		spawnY += rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
+	}
 
 	destPosI, err := destMapState.pathfinder.findClosestWalkablePoint(PointI{X: int(spawnX), Y: int(spawnY)}, player.Dims)
 	if err != nil {

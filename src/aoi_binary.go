@@ -226,8 +226,12 @@ func (e *BinaryAOIEncoder) WriteObstacle(o ObjectState) {
 }
 
 func (e *BinaryAOIEncoder) WritePortal(p *PortalState) {
-	e.writeEntityBase(EntityTypePortal, p.ID, p.Pos, p.Dims, NONE, IDLE)
+	e.writeEntityBase(EntityTypePortal|FlagHasColor, p.ID, p.Pos, p.Dims, NONE, IDLE)
 	e.putString(p.Label)
+	e.putU8(byte(p.Color.R))
+	e.putU8(byte(p.Color.G))
+	e.putU8(byte(p.Color.B))
+	e.putU8(byte(p.Color.A))
 }
 
 func (e *BinaryAOIEncoder) WriteForeground(fg ObjectState) {

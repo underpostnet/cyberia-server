@@ -129,16 +129,25 @@ func (s *GameServer) BuildWorldFromInstance(
 			continue
 		}
 
+		portalMode := edge.GetPortalMode()
+		if portalMode == "" {
+			portalMode = "inter-portal"
+		}
+
 		srcPortal.PortalConfig = &PortalConfig{
 			DestMapCode: dstMapCode,
 			SpawnRadius: s.portalSpawnRadius,
+			PortalMode:  portalMode,
+			DestCellX:   float64(edge.GetTargetCellX()),
+			DestCellY:   float64(edge.GetTargetCellY()),
 		}
 
+		modeTag := fmt.Sprintf("[%s]", portalMode)
 		if dstPortal != nil {
-			srcPortal.Label = fmt.Sprintf("%s, Pos: (%d, %d)",
-				dstMapCode, int(dstPortal.Pos.X), int(dstPortal.Pos.Y))
+			srcPortal.Label = fmt.Sprintf("%s %s, Pos: (%d, %d)",
+				modeTag, dstMapCode, int(dstPortal.Pos.X), int(dstPortal.Pos.Y))
 		} else {
-			srcPortal.Label = dstMapCode
+			srcPortal.Label = fmt.Sprintf("%s %s", modeTag, dstMapCode)
 		}
 	}
 
@@ -149,6 +158,9 @@ func (s *GameServer) BuildWorldFromInstance(
 		log.Printf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots",
 			code, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots))
 	}
+
+	// Print ASCII graph of portal topology
+	printInstanceGraph(instance, s.maps)
 }
 
 // findPortalByCell finds a portal entry by cell coordinates.
@@ -315,11 +327,25 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 		dims.Height = 3
 	}
 
+	subtype := ent.GetPortalSubtype()
+	if subtype == "" {
+		subtype = "inter-portal"
+	}
+
+	// Resolve colour from palette using subtype-specific key
+	colorKey := portalSubtypeColorKey(subtype)
+	color := s.colors[colorKey]
+	if color == (ColorRGBA{}) {
+		color = s.colors["PORTAL"]
+	}
+
 	portal := &PortalState{
-		ID:   uuid.New().String(),
-		Pos:  Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
-		Dims: dims,
-		Type: "portal",
+		ID:      uuid.New().String(),
+		Pos:     Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
+		Dims:    dims,
+		Type:    "portal",
+		Subtype: subtype,
+		Color:   color,
 	}
 	ms.portals[portal.ID] = portal
 
@@ -327,6 +353,22 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 	// The player must stand on the portal for portalHoldTime to trigger transport.
 
 	return portal
+}
+
+// portalSubtypeColorKey maps a portal subtype string to its palette colour key.
+func portalSubtypeColorKey(subtype string) string {
+	switch subtype {
+	case "inter-portal":
+		return "PORTAL_INTER_PORTAL"
+	case "inter-random":
+		return "PORTAL_INTER_RANDOM"
+	case "intra-random":
+		return "PORTAL_INTRA_RANDOM"
+	case "intra-portal":
+		return "PORTAL_INTRA_PORTAL"
+	default:
+		return "PORTAL"
+	}
 }
 
 // generateFloors creates a default floor grid if no floors are in the DB.
@@ -353,4 +395,116 @@ func (ms *MapState) generateFloors(rows, cols int, floorItemID string) {
 			ms.floors[floor.ID] = floor
 		}
 	}
+}
+
+// printInstanceGraph prints an ASCII representation of the instance's map/portal graph.
+func printInstanceGraph(instance *pb.InstanceMessage, maps map[string]*MapState) {
+	mapCodes := instance.GetMapCodes()
+	edges := instance.GetPortals()
+
+	if len(mapCodes) == 0 {
+		log.Println("[InstanceGraph] (empty graph — no maps)")
+		return
+	}
+
+	// Collect adjacency: source → []target (with cell coords and mode)
+	type edgeLabel struct {
+		target string
+		srcX   int32
+		srcY   int32
+		dstX   int32
+		dstY   int32
+		mode   string
+	}
+	adj := make(map[string][]edgeLabel)
+	for _, e := range edges {
+		adj[e.GetSourceMapCode()] = append(adj[e.GetSourceMapCode()], edgeLabel{
+			target: e.GetTargetMapCode(),
+			srcX:   e.GetSourceCellX(),
+			srcY:   e.GetSourceCellY(),
+			dstX:   e.GetTargetCellX(),
+			dstY:   e.GetTargetCellY(),
+			mode:   e.GetPortalMode(),
+		})
+	}
+
+	// Build all content lines first to measure widths
+	var content []string
+
+	title := fmt.Sprintf("  Instance Graph: %s  ", instance.GetCode())
+	summary := fmt.Sprintf("  Maps: %d   Edges: %d", len(mapCodes), len(edges))
+	content = append(content, title)
+	content = append(content, summary)
+	content = append(content, "") // separator
+	content = append(content, "  Nodes (maps):")
+
+	for _, code := range mapCodes {
+		line := fmt.Sprintf("    [%s]", code)
+		if ms, ok := maps[code]; ok {
+			line += fmt.Sprintf("  [F:%d O:%d B:%d P:%d]",
+				len(ms.floors), len(ms.obstacles), len(ms.bots), len(ms.portals))
+		}
+		content = append(content, line)
+	}
+
+	content = append(content, "")
+	content = append(content, "  Edges (portals):")
+
+	if len(edges) == 0 {
+		content = append(content, "    (no portal edges)")
+	} else {
+		for _, code := range mapCodes {
+			for _, t := range adj[code] {
+				var dstPos string
+				if t.mode == "inter-random" || t.mode == "intra-random" {
+					dstPos = "(random)"
+				} else {
+					dstPos = fmt.Sprintf("(%d,%d)", t.dstX, t.dstY)
+				}
+				content = append(content, fmt.Sprintf("    [%s] (%d,%d) ──▶ [%s] %s {%s}",
+					code, t.srcX, t.srcY, t.target, dstPos, t.mode))
+			}
+		}
+	}
+
+	// Find max content width
+	maxW := 0
+	for _, l := range content {
+		if len([]rune(l)) > maxW {
+			maxW = len([]rune(l))
+		}
+	}
+	// Account for the arrow character width (3-byte rune counted as 1)
+	boxW := maxW + 2 // padding inside box
+
+	pad := func(s string, width int) string {
+		runeLen := len([]rune(s))
+		if runeLen >= width {
+			return s
+		}
+		p := make([]byte, width-runeLen)
+		for i := range p {
+			p[i] = ' '
+		}
+		return s + string(p)
+	}
+
+	hLine := ""
+	for i := 0; i < boxW; i++ {
+		hLine += "═"
+	}
+
+	log.Printf("[InstanceGraph]")
+	log.Printf("[InstanceGraph] ╔%s╗", hLine)
+
+	for i, l := range content {
+		if i == 2 {
+			log.Printf("[InstanceGraph] ╠%s╣", hLine)
+		} else {
+			log.Printf("[InstanceGraph] ║%s║", pad(l, boxW))
+		}
+	}
+
+	log.Printf("[InstanceGraph] ╚%s╝", hLine)
+	log.Printf("[InstanceGraph]")
 }
