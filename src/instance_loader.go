@@ -234,18 +234,6 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 		}
 	}
 
-	// Determine behavior from object layers:
-	// If the bot has a weapon-type item → hostile, otherwise passive
-	behavior := "passive"
-	for _, ol := range objectLayers {
-		if data, ok := s.GetObjectLayerData(ol.ItemID); ok {
-			if data.Data.Item.Type == "weapon" {
-				behavior = "hostile"
-				break
-			}
-		}
-	}
-
 	bot := &BotState{
 		ID:           uuid.New().String(),
 		MapCode:      mapCode,
@@ -255,7 +243,7 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 		TargetPos:    PointI{-1, -1},
 		Direction:    NONE,
 		Mode:         IDLE,
-		Behavior:     behavior,
+		Behavior:     s.DetermineBotBehavior(objectLayers),
 		SpawnCenter:  startPos,
 		SpawnRadius:  spawnRadius,
 		AggroRange:   aggroRange,
@@ -335,14 +323,8 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 	}
 	ms.portals[portal.ID] = portal
 
-	// Mark portal cells in pathfinder grid
-	for y := int(portal.Pos.Y); y < int(portal.Pos.Y+dims.Height); y++ {
-		for x := int(portal.Pos.X); x < int(portal.Pos.X+dims.Width); x++ {
-			if x >= 0 && x < ms.gridW && y >= 0 && y < ms.gridH {
-				ms.pathfinder.grid[y][x] = 1
-			}
-		}
-	}
+	// Portals are walkable — no grid cells are blocked.
+	// The player must stand on the portal for portalHoldTime to trigger transport.
 
 	return portal
 }

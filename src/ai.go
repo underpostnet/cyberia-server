@@ -1,11 +1,25 @@
 package game
 
 import (
-	"log"
 	"math"
 	"math/rand"
 	"time"
 )
+
+// DetermineBotBehavior derives a bot's behavior from its object layers.
+// If ANY active layer has a weapon-type item → "hostile", otherwise "passive".
+// Runtime-spawned entities (projectiles, doppelgangers) set behavior directly
+// and do not call this method.
+func (s *GameServer) DetermineBotBehavior(layers []ObjectLayerState) string {
+	for _, ol := range layers {
+		if data, ok := s.GetObjectLayerData(ol.ItemID); ok {
+			if data.Data.Item.Type == "weapon" {
+				return "hostile"
+			}
+		}
+	}
+	return "passive"
+}
 
 // randomPointWithinRadius returns a random walkable PointI within radius from center (or {-1,-1} on failure).
 func (s *GameServer) randomPointWithinRadius(ms *MapState, center Point, radius float64, dims Dimensions) PointI {
@@ -209,85 +223,6 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		}
 		// Move bot along its path
 		s.updateBotPosition(bot, mapState, botStats)
-
-		// --- LAYER RESTRICTION & VALIDATION LOGIC ---
-		activeLayerCount := 0
-		activeLayerTypes := make(map[string]bool)
-		hasAnySkin := false
-		firstSkinIndex := -1
-		activeSkinCount := 0
-
-		// Check if bot is dead - only allow dead item IDs to be active while dead
-		if bot.IsGhost() || bot.Life <= 0 {
-			for i := range bot.ObjectLayers {
-				if !s.isDeadItemID("bot", bot.ObjectLayers[i].ItemID) && bot.ObjectLayers[i].Active {
-					bot.ObjectLayers[i].Active = false
-					log.Printf("Bot %s is dead. Deactivating non-dead item '%s'.", bot.ID, bot.ObjectLayers[i].ItemID)
-				}
-			}
-		}
-
-		// First pass: enforce max layers and unique types by deactivating violators.
-		for i := range bot.ObjectLayers {
-			layer := &bot.ObjectLayers[i] // Work with a pointer to modify
-			if !layer.Active {
-				continue
-			}
-
-			var itemType string
-			if itemData, ok := s.GetObjectLayerData(layer.ItemID); ok {
-				itemType = itemData.Data.Item.Type
-			} else {
-				itemType = "generic"
-			}
-
-			// Rule: unique types for active layers.
-			if _, exists := activeLayerTypes[itemType]; exists {
-				log.Printf("Bot %s has a duplicate active item type '%s' with item '%s'. Deactivating.", bot.ID, itemType, layer.ItemID)
-				layer.Active = false
-				continue
-			}
-
-			// Rule: max active layers from config.
-			if activeLayerCount >= s.maxActiveLayers {
-				log.Printf("Bot %s has more than %d active layers. Deactivating item '%s'.", bot.ID, s.maxActiveLayers, layer.ItemID)
-				layer.Active = false
-				continue
-			}
-
-			activeLayerCount++
-			activeLayerTypes[itemType] = true
-		}
-
-		// Second pass: ensure bot has at least one active skin. This is a safeguard.
-		for i, layer := range bot.ObjectLayers {
-			var isSkin bool
-			if itemData, ok := s.GetObjectLayerData(layer.ItemID); ok {
-				isSkin = itemData.Data.Item.Type == "skin"
-			}
-
-			if !isSkin {
-				continue
-			}
-
-			hasAnySkin = true
-			if firstSkinIndex == -1 {
-				firstSkinIndex = i
-			}
-
-			if layer.Active {
-				activeSkinCount++
-			}
-		}
-
-		if hasAnySkin && activeSkinCount == 0 && firstSkinIndex != -1 {
-			// No active skins, but at least one skin exists. Activate the first one found.
-			bot.ObjectLayers[firstSkinIndex].Active = true
-			log.Printf("Bot %s had no active skins. Force-activated skin '%s'.", bot.ID, bot.ObjectLayers[firstSkinIndex].ItemID)
-		}
-
-		// If any layer was mutated above, ensure stats are recalculated next tick.
-		s.InvalidateStats(bot)
 	}
 }
 
