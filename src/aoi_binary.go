@@ -70,6 +70,21 @@ const (
 	MsgTypeAOIUpdate byte = 0x01
 	MsgTypeInitData  byte = 0x02
 	MsgTypeFullAOI   byte = 0x03
+	// MsgTypeFCT — Floating Combat Text event (14 bytes, little-endian).
+	// Wire format:
+	//   [0]      u8   0x04
+	//   [1]      u8   FCTType* (see constants below)
+	//   [2..5]   f32  worldX
+	//   [6..9]   f32  worldY
+	//   [10..13] u32  value (always positive; sign implied by type)
+	MsgTypeFCT byte = 0x04
+
+	// FCT event sub-types — MUST stay in sync with C constants in
+	// floating_combat_text.h and binary_aoi_decoder.h.
+	FCTTypeDamage   byte = 0x00 // life loss         — red    "-N"
+	FCTTypeRegen    byte = 0x01 // life gain / regen — green  "+N"
+	FCTTypeCoinGain byte = 0x02 // coins received    — yellow "+N"
+	FCTTypeCoinLoss byte = 0x03 // coins lost / sink — yellow "-N"
 
 	EntityTypePlayer     byte = 0
 	EntityTypeBot        byte = 1
@@ -108,6 +123,11 @@ func (e *BinaryAOIEncoder) putU8(v byte) {
 func (e *BinaryAOIEncoder) putU16(v uint16) {
 	binary.LittleEndian.PutUint16(e.buf[e.pos:], v)
 	e.pos += 2
+}
+
+func (e *BinaryAOIEncoder) putU32(v uint32) {
+	binary.LittleEndian.PutUint32(e.buf[e.pos:], v)
+	e.pos += 4
 }
 
 func (e *BinaryAOIEncoder) putI16(v int16) {
@@ -239,7 +259,7 @@ func (e *BinaryAOIEncoder) WriteForeground(fg ObjectState) {
 	e.writeEntityBase(EntityTypeForeground, fg.ID, fg.Pos, fg.Dims, NONE, IDLE)
 }
 
-func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int) {
+func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, coinBalance uint32) {
 	flags := EntityTypePlayer | FlagHasLife
 	var respawnIn *float64
 	if p.IsGhost() {
@@ -283,6 +303,8 @@ func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int) {
 	e.putI16(int16(p.TargetPos.X))
 	e.putI16(int16(p.TargetPos.Y))
 	e.putString(p.ActivePortalID)
+	// Coin balance — u32, always present (0 when no coins).
+	e.putU32(coinBalance)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -376,7 +398,19 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 	playerStats := s.CalculateStats(player, mapState)
 	activeStatsSum := int(playerStats.Effect + playerStats.Resistance + playerStats.Agility +
 		playerStats.Range + playerStats.Intelligence + playerStats.Utility)
-	enc.WriteSelfPlayer(player, activeStatsSum)
+	// Compute coin balance from the player's (inactive) coin inventory layer.
+	var coinBalance uint32
+	if s.coinItemID != "" {
+		for _, layer := range player.ObjectLayers {
+			if layer.ItemID == s.coinItemID {
+				if layer.Quantity > 0 {
+					coinBalance = uint32(layer.Quantity)
+				}
+				break
+			}
+		}
+	}
+	enc.WriteSelfPlayer(player, activeStatsSum, coinBalance)
 
 	// Patch entity count in header
 	binary.LittleEndian.PutUint16(enc.buf[headerPos+3:], uint16(entityCount))

@@ -217,9 +217,19 @@ type GameServer struct {
 	ghostItemID      string
 	collisionLifeLoss float64
 
-	// Economy
-	coinItemID          string
-	defaultCoinQuantity int
+	// Economy — Fountain & Sink model
+	// Fountains (coin injection)
+	coinItemID        string
+	botSpawnCoins     int     // coins every bot carries on spawn (infinite mint)
+	playerSpawnCoins  int     // coins given to player on first connect (guest wallet)
+	// Kill Transfer (redistribution)
+	coinKillPercentVsBot    float64 // fraction of victim coins transferred: PvE
+	coinKillPercentVsPlayer float64 // fraction of victim coins transferred: PvP (gentler)
+	coinKillMinAmount       int     // floor — every kill always pays this
+	// Sinks (coin removal; all default to 0 = disabled in alpha)
+	respawnCostPercent float64 // fraction burned on player death
+	portalFee          int     // flat fee per portal use
+	craftingFeePercent float64 // fraction of item value burned on crafting
 
 	// Regen
 	lifeRegenChance float64

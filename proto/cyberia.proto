@@ -243,6 +243,48 @@ message SkillConfigEntry {
   repeated string logic_event_ids = 4;   // ordered list of skill handler keys to execute ("atlas_pistol_mk2_logic", "doppelganger", …)
 }
 
+// EconomyRules groups all Fountain & Sink economy parameters for one instance.
+//
+// Design: Fountain & Sink (EVE Online / WoW model)
+//   Fountains   — inject new coins into the economy on every bot/player spawn.
+//   Kill Transfer — zero-sum redistribution between participants on a kill event.
+//   Sinks       — permanently destroy coins (alpha: all 0 / disabled by default).
+//
+// Off-chain fall-back: when a player has no on-chain session the server operates
+// a purely in-memory wallet that resets on reconnect.  All balances map 1-to-1
+// with the CKY ERC-1155 token (token ID 0) once the on-chain bridge is live.
+message EconomyRules {
+  // ── Fountains ──────────────────────────────────────────────────────────────
+  // Coins bots carry at spawn and on every respawn (infinite mint source).
+  // Guarantees PvE reward loops are never blocked by an empty bot wallet.
+  int32  bot_spawn_coins               = 1;
+  // Player starting wallet on connect (no persistence — resets on reconnect).
+  // In guest mode this is the only coin source; persists only with on-chain auth.
+  int32  player_spawn_coins            = 2;
+
+  // ── Kill Transfer (zero-sum redistribution) ────────────────────────────────
+  // Fraction [0,1] of the victim's coins transferred to the killer on a PvE kill
+  // (player kills bot, or bot kills bot).  Higher than PvP rate to reward grinding.
+  double coin_kill_percent_vs_bot      = 3;
+  // Fraction [0,1] transferred on a PvP kill.  Intentionally lower to reduce
+  // griefing frustration while still making PvP economically meaningful.
+  double coin_kill_percent_vs_player   = 4;
+  // Hard floor per kill: guarantees every successful kill pays at least this many
+  // coins regardless of the victim's wallet size or the percent rate.
+  int32  coin_kill_min_amount          = 5;
+
+  // ── Sinks (alpha stubs — set to 0 to disable) ─────────────────────────────
+  // Fraction [0,1] of the dying player's coins permanently burned on respawn.
+  // Incentivises caution; 0 = disabled (recommended for alpha).
+  double respawn_cost_percent          = 6;
+  // Flat coins burned each time a player uses a portal (travel tax).
+  // Drains coin hoarding; 0 = disabled.
+  int32  portal_fee                    = 7;
+  // Fraction [0,1] of item value burned on any crafting action (production tax).
+  // 0 = disabled until the crafting system is implemented.
+  double crafting_fee_percent          = 8;
+}
+
 // SkillRules groups the numeric tuning parameters for each skill archetype.
 // These are instance-level defaults; individual SkillConfigEntry entries define
 // WHICH items trigger WHICH logic, while SkillRules defines HOW that logic behaves.
@@ -304,7 +346,8 @@ message InstanceConfig {
   double collision_life_loss           = 30;
 
   // ── Economy ──
-  int32  default_coin_quantity         = 32;
+  // Wire numbers reserved to prevent field ID reuse (moved to economy_rules = 62).
+  reserved 32, 53, 54, 55, 56, 57, 58, 59, 60, 61;
 
   // ── Regen ──
   double life_regen_chance             = 33;
@@ -332,6 +375,9 @@ message InstanceConfig {
 
   // ── Skill tuning parameters ──
   SkillRules skill_rules                 = 47;
+
+  // ── Economy parameters (Fountain & Sink model) ──
+  EconomyRules economy_rules             = 62;
 
   // ── Entity type rendering defaults ─────────────────────────────────────────
   // Structured per-entity-type configuration replacing the former flat item ID

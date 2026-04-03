@@ -270,6 +270,9 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 	s.ApplyResistanceStat(bot, ms)
 	bot.Life = bot.MaxLife * s.initialLifeFraction
 
+	// Fountain: credit the bot's starting coin supply (same path as respawn).
+	s.FountainInitBot(bot)
+
 	// Initial wandering path
 	target := s.randomPointWithinRadius(ms, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
 	if target.X >= 0 {

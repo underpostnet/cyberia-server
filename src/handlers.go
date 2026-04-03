@@ -119,7 +119,6 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-
 	playerState := &PlayerState{
 		ID:            playerID,
 		MapCode:       startMapCode,
@@ -146,6 +145,9 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	playerState.Client = client
 
 	startMapState.players[playerID] = playerState
+
+	// Economy: credit the player's starting wallet (Fountain: playerSpawnCoins).
+	s.FountainInitPlayer(playerState)
 
 	// Apply initial stats (like Resistance for MaxLife) after creation.
 	s.ApplyResistanceStat(playerState, startMapState)
@@ -263,11 +265,8 @@ func (c *Client) readPump(server *GameServer) {
 
 			server.mu.Unlock()
 
-			// --- Skills & regen fire on EVERY valid TAP ---
-			// Probability (Intelligence) is the natural limiter for skills;
-			// movement is a separate rendering concern gated by Utility cooldown.
-			server.handleProbabilisticRegen(player, mapState)
-			server.HandlePlayerActionSkills(player, mapState, Point{X: targetX, Y: targetY})
+			// Skills and regen fire on EVERY valid TAP regardless of movement cooldown.
+			server.HandlePlayerTapAction(player, mapState, Point{X: targetX, Y: targetY})
 
 			// Movement path is only recalculated when the cooldown allows.
 			if !movementReady {

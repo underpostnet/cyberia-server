@@ -96,10 +96,23 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	s.respawnDuration = time.Duration(cfg.GetRespawnDurationMs()) * time.Millisecond
 	s.collisionLifeLoss = cfg.GetCollisionLifeLoss()
 
-	// Economy
-	s.defaultCoinQuantity = int(cfg.GetDefaultCoinQuantity())
-
-	// Regen
+	// Economy — Fountain & Sink model (nested EconomyRules proto message).
+	er := cfg.GetEconomyRules()
+	if er == nil {
+		er = &pb.EconomyRules{}
+	}
+	s.botSpawnCoins = int(er.GetBotSpawnCoins())
+	s.playerSpawnCoins = int(er.GetPlayerSpawnCoins())
+	s.coinKillPercentVsBot = er.GetCoinKillPercentVsBot()
+	s.coinKillPercentVsPlayer = er.GetCoinKillPercentVsPlayer()
+	if s.coinKillPercentVsPlayer == 0 {
+		// Default PvP to half the PvE rate if not explicitly set.
+		s.coinKillPercentVsPlayer = s.coinKillPercentVsBot * 0.5
+	}
+	s.coinKillMinAmount = int(er.GetCoinKillMinAmount())
+	s.respawnCostPercent = er.GetRespawnCostPercent()
+	s.portalFee = int(er.GetPortalFee())
+	s.craftingFeePercent = er.GetCraftingFeePercent()
 	s.lifeRegenChance = cfg.GetLifeRegenChance()
 	s.maxChance = cfg.GetMaxChance()
 

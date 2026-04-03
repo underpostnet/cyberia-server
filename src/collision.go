@@ -105,6 +105,9 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 
 // handlePlayerDeath sets a player to a dead/ghost state.
 func (s *GameServer) handlePlayerDeath(player *PlayerState) {
+	// Economy: apply respawn-cost sink before saving layers (disabled by default, rate = 0).
+	s.SinkRespawnCost(player)
+
 	// Make a definitive copy of the object layers *after* on-kill effects (like coin transfer) have been applied.
 	// This state will be restored on respawn.
 	layersToSave := make([]ObjectLayerState, len(player.ObjectLayers))
@@ -204,20 +207,8 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 			bot.Life = bot.MaxLife
 			bot.RespawnTime = time.Time{}
 
-			// Reset coin quantity for respawned bots.
-			var coinLayerFound bool
-			for i := range bot.ObjectLayers {
-				if bot.ObjectLayers[i].ItemID == s.coinItemID {
-					bot.ObjectLayers[i].Quantity = s.defaultCoinQuantity
-					coinLayerFound = true
-					break
-				}
-			}
-
-			if !coinLayerFound {
-				// If the bot somehow lost its coin layer, add it back on respawn.
-				bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: s.coinItemID, Active: false, Quantity: s.defaultCoinQuantity})
-			}
+			// Reset coin supply via the Fountain — single source of truth.
+			s.FountainInitBot(bot)
 		}
 	}
 }

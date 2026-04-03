@@ -6,10 +6,19 @@ type SkillDefinition struct {
 	LogicEventIDs []string
 }
 
-// HandlePlayerActionSkills checks if a player's action triggers any skills
-// based on their active items and calls the corresponding skill logic.
-// Called from readPump (handlers.go) AFTER s.mu is released — callerHoldsLock = false.
-func (s *GameServer) HandlePlayerActionSkills(player *PlayerState, mapState *MapState, target Point) {
+// HandlePlayerTapAction is the canonical handler for every tap/click event from
+// the client.  It must:
+//  1. Always attempt to trigger skills (dispatchSkillsForEntity) — skills fire on
+//     every TAP, probability-gated by Intelligence only; movement must NOT gate
+//     skill execution.
+//  2. Optionally trigger probabilistic life regen.
+//
+// Movement path calculation remains a separate concern handled in readPump
+// (handlers.go) and is gated by the Utility cooldown, independent of this call.
+//
+// Called from readPump AFTER s.mu is released — callerHoldsLock = false.
+func (s *GameServer) HandlePlayerTapAction(player *PlayerState, mapState *MapState, target Point) {
+	s.handleProbabilisticRegen(player, mapState)
 	s.dispatchSkillsForEntity(player, mapState, target, false)
 }
 
@@ -39,8 +48,9 @@ func (s *GameServer) HandleOnKillSkills(killerBot *BotState, victim interface{},
 	}
 
 	// --- Core Mechanic: on Kill Events ---
-	// This is not a skill, but a fundamental rule: the victor loots the vanquished.
-	s.executeCoinDropOnKill(caster, victim, s)
+	// Fountain & Sink kill transfer: victor loots the vanquished.
+	// Also sends FCT (Floating Combat Text) economy event to both parties.
+	s.ExecuteKillTransfer(caster, victim)
 
 }
 

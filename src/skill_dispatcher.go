@@ -42,7 +42,7 @@ func (s *GameServer) InitSkills() {
 	})
 	registerSkill("coin_drop_or_transaction", func(s *GameServer, ctx SkillContext) {
 		// Economy mechanic: coin transfer is triggered automatically on kill
-		// via HandleOnKillSkills → executeCoinDropOnKill. No manual action needed.
+		// via HandleOnKillSkills → ExecuteKillTransfer. No manual action needed.
 	})
 }
 
@@ -59,7 +59,7 @@ func (s *GameServer) DispatchSkill(logicID string, ctx SkillContext) {
 
 // dispatchSkillsForEntity iterates the entity's active ObjectLayers, looks up
 // matching entries in skillConfig, and dispatches each logicEventID.
-// This replaces the duplicated switch blocks in HandlePlayerActionSkills and handleBotSkills.
+// This replaces the duplicated switch blocks in HandlePlayerTapAction and handleBotSkills.
 func (s *GameServer) dispatchSkillsForEntity(caster interface{}, mapState *MapState, target Point, callerHoldsLock bool) {
 	var layers []ObjectLayerState
 	switch e := caster.(type) {
