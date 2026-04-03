@@ -84,7 +84,11 @@ type PlayerState struct {
 	LifeRegen              float64            `json:"lifeRegen"`
 	RespawnTime            time.Time          `json:"-"`
         PreRespawnObjectLayers []ObjectLayerState `json:"-"`
-        CoinBalance            int                `json:"-"` // Off-chain wallet. Not serialized; reset by FountainInitPlayer on connect.
+        // Coins is the canonical flat coin balance — the single source of truth
+        // for all economy operations.  O(1) read/write, never iterates ObjectLayers.
+        // The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
+        // visualization only and is always Active: false.
+        Coins     uint32 `json:"-"`
         StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
 }
 
@@ -121,7 +125,11 @@ type BotState struct {
 	RespawnTime            time.Time          `json:"-"`
 	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
 	CasterID               string             `json:"-"` // ID of the player or bot that created this bot
-        CoinBalance            int                `json:"-"` // Off-chain loot pool. Not serialized; reset by FountainInitBot on respawn.
+        // Coins is the canonical flat coin balance — the single source of truth
+        // for all economy operations.  O(1) read/write, never iterates ObjectLayers.
+        // The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
+        // visualization only and is always Active: false.
+        Coins      uint32 `json:"-"`
         StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
 }
 

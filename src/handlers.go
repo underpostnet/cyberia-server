@@ -386,25 +386,27 @@ func (c *Client) readPump(server *GameServer) {
 				player.ObjectLayers[targetItemIndex].Active = active
 				log.Printf("Player %s requested to set item '%s' active state to %v. Applying and validating...", c.playerID, itemId, active)
 
-				// --- Step 2: If activating a unique-type item, deactivate others of the same type (handles swapping) ---
-				if active {
-					var requestedItemType string
-					if itemData, ok := server.GetObjectLayerData(itemId); ok {
-						requestedItemType = itemData.Data.Item.Type
-					}
+// --- Step 2: If activating an item, deactivate all other items of the SAME type (one-active-per-type rule) ---
+								// This handles swapping uniformly for ALL item types (skins, weapons, armor, etc.)
+								// so the inventory always has at most one active item per type.
+								if active {
+									var requestedItemType string
+									if itemData, ok := server.GetObjectLayerData(itemId); ok {
+										requestedItemType = itemData.Data.Item.Type
+									}
 
-					if requestedItemType == "skin" {
-						for i := range player.ObjectLayers {
-							if i == targetItemIndex {
-								continue // Don't touch the item we just activated.
-							}
-							var currentItemType string
-							if itemData, ok := server.GetObjectLayerData(player.ObjectLayers[i].ItemID); ok {
-								currentItemType = itemData.Data.Item.Type
-							}
-							if currentItemType == requestedItemType && player.ObjectLayers[i].Active {
-								player.ObjectLayers[i].Active = false
-								log.Printf("Swapping active items: Deactivated '%s' for player %s.", player.ObjectLayers[i].ItemID, c.playerID)
+									if requestedItemType != "" {
+										for i := range player.ObjectLayers {
+											if i == targetItemIndex {
+												continue // Don't touch the item we just activated.
+											}
+											var currentItemType string
+											if itemData, ok := server.GetObjectLayerData(player.ObjectLayers[i].ItemID); ok {
+												currentItemType = itemData.Data.Item.Type
+											}
+											if currentItemType == requestedItemType && player.ObjectLayers[i].Active {
+												player.ObjectLayers[i].Active = false
+												log.Printf("Swapping active items: Deactivated '%s' (type=%s) for player %s.", player.ObjectLayers[i].ItemID, currentItemType, c.playerID)
 							}
 						}
 					}

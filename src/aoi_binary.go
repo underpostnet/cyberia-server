@@ -77,14 +77,19 @@ const (
 	//   [2..5]   f32  worldX
 	//   [6..9]   f32  worldY
 	//   [10..13] u32  value (always positive; sign implied by type)
-	MsgTypeFCT byte = 0x04
+	MsgTypeFCT     byte = 0x04
+	// MsgTypeItemFCT — Item quantity Floating Combat Text event (≥15 bytes).
+	// See economy.go buildItemFCTMsg for wire format.
+	MsgTypeItemFCT byte = 0x05
 
 	// FCT event sub-types — MUST stay in sync with C constants in
 	// floating_combat_text.h and binary_aoi_decoder.h.
-	FCTTypeDamage   byte = 0x00 // life loss         — red    "-N"
-	FCTTypeRegen    byte = 0x01 // life gain / regen — green  "+N"
-	FCTTypeCoinGain byte = 0x02 // coins received    — yellow "+N"
-	FCTTypeCoinLoss byte = 0x03 // coins lost / sink — yellow "-N"
+	FCTTypeDamage   byte = 0x00 // life loss            — red    "-N"
+	FCTTypeRegen    byte = 0x01 // life gain / regen    — green  "+N"
+	FCTTypeCoinGain byte = 0x02 // coins received       — yellow "+N"
+	FCTTypeCoinLoss byte = 0x03 // coins lost / sink    — yellow "-N"
+	FCTTypeItemGain byte = 0x04 // generic item gain    — cyan   "+N ItemID"
+	FCTTypeItemLoss byte = 0x05 // generic item loss    — purple "-N ItemID"
 
 	EntityTypePlayer     byte = 0
 	EntityTypeBot        byte = 1
@@ -162,7 +167,12 @@ func (e *BinaryAOIEncoder) putID(id string) {
 	e.pos += 36
 }
 
-// writeItemIDs writes item ID strings of active layers only — no active/quantity.
+// writeItemIDs writes active layer item IDs with their quantities.
+//
+// Wire format (per active layer):
+//
+//	[u8-len string] itemId
+//	[u16]           quantity (0 = non-stackable / not tracked)
 func (e *BinaryAOIEncoder) writeItemIDs(layers []ObjectLayerState) {
 	activeCount := 0
 	for i := range layers {
@@ -178,8 +188,50 @@ func (e *BinaryAOIEncoder) writeItemIDs(layers []ObjectLayerState) {
 	for i := range layers {
 		if layers[i].Active && written < activeCount {
 			e.putString(layers[i].ItemID)
+			qty := layers[i].Quantity
+			if qty < 0 {
+				qty = 0
+			}
+			if qty > 65535 {
+				qty = 65535
+			}
+			e.putU16(uint16(qty))
 			written++
 		}
+	}
+}
+
+// writeFullInventory writes ALL ObjectLayers (active and inactive) for the
+// self-player so the client can render the complete inventory bottom bar.
+//
+// Wire format:
+//
+//	[u8]            total count (all layers, active + inactive)
+//	[per layer]:
+//	  [u8-len str]  itemId
+//	  [u8]          active flag (0 = inactive, 1 = active)
+//	  [u16]         quantity
+func (e *BinaryAOIEncoder) writeFullInventory(layers []ObjectLayerState) {
+	n := len(layers)
+	if n > 255 {
+		n = 255
+	}
+	e.putU8(byte(n))
+	for i := 0; i < n; i++ {
+		e.putString(layers[i].ItemID)
+		if layers[i].Active {
+			e.putU8(1)
+		} else {
+			e.putU8(0)
+		}
+		qty := layers[i].Quantity
+		if qty < 0 {
+			qty = 0
+		}
+		if qty > 65535 {
+			qty = 65535
+		}
+		e.putU16(uint16(qty))
 	}
 }
 
@@ -307,6 +359,10 @@ func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, c
 	e.putString(p.ActivePortalID)
 	// Coin balance — u32, always present (0 when no coins).
 	e.putU32(coinBalance)
+
+	// Full inventory — ALL ObjectLayers (active + inactive) with quantities.
+	// Powers the client-side inventory bottom bar.
+	e.writeFullInventory(p.ObjectLayers)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -420,12 +476,8 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 	playerStats := s.CalculateStats(player, mapState)
 	activeStatsSum := int(playerStats.Effect + playerStats.Resistance + playerStats.Agility +
 		playerStats.Range + playerStats.Intelligence + playerStats.Utility)
-// Compute coin balance directly from the player's dedicated balance field.
-        coinBalance := uint32(0)
-        if player.CoinBalance > 0 {
-                coinBalance = uint32(player.CoinBalance)
-	}
-	enc.WriteSelfPlayer(player, activeStatsSum, coinBalance)
+	// player.Coins is the canonical flat balance — read directly (O(1), no OL traversal).
+	enc.WriteSelfPlayer(player, activeStatsSum, player.Coins)
 
 	// Patch entity count in header
 	binary.LittleEndian.PutUint16(enc.buf[headerPos+3:], uint16(entityCount))
