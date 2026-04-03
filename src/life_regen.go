@@ -27,6 +27,10 @@ func (s *GameServer) handleProbabilisticRegen(entity interface{}, mapState *MapS
 			if e.Life > e.MaxLife {
 				e.Life = e.MaxLife
 			}
+			// FCT: show the regen as a green floating number at the player's position.
+			if regenInt := int(regenAmount + 0.5); regenInt > 0 {
+				sendFCT(e, FCTTypeRegen, e.Pos.X, e.Pos.Y, regenInt)
+			}
 		}
 	case *BotState:
 		// Resistance stat increases the amount of life regenerated.

@@ -50,6 +50,12 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 					s.HandleOnKillSkills(projectile, player, mapState)
 					s.handlePlayerDeath(player)
 				}
+				// FCT: show the hit as a red flying number at the collision point.
+				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
+					sendFCT(player, FCTTypeDamage,
+						projectile.Pos.X+projectile.Dims.Width*0.5,
+						projectile.Pos.Y+projectile.Dims.Height*0.5, dmg)
+				}
 
 				// "Thorns" effect: The player's Effect stat damages the projectile.
 				playerStats := s.CalculateStats(player, mapState)
