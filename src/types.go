@@ -83,8 +83,9 @@ type PlayerState struct {
 	Life                   float64            `json:"life"`
 	LifeRegen              float64            `json:"lifeRegen"`
 	RespawnTime            time.Time          `json:"-"`
-	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
-	StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
+        PreRespawnObjectLayers []ObjectLayerState `json:"-"`
+        CoinBalance            int                `json:"-"` // Off-chain wallet. Not serialized; reset by FountainInitPlayer on connect.
+        StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
 }
 
 type FloorState struct {
@@ -120,7 +121,8 @@ type BotState struct {
 	RespawnTime            time.Time          `json:"-"`
 	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
 	CasterID               string             `json:"-"` // ID of the player or bot that created this bot
-	StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
+        CoinBalance            int                `json:"-"` // Off-chain loot pool. Not serialized; reset by FountainInitBot on respawn.
+        StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
 }
 
 type PortalConfig struct {

@@ -97,16 +97,13 @@ func sendFCT(player *PlayerState, fctType byte, worldX, worldY float64, value in
 // FountainInitPlayer credits the player's starting wallet on first connect.
 // Implements the playerSpawnCoins fountain — the entry point into the
 // economy for every guest session.  Coins are lost on disconnect (no
-// persistence in alpha).
+// FountainInitPlayer credits a player's coin balance at connect / respawn time.
+// Sets the dedicated CoinBalance field directly — no ObjectLayer scanning.
 func (s *GameServer) FountainInitPlayer(player *PlayerState) {
-	if s.coinItemID == "" || s.playerSpawnCoins <= 0 {
+	if s.playerSpawnCoins <= 0 {
 		return
 	}
-	layer := s.findOrCreateCoinLayer(player)
-	if layer == nil {
-		return
-	}
-	layer.Quantity = s.playerSpawnCoins
+	player.CoinBalance = s.playerSpawnCoins
 	s.InvalidateStats(player)
 }
 
@@ -116,22 +113,10 @@ func (s *GameServer) FountainInitPlayer(player *PlayerState) {
 // a perpetual, renewable coin source (infinite mint bounded by player
 // kill activity).
 func (s *GameServer) FountainInitBot(bot *BotState) {
-	if s.coinItemID == "" || s.botSpawnCoins <= 0 {
+	if s.botSpawnCoins <= 0 {
 		return
 	}
-	var coinLayer *ObjectLayerState
-	for i := range bot.ObjectLayers {
-		if bot.ObjectLayers[i].ItemID == s.coinItemID {
-			coinLayer = &bot.ObjectLayers[i]
-			break
-		}
-	}
-	if coinLayer == nil {
-		bot.ObjectLayers = append(bot.ObjectLayers,
-			ObjectLayerState{ItemID: s.coinItemID, Active: false, Quantity: 0})
-		coinLayer = &bot.ObjectLayers[len(bot.ObjectLayers)-1]
-	}
-	coinLayer.Quantity = s.botSpawnCoins
+	bot.CoinBalance = s.botSpawnCoins
 }
 
 // ── Kill Transfer ─────────────────────────────────────────────────────────
@@ -154,38 +139,24 @@ func (s *GameServer) FountainInitBot(bot *BotState) {
 // Both caster and victim receive a FCTTypeCoinGain / FCTTypeCoinLoss event
 // if they are human players.
 func (s *GameServer) ExecuteKillTransfer(caster interface{}, victim interface{}) {
-	if s.coinItemID == "" {
-		return
-	}
-
 	// ── 1. Resolve victim ─────────────────────────────────────────────
-	var victimCoinPtr *ObjectLayerState
-	var victimID      string
-	var victimPos     Point
-	var victimIsBot   bool
-	var victimPlayer  *PlayerState
+	var victimBalance *int
+	var victimID    string
+	var victimPos   Point
+	var victimIsBot bool
+	var victimPlayer *PlayerState
 
 	switch v := victim.(type) {
 	case *PlayerState:
 		victimID     = v.ID
 		victimPos    = v.Pos
 		victimPlayer = v
-		for i := range v.ObjectLayers {
-			if v.ObjectLayers[i].ItemID == s.coinItemID {
-				victimCoinPtr = &v.ObjectLayers[i]
-				break
-			}
-		}
+		victimBalance = &v.CoinBalance
 	case *BotState:
 		victimID    = v.ID
 		victimPos   = v.Pos
 		victimIsBot = true
-		for i := range v.ObjectLayers {
-			if v.ObjectLayers[i].ItemID == s.coinItemID {
-				victimCoinPtr = &v.ObjectLayers[i]
-				break
-			}
-		}
+		victimBalance = &v.CoinBalance
 	default:
 		log.Printf("[ECONOMY] ExecuteKillTransfer: unknown victim type %T", victim)
 		return
@@ -193,12 +164,9 @@ func (s *GameServer) ExecuteKillTransfer(caster interface{}, victim interface{})
 
 	// ── 2. Effective balance ───────────────────────────────────────────
 	// Players: only what they actually carry (no mint).
-	// Bots:    guaranteed ≥ botSpawnCoins regardless of layer value
+	// Bots:    guaranteed ≥ botSpawnCoins regardless of current balance
 	//          (implements the infinite-mint fountain).
-	effectiveBalance := 0
-	if victimCoinPtr != nil {
-		effectiveBalance = victimCoinPtr.Quantity
-	}
+	effectiveBalance := *victimBalance
 	if victimIsBot && effectiveBalance < s.botSpawnCoins {
 		effectiveBalance = s.botSpawnCoins
 	}
@@ -207,8 +175,6 @@ func (s *GameServer) ExecuteKillTransfer(caster interface{}, victim interface{})
 	}
 
 	// ── 3. Select rate ────────────────────────────────────────────────
-	// victimIsBot=true  → PvE rate (also covers Bot→Bot: bot looting another bot)
-	// victimIsBot=false → PvP rate (Player kills Player OR Bot kills Player)
 	rate := s.coinKillPercentVsBot
 	if !victimIsBot {
 		rate = s.coinKillPercentVsPlayer
@@ -219,10 +185,10 @@ func (s *GameServer) ExecuteKillTransfer(caster interface{}, victim interface{})
 	if s.coinKillMinAmount > 0 && transfer < s.coinKillMinAmount {
 		transfer = s.coinKillMinAmount
 	}
-	// Never take more than the victim's actual layer balance.
+	// Never take more than the victim's actual balance.
 	actualVictimBalance := effectiveBalance
-	if victimCoinPtr != nil && !victimIsBot {
-		actualVictimBalance = victimCoinPtr.Quantity
+	if !victimIsBot {
+		actualVictimBalance = *victimBalance
 	}
 	if transfer > actualVictimBalance {
 		transfer = actualVictimBalance
@@ -232,22 +198,23 @@ func (s *GameServer) ExecuteKillTransfer(caster interface{}, victim interface{})
 	}
 
 	// ── 5. Deduct from victim ─────────────────────────────────────────
-	if victimCoinPtr != nil {
-		victimCoinPtr.Quantity -= transfer
-		if victimCoinPtr.Quantity < 0 {
-			victimCoinPtr.Quantity = 0
-		}
-		s.InvalidateStats(victim)
+	*victimBalance -= transfer
+	if *victimBalance < 0 {
+		*victimBalance = 0
 	}
+	s.InvalidateStats(victim)
 	// (For bots the deficit doesn't matter — FountainInitBot resets on respawn.)
 
 	// ── 6. Credit caster ──────────────────────────────────────────────
-	casterCoinPtr := s.findOrCreateCoinLayer(caster)
-	if casterCoinPtr == nil {
-		log.Printf("[ECONOMY] ExecuteKillTransfer: could not resolve caster coin layer")
+	switch c := caster.(type) {
+	case *PlayerState:
+		c.CoinBalance += transfer
+	case *BotState:
+		c.CoinBalance += transfer
+	default:
+		log.Printf("[ECONOMY] ExecuteKillTransfer: unknown caster type %T", caster)
 		return
 	}
-	casterCoinPtr.Quantity += transfer
 	s.InvalidateStats(caster)
 
 	var casterPlayer *PlayerState
@@ -261,11 +228,9 @@ func (s *GameServer) ExecuteKillTransfer(caster interface{}, victim interface{})
 		effectiveBalance, rate*100, s.coinKillMinAmount, victimIsBot)
 
 	// ── 7. FCT events (cosmetic, non-blocking) ─────────────────────────
-	// Gain: tell the caster how many coins they just received.
 	if casterPlayer != nil {
 		sendFCT(casterPlayer, FCTTypeCoinGain, victimPos.X, victimPos.Y, transfer)
 	}
-	// Loss: tell a human victim how many coins were taken.
 	if victimPlayer != nil {
 		sendFCT(victimPlayer, FCTTypeCoinLoss, victimPos.X, victimPos.Y, transfer)
 	}
@@ -277,82 +242,44 @@ func (s *GameServer) ExecuteKillTransfer(caster interface{}, victim interface{})
 // Alpha default: respawnCostPercent = 0.0 (disabled).
 // Design intent: risk penalty that discourages consequence-free farming.
 func (s *GameServer) SinkRespawnCost(player *PlayerState) {
-	if s.respawnCostPercent <= 0 || s.coinItemID == "" {
+	if s.respawnCostPercent <= 0 {
 		return
 	}
-	for i := range player.ObjectLayers {
-		if player.ObjectLayers[i].ItemID != s.coinItemID {
-			continue
-		}
-		burn := int(math.Floor(float64(player.ObjectLayers[i].Quantity) * s.respawnCostPercent))
-		if burn <= 0 {
-			return
-		}
-		player.ObjectLayers[i].Quantity -= burn
-		if player.ObjectLayers[i].Quantity < 0 {
-			player.ObjectLayers[i].Quantity = 0
-		}
-		s.InvalidateStats(player)
-		sendFCT(player, FCTTypeCoinLoss, player.Pos.X, player.Pos.Y, burn)
-		log.Printf("[ECONOMY] Respawn sink: %s burned %d coins (%.0f%%)",
-			player.ID, burn, s.respawnCostPercent*100)
+	burn := int(math.Floor(float64(player.CoinBalance) * s.respawnCostPercent))
+	if burn <= 0 {
 		return
 	}
+	player.CoinBalance -= burn
+	if player.CoinBalance < 0 {
+		player.CoinBalance = 0
+	}
+	s.InvalidateStats(player)
+	sendFCT(player, FCTTypeCoinLoss, player.Pos.X, player.Pos.Y, burn)
+	log.Printf("[ECONOMY] Respawn sink: %s burned %d coins (%.0f%%)",
+		player.ID, burn, s.respawnCostPercent*100)
 }
 
 // SinkPortalFee burns a flat fee when a player uses a portal.
 // Alpha default: portalFee = 0 (disabled).
 // Design intent: travel tax that drains accumulated hoards over time.
 func (s *GameServer) SinkPortalFee(player *PlayerState) {
-	if s.portalFee <= 0 || s.coinItemID == "" {
+	if s.portalFee <= 0 {
 		return
 	}
-	for i := range player.ObjectLayers {
-		if player.ObjectLayers[i].ItemID != s.coinItemID {
-			continue
-		}
-		burn := s.portalFee
-		if burn > player.ObjectLayers[i].Quantity {
-			burn = player.ObjectLayers[i].Quantity
-		}
-		if burn <= 0 {
-			return
-		}
-		player.ObjectLayers[i].Quantity -= burn
-		s.InvalidateStats(player)
-		sendFCT(player, FCTTypeCoinLoss, player.Pos.X, player.Pos.Y, burn)
-		log.Printf("[ECONOMY] Portal sink: %s burned %d coins (flat fee)", player.ID, burn)
+	burn := s.portalFee
+	if burn > player.CoinBalance {
+		burn = player.CoinBalance
+	}
+	if burn <= 0 {
 		return
 	}
+	player.CoinBalance -= burn
+	s.InvalidateStats(player)
+	sendFCT(player, FCTTypeCoinLoss, player.Pos.X, player.Pos.Y, burn)
+	log.Printf("[ECONOMY] Portal sink: %s burned %d coins (flat fee)", player.ID, burn)
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────
-
-// findOrCreateCoinLayer returns a pointer to the coin ObjectLayerState for
-// the given entity, appending a zero-quantity entry if none exists.
-func (s *GameServer) findOrCreateCoinLayer(entity interface{}) *ObjectLayerState {
-	switch e := entity.(type) {
-	case *PlayerState:
-		for i := range e.ObjectLayers {
-			if e.ObjectLayers[i].ItemID == s.coinItemID {
-				return &e.ObjectLayers[i]
-			}
-		}
-		e.ObjectLayers = append(e.ObjectLayers,
-			ObjectLayerState{ItemID: s.coinItemID, Active: false, Quantity: 0})
-		return &e.ObjectLayers[len(e.ObjectLayers)-1]
-	case *BotState:
-		for i := range e.ObjectLayers {
-			if e.ObjectLayers[i].ItemID == s.coinItemID {
-				return &e.ObjectLayers[i]
-			}
-		}
-		e.ObjectLayers = append(e.ObjectLayers,
-			ObjectLayerState{ItemID: s.coinItemID, Active: false, Quantity: 0})
-		return &e.ObjectLayers[len(e.ObjectLayers)-1]
-	}
-	return nil
-}
 
 // econEntityID extracts a loggable ID string from any entity interface.
 func econEntityID(entity interface{}) string {

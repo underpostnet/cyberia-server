@@ -398,17 +398,10 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 	playerStats := s.CalculateStats(player, mapState)
 	activeStatsSum := int(playerStats.Effect + playerStats.Resistance + playerStats.Agility +
 		playerStats.Range + playerStats.Intelligence + playerStats.Utility)
-	// Compute coin balance from the player's (inactive) coin inventory layer.
-	var coinBalance uint32
-	if s.coinItemID != "" {
-		for _, layer := range player.ObjectLayers {
-			if layer.ItemID == s.coinItemID {
-				if layer.Quantity > 0 {
-					coinBalance = uint32(layer.Quantity)
-				}
-				break
-			}
-		}
+// Compute coin balance directly from the player's dedicated balance field.
+        coinBalance := uint32(0)
+        if player.CoinBalance > 0 {
+                coinBalance = uint32(player.CoinBalance)
 	}
 	enc.WriteSelfPlayer(player, activeStatsSum, coinBalance)
 
