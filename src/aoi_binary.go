@@ -199,7 +199,7 @@ func (e *BinaryAOIEncoder) writeEntityBase(flags byte, id string, pos Point, dim
 // Entity writers
 // ═══════════════════════════════════════════════════════════════════
 
-func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64) {
+func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64, effectiveLevel int) {
 	flags := EntityTypePlayer | FlagHasLife | FlagHasColor
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
@@ -215,9 +215,10 @@ func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64) {
 	e.putU8(byte(p.Color.B))
 	e.putU8(byte(p.Color.A))
 	e.writeItemIDs(p.ObjectLayers)
+	e.putU16(uint16(effectiveLevel))
 }
 
-func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64) {
+func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLevel int) {
 	flags := EntityTypeBot | FlagHasLife | FlagHasBehavior | FlagHasColor
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
@@ -235,6 +236,7 @@ func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64) {
 	e.putU8(byte(b.Color.A))
 	e.writeItemIDs(b.ObjectLayers)
 	e.putString(b.CasterID)
+	e.putU16(uint16(effectiveLevel))
 }
 
 func (e *BinaryAOIEncoder) WriteFloor(f *FloorState) {
@@ -308,6 +310,26 @@ func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, c
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// Effective Level helper
+// ═══════════════════════════════════════════════════════════════════
+
+// effLevel returns the clamped effective level (sum of all stat fields)
+// for any entity (PlayerState or BotState). Players use their own
+// SumStatsLimit; bots use the server-level cap.
+func (s *GameServer) effLevel(entity interface{}, mapState *MapState) int {
+	cs := s.CalculateStats(entity, mapState)
+	level := int(cs.Effect + cs.Resistance + cs.Agility + cs.Range + cs.Intelligence + cs.Utility)
+	cap := s.sumStatsLimit
+	if p, ok := entity.(*PlayerState); ok {
+		cap = p.SumStatsLimit
+	}
+	if level > cap {
+		level = cap
+	}
+	return level
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // Full AOI encoder — replaces JSON sendAOI
 // ═══════════════════════════════════════════════════════════════════
 
@@ -337,7 +359,7 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 				respawnIn = &r
 			}
 		}
-		enc.WritePlayer(op, respawnIn)
+		enc.WritePlayer(op, respawnIn, s.effLevel(op, mapState))
 		entityCount++
 	}
 
@@ -390,7 +412,7 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 				respawnIn = &r
 			}
 		}
-		enc.WriteBot(b, respawnIn)
+		enc.WriteBot(b, respawnIn, s.effLevel(b, mapState))
 		entityCount++
 	}
 
