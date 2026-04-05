@@ -220,7 +220,6 @@ type GameServer struct {
 	sumStatsLimit         int
 	maxActiveLayers       int
 	initialLifeFraction   float64
-	defaultPlayerObjectLayers []ObjectLayerState
 
 	// Combat / death
 	respawnDuration  time.Duration
@@ -272,13 +271,26 @@ type GameServer struct {
 	// or when the TTL (statsCacheTTL) expires.
 	statsCache    map[string]statsCacheEntry
 	statsCacheTTL time.Duration
+
+	// Equipment rules — governs activation constraints.
+	equipmentRules EquipmentRulesConfig
 }
 
 type EntityTypeDefaultConfig struct {
-        EntityType  string   `json:"entityType"`
-        LiveItemIDs []string `json:"liveItemIds"`
-        DeadItemIDs []string `json:"deadItemIds"`
-        ColorKey    string   `json:"colorKey"`
+        EntityType          string             `json:"entityType"`
+        LiveItemIDs         []string           `json:"liveItemIds"`
+        DeadItemIDs         []string           `json:"deadItemIds"`
+        ColorKey            string             `json:"colorKey"`
+        DefaultObjectLayers []ObjectLayerState `json:"defaultObjectLayers,omitempty"`
+}
+
+// EquipmentRulesConfig governs which item types can be simultaneously active
+// and enforces the one-active-per-type constraint.  Loaded from the proto
+// EquipmentRules message via ApplyInstanceConfig.
+type EquipmentRulesConfig struct {
+	ActiveItemTypes map[string]bool `json:"activeItemTypes"` // set of activable item types
+	OnePerType      bool            `json:"onePerType"`      // enforce one active per type
+	RequireSkin     bool            `json:"requireSkin"`     // require ≥ 1 active skin
 }
 
 type ColorRGBA struct {

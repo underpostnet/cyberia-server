@@ -107,16 +107,15 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 	lifeRegen := s.playerBaseLifeRegenMin + rand.Float64()*(s.playerBaseLifeRegenMax-s.playerBaseLifeRegenMin)
 
-	// Copy default object layers from config
-	playerOLs := make([]ObjectLayerState, len(s.defaultPlayerObjectLayers))
-	copy(playerOLs, s.defaultPlayerObjectLayers)
-	// If no default layers are configured use the instance-level user default
-	// visual (atlas if present, solid PLAYER colour otherwise).
-	if len(playerOLs) == 0 {
-		if d, ok := s.entityDefaults["player"]; ok && len(d.LiveItemIDs) > 0 {
-			for _, itemID := range d.LiveItemIDs {
-				playerOLs = append(playerOLs, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
-			}
+	// Copy default object layers from entityDefaults["player"].DefaultObjectLayers.
+	// Falls back to liveItemIds if no defaultObjectLayers are configured.
+	var playerOLs []ObjectLayerState
+	if d, ok := s.entityDefaults["player"]; ok && len(d.DefaultObjectLayers) > 0 {
+		playerOLs = make([]ObjectLayerState, len(d.DefaultObjectLayers))
+		copy(playerOLs, d.DefaultObjectLayers)
+	} else if d, ok := s.entityDefaults["player"]; ok && len(d.LiveItemIDs) > 0 {
+		for _, itemID := range d.LiveItemIDs {
+			playerOLs = append(playerOLs, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
 		}
 	}
 	playerState := &PlayerState{
@@ -184,9 +183,10 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// Send metadata message with all ObjectLayer + Atlas data for client-side caching.
 	// This replaces the client's REST calls to the Engine API for OL/Atlas metadata.
 	metaPayload := map[string]interface{}{
-		"objectLayers": s.buildOLMetadataMap(),
-		"atlasData":    s.buildAtlasCacheSnapshot(),
-		"apiBaseUrl":   s.engineApiBaseUrl,
+		"objectLayers":   s.buildOLMetadataMap(),
+		"atlasData":      s.buildAtlasCacheSnapshot(),
+		"apiBaseUrl":     s.engineApiBaseUrl,
+		"equipmentRules": s.equipmentRules,
 	}
 	metaMsg, _ := json.Marshal(map[string]interface{}{"type": "metadata", "payload": metaPayload})
 	select {
@@ -386,10 +386,23 @@ func (c *Client) readPump(server *GameServer) {
 				player.ObjectLayers[targetItemIndex].Active = active
 				log.Printf("Player %s requested to set item '%s' active state to %v. Applying and validating...", c.playerID, itemId, active)
 
+				// --- Step 1b: Check equipment rules — only types in activeItemTypes may be activated ---
+				if active && len(server.equipmentRules.ActiveItemTypes) > 0 {
+					var reqType string
+					if itemData, ok := server.GetObjectLayerData(itemId); ok {
+						reqType = itemData.Data.Item.Type
+					}
+					if reqType != "" && !server.equipmentRules.ActiveItemTypes[reqType] {
+						log.Printf("Player %s tried to activate item '%s' of non-activable type '%s'. Rejecting.", c.playerID, itemId, reqType)
+						player.ObjectLayers[targetItemIndex].Active = originalState
+						return
+					}
+				}
+
 // --- Step 2: If activating an item, deactivate all other items of the SAME type (one-active-per-type rule) ---
 								// This handles swapping uniformly for ALL item types (skins, weapons, armor, etc.)
 								// so the inventory always has at most one active item per type.
-								if active {
+								if active && server.equipmentRules.OnePerType {
 									var requestedItemType string
 									if itemData, ok := server.GetObjectLayerData(itemId); ok {
 										requestedItemType = itemData.Data.Item.Type
@@ -439,8 +452,8 @@ func (c *Client) readPump(server *GameServer) {
 					}
 				}
 
-				// Correction 1: Player must have at least one active skin if they own one.
-				if hasAnySkin && activeSkinCount == 0 && firstSkinIndex != -1 {
+				// Correction 1: Player must have at least one active skin if they own one (equipment rule: requireSkin).
+				if server.equipmentRules.RequireSkin && hasAnySkin && activeSkinCount == 0 && firstSkinIndex != -1 {
 					player.ObjectLayers[firstSkinIndex].Active = true
 					log.Printf("Player %s tried to deactivate the last skin. Force-activating skin '%s' to maintain a valid state.", c.playerID, player.ObjectLayers[firstSkinIndex].ItemID)
 				}

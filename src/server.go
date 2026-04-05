@@ -82,16 +82,6 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	s.maxActiveLayers = int(cfg.GetMaxActiveLayers())
 	s.initialLifeFraction = cfg.GetInitialLifeFraction()
 
-	// Default player object layers
-	s.defaultPlayerObjectLayers = make([]ObjectLayerState, 0, len(cfg.GetDefaultPlayerObjectLayers()))
-	for _, ol := range cfg.GetDefaultPlayerObjectLayers() {
-		s.defaultPlayerObjectLayers = append(s.defaultPlayerObjectLayers, ObjectLayerState{
-			ItemID:   ol.GetItemId(),
-			Active:   ol.GetActive(),
-			Quantity: int(ol.GetQuantity()),
-		})
-	}
-
 	// Combat / death
 	s.respawnDuration = time.Duration(cfg.GetRespawnDurationMs()) * time.Millisecond
 	s.collisionLifeLoss = cfg.GetCollisionLifeLoss()
@@ -131,14 +121,41 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	s.doppelgangerSpawnRadius = sr.GetDoppelgangerSpawnRadius()
 	s.doppelgangerInitialLifeFraction = sr.GetDoppelgangerInitialLifeFraction()
 
+	// Equipment rules — governs which item types can be active.
+	eqr := cfg.GetEquipmentRules()
+	if eqr != nil {
+		s.equipmentRules.ActiveItemTypes = make(map[string]bool, len(eqr.GetActiveItemTypes()))
+		for _, t := range eqr.GetActiveItemTypes() {
+			s.equipmentRules.ActiveItemTypes[t] = true
+		}
+		s.equipmentRules.OnePerType = eqr.GetOnePerType()
+		s.equipmentRules.RequireSkin = eqr.GetRequireSkin()
+	} else {
+		// Sensible defaults when no equipment rules are provided.
+		s.equipmentRules.ActiveItemTypes = map[string]bool{
+			"skin": true, "breastplate": true, "weapon": true, "skill": true,
+		}
+		s.equipmentRules.OnePerType = true
+		s.equipmentRules.RequireSkin = true
+	}
+
 	// Per-entity-type visual defaults — build lookup map and derive convenience aliases.
 	s.entityDefaults = make(map[string]EntityTypeDefaultConfig, len(cfg.GetEntityDefaults()))
 	for _, etd := range cfg.GetEntityDefaults() {
+		var dols []ObjectLayerState
+		for _, dol := range etd.GetDefaultObjectLayers() {
+			dols = append(dols, ObjectLayerState{
+				ItemID:   dol.GetItemId(),
+				Active:   dol.GetActive(),
+				Quantity: int(dol.GetQuantity()),
+			})
+		}
 		s.entityDefaults[etd.GetEntityType()] = EntityTypeDefaultConfig{
-			EntityType:  etd.GetEntityType(),
-			LiveItemIDs: etd.GetLiveItemIds(),
-			DeadItemIDs: etd.GetDeadItemIds(),
-			ColorKey:    etd.GetColorKey(),
+			EntityType:          etd.GetEntityType(),
+			LiveItemIDs:         etd.GetLiveItemIds(),
+			DeadItemIDs:         etd.GetDeadItemIds(),
+			ColorKey:            etd.GetColorKey(),
+			DefaultObjectLayers: dols,
 		}
 	}
 	if d, ok := s.entityDefaults["player"]; ok && len(d.DeadItemIDs) > 0 {
@@ -167,8 +184,8 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	// Register built-in skill handlers now that skillConfig is populated.
 	s.InitSkills()
 
-	log.Printf("[GameServer] Instance config applied: cellSize=%.1f, fps=%d, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d colors, %d skills, %d default player layers, %d entityDefaults, floorItem=%q, ghostItem=%q, coinItem=%q",
-		s.cellSize, s.fps, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.colors), len(s.skillConfig), len(s.defaultPlayerObjectLayers), len(s.entityDefaults), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
+	log.Printf("[GameServer] Instance config applied: cellSize=%.1f, fps=%d, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d colors, %d skills, %d entityDefaults, floorItem=%q, ghostItem=%q, coinItem=%q",
+		s.cellSize, s.fps, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.colors), len(s.skillConfig), len(s.entityDefaults), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
 }
 
 // buildEntityDefaultsSlice converts the internal entityDefaults map into an

@@ -303,6 +303,25 @@ message SkillRules {
   double doppelganger_initial_life_fraction = 9;  // fraction of entity_base_max_life at spawn
 }
 
+// EquipmentRules governs which ObjectLayer item types can be simultaneously
+// active on a character entity and enforces the one-active-per-type constraint.
+//
+// The server validates every item_activation request against these rules:
+//   1. Only item types listed in active_item_types may be activated.
+//   2. When one_per_type is true, activating an item auto-deactivates
+//      any other active item of the same type.
+//   3. When require_skin is true, the player must always have at least
+//      one active skin if they own any skin-type items.
+message EquipmentRules {
+  // Item types that players are allowed to activate (equip).
+  // Types not in this list are non-activable (coins, floors, etc.).
+  repeated string active_item_types = 1;
+  // Enforce at most one active item per item type.
+  bool one_per_type                 = 2;
+  // Require at least one active skin when the player owns any skin.
+  bool require_skin                 = 3;
+}
+
 message InstanceConfig {
   // ── Rendering / camera ──
   double cell_size                     = 1;
@@ -339,7 +358,10 @@ message InstanceConfig {
   int32  sum_stats_limit               = 24;
   int32  max_active_layers             = 25;
   double initial_life_fraction         = 26;
-  repeated DefaultObjectLayerState default_player_object_layers = 27;
+
+  // Field 27 retired — superseded by EntityTypeDefault.default_object_layers.
+  reserved 27;
+  reserved "default_player_object_layers";
 
   // ── Combat / death ──
   int32  respawn_duration_ms           = 28;
@@ -379,6 +401,9 @@ message InstanceConfig {
   // ── Economy parameters (Fountain & Sink model) ──
   EconomyRules economy_rules             = 62;
 
+  // ── Equipment rules (activation constraints) ──
+  EquipmentRules equipment_rules         = 63;
+
   // ── Entity type rendering defaults ─────────────────────────────────────────
   // Structured per-entity-type configuration replacing the former flat item ID
   // fields.  Each entry defines the live OL, dead OL, and palette colour key
@@ -395,6 +420,10 @@ message EntityTypeDefault {
   repeated string live_item_ids = 2; // OL item IDs for the alive/active state
   repeated string dead_item_ids = 3; // OL item IDs for the dead/ghost/respawning state
   string color_key      = 4; // palette key for solid-color fallback (no OL items)
+  // Full default ObjectLayer inventory for this entity type.
+  // Supersedes live_item_ids for inventory initialization when non-empty.
+  // The canonical source of truth — shared across all entity config simulation.
+  repeated DefaultObjectLayerState default_object_layers = 5;
 }
 
 // ═══════════════════════════════════════════════════════════════════
