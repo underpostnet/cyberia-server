@@ -202,7 +202,6 @@ type GameServer struct {
 	// Caches (protected by olMu)
 	olMu                 sync.RWMutex
 	objectLayerDataCache map[string]*ObjectLayer
-	atlasDataCache       map[string]*AtlasData // keyed by item key
 
 	// Engine API base URL — forwarded to clients for binary blob fetches.
 	engineApiBaseUrl string

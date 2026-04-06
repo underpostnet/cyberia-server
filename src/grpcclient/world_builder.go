@@ -94,25 +94,7 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 	// Build the game world from instance data
 	wb.server.BuildWorldFromInstance(resp.GetInstance(), resp.GetMaps(), resp.GetObjectLayers())
 
-	// Fetch atlas sprite sheets only for the item IDs present in the instance cache.
-	// This avoids pulling the entire atlas catalog for items the instance never uses.
-	atlasCache := make(map[string]*game.AtlasData, len(cache))
-	for itemID := range cache {
-		msg, err := wb.client.FetchAtlasSpriteSheet(ctx, itemID)
-		if err != nil {
-			log.Printf("[WorldBuilder] WARNING: atlas fetch failed for %q: %v", itemID, err)
-			continue
-		}
-		ad := protoToAtlasData(msg)
-		if ad.ItemKey != "" {
-			atlasCache[ad.ItemKey] = ad
-		}
-	}
-	log.Printf("gRPC: fetched %d AtlasSpriteSheets for instance items.", len(atlasCache))
-	wb.server.ReplaceAtlasCache(atlasCache)
-
-	log.Printf("[WorldBuilder] Full instance load complete: %d ObjectLayers, %d AtlasSheets cached.",
-		len(cache), len(atlasCache))
+	log.Printf("[WorldBuilder] Full instance load complete: %d ObjectLayers cached.", len(cache))
 	return nil
 }
 
@@ -135,16 +117,7 @@ func (wb *WorldBuilder) loadObjectLayersOnly(ctx context.Context) error {
 
 	wb.server.ReplaceObjectLayerCache(cache)
 
-	// Also fetch atlas sprite sheets
-	atlasCache, err := wb.client.FetchAtlasSpriteSheetBatch(ctx)
-	if err != nil {
-		log.Printf("[WorldBuilder] WARNING: AtlasSpriteSheetBatch failed: %v", err)
-	} else {
-		wb.server.ReplaceAtlasCache(atlasCache)
-	}
-
-	log.Printf("[WorldBuilder] ObjectLayer-only load complete: %d OLs, %d atlases cached.",
-		len(cache), len(atlasCache))
+	log.Printf("[WorldBuilder] ObjectLayer-only load complete: %d OLs cached.", len(cache))
 	return nil
 }
 

@@ -55,48 +55,4 @@ type ObjectLayer struct {
 	UpdatedAt                 time.Time       `json:"updatedAt,omitempty"`
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// Atlas Sprite Sheet types
-// ═══════════════════════════════════════════════════════════════════
 
-// FrameMeta describes one frame's position in the atlas PNG.
-type FrameMeta struct {
-	X          int `json:"x"`
-	Y          int `json:"y"`
-	Width      int `json:"width"`
-	Height     int `json:"height"`
-	FrameIndex int `json:"frameIndex"`
-}
-
-// DirFrames holds frames for each animation direction.
-type DirFrames struct {
-	UpIdle           []FrameMeta `json:"up_idle"`
-	DownIdle         []FrameMeta `json:"down_idle"`
-	RightIdle        []FrameMeta `json:"right_idle"`
-	LeftIdle         []FrameMeta `json:"left_idle"`
-	UpRightIdle      []FrameMeta `json:"up_right_idle"`
-	DownRightIdle    []FrameMeta `json:"down_right_idle"`
-	UpLeftIdle       []FrameMeta `json:"up_left_idle"`
-	DownLeftIdle     []FrameMeta `json:"down_left_idle"`
-	DefaultIdle      []FrameMeta `json:"default_idle"`
-	UpWalking        []FrameMeta `json:"up_walking"`
-	DownWalking      []FrameMeta `json:"down_walking"`
-	RightWalking     []FrameMeta `json:"right_walking"`
-	LeftWalking      []FrameMeta `json:"left_walking"`
-	UpRightWalking   []FrameMeta `json:"up_right_walking"`
-	DownRightWalking []FrameMeta `json:"down_right_walking"`
-	UpLeftWalking    []FrameMeta `json:"up_left_walking"`
-	DownLeftWalking  []FrameMeta `json:"down_left_walking"`
-	NoneIdle         []FrameMeta `json:"none_idle"`
-}
-
-// AtlasData holds the metadata for a single atlas sprite sheet.
-// The actual PNG binary is served via REST (/api/file/blob/:FileID).
-type AtlasData struct {
-	FileID       string    `json:"fileId"`
-	ItemKey      string    `json:"itemKey"`
-	AtlasWidth   int       `json:"atlasWidth"`
-	AtlasHeight  int       `json:"atlasHeight"`
-	CellPixelDim int       `json:"cellPixelDim"`
-	Frames       DirFrames `json:"frames"`
-}

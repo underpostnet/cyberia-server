@@ -18,7 +18,6 @@ func NewGameServer() *GameServer {
 		register:             make(chan *Client),
 		unregister:           make(chan *Client),
 		objectLayerDataCache: make(map[string]*ObjectLayer),
-		atlasDataCache:       make(map[string]*AtlasData),
 		colors:               make(map[string]ColorRGBA),
 		skillConfig:          make(map[string][]SkillDefinition),
 	}
@@ -230,14 +229,6 @@ func (s *GameServer) PatchObjectLayerCache(updates map[string]*ObjectLayer, dele
 	for _, itemID := range deletions {
 		delete(s.objectLayerDataCache, itemID)
 	}
-}
-
-// ReplaceAtlasCache atomically replaces the atlas sprite sheet cache.
-func (s *GameServer) ReplaceAtlasCache(cache map[string]*AtlasData) {
-	s.olMu.Lock()
-	defer s.olMu.Unlock()
-	s.atlasDataCache = cache
-	log.Printf("Atlas data cache replaced with %d items.", len(cache))
 }
 
 // GetObjectLayerData returns an ObjectLayer by item ID (read-locked).

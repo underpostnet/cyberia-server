@@ -58,14 +58,6 @@ func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
 	return out
 }
 
-// buildAtlasCacheSnapshot returns a read-locked snapshot of the atlas cache.
-func (s *GameServer) buildAtlasCacheSnapshot() map[string]*AtlasData {
-	s.olMu.RLock()
-	defer s.olMu.RUnlock()
-	// Return the map directly — it's only replaced atomically
-	return s.atlasDataCache
-}
-
 // HandleConnections handles WebSocket connections.
 func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
@@ -184,7 +176,6 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// This replaces the client's REST calls to the Engine API for OL/Atlas metadata.
 	metaPayload := map[string]interface{}{
 		"objectLayers":   s.buildOLMetadataMap(),
-		"atlasData":      s.buildAtlasCacheSnapshot(),
 		"apiBaseUrl":     s.engineApiBaseUrl,
 		"equipmentRules": s.equipmentRules,
 	}

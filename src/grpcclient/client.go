@@ -192,49 +192,6 @@ func (c *Client) FetchMapData(ctx context.Context, mapCode, instanceCode string)
 	return resp.GetMap(), nil
 }
 
-// FetchAtlasSpriteSheet returns atlas metadata for an item key.
-func (c *Client) FetchAtlasSpriteSheet(ctx context.Context, itemKey string) (*pb.AtlasSpriteSheetMessage, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.cfg.CallTimeout)
-	defer cancel()
-
-	resp, err := c.svc.GetAtlasSpriteSheet(ctx, &pb.GetAtlasSpriteSheetRequest{ItemKey: itemKey})
-	if err != nil {
-		return nil, fmt.Errorf("GetAtlasSpriteSheet(%s): %w", itemKey, err)
-	}
-	return resp, nil
-}
-
-// FetchAtlasSpriteSheetBatch streams all AtlasSpriteSheets and converts
-// them into the game server's *AtlasData type, keyed by item key.
-func (c *Client) FetchAtlasSpriteSheetBatch(ctx context.Context) (map[string]*game.AtlasData, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
-
-	stream, err := c.svc.GetAtlasSpriteSheetBatch(ctx, &pb.GetAtlasSpriteSheetBatchRequest{})
-	if err != nil {
-		return nil, fmt.Errorf("GetAtlasSpriteSheetBatch: %w", err)
-	}
-
-	cache := make(map[string]*game.AtlasData)
-	count := 0
-	for {
-		msg, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("GetAtlasSpriteSheetBatch stream recv: %w", err)
-		}
-		ad := protoToAtlasData(msg)
-		if ad.ItemKey != "" {
-			cache[ad.ItemKey] = ad
-		}
-		count++
-	}
-	log.Printf("gRPC: received %d AtlasSpriteSheets, %d cached.", count, len(cache))
-	return cache, nil
-}
-
 // ManifestEntry is a lightweight item-ID + hash pair for diffing.
 type ManifestEntry struct {
 	ItemID string
@@ -306,51 +263,4 @@ func protoToObjectLayer(msg *pb.ObjectLayerMessage) *game.ObjectLayer {
 	return ol
 }
 
-// protoToAtlasData converts an AtlasSpriteSheetMessage to a game.AtlasData.
-func protoToAtlasData(msg *pb.AtlasSpriteSheetMessage) *game.AtlasData {
-	ad := &game.AtlasData{
-		FileID:       msg.GetFileId(),
-		ItemKey:      msg.GetItemKey(),
-		AtlasWidth:   int(msg.GetAtlasWidth()),
-		AtlasHeight:  int(msg.GetAtlasHeight()),
-		CellPixelDim: int(msg.GetCellPixelDim()),
-	}
-	if f := msg.GetFrames(); f != nil {
-		ad.Frames = game.DirFrames{
-			UpIdle:           protoFrameList(f.GetUpIdle()),
-			DownIdle:         protoFrameList(f.GetDownIdle()),
-			RightIdle:        protoFrameList(f.GetRightIdle()),
-			LeftIdle:         protoFrameList(f.GetLeftIdle()),
-			UpRightIdle:      protoFrameList(f.GetUpRightIdle()),
-			DownRightIdle:    protoFrameList(f.GetDownRightIdle()),
-			UpLeftIdle:       protoFrameList(f.GetUpLeftIdle()),
-			DownLeftIdle:     protoFrameList(f.GetDownLeftIdle()),
-			DefaultIdle:      protoFrameList(f.GetDefaultIdle()),
-			UpWalking:        protoFrameList(f.GetUpWalking()),
-			DownWalking:      protoFrameList(f.GetDownWalking()),
-			RightWalking:     protoFrameList(f.GetRightWalking()),
-			LeftWalking:      protoFrameList(f.GetLeftWalking()),
-			UpRightWalking:   protoFrameList(f.GetUpRightWalking()),
-			DownRightWalking: protoFrameList(f.GetDownRightWalking()),
-			UpLeftWalking:    protoFrameList(f.GetUpLeftWalking()),
-			DownLeftWalking:  protoFrameList(f.GetDownLeftWalking()),
-			NoneIdle:         protoFrameList(f.GetNoneIdle()),
-		}
-	}
-	return ad
-}
 
-func protoFrameList(frames []*pb.FrameMetadata) []game.FrameMeta {
-	if len(frames) == 0 {
-		return nil
-	}
-	out := make([]game.FrameMeta, len(frames))
-	for i, f := range frames {
-		out[i] = game.FrameMeta{
-			X: int(f.GetX()), Y: int(f.GetY()),
-			Width: int(f.GetWidth()), Height: int(f.GetHeight()),
-			FrameIndex: int(f.GetFrameIndex()),
-		}
-	}
-	return out
-}
