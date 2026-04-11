@@ -172,8 +172,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Client %s init channel full.", client.playerID)
 	}
 
-	// Send metadata message with all ObjectLayer + Atlas data for client-side caching.
-	// This replaces the client's REST calls to the Engine API for OL/Atlas metadata.
+	// Send metadata message with ObjectLayer data for client-side caching.
 	metaPayload := map[string]interface{}{
 		"objectLayers":   s.buildOLMetadataMap(),
 		"apiBaseUrl":     s.engineApiBaseUrl,

@@ -600,442 +600,6 @@ func (x *GetObjectLayerRequest) GetItemId() string {
 	return ""
 }
 
-type FrameMetadata struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	X             int32                  `protobuf:"varint,1,opt,name=x,proto3" json:"x,omitempty"`
-	Y             int32                  `protobuf:"varint,2,opt,name=y,proto3" json:"y,omitempty"`
-	Width         int32                  `protobuf:"varint,3,opt,name=width,proto3" json:"width,omitempty"`
-	Height        int32                  `protobuf:"varint,4,opt,name=height,proto3" json:"height,omitempty"`
-	FrameIndex    int32                  `protobuf:"varint,5,opt,name=frame_index,json=frameIndex,proto3" json:"frame_index,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *FrameMetadata) Reset() {
-	*x = FrameMetadata{}
-	mi := &file_proto_cyberia_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *FrameMetadata) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*FrameMetadata) ProtoMessage() {}
-
-func (x *FrameMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use FrameMetadata.ProtoReflect.Descriptor instead.
-func (*FrameMetadata) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *FrameMetadata) GetX() int32 {
-	if x != nil {
-		return x.X
-	}
-	return 0
-}
-
-func (x *FrameMetadata) GetY() int32 {
-	if x != nil {
-		return x.Y
-	}
-	return 0
-}
-
-func (x *FrameMetadata) GetWidth() int32 {
-	if x != nil {
-		return x.Width
-	}
-	return 0
-}
-
-func (x *FrameMetadata) GetHeight() int32 {
-	if x != nil {
-		return x.Height
-	}
-	return 0
-}
-
-func (x *FrameMetadata) GetFrameIndex() int32 {
-	if x != nil {
-		return x.FrameIndex
-	}
-	return 0
-}
-
-type DirectionFrames struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	UpIdle           []*FrameMetadata       `protobuf:"bytes,1,rep,name=up_idle,json=upIdle,proto3" json:"up_idle,omitempty"`
-	DownIdle         []*FrameMetadata       `protobuf:"bytes,2,rep,name=down_idle,json=downIdle,proto3" json:"down_idle,omitempty"`
-	RightIdle        []*FrameMetadata       `protobuf:"bytes,3,rep,name=right_idle,json=rightIdle,proto3" json:"right_idle,omitempty"`
-	LeftIdle         []*FrameMetadata       `protobuf:"bytes,4,rep,name=left_idle,json=leftIdle,proto3" json:"left_idle,omitempty"`
-	UpRightIdle      []*FrameMetadata       `protobuf:"bytes,5,rep,name=up_right_idle,json=upRightIdle,proto3" json:"up_right_idle,omitempty"`
-	DownRightIdle    []*FrameMetadata       `protobuf:"bytes,6,rep,name=down_right_idle,json=downRightIdle,proto3" json:"down_right_idle,omitempty"`
-	UpLeftIdle       []*FrameMetadata       `protobuf:"bytes,7,rep,name=up_left_idle,json=upLeftIdle,proto3" json:"up_left_idle,omitempty"`
-	DownLeftIdle     []*FrameMetadata       `protobuf:"bytes,8,rep,name=down_left_idle,json=downLeftIdle,proto3" json:"down_left_idle,omitempty"`
-	DefaultIdle      []*FrameMetadata       `protobuf:"bytes,9,rep,name=default_idle,json=defaultIdle,proto3" json:"default_idle,omitempty"`
-	UpWalking        []*FrameMetadata       `protobuf:"bytes,10,rep,name=up_walking,json=upWalking,proto3" json:"up_walking,omitempty"`
-	DownWalking      []*FrameMetadata       `protobuf:"bytes,11,rep,name=down_walking,json=downWalking,proto3" json:"down_walking,omitempty"`
-	RightWalking     []*FrameMetadata       `protobuf:"bytes,12,rep,name=right_walking,json=rightWalking,proto3" json:"right_walking,omitempty"`
-	LeftWalking      []*FrameMetadata       `protobuf:"bytes,13,rep,name=left_walking,json=leftWalking,proto3" json:"left_walking,omitempty"`
-	UpRightWalking   []*FrameMetadata       `protobuf:"bytes,14,rep,name=up_right_walking,json=upRightWalking,proto3" json:"up_right_walking,omitempty"`
-	DownRightWalking []*FrameMetadata       `protobuf:"bytes,15,rep,name=down_right_walking,json=downRightWalking,proto3" json:"down_right_walking,omitempty"`
-	UpLeftWalking    []*FrameMetadata       `protobuf:"bytes,16,rep,name=up_left_walking,json=upLeftWalking,proto3" json:"up_left_walking,omitempty"`
-	DownLeftWalking  []*FrameMetadata       `protobuf:"bytes,17,rep,name=down_left_walking,json=downLeftWalking,proto3" json:"down_left_walking,omitempty"`
-	NoneIdle         []*FrameMetadata       `protobuf:"bytes,18,rep,name=none_idle,json=noneIdle,proto3" json:"none_idle,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
-
-func (x *DirectionFrames) Reset() {
-	*x = DirectionFrames{}
-	mi := &file_proto_cyberia_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DirectionFrames) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DirectionFrames) ProtoMessage() {}
-
-func (x *DirectionFrames) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DirectionFrames.ProtoReflect.Descriptor instead.
-func (*DirectionFrames) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{10}
-}
-
-func (x *DirectionFrames) GetUpIdle() []*FrameMetadata {
-	if x != nil {
-		return x.UpIdle
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetDownIdle() []*FrameMetadata {
-	if x != nil {
-		return x.DownIdle
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetRightIdle() []*FrameMetadata {
-	if x != nil {
-		return x.RightIdle
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetLeftIdle() []*FrameMetadata {
-	if x != nil {
-		return x.LeftIdle
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetUpRightIdle() []*FrameMetadata {
-	if x != nil {
-		return x.UpRightIdle
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetDownRightIdle() []*FrameMetadata {
-	if x != nil {
-		return x.DownRightIdle
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetUpLeftIdle() []*FrameMetadata {
-	if x != nil {
-		return x.UpLeftIdle
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetDownLeftIdle() []*FrameMetadata {
-	if x != nil {
-		return x.DownLeftIdle
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetDefaultIdle() []*FrameMetadata {
-	if x != nil {
-		return x.DefaultIdle
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetUpWalking() []*FrameMetadata {
-	if x != nil {
-		return x.UpWalking
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetDownWalking() []*FrameMetadata {
-	if x != nil {
-		return x.DownWalking
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetRightWalking() []*FrameMetadata {
-	if x != nil {
-		return x.RightWalking
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetLeftWalking() []*FrameMetadata {
-	if x != nil {
-		return x.LeftWalking
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetUpRightWalking() []*FrameMetadata {
-	if x != nil {
-		return x.UpRightWalking
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetDownRightWalking() []*FrameMetadata {
-	if x != nil {
-		return x.DownRightWalking
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetUpLeftWalking() []*FrameMetadata {
-	if x != nil {
-		return x.UpLeftWalking
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetDownLeftWalking() []*FrameMetadata {
-	if x != nil {
-		return x.DownLeftWalking
-	}
-	return nil
-}
-
-func (x *DirectionFrames) GetNoneIdle() []*FrameMetadata {
-	if x != nil {
-		return x.NoneIdle
-	}
-	return nil
-}
-
-type AtlasSpriteSheetMessage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MongoId       string                 `protobuf:"bytes,1,opt,name=mongo_id,json=mongoId,proto3" json:"mongo_id,omitempty"`
-	FileId        string                 `protobuf:"bytes,2,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"` // File doc _id for REST blob fetch
-	Cid           string                 `protobuf:"bytes,3,opt,name=cid,proto3" json:"cid,omitempty"`                     // IPFS CID of atlas PNG
-	ItemKey       string                 `protobuf:"bytes,4,opt,name=item_key,json=itemKey,proto3" json:"item_key,omitempty"`
-	AtlasWidth    int32                  `protobuf:"varint,5,opt,name=atlas_width,json=atlasWidth,proto3" json:"atlas_width,omitempty"`
-	AtlasHeight   int32                  `protobuf:"varint,6,opt,name=atlas_height,json=atlasHeight,proto3" json:"atlas_height,omitempty"`
-	CellPixelDim  int32                  `protobuf:"varint,7,opt,name=cell_pixel_dim,json=cellPixelDim,proto3" json:"cell_pixel_dim,omitempty"`
-	Frames        *DirectionFrames       `protobuf:"bytes,8,opt,name=frames,proto3" json:"frames,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AtlasSpriteSheetMessage) Reset() {
-	*x = AtlasSpriteSheetMessage{}
-	mi := &file_proto_cyberia_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AtlasSpriteSheetMessage) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AtlasSpriteSheetMessage) ProtoMessage() {}
-
-func (x *AtlasSpriteSheetMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AtlasSpriteSheetMessage.ProtoReflect.Descriptor instead.
-func (*AtlasSpriteSheetMessage) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *AtlasSpriteSheetMessage) GetMongoId() string {
-	if x != nil {
-		return x.MongoId
-	}
-	return ""
-}
-
-func (x *AtlasSpriteSheetMessage) GetFileId() string {
-	if x != nil {
-		return x.FileId
-	}
-	return ""
-}
-
-func (x *AtlasSpriteSheetMessage) GetCid() string {
-	if x != nil {
-		return x.Cid
-	}
-	return ""
-}
-
-func (x *AtlasSpriteSheetMessage) GetItemKey() string {
-	if x != nil {
-		return x.ItemKey
-	}
-	return ""
-}
-
-func (x *AtlasSpriteSheetMessage) GetAtlasWidth() int32 {
-	if x != nil {
-		return x.AtlasWidth
-	}
-	return 0
-}
-
-func (x *AtlasSpriteSheetMessage) GetAtlasHeight() int32 {
-	if x != nil {
-		return x.AtlasHeight
-	}
-	return 0
-}
-
-func (x *AtlasSpriteSheetMessage) GetCellPixelDim() int32 {
-	if x != nil {
-		return x.CellPixelDim
-	}
-	return 0
-}
-
-func (x *AtlasSpriteSheetMessage) GetFrames() *DirectionFrames {
-	if x != nil {
-		return x.Frames
-	}
-	return nil
-}
-
-type GetAtlasSpriteSheetRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ItemKey       string                 `protobuf:"bytes,1,opt,name=item_key,json=itemKey,proto3" json:"item_key,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetAtlasSpriteSheetRequest) Reset() {
-	*x = GetAtlasSpriteSheetRequest{}
-	mi := &file_proto_cyberia_proto_msgTypes[12]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetAtlasSpriteSheetRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetAtlasSpriteSheetRequest) ProtoMessage() {}
-
-func (x *GetAtlasSpriteSheetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[12]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetAtlasSpriteSheetRequest.ProtoReflect.Descriptor instead.
-func (*GetAtlasSpriteSheetRequest) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *GetAtlasSpriteSheetRequest) GetItemKey() string {
-	if x != nil {
-		return x.ItemKey
-	}
-	return ""
-}
-
-type GetAtlasSpriteSheetBatchRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetAtlasSpriteSheetBatchRequest) Reset() {
-	*x = GetAtlasSpriteSheetBatchRequest{}
-	mi := &file_proto_cyberia_proto_msgTypes[13]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetAtlasSpriteSheetBatchRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetAtlasSpriteSheetBatchRequest) ProtoMessage() {}
-
-func (x *GetAtlasSpriteSheetBatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[13]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetAtlasSpriteSheetBatchRequest.ProtoReflect.Descriptor instead.
-func (*GetAtlasSpriteSheetBatchRequest) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{13}
-}
-
 type PortalEdge struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SourceMapCode string                 `protobuf:"bytes,1,opt,name=source_map_code,json=sourceMapCode,proto3" json:"source_map_code,omitempty"`
@@ -1052,7 +616,7 @@ type PortalEdge struct {
 
 func (x *PortalEdge) Reset() {
 	*x = PortalEdge{}
-	mi := &file_proto_cyberia_proto_msgTypes[14]
+	mi := &file_proto_cyberia_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1064,7 +628,7 @@ func (x *PortalEdge) String() string {
 func (*PortalEdge) ProtoMessage() {}
 
 func (x *PortalEdge) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[14]
+	mi := &file_proto_cyberia_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1077,7 +641,7 @@ func (x *PortalEdge) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PortalEdge.ProtoReflect.Descriptor instead.
 func (*PortalEdge) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{14}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *PortalEdge) GetSourceMapCode() string {
@@ -1146,7 +710,7 @@ type InstanceMessage struct {
 
 func (x *InstanceMessage) Reset() {
 	*x = InstanceMessage{}
-	mi := &file_proto_cyberia_proto_msgTypes[15]
+	mi := &file_proto_cyberia_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1158,7 +722,7 @@ func (x *InstanceMessage) String() string {
 func (*InstanceMessage) ProtoMessage() {}
 
 func (x *InstanceMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[15]
+	mi := &file_proto_cyberia_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1171,7 +735,7 @@ func (x *InstanceMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstanceMessage.ProtoReflect.Descriptor instead.
 func (*InstanceMessage) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{15}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *InstanceMessage) GetMongoId() string {
@@ -1246,7 +810,7 @@ type GetFullInstanceRequest struct {
 
 func (x *GetFullInstanceRequest) Reset() {
 	*x = GetFullInstanceRequest{}
-	mi := &file_proto_cyberia_proto_msgTypes[16]
+	mi := &file_proto_cyberia_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1258,7 +822,7 @@ func (x *GetFullInstanceRequest) String() string {
 func (*GetFullInstanceRequest) ProtoMessage() {}
 
 func (x *GetFullInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[16]
+	mi := &file_proto_cyberia_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1271,7 +835,7 @@ func (x *GetFullInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFullInstanceRequest.ProtoReflect.Descriptor instead.
 func (*GetFullInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{16}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetFullInstanceRequest) GetInstanceCode() string {
@@ -1293,7 +857,7 @@ type GetFullInstanceResponse struct {
 
 func (x *GetFullInstanceResponse) Reset() {
 	*x = GetFullInstanceResponse{}
-	mi := &file_proto_cyberia_proto_msgTypes[17]
+	mi := &file_proto_cyberia_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1305,7 +869,7 @@ func (x *GetFullInstanceResponse) String() string {
 func (*GetFullInstanceResponse) ProtoMessage() {}
 
 func (x *GetFullInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[17]
+	mi := &file_proto_cyberia_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1318,7 +882,7 @@ func (x *GetFullInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFullInstanceResponse.ProtoReflect.Descriptor instead.
 func (*GetFullInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{17}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GetFullInstanceResponse) GetInstance() *InstanceMessage {
@@ -1362,7 +926,7 @@ type ColorEntry struct {
 
 func (x *ColorEntry) Reset() {
 	*x = ColorEntry{}
-	mi := &file_proto_cyberia_proto_msgTypes[18]
+	mi := &file_proto_cyberia_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1374,7 +938,7 @@ func (x *ColorEntry) String() string {
 func (*ColorEntry) ProtoMessage() {}
 
 func (x *ColorEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[18]
+	mi := &file_proto_cyberia_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1387,7 +951,7 @@ func (x *ColorEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ColorEntry.ProtoReflect.Descriptor instead.
 func (*ColorEntry) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{18}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ColorEntry) GetKey() string {
@@ -1436,7 +1000,7 @@ type DefaultObjectLayerState struct {
 
 func (x *DefaultObjectLayerState) Reset() {
 	*x = DefaultObjectLayerState{}
-	mi := &file_proto_cyberia_proto_msgTypes[19]
+	mi := &file_proto_cyberia_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1448,7 +1012,7 @@ func (x *DefaultObjectLayerState) String() string {
 func (*DefaultObjectLayerState) ProtoMessage() {}
 
 func (x *DefaultObjectLayerState) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[19]
+	mi := &file_proto_cyberia_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1461,7 +1025,7 @@ func (x *DefaultObjectLayerState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DefaultObjectLayerState.ProtoReflect.Descriptor instead.
 func (*DefaultObjectLayerState) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{19}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DefaultObjectLayerState) GetItemId() string {
@@ -1495,7 +1059,7 @@ type SkillConfigEntry struct {
 
 func (x *SkillConfigEntry) Reset() {
 	*x = SkillConfigEntry{}
-	mi := &file_proto_cyberia_proto_msgTypes[20]
+	mi := &file_proto_cyberia_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1507,7 +1071,7 @@ func (x *SkillConfigEntry) String() string {
 func (*SkillConfigEntry) ProtoMessage() {}
 
 func (x *SkillConfigEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[20]
+	mi := &file_proto_cyberia_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1520,7 +1084,7 @@ func (x *SkillConfigEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillConfigEntry.ProtoReflect.Descriptor instead.
 func (*SkillConfigEntry) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{20}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *SkillConfigEntry) GetTriggerItemId() string {
@@ -1583,7 +1147,7 @@ type EconomyRules struct {
 
 func (x *EconomyRules) Reset() {
 	*x = EconomyRules{}
-	mi := &file_proto_cyberia_proto_msgTypes[21]
+	mi := &file_proto_cyberia_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1595,7 +1159,7 @@ func (x *EconomyRules) String() string {
 func (*EconomyRules) ProtoMessage() {}
 
 func (x *EconomyRules) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[21]
+	mi := &file_proto_cyberia_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1608,7 +1172,7 @@ func (x *EconomyRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EconomyRules.ProtoReflect.Descriptor instead.
 func (*EconomyRules) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{21}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *EconomyRules) GetBotSpawnCoins() int32 {
@@ -1689,7 +1253,7 @@ type SkillRules struct {
 
 func (x *SkillRules) Reset() {
 	*x = SkillRules{}
-	mi := &file_proto_cyberia_proto_msgTypes[22]
+	mi := &file_proto_cyberia_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1701,7 +1265,7 @@ func (x *SkillRules) String() string {
 func (*SkillRules) ProtoMessage() {}
 
 func (x *SkillRules) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[22]
+	mi := &file_proto_cyberia_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1714,7 +1278,7 @@ func (x *SkillRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillRules.ProtoReflect.Descriptor instead.
 func (*SkillRules) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{22}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *SkillRules) GetProjectileSpawnChance() float64 {
@@ -1804,7 +1368,7 @@ type EquipmentRules struct {
 
 func (x *EquipmentRules) Reset() {
 	*x = EquipmentRules{}
-	mi := &file_proto_cyberia_proto_msgTypes[23]
+	mi := &file_proto_cyberia_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1816,7 +1380,7 @@ func (x *EquipmentRules) String() string {
 func (*EquipmentRules) ProtoMessage() {}
 
 func (x *EquipmentRules) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[23]
+	mi := &file_proto_cyberia_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1829,7 +1393,7 @@ func (x *EquipmentRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EquipmentRules.ProtoReflect.Descriptor instead.
 func (*EquipmentRules) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{23}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *EquipmentRules) GetActiveItemTypes() []string {
@@ -1912,7 +1476,7 @@ type InstanceConfig struct {
 
 func (x *InstanceConfig) Reset() {
 	*x = InstanceConfig{}
-	mi := &file_proto_cyberia_proto_msgTypes[24]
+	mi := &file_proto_cyberia_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1924,7 +1488,7 @@ func (x *InstanceConfig) String() string {
 func (*InstanceConfig) ProtoMessage() {}
 
 func (x *InstanceConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[24]
+	mi := &file_proto_cyberia_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1937,7 +1501,7 @@ func (x *InstanceConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstanceConfig.ProtoReflect.Descriptor instead.
 func (*InstanceConfig) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{24}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *InstanceConfig) GetCellSize() float64 {
@@ -2204,7 +1768,7 @@ type EntityTypeDefault struct {
 
 func (x *EntityTypeDefault) Reset() {
 	*x = EntityTypeDefault{}
-	mi := &file_proto_cyberia_proto_msgTypes[25]
+	mi := &file_proto_cyberia_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2216,7 +1780,7 @@ func (x *EntityTypeDefault) String() string {
 func (*EntityTypeDefault) ProtoMessage() {}
 
 func (x *EntityTypeDefault) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[25]
+	mi := &file_proto_cyberia_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2229,7 +1793,7 @@ func (x *EntityTypeDefault) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntityTypeDefault.ProtoReflect.Descriptor instead.
 func (*EntityTypeDefault) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{25}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *EntityTypeDefault) GetEntityType() string {
@@ -2289,7 +1853,7 @@ type EntityMessage struct {
 
 func (x *EntityMessage) Reset() {
 	*x = EntityMessage{}
-	mi := &file_proto_cyberia_proto_msgTypes[26]
+	mi := &file_proto_cyberia_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2301,7 +1865,7 @@ func (x *EntityMessage) String() string {
 func (*EntityMessage) ProtoMessage() {}
 
 func (x *EntityMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[26]
+	mi := &file_proto_cyberia_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2314,7 +1878,7 @@ func (x *EntityMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntityMessage.ProtoReflect.Descriptor instead.
 func (*EntityMessage) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{26}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *EntityMessage) GetEntityType() string {
@@ -2417,7 +1981,7 @@ type MapDataMessage struct {
 
 func (x *MapDataMessage) Reset() {
 	*x = MapDataMessage{}
-	mi := &file_proto_cyberia_proto_msgTypes[27]
+	mi := &file_proto_cyberia_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2429,7 +1993,7 @@ func (x *MapDataMessage) String() string {
 func (*MapDataMessage) ProtoMessage() {}
 
 func (x *MapDataMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[27]
+	mi := &file_proto_cyberia_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2442,7 +2006,7 @@ func (x *MapDataMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MapDataMessage.ProtoReflect.Descriptor instead.
 func (*MapDataMessage) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{27}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *MapDataMessage) GetMongoId() string {
@@ -2513,7 +2077,7 @@ type GetMapDataRequest struct {
 
 func (x *GetMapDataRequest) Reset() {
 	*x = GetMapDataRequest{}
-	mi := &file_proto_cyberia_proto_msgTypes[28]
+	mi := &file_proto_cyberia_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2525,7 +2089,7 @@ func (x *GetMapDataRequest) String() string {
 func (*GetMapDataRequest) ProtoMessage() {}
 
 func (x *GetMapDataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[28]
+	mi := &file_proto_cyberia_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2538,7 +2102,7 @@ func (x *GetMapDataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMapDataRequest.ProtoReflect.Descriptor instead.
 func (*GetMapDataRequest) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{28}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GetMapDataRequest) GetMapCode() string {
@@ -2564,7 +2128,7 @@ type GetMapDataResponse struct {
 
 func (x *GetMapDataResponse) Reset() {
 	*x = GetMapDataResponse{}
-	mi := &file_proto_cyberia_proto_msgTypes[29]
+	mi := &file_proto_cyberia_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2576,7 +2140,7 @@ func (x *GetMapDataResponse) String() string {
 func (*GetMapDataResponse) ProtoMessage() {}
 
 func (x *GetMapDataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[29]
+	mi := &file_proto_cyberia_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2589,7 +2153,7 @@ func (x *GetMapDataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMapDataResponse.ProtoReflect.Descriptor instead.
 func (*GetMapDataResponse) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{29}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GetMapDataResponse) GetMap() *MapDataMessage {
@@ -2607,7 +2171,7 @@ type PingRequest struct {
 
 func (x *PingRequest) Reset() {
 	*x = PingRequest{}
-	mi := &file_proto_cyberia_proto_msgTypes[30]
+	mi := &file_proto_cyberia_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2619,7 +2183,7 @@ func (x *PingRequest) String() string {
 func (*PingRequest) ProtoMessage() {}
 
 func (x *PingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[30]
+	mi := &file_proto_cyberia_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2632,7 +2196,7 @@ func (x *PingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingRequest.ProtoReflect.Descriptor instead.
 func (*PingRequest) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{30}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{25}
 }
 
 type PingResponse struct {
@@ -2644,7 +2208,7 @@ type PingResponse struct {
 
 func (x *PingResponse) Reset() {
 	*x = PingResponse{}
-	mi := &file_proto_cyberia_proto_msgTypes[31]
+	mi := &file_proto_cyberia_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2656,7 +2220,7 @@ func (x *PingResponse) String() string {
 func (*PingResponse) ProtoMessage() {}
 
 func (x *PingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[31]
+	mi := &file_proto_cyberia_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2669,7 +2233,7 @@ func (x *PingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingResponse.ProtoReflect.Descriptor instead.
 func (*PingResponse) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{31}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *PingResponse) GetServerTimeMs() int64 {
@@ -2689,7 +2253,7 @@ type ObjectLayerManifestEntry struct {
 
 func (x *ObjectLayerManifestEntry) Reset() {
 	*x = ObjectLayerManifestEntry{}
-	mi := &file_proto_cyberia_proto_msgTypes[32]
+	mi := &file_proto_cyberia_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2701,7 +2265,7 @@ func (x *ObjectLayerManifestEntry) String() string {
 func (*ObjectLayerManifestEntry) ProtoMessage() {}
 
 func (x *ObjectLayerManifestEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[32]
+	mi := &file_proto_cyberia_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2714,7 +2278,7 @@ func (x *ObjectLayerManifestEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObjectLayerManifestEntry.ProtoReflect.Descriptor instead.
 func (*ObjectLayerManifestEntry) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{32}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ObjectLayerManifestEntry) GetItemId() string {
@@ -2739,7 +2303,7 @@ type GetObjectLayerManifestRequest struct {
 
 func (x *GetObjectLayerManifestRequest) Reset() {
 	*x = GetObjectLayerManifestRequest{}
-	mi := &file_proto_cyberia_proto_msgTypes[33]
+	mi := &file_proto_cyberia_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2751,7 +2315,7 @@ func (x *GetObjectLayerManifestRequest) String() string {
 func (*GetObjectLayerManifestRequest) ProtoMessage() {}
 
 func (x *GetObjectLayerManifestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[33]
+	mi := &file_proto_cyberia_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2764,7 +2328,7 @@ func (x *GetObjectLayerManifestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetObjectLayerManifestRequest.ProtoReflect.Descriptor instead.
 func (*GetObjectLayerManifestRequest) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{33}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{28}
 }
 
 type GetObjectLayerManifestResponse struct {
@@ -2776,7 +2340,7 @@ type GetObjectLayerManifestResponse struct {
 
 func (x *GetObjectLayerManifestResponse) Reset() {
 	*x = GetObjectLayerManifestResponse{}
-	mi := &file_proto_cyberia_proto_msgTypes[34]
+	mi := &file_proto_cyberia_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2788,7 +2352,7 @@ func (x *GetObjectLayerManifestResponse) String() string {
 func (*GetObjectLayerManifestResponse) ProtoMessage() {}
 
 func (x *GetObjectLayerManifestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_cyberia_proto_msgTypes[34]
+	mi := &file_proto_cyberia_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2801,7 +2365,7 @@ func (x *GetObjectLayerManifestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetObjectLayerManifestResponse.ProtoReflect.Descriptor instead.
 func (*GetObjectLayerManifestResponse) Descriptor() ([]byte, []int) {
-	return file_proto_cyberia_proto_rawDescGZIP(), []int{34}
+	return file_proto_cyberia_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GetObjectLayerManifestResponse) GetEntries() []*ObjectLayerManifestEntry {
@@ -2856,50 +2420,7 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\x1aGetObjectLayerBatchRequest\x12(\n" +
 	"\x10item_type_filter\x18\x01 \x01(\tR\x0eitemTypeFilter\"0\n" +
 	"\x15GetObjectLayerRequest\x12\x17\n" +
-	"\aitem_id\x18\x01 \x01(\tR\x06itemId\"z\n" +
-	"\rFrameMetadata\x12\f\n" +
-	"\x01x\x18\x01 \x01(\x05R\x01x\x12\f\n" +
-	"\x01y\x18\x02 \x01(\x05R\x01y\x12\x14\n" +
-	"\x05width\x18\x03 \x01(\x05R\x05width\x12\x16\n" +
-	"\x06height\x18\x04 \x01(\x05R\x06height\x12\x1f\n" +
-	"\vframe_index\x18\x05 \x01(\x05R\n" +
-	"frameIndex\"\xbd\b\n" +
-	"\x0fDirectionFrames\x12/\n" +
-	"\aup_idle\x18\x01 \x03(\v2\x16.cyberia.FrameMetadataR\x06upIdle\x123\n" +
-	"\tdown_idle\x18\x02 \x03(\v2\x16.cyberia.FrameMetadataR\bdownIdle\x125\n" +
-	"\n" +
-	"right_idle\x18\x03 \x03(\v2\x16.cyberia.FrameMetadataR\trightIdle\x123\n" +
-	"\tleft_idle\x18\x04 \x03(\v2\x16.cyberia.FrameMetadataR\bleftIdle\x12:\n" +
-	"\rup_right_idle\x18\x05 \x03(\v2\x16.cyberia.FrameMetadataR\vupRightIdle\x12>\n" +
-	"\x0fdown_right_idle\x18\x06 \x03(\v2\x16.cyberia.FrameMetadataR\rdownRightIdle\x128\n" +
-	"\fup_left_idle\x18\a \x03(\v2\x16.cyberia.FrameMetadataR\n" +
-	"upLeftIdle\x12<\n" +
-	"\x0edown_left_idle\x18\b \x03(\v2\x16.cyberia.FrameMetadataR\fdownLeftIdle\x129\n" +
-	"\fdefault_idle\x18\t \x03(\v2\x16.cyberia.FrameMetadataR\vdefaultIdle\x125\n" +
-	"\n" +
-	"up_walking\x18\n" +
-	" \x03(\v2\x16.cyberia.FrameMetadataR\tupWalking\x129\n" +
-	"\fdown_walking\x18\v \x03(\v2\x16.cyberia.FrameMetadataR\vdownWalking\x12;\n" +
-	"\rright_walking\x18\f \x03(\v2\x16.cyberia.FrameMetadataR\frightWalking\x129\n" +
-	"\fleft_walking\x18\r \x03(\v2\x16.cyberia.FrameMetadataR\vleftWalking\x12@\n" +
-	"\x10up_right_walking\x18\x0e \x03(\v2\x16.cyberia.FrameMetadataR\x0eupRightWalking\x12D\n" +
-	"\x12down_right_walking\x18\x0f \x03(\v2\x16.cyberia.FrameMetadataR\x10downRightWalking\x12>\n" +
-	"\x0fup_left_walking\x18\x10 \x03(\v2\x16.cyberia.FrameMetadataR\rupLeftWalking\x12B\n" +
-	"\x11down_left_walking\x18\x11 \x03(\v2\x16.cyberia.FrameMetadataR\x0fdownLeftWalking\x123\n" +
-	"\tnone_idle\x18\x12 \x03(\v2\x16.cyberia.FrameMetadataR\bnoneIdle\"\x96\x02\n" +
-	"\x17AtlasSpriteSheetMessage\x12\x19\n" +
-	"\bmongo_id\x18\x01 \x01(\tR\amongoId\x12\x17\n" +
-	"\afile_id\x18\x02 \x01(\tR\x06fileId\x12\x10\n" +
-	"\x03cid\x18\x03 \x01(\tR\x03cid\x12\x19\n" +
-	"\bitem_key\x18\x04 \x01(\tR\aitemKey\x12\x1f\n" +
-	"\vatlas_width\x18\x05 \x01(\x05R\n" +
-	"atlasWidth\x12!\n" +
-	"\fatlas_height\x18\x06 \x01(\x05R\vatlasHeight\x12$\n" +
-	"\x0ecell_pixel_dim\x18\a \x01(\x05R\fcellPixelDim\x120\n" +
-	"\x06frames\x18\b \x01(\v2\x18.cyberia.DirectionFramesR\x06frames\"7\n" +
-	"\x1aGetAtlasSpriteSheetRequest\x12\x19\n" +
-	"\bitem_key\x18\x01 \x01(\tR\aitemKey\"!\n" +
-	"\x1fGetAtlasSpriteSheetBatchRequest\"\x8d\x02\n" +
+	"\aitem_id\x18\x01 \x01(\tR\x06itemId\"\x8d\x02\n" +
 	"\n" +
 	"PortalEdge\x12&\n" +
 	"\x0fsource_map_code\x18\x01 \x01(\tR\rsourceMapCode\x12\"\n" +
@@ -3056,15 +2577,13 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\x06sha256\x18\x02 \x01(\tR\x06sha256\"\x1f\n" +
 	"\x1dGetObjectLayerManifestRequest\"]\n" +
 	"\x1eGetObjectLayerManifestResponse\x12;\n" +
-	"\aentries\x18\x01 \x03(\v2!.cyberia.ObjectLayerManifestEntryR\aentries2\xc3\x05\n" +
+	"\aentries\x18\x01 \x03(\v2!.cyberia.ObjectLayerManifestEntryR\aentries2\xfb\x03\n" +
 	"\x12CyberiaDataService\x12T\n" +
 	"\x0fGetFullInstance\x12\x1f.cyberia.GetFullInstanceRequest\x1a .cyberia.GetFullInstanceResponse\x12E\n" +
 	"\n" +
 	"GetMapData\x12\x1a.cyberia.GetMapDataRequest\x1a\x1b.cyberia.GetMapDataResponse\x12Y\n" +
 	"\x13GetObjectLayerBatch\x12#.cyberia.GetObjectLayerBatchRequest\x1a\x1b.cyberia.ObjectLayerMessage0\x01\x12M\n" +
-	"\x0eGetObjectLayer\x12\x1e.cyberia.GetObjectLayerRequest\x1a\x1b.cyberia.ObjectLayerMessage\x12\\\n" +
-	"\x13GetAtlasSpriteSheet\x12#.cyberia.GetAtlasSpriteSheetRequest\x1a .cyberia.AtlasSpriteSheetMessage\x12h\n" +
-	"\x18GetAtlasSpriteSheetBatch\x12(.cyberia.GetAtlasSpriteSheetBatchRequest\x1a .cyberia.AtlasSpriteSheetMessage0\x01\x123\n" +
+	"\x0eGetObjectLayer\x12\x1e.cyberia.GetObjectLayerRequest\x1a\x1b.cyberia.ObjectLayerMessage\x123\n" +
 	"\x04Ping\x12\x14.cyberia.PingRequest\x1a\x15.cyberia.PingResponse\x12i\n" +
 	"\x16GetObjectLayerManifest\x12&.cyberia.GetObjectLayerManifestRequest\x1a'.cyberia.GetObjectLayerManifestResponseB\x16Z\x14cyberia-server/protob\x06proto3"
 
@@ -3080,104 +2599,76 @@ func file_proto_cyberia_proto_rawDescGZIP() []byte {
 	return file_proto_cyberia_proto_rawDescData
 }
 
-var file_proto_cyberia_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
+var file_proto_cyberia_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_proto_cyberia_proto_goTypes = []any{
-	(*Vec2)(nil),                            // 0: cyberia.Vec2
-	(*Vec2I)(nil),                           // 1: cyberia.Vec2I
-	(*Stats)(nil),                           // 2: cyberia.Stats
-	(*ItemInfo)(nil),                        // 3: cyberia.ItemInfo
-	(*Ledger)(nil),                          // 4: cyberia.Ledger
-	(*Render)(nil),                          // 5: cyberia.Render
-	(*ObjectLayerMessage)(nil),              // 6: cyberia.ObjectLayerMessage
-	(*GetObjectLayerBatchRequest)(nil),      // 7: cyberia.GetObjectLayerBatchRequest
-	(*GetObjectLayerRequest)(nil),           // 8: cyberia.GetObjectLayerRequest
-	(*FrameMetadata)(nil),                   // 9: cyberia.FrameMetadata
-	(*DirectionFrames)(nil),                 // 10: cyberia.DirectionFrames
-	(*AtlasSpriteSheetMessage)(nil),         // 11: cyberia.AtlasSpriteSheetMessage
-	(*GetAtlasSpriteSheetRequest)(nil),      // 12: cyberia.GetAtlasSpriteSheetRequest
-	(*GetAtlasSpriteSheetBatchRequest)(nil), // 13: cyberia.GetAtlasSpriteSheetBatchRequest
-	(*PortalEdge)(nil),                      // 14: cyberia.PortalEdge
-	(*InstanceMessage)(nil),                 // 15: cyberia.InstanceMessage
-	(*GetFullInstanceRequest)(nil),          // 16: cyberia.GetFullInstanceRequest
-	(*GetFullInstanceResponse)(nil),         // 17: cyberia.GetFullInstanceResponse
-	(*ColorEntry)(nil),                      // 18: cyberia.ColorEntry
-	(*DefaultObjectLayerState)(nil),         // 19: cyberia.DefaultObjectLayerState
-	(*SkillConfigEntry)(nil),                // 20: cyberia.SkillConfigEntry
-	(*EconomyRules)(nil),                    // 21: cyberia.EconomyRules
-	(*SkillRules)(nil),                      // 22: cyberia.SkillRules
-	(*EquipmentRules)(nil),                  // 23: cyberia.EquipmentRules
-	(*InstanceConfig)(nil),                  // 24: cyberia.InstanceConfig
-	(*EntityTypeDefault)(nil),               // 25: cyberia.EntityTypeDefault
-	(*EntityMessage)(nil),                   // 26: cyberia.EntityMessage
-	(*MapDataMessage)(nil),                  // 27: cyberia.MapDataMessage
-	(*GetMapDataRequest)(nil),               // 28: cyberia.GetMapDataRequest
-	(*GetMapDataResponse)(nil),              // 29: cyberia.GetMapDataResponse
-	(*PingRequest)(nil),                     // 30: cyberia.PingRequest
-	(*PingResponse)(nil),                    // 31: cyberia.PingResponse
-	(*ObjectLayerManifestEntry)(nil),        // 32: cyberia.ObjectLayerManifestEntry
-	(*GetObjectLayerManifestRequest)(nil),   // 33: cyberia.GetObjectLayerManifestRequest
-	(*GetObjectLayerManifestResponse)(nil),  // 34: cyberia.GetObjectLayerManifestResponse
+	(*Vec2)(nil),                           // 0: cyberia.Vec2
+	(*Vec2I)(nil),                          // 1: cyberia.Vec2I
+	(*Stats)(nil),                          // 2: cyberia.Stats
+	(*ItemInfo)(nil),                       // 3: cyberia.ItemInfo
+	(*Ledger)(nil),                         // 4: cyberia.Ledger
+	(*Render)(nil),                         // 5: cyberia.Render
+	(*ObjectLayerMessage)(nil),             // 6: cyberia.ObjectLayerMessage
+	(*GetObjectLayerBatchRequest)(nil),     // 7: cyberia.GetObjectLayerBatchRequest
+	(*GetObjectLayerRequest)(nil),          // 8: cyberia.GetObjectLayerRequest
+	(*PortalEdge)(nil),                     // 9: cyberia.PortalEdge
+	(*InstanceMessage)(nil),                // 10: cyberia.InstanceMessage
+	(*GetFullInstanceRequest)(nil),         // 11: cyberia.GetFullInstanceRequest
+	(*GetFullInstanceResponse)(nil),        // 12: cyberia.GetFullInstanceResponse
+	(*ColorEntry)(nil),                     // 13: cyberia.ColorEntry
+	(*DefaultObjectLayerState)(nil),        // 14: cyberia.DefaultObjectLayerState
+	(*SkillConfigEntry)(nil),               // 15: cyberia.SkillConfigEntry
+	(*EconomyRules)(nil),                   // 16: cyberia.EconomyRules
+	(*SkillRules)(nil),                     // 17: cyberia.SkillRules
+	(*EquipmentRules)(nil),                 // 18: cyberia.EquipmentRules
+	(*InstanceConfig)(nil),                 // 19: cyberia.InstanceConfig
+	(*EntityTypeDefault)(nil),              // 20: cyberia.EntityTypeDefault
+	(*EntityMessage)(nil),                  // 21: cyberia.EntityMessage
+	(*MapDataMessage)(nil),                 // 22: cyberia.MapDataMessage
+	(*GetMapDataRequest)(nil),              // 23: cyberia.GetMapDataRequest
+	(*GetMapDataResponse)(nil),             // 24: cyberia.GetMapDataResponse
+	(*PingRequest)(nil),                    // 25: cyberia.PingRequest
+	(*PingResponse)(nil),                   // 26: cyberia.PingResponse
+	(*ObjectLayerManifestEntry)(nil),       // 27: cyberia.ObjectLayerManifestEntry
+	(*GetObjectLayerManifestRequest)(nil),  // 28: cyberia.GetObjectLayerManifestRequest
+	(*GetObjectLayerManifestResponse)(nil), // 29: cyberia.GetObjectLayerManifestResponse
 }
 var file_proto_cyberia_proto_depIdxs = []int32{
 	2,  // 0: cyberia.ObjectLayerMessage.stats:type_name -> cyberia.Stats
 	3,  // 1: cyberia.ObjectLayerMessage.item:type_name -> cyberia.ItemInfo
 	4,  // 2: cyberia.ObjectLayerMessage.ledger:type_name -> cyberia.Ledger
 	5,  // 3: cyberia.ObjectLayerMessage.render:type_name -> cyberia.Render
-	9,  // 4: cyberia.DirectionFrames.up_idle:type_name -> cyberia.FrameMetadata
-	9,  // 5: cyberia.DirectionFrames.down_idle:type_name -> cyberia.FrameMetadata
-	9,  // 6: cyberia.DirectionFrames.right_idle:type_name -> cyberia.FrameMetadata
-	9,  // 7: cyberia.DirectionFrames.left_idle:type_name -> cyberia.FrameMetadata
-	9,  // 8: cyberia.DirectionFrames.up_right_idle:type_name -> cyberia.FrameMetadata
-	9,  // 9: cyberia.DirectionFrames.down_right_idle:type_name -> cyberia.FrameMetadata
-	9,  // 10: cyberia.DirectionFrames.up_left_idle:type_name -> cyberia.FrameMetadata
-	9,  // 11: cyberia.DirectionFrames.down_left_idle:type_name -> cyberia.FrameMetadata
-	9,  // 12: cyberia.DirectionFrames.default_idle:type_name -> cyberia.FrameMetadata
-	9,  // 13: cyberia.DirectionFrames.up_walking:type_name -> cyberia.FrameMetadata
-	9,  // 14: cyberia.DirectionFrames.down_walking:type_name -> cyberia.FrameMetadata
-	9,  // 15: cyberia.DirectionFrames.right_walking:type_name -> cyberia.FrameMetadata
-	9,  // 16: cyberia.DirectionFrames.left_walking:type_name -> cyberia.FrameMetadata
-	9,  // 17: cyberia.DirectionFrames.up_right_walking:type_name -> cyberia.FrameMetadata
-	9,  // 18: cyberia.DirectionFrames.down_right_walking:type_name -> cyberia.FrameMetadata
-	9,  // 19: cyberia.DirectionFrames.up_left_walking:type_name -> cyberia.FrameMetadata
-	9,  // 20: cyberia.DirectionFrames.down_left_walking:type_name -> cyberia.FrameMetadata
-	9,  // 21: cyberia.DirectionFrames.none_idle:type_name -> cyberia.FrameMetadata
-	10, // 22: cyberia.AtlasSpriteSheetMessage.frames:type_name -> cyberia.DirectionFrames
-	14, // 23: cyberia.InstanceMessage.portals:type_name -> cyberia.PortalEdge
-	15, // 24: cyberia.GetFullInstanceResponse.instance:type_name -> cyberia.InstanceMessage
-	27, // 25: cyberia.GetFullInstanceResponse.maps:type_name -> cyberia.MapDataMessage
-	6,  // 26: cyberia.GetFullInstanceResponse.object_layers:type_name -> cyberia.ObjectLayerMessage
-	24, // 27: cyberia.GetFullInstanceResponse.config:type_name -> cyberia.InstanceConfig
-	18, // 28: cyberia.InstanceConfig.colors:type_name -> cyberia.ColorEntry
-	20, // 29: cyberia.InstanceConfig.skill_config:type_name -> cyberia.SkillConfigEntry
-	22, // 30: cyberia.InstanceConfig.skill_rules:type_name -> cyberia.SkillRules
-	21, // 31: cyberia.InstanceConfig.economy_rules:type_name -> cyberia.EconomyRules
-	23, // 32: cyberia.InstanceConfig.equipment_rules:type_name -> cyberia.EquipmentRules
-	25, // 33: cyberia.InstanceConfig.entity_defaults:type_name -> cyberia.EntityTypeDefault
-	19, // 34: cyberia.EntityTypeDefault.default_object_layers:type_name -> cyberia.DefaultObjectLayerState
-	26, // 35: cyberia.MapDataMessage.entities:type_name -> cyberia.EntityMessage
-	27, // 36: cyberia.GetMapDataResponse.map:type_name -> cyberia.MapDataMessage
-	32, // 37: cyberia.GetObjectLayerManifestResponse.entries:type_name -> cyberia.ObjectLayerManifestEntry
-	16, // 38: cyberia.CyberiaDataService.GetFullInstance:input_type -> cyberia.GetFullInstanceRequest
-	28, // 39: cyberia.CyberiaDataService.GetMapData:input_type -> cyberia.GetMapDataRequest
-	7,  // 40: cyberia.CyberiaDataService.GetObjectLayerBatch:input_type -> cyberia.GetObjectLayerBatchRequest
-	8,  // 41: cyberia.CyberiaDataService.GetObjectLayer:input_type -> cyberia.GetObjectLayerRequest
-	12, // 42: cyberia.CyberiaDataService.GetAtlasSpriteSheet:input_type -> cyberia.GetAtlasSpriteSheetRequest
-	13, // 43: cyberia.CyberiaDataService.GetAtlasSpriteSheetBatch:input_type -> cyberia.GetAtlasSpriteSheetBatchRequest
-	30, // 44: cyberia.CyberiaDataService.Ping:input_type -> cyberia.PingRequest
-	33, // 45: cyberia.CyberiaDataService.GetObjectLayerManifest:input_type -> cyberia.GetObjectLayerManifestRequest
-	17, // 46: cyberia.CyberiaDataService.GetFullInstance:output_type -> cyberia.GetFullInstanceResponse
-	29, // 47: cyberia.CyberiaDataService.GetMapData:output_type -> cyberia.GetMapDataResponse
-	6,  // 48: cyberia.CyberiaDataService.GetObjectLayerBatch:output_type -> cyberia.ObjectLayerMessage
-	6,  // 49: cyberia.CyberiaDataService.GetObjectLayer:output_type -> cyberia.ObjectLayerMessage
-	11, // 50: cyberia.CyberiaDataService.GetAtlasSpriteSheet:output_type -> cyberia.AtlasSpriteSheetMessage
-	11, // 51: cyberia.CyberiaDataService.GetAtlasSpriteSheetBatch:output_type -> cyberia.AtlasSpriteSheetMessage
-	31, // 52: cyberia.CyberiaDataService.Ping:output_type -> cyberia.PingResponse
-	34, // 53: cyberia.CyberiaDataService.GetObjectLayerManifest:output_type -> cyberia.GetObjectLayerManifestResponse
-	46, // [46:54] is the sub-list for method output_type
-	38, // [38:46] is the sub-list for method input_type
-	38, // [38:38] is the sub-list for extension type_name
-	38, // [38:38] is the sub-list for extension extendee
-	0,  // [0:38] is the sub-list for field type_name
+	9,  // 4: cyberia.InstanceMessage.portals:type_name -> cyberia.PortalEdge
+	10, // 5: cyberia.GetFullInstanceResponse.instance:type_name -> cyberia.InstanceMessage
+	22, // 6: cyberia.GetFullInstanceResponse.maps:type_name -> cyberia.MapDataMessage
+	6,  // 7: cyberia.GetFullInstanceResponse.object_layers:type_name -> cyberia.ObjectLayerMessage
+	19, // 8: cyberia.GetFullInstanceResponse.config:type_name -> cyberia.InstanceConfig
+	13, // 9: cyberia.InstanceConfig.colors:type_name -> cyberia.ColorEntry
+	15, // 10: cyberia.InstanceConfig.skill_config:type_name -> cyberia.SkillConfigEntry
+	17, // 11: cyberia.InstanceConfig.skill_rules:type_name -> cyberia.SkillRules
+	16, // 12: cyberia.InstanceConfig.economy_rules:type_name -> cyberia.EconomyRules
+	18, // 13: cyberia.InstanceConfig.equipment_rules:type_name -> cyberia.EquipmentRules
+	20, // 14: cyberia.InstanceConfig.entity_defaults:type_name -> cyberia.EntityTypeDefault
+	14, // 15: cyberia.EntityTypeDefault.default_object_layers:type_name -> cyberia.DefaultObjectLayerState
+	21, // 16: cyberia.MapDataMessage.entities:type_name -> cyberia.EntityMessage
+	22, // 17: cyberia.GetMapDataResponse.map:type_name -> cyberia.MapDataMessage
+	27, // 18: cyberia.GetObjectLayerManifestResponse.entries:type_name -> cyberia.ObjectLayerManifestEntry
+	11, // 19: cyberia.CyberiaDataService.GetFullInstance:input_type -> cyberia.GetFullInstanceRequest
+	23, // 20: cyberia.CyberiaDataService.GetMapData:input_type -> cyberia.GetMapDataRequest
+	7,  // 21: cyberia.CyberiaDataService.GetObjectLayerBatch:input_type -> cyberia.GetObjectLayerBatchRequest
+	8,  // 22: cyberia.CyberiaDataService.GetObjectLayer:input_type -> cyberia.GetObjectLayerRequest
+	25, // 23: cyberia.CyberiaDataService.Ping:input_type -> cyberia.PingRequest
+	28, // 24: cyberia.CyberiaDataService.GetObjectLayerManifest:input_type -> cyberia.GetObjectLayerManifestRequest
+	12, // 25: cyberia.CyberiaDataService.GetFullInstance:output_type -> cyberia.GetFullInstanceResponse
+	24, // 26: cyberia.CyberiaDataService.GetMapData:output_type -> cyberia.GetMapDataResponse
+	6,  // 27: cyberia.CyberiaDataService.GetObjectLayerBatch:output_type -> cyberia.ObjectLayerMessage
+	6,  // 28: cyberia.CyberiaDataService.GetObjectLayer:output_type -> cyberia.ObjectLayerMessage
+	26, // 29: cyberia.CyberiaDataService.Ping:output_type -> cyberia.PingResponse
+	29, // 30: cyberia.CyberiaDataService.GetObjectLayerManifest:output_type -> cyberia.GetObjectLayerManifestResponse
+	25, // [25:31] is the sub-list for method output_type
+	19, // [19:25] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_proto_cyberia_proto_init() }
@@ -3191,7 +2682,7 @@ func file_proto_cyberia_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_cyberia_proto_rawDesc), len(file_proto_cyberia_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   35,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

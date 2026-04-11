@@ -38,15 +38,6 @@ service CyberiaDataService {
   // Returns a single ObjectLayer by item ID.
   rpc GetObjectLayer(GetObjectLayerRequest) returns (ObjectLayerMessage);
 
-  // ── Atlas Sprite Sheets ─────────────────────────────────────────
-  // Returns atlas metadata (frame positions, dimensions) for an item.
-  // The actual PNG binary is served via REST (/api/file/blob/:fileId).
-  rpc GetAtlasSpriteSheet(GetAtlasSpriteSheetRequest) returns (AtlasSpriteSheetMessage);
-
-  // Streams all AtlasSpriteSheets in the database.
-  // Used at startup to populate the Go server's atlas cache.
-  rpc GetAtlasSpriteSheetBatch(GetAtlasSpriteSheetBatchRequest) returns (stream AtlasSpriteSheetMessage);
-
   // ── Reload / Health ─────────────────────────────────────────────
   // Lightweight ping to check Engine liveness before hot-reload.
   rpc Ping(PingRequest) returns (PingResponse);
@@ -126,58 +117,6 @@ message GetObjectLayerBatchRequest {
 
 message GetObjectLayerRequest {
   string item_id = 1;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// Atlas Sprite Sheet messages
-// ═══════════════════════════════════════════════════════════════════
-
-message FrameMetadata {
-  int32 x           = 1;
-  int32 y           = 2;
-  int32 width       = 3;
-  int32 height      = 4;
-  int32 frame_index = 5;
-}
-
-message DirectionFrames {
-  repeated FrameMetadata up_idle            = 1;
-  repeated FrameMetadata down_idle          = 2;
-  repeated FrameMetadata right_idle         = 3;
-  repeated FrameMetadata left_idle          = 4;
-  repeated FrameMetadata up_right_idle      = 5;
-  repeated FrameMetadata down_right_idle    = 6;
-  repeated FrameMetadata up_left_idle       = 7;
-  repeated FrameMetadata down_left_idle     = 8;
-  repeated FrameMetadata default_idle       = 9;
-  repeated FrameMetadata up_walking         = 10;
-  repeated FrameMetadata down_walking       = 11;
-  repeated FrameMetadata right_walking      = 12;
-  repeated FrameMetadata left_walking       = 13;
-  repeated FrameMetadata up_right_walking   = 14;
-  repeated FrameMetadata down_right_walking = 15;
-  repeated FrameMetadata up_left_walking    = 16;
-  repeated FrameMetadata down_left_walking  = 17;
-  repeated FrameMetadata none_idle          = 18;
-}
-
-message AtlasSpriteSheetMessage {
-  string          mongo_id        = 1;
-  string          file_id         = 2;  // File doc _id for REST blob fetch
-  string          cid             = 3;  // IPFS CID of atlas PNG
-  string          item_key        = 4;
-  int32           atlas_width     = 5;
-  int32           atlas_height    = 6;
-  int32           cell_pixel_dim  = 7;
-  DirectionFrames frames          = 8;
-}
-
-message GetAtlasSpriteSheetRequest {
-  string item_key = 1;
-}
-
-message GetAtlasSpriteSheetBatchRequest {
-  // Empty = return all atlas sprite sheets.
 }
 
 // ═══════════════════════════════════════════════════════════════════

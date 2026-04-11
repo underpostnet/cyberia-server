@@ -47,7 +47,6 @@ type ObjectLayer struct {
 	Data                      ObjectLayerData `json:"data"`
 	Cid                       string          `json:"cid,omitempty"`
 	ObjectLayerRenderFramesId interface{}     `json:"objectLayerRenderFramesId,omitempty"`
-	AtlasSpriteSheetId        interface{}     `json:"atlasSpriteSheetId,omitempty"`
 	Sha256                    string          `json:"sha256"`
 	FrameDuration             int             `json:"frame_duration"`
 	IsStateless               bool            `json:"is_stateless"`

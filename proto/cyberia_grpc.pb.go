@@ -31,14 +31,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	CyberiaDataService_GetFullInstance_FullMethodName          = "/cyberia.CyberiaDataService/GetFullInstance"
-	CyberiaDataService_GetMapData_FullMethodName               = "/cyberia.CyberiaDataService/GetMapData"
-	CyberiaDataService_GetObjectLayerBatch_FullMethodName      = "/cyberia.CyberiaDataService/GetObjectLayerBatch"
-	CyberiaDataService_GetObjectLayer_FullMethodName           = "/cyberia.CyberiaDataService/GetObjectLayer"
-	CyberiaDataService_GetAtlasSpriteSheet_FullMethodName      = "/cyberia.CyberiaDataService/GetAtlasSpriteSheet"
-	CyberiaDataService_GetAtlasSpriteSheetBatch_FullMethodName = "/cyberia.CyberiaDataService/GetAtlasSpriteSheetBatch"
-	CyberiaDataService_Ping_FullMethodName                     = "/cyberia.CyberiaDataService/Ping"
-	CyberiaDataService_GetObjectLayerManifest_FullMethodName   = "/cyberia.CyberiaDataService/GetObjectLayerManifest"
+	CyberiaDataService_GetFullInstance_FullMethodName        = "/cyberia.CyberiaDataService/GetFullInstance"
+	CyberiaDataService_GetMapData_FullMethodName             = "/cyberia.CyberiaDataService/GetMapData"
+	CyberiaDataService_GetObjectLayerBatch_FullMethodName    = "/cyberia.CyberiaDataService/GetObjectLayerBatch"
+	CyberiaDataService_GetObjectLayer_FullMethodName         = "/cyberia.CyberiaDataService/GetObjectLayer"
+	CyberiaDataService_Ping_FullMethodName                   = "/cyberia.CyberiaDataService/Ping"
+	CyberiaDataService_GetObjectLayerManifest_FullMethodName = "/cyberia.CyberiaDataService/GetObjectLayerManifest"
 )
 
 // CyberiaDataServiceClient is the client API for CyberiaDataService service.
@@ -58,13 +56,6 @@ type CyberiaDataServiceClient interface {
 	GetObjectLayerBatch(ctx context.Context, in *GetObjectLayerBatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObjectLayerMessage], error)
 	// Returns a single ObjectLayer by item ID.
 	GetObjectLayer(ctx context.Context, in *GetObjectLayerRequest, opts ...grpc.CallOption) (*ObjectLayerMessage, error)
-	// ── Atlas Sprite Sheets ─────────────────────────────────────────
-	// Returns atlas metadata (frame positions, dimensions) for an item.
-	// The actual PNG binary is served via REST (/api/file/blob/:fileId).
-	GetAtlasSpriteSheet(ctx context.Context, in *GetAtlasSpriteSheetRequest, opts ...grpc.CallOption) (*AtlasSpriteSheetMessage, error)
-	// Streams all AtlasSpriteSheets in the database.
-	// Used at startup to populate the Go server's atlas cache.
-	GetAtlasSpriteSheetBatch(ctx context.Context, in *GetAtlasSpriteSheetBatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AtlasSpriteSheetMessage], error)
 	// ── Reload / Health ─────────────────────────────────────────────
 	// Lightweight ping to check Engine liveness before hot-reload.
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
@@ -131,35 +122,6 @@ func (c *cyberiaDataServiceClient) GetObjectLayer(ctx context.Context, in *GetOb
 	return out, nil
 }
 
-func (c *cyberiaDataServiceClient) GetAtlasSpriteSheet(ctx context.Context, in *GetAtlasSpriteSheetRequest, opts ...grpc.CallOption) (*AtlasSpriteSheetMessage, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AtlasSpriteSheetMessage)
-	err := c.cc.Invoke(ctx, CyberiaDataService_GetAtlasSpriteSheet_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *cyberiaDataServiceClient) GetAtlasSpriteSheetBatch(ctx context.Context, in *GetAtlasSpriteSheetBatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AtlasSpriteSheetMessage], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &CyberiaDataService_ServiceDesc.Streams[1], CyberiaDataService_GetAtlasSpriteSheetBatch_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[GetAtlasSpriteSheetBatchRequest, AtlasSpriteSheetMessage]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type CyberiaDataService_GetAtlasSpriteSheetBatchClient = grpc.ServerStreamingClient[AtlasSpriteSheetMessage]
-
 func (c *cyberiaDataServiceClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PingResponse)
@@ -197,13 +159,6 @@ type CyberiaDataServiceServer interface {
 	GetObjectLayerBatch(*GetObjectLayerBatchRequest, grpc.ServerStreamingServer[ObjectLayerMessage]) error
 	// Returns a single ObjectLayer by item ID.
 	GetObjectLayer(context.Context, *GetObjectLayerRequest) (*ObjectLayerMessage, error)
-	// ── Atlas Sprite Sheets ─────────────────────────────────────────
-	// Returns atlas metadata (frame positions, dimensions) for an item.
-	// The actual PNG binary is served via REST (/api/file/blob/:fileId).
-	GetAtlasSpriteSheet(context.Context, *GetAtlasSpriteSheetRequest) (*AtlasSpriteSheetMessage, error)
-	// Streams all AtlasSpriteSheets in the database.
-	// Used at startup to populate the Go server's atlas cache.
-	GetAtlasSpriteSheetBatch(*GetAtlasSpriteSheetBatchRequest, grpc.ServerStreamingServer[AtlasSpriteSheetMessage]) error
 	// ── Reload / Health ─────────────────────────────────────────────
 	// Lightweight ping to check Engine liveness before hot-reload.
 	Ping(context.Context, *PingRequest) (*PingResponse, error)
@@ -232,12 +187,6 @@ func (UnimplementedCyberiaDataServiceServer) GetObjectLayerBatch(*GetObjectLayer
 }
 func (UnimplementedCyberiaDataServiceServer) GetObjectLayer(context.Context, *GetObjectLayerRequest) (*ObjectLayerMessage, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetObjectLayer not implemented")
-}
-func (UnimplementedCyberiaDataServiceServer) GetAtlasSpriteSheet(context.Context, *GetAtlasSpriteSheetRequest) (*AtlasSpriteSheetMessage, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetAtlasSpriteSheet not implemented")
-}
-func (UnimplementedCyberiaDataServiceServer) GetAtlasSpriteSheetBatch(*GetAtlasSpriteSheetBatchRequest, grpc.ServerStreamingServer[AtlasSpriteSheetMessage]) error {
-	return status.Error(codes.Unimplemented, "method GetAtlasSpriteSheetBatch not implemented")
 }
 func (UnimplementedCyberiaDataServiceServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Ping not implemented")
@@ -331,35 +280,6 @@ func _CyberiaDataService_GetObjectLayer_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _CyberiaDataService_GetAtlasSpriteSheet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetAtlasSpriteSheetRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(CyberiaDataServiceServer).GetAtlasSpriteSheet(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: CyberiaDataService_GetAtlasSpriteSheet_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CyberiaDataServiceServer).GetAtlasSpriteSheet(ctx, req.(*GetAtlasSpriteSheetRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _CyberiaDataService_GetAtlasSpriteSheetBatch_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(GetAtlasSpriteSheetBatchRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(CyberiaDataServiceServer).GetAtlasSpriteSheetBatch(m, &grpc.GenericServerStream[GetAtlasSpriteSheetBatchRequest, AtlasSpriteSheetMessage]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type CyberiaDataService_GetAtlasSpriteSheetBatchServer = grpc.ServerStreamingServer[AtlasSpriteSheetMessage]
-
 func _CyberiaDataService_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PingRequest)
 	if err := dec(in); err != nil {
@@ -416,10 +336,6 @@ var CyberiaDataService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _CyberiaDataService_GetObjectLayer_Handler,
 		},
 		{
-			MethodName: "GetAtlasSpriteSheet",
-			Handler:    _CyberiaDataService_GetAtlasSpriteSheet_Handler,
-		},
-		{
 			MethodName: "Ping",
 			Handler:    _CyberiaDataService_Ping_Handler,
 		},
@@ -432,11 +348,6 @@ var CyberiaDataService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "GetObjectLayerBatch",
 			Handler:       _CyberiaDataService_GetObjectLayerBatch_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "GetAtlasSpriteSheetBatch",
-			Handler:       _CyberiaDataService_GetAtlasSpriteSheetBatch_Handler,
 			ServerStreams: true,
 		},
 	},
