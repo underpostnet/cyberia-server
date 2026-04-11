@@ -89,9 +89,13 @@ type PlayerState struct {
         // The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
         // visualization only and is always Active: false.
         Coins     uint32 `json:"-"`
-        // Immune is true while the player is in a dialogue interaction.
-        // Immune players are skipped by handleSkillCollisions.
-        Immune    bool   `json:"-"`
+        // FrozenInteractionState — general-purpose modal protection.
+        // While Frozen, the player cannot deal or receive damage, send or
+        // receive events, or move.  The rest of the world continues.
+        // Managed exclusively by FreezePlayer / ThawPlayer (frozen_state.go).
+        Frozen       bool      `json:"-"`
+        FreezeReason string    `json:"-"` // e.g. "dialogue", "inventory"
+        FreezeStart  time.Time `json:"-"`
         StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
 }
 

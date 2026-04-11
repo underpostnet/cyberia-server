@@ -39,8 +39,8 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 			if player.IsGhost() { // Don't hit dead/ghost players
 				continue
 			}
-			// Immune players (in dialogue) cannot be damaged.
-			if player.Immune {
+			// Frozen players (in modal interaction) cannot be damaged.
+			if player.Frozen {
 				continue
 			}
 			// Projectiles should not damage their caster.

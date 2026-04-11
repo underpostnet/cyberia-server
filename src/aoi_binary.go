@@ -58,6 +58,9 @@
 //	    per path point: i16 x, i16 y
 //	    i16  targetPosX, targetPosY
 //	    u8+str activePortalID
+//	    u32  coinBalance
+//	    full inventory (writeFullInventory)
+//	    u8   frozen (0=normal, 1=frozen — FrozenInteractionState)
 package game
 
 import (
@@ -363,6 +366,15 @@ func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, c
 	// Full inventory — ALL ObjectLayers (active + inactive) with quantities.
 	// Powers the client-side inventory bottom bar.
 	e.writeFullInventory(p.ObjectLayers)
+
+	// FrozenInteractionState — u8 (0 = normal, 1 = frozen).
+	// Client uses this as the authoritative frozen flag for visual feedback
+	// and to block outgoing actions.
+	if p.Frozen {
+		e.putU8(1)
+	} else {
+		e.putU8(0)
+	}
 }
 
 // ═══════════════════════════════════════════════════════════════════

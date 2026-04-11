@@ -236,8 +236,8 @@ func (c *Client) readPump(server *GameServer) {
 				continue
 			}
 
-			// Immune (in-dialogue) players can't move or fire skills.
-			if player.Immune {
+			// Frozen (in modal interaction) players can't move or fire skills.
+			if player.Frozen {
 				server.mu.Unlock()
 				continue
 			}
@@ -488,18 +488,31 @@ func (c *Client) readPump(server *GameServer) {
 				continue
 			}
 			c.send <- responseMsg
-		} else if msg["type"] == "dialogue_start" {
+		} else if msg["type"] == "freeze_start" || msg["type"] == "dialogue_start" {
+			// Unified FrozenInteractionState entry.
+			// "dialogue_start" is accepted for backward compatibility.
+			reason := "dialogue" // default for legacy messages
+			if payload, ok := msg["payload"].(map[string]interface{}); ok {
+				if r, ok := payload["reason"].(string); ok && r != "" {
+					reason = r
+				}
+			}
 			server.mu.Lock()
 			if player, ok := server.maps[c.playerState.MapCode].players[c.playerID]; ok {
-				player.Immune = true
-				log.Printf("Player %s entered dialogue (immune)", c.playerID)
+				FreezePlayer(player, reason)
 			}
 			server.mu.Unlock()
-		} else if msg["type"] == "dialogue_end" {
+		} else if msg["type"] == "freeze_end" || msg["type"] == "dialogue_end" {
+			// Unified FrozenInteractionState exit.
+			reason := "dialogue" // default for legacy messages
+			if payload, ok := msg["payload"].(map[string]interface{}); ok {
+				if r, ok := payload["reason"].(string); ok && r != "" {
+					reason = r
+				}
+			}
 			server.mu.Lock()
 			if player, ok := server.maps[c.playerState.MapCode].players[c.playerID]; ok {
-				player.Immune = false
-				log.Printf("Player %s exited dialogue (not immune)", c.playerID)
+				ThawPlayer(player, reason)
 			}
 			server.mu.Unlock()
 		}
