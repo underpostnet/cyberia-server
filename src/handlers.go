@@ -516,6 +516,45 @@ func (c *Client) readPump(server *GameServer) {
 				ThawPlayer(player, reason)
 			}
 			server.mu.Unlock()
+		} else if msg["type"] == "chat" {
+			// ── Chat relay ──────────────────────────────────────────
+			// Pure relay: forward JSON chat message to the target player.
+			// No game-state mutation — completely decoupled from combat.
+			payload, ok := msg["payload"].(map[string]interface{})
+			if !ok {
+				continue
+			}
+			toID, _ := payload["to"].(string)
+			text, _ := payload["text"].(string)
+			if toID == "" || text == "" {
+				continue
+			}
+			// Cap text length to prevent abuse
+			if len(text) > 256 {
+				text = text[:256]
+			}
+			// Build relay message with sender info
+			relay, _ := json.Marshal(map[string]interface{}{
+				"type": "chat",
+				"payload": map[string]interface{}{
+					"from": c.playerID,
+					"text": text,
+				},
+			})
+			server.mu.Lock()
+			// Find target player in the same map
+			if mapState, ok := server.maps[c.playerState.MapCode]; ok {
+				if targetPlayer, ok := mapState.players[toID]; ok {
+					if targetPlayer.Client != nil {
+						select {
+						case targetPlayer.Client.send <- relay:
+						default:
+							// Target channel full, drop message
+						}
+					}
+				}
+			}
+			server.mu.Unlock()
 		}
 	}
 }
