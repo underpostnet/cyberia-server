@@ -349,6 +349,12 @@ message InstanceConfig {
   // for one entity type ('player', 'bot', 'skill', 'coin', 'floor', …).
   // The Go server derives ghost/coin/floor item IDs from this repeated field.
   repeated EntityTypeDefault entity_defaults = 52;
+
+  // ── Entity Status Indicators (overhead icon mapping) ───────────────────────
+  // Dynamic u8→icon_id mapping — the single source of truth for which icon
+  // filename to render for each server-assigned status ID.  Eliminates the
+  // need for hardcoded tables in the C client.
+  repeated StatusIconEntry status_icons = 64;
 }
 
 // ── Entity type defaults (per-entity visual + color configuration) ──────────
@@ -363,6 +369,15 @@ message EntityTypeDefault {
   // Supersedes live_item_ids for inventory initialization when non-empty.
   // The canonical source of truth — shared across all entity config simulation.
   repeated DefaultObjectLayerState default_object_layers = 5;
+}
+
+// ── Entity Status Indicator entry (overhead icon config) ────────────────────
+// Maps a server-computed u8 status ID to a ui-icon filename stem and whether
+// the icon should use bounce animation.  Sent in InitPayload.statusIcons so
+// the C client resolves icons dynamically — no hardcoded lookup tables.
+message StatusIconEntry {
+  int32  id      = 1; // u8 status ID (0 = none, 1 = passive, …)
+  string icon_id = 2; // ui-icon filename stem (e.g. "arrow-down-red", "skull"); empty = no icon
 }
 
 // ═══════════════════════════════════════════════════════════════════

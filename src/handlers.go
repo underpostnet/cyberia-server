@@ -164,6 +164,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		ObjectLayers:              playerState.ObjectLayers,
 		Color:                     playerState.Color,
 		SkillMap:                  s.buildSkillMap(),
+		StatusIcons:               s.statusIcons,
 	}
 	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
 	select {

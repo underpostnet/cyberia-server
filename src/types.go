@@ -280,6 +280,9 @@ type GameServer struct {
 
 	// Equipment rules — governs activation constraints.
 	equipmentRules EquipmentRulesConfig
+
+	// Status icon mapping — u8 ID → icon filename stem (from gRPC config).
+	statusIcons []StatusIconConfig
 }
 
 type EntityTypeDefaultConfig struct {
@@ -288,6 +291,13 @@ type EntityTypeDefaultConfig struct {
         DeadItemIDs         []string           `json:"deadItemIds"`
         ColorKey            string             `json:"colorKey"`
         DefaultObjectLayers []ObjectLayerState `json:"defaultObjectLayers,omitempty"`
+}
+
+// StatusIconConfig maps a u8 status icon ID to a ui-icon filename stem.
+// Sent to clients in InitPayload so the mapping is fully server-driven.
+type StatusIconConfig struct {
+	ID     int    `json:"id"`
+	IconID string `json:"iconId"`
 }
 
 // EquipmentRulesConfig governs which item types can be simultaneously active
@@ -326,4 +336,5 @@ type InitPayload struct {
 	ObjectLayers              []ObjectLayerState   `json:"objectLayers"`
 	Color                     ColorRGBA            `json:"color"`
 	SkillMap                  map[string][]string  `json:"skillMap"`
+	StatusIcons               []StatusIconConfig   `json:"statusIcons"`
 }

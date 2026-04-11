@@ -167,6 +167,15 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 		s.defaultFloorItemID = d.LiveItemIDs[0]
 	}
 
+	// Status icon mapping — u8 ID → icon filename stem.
+	s.statusIcons = make([]StatusIconConfig, 0, len(cfg.GetStatusIcons()))
+	for _, si := range cfg.GetStatusIcons() {
+		s.statusIcons = append(s.statusIcons, StatusIconConfig{
+			ID:     int(si.GetId()),
+			IconID: si.GetIconId(),
+		})
+	}
+
 	// Player color is read from the named PLAYER entry in s.colors at use-time.
 
 	// Skill map
@@ -183,8 +192,8 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	// Register built-in skill handlers now that skillConfig is populated.
 	s.InitSkills()
 
-	log.Printf("[GameServer] Instance config applied: cellSize=%.1f, fps=%d, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d colors, %d skills, %d entityDefaults, floorItem=%q, ghostItem=%q, coinItem=%q",
-		s.cellSize, s.fps, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.colors), len(s.skillConfig), len(s.entityDefaults), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
+	log.Printf("[GameServer] Instance config applied: cellSize=%.1f, fps=%d, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d colors, %d skills, %d entityDefaults, %d statusIcons, floorItem=%q, ghostItem=%q, coinItem=%q",
+		s.cellSize, s.fps, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.colors), len(s.skillConfig), len(s.entityDefaults), len(s.statusIcons), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
 }
 
 // buildEntityDefaultsSlice converts the internal entityDefaults map into an

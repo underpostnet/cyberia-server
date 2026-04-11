@@ -271,6 +271,8 @@ func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64, effec
 	e.putU8(byte(p.Color.A))
 	e.writeItemIDs(p.ObjectLayers)
 	e.putU16(uint16(effectiveLevel))
+	// Entity Status Indicator — u8 overhead icon ID (see entity_status.go).
+	e.putU8(PlayerStatusIcon(p))
 }
 
 func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLevel int) {
@@ -292,6 +294,8 @@ func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLe
 	e.writeItemIDs(b.ObjectLayers)
 	e.putString(b.CasterID)
 	e.putU16(uint16(effectiveLevel))
+	// Entity Status Indicator — u8 overhead icon ID (see entity_status.go).
+	e.putU8(BotStatusIcon(b))
 }
 
 func (e *BinaryAOIEncoder) WriteFloor(f *FloorState) {
@@ -375,6 +379,11 @@ func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, c
 	} else {
 		e.putU8(0)
 	}
+
+	// Entity Status Indicator — u8 overhead icon ID (see entity_status.go).
+	// Self-player also gets the status icon so the client can render the
+	// frozen/dead indicator above its own entity.
+	e.putU8(PlayerStatusIcon(p))
 }
 
 // ═══════════════════════════════════════════════════════════════════
