@@ -237,6 +237,12 @@ func (c *Client) readPump(server *GameServer) {
 				continue
 			}
 
+			// Immune (in-dialogue) players can't move or fire skills.
+			if player.Immune {
+				server.mu.Unlock()
+				continue
+			}
+
 			mapState, ok := server.maps[player.MapCode]
 			if !ok {
 				log.Println("Player map not found")
@@ -483,6 +489,20 @@ func (c *Client) readPump(server *GameServer) {
 				continue
 			}
 			c.send <- responseMsg
+		} else if msg["type"] == "dialogue_start" {
+			server.mu.Lock()
+			if player, ok := server.maps[c.playerState.MapCode].players[c.playerID]; ok {
+				player.Immune = true
+				log.Printf("Player %s entered dialogue (immune)", c.playerID)
+			}
+			server.mu.Unlock()
+		} else if msg["type"] == "dialogue_end" {
+			server.mu.Lock()
+			if player, ok := server.maps[c.playerState.MapCode].players[c.playerID]; ok {
+				player.Immune = false
+				log.Printf("Player %s exited dialogue (not immune)", c.playerID)
+			}
+			server.mu.Unlock()
 		}
 	}
 }

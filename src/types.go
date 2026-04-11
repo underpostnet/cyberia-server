@@ -89,6 +89,9 @@ type PlayerState struct {
         // The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
         // visualization only and is always Active: false.
         Coins     uint32 `json:"-"`
+        // Immune is true while the player is in a dialogue interaction.
+        // Immune players are skipped by handleSkillCollisions.
+        Immune    bool   `json:"-"`
         StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
 }
 
