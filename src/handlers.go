@@ -359,9 +359,42 @@ func (c *Client) readPump(server *GameServer) {
 					return
 				}
 
-				// Check if player is dead - only allow dead item IDs to be activated while dead
-				if (player.IsGhost() || player.Life <= 0) && active && !server.isDeadItemID("player", itemId) {
-					log.Printf("Player %s is dead and cannot activate non-ghost item '%s'.", c.playerID, itemId)
+				// Check if player is dead - queue activation on pre-respawn layers
+				// so it takes effect when the player revives.
+				if (player.IsGhost() || player.Life <= 0) && active {
+					if player.PreRespawnObjectLayers != nil {
+						for i := range player.PreRespawnObjectLayers {
+							if player.PreRespawnObjectLayers[i].ItemID == itemId {
+								player.PreRespawnObjectLayers[i].Active = true
+								log.Printf("Player %s is dead — queued activation of '%s' on pre-respawn layers (takes effect on revive).", c.playerID, itemId)
+
+								// One-per-type: deactivate other items of same type in pre-respawn layers
+								if server.equipmentRules.OnePerType {
+									var reqType string
+									if itemData, ok := server.GetObjectLayerData(itemId); ok {
+										reqType = itemData.Data.Item.Type
+									}
+									if reqType != "" {
+										for j := range player.PreRespawnObjectLayers {
+											if j == i {
+												continue
+											}
+											if player.PreRespawnObjectLayers[j].Active {
+												var otherType string
+												if otherData, ok := server.GetObjectLayerData(player.PreRespawnObjectLayers[j].ItemID); ok {
+													otherType = otherData.Data.Item.Type
+												}
+												if otherType == reqType {
+													player.PreRespawnObjectLayers[j].Active = false
+												}
+											}
+										}
+									}
+								}
+								break
+							}
+						}
+					}
 					return
 				}
 
