@@ -167,13 +167,23 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 		s.defaultFloorItemID = d.LiveItemIDs[0]
 	}
 
-	// Status icon mapping — u8 ID → icon filename stem.
+	// Status icon mapping — u8 ID → icon filename stem + border colour.
 	s.statusIcons = make([]StatusIconConfig, 0, len(cfg.GetStatusIcons()))
 	for _, si := range cfg.GetStatusIcons() {
 		s.statusIcons = append(s.statusIcons, StatusIconConfig{
 			ID:     int(si.GetId()),
 			IconID: si.GetIconId(),
+			BorderColor: ColorRGBA{
+				R: int(si.GetBorderColorR()),
+				G: int(si.GetBorderColorG()),
+				B: int(si.GetBorderColorB()),
+				A: int(si.GetBorderColorA()),
+			},
 		})
+	}
+	for i, si := range s.statusIcons {
+		log.Printf("[GameServer] statusIcon[%d] id=%d iconId=%q border=(%d,%d,%d,%d)",
+			i, si.ID, si.IconID, si.BorderColor.R, si.BorderColor.G, si.BorderColor.B, si.BorderColor.A)
 	}
 
 	// Player color is read from the named PLAYER entry in s.colors at use-time.

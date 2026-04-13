@@ -293,11 +293,12 @@ type EntityTypeDefaultConfig struct {
         DefaultObjectLayers []ObjectLayerState `json:"defaultObjectLayers,omitempty"`
 }
 
-// StatusIconConfig maps a u8 status icon ID to a ui-icon filename stem.
-// Sent to clients in InitPayload so the mapping is fully server-driven.
+// StatusIconConfig maps a u8 status icon ID to a ui-icon filename stem and an
+// interaction-bubble border colour.  Sent to clients in InitPayload.
 type StatusIconConfig struct {
-	ID     int    `json:"id"`
-	IconID string `json:"iconId"`
+	ID          int       `json:"id"`
+	IconID      string    `json:"iconId"`
+	BorderColor ColorRGBA `json:"borderColor"`
 }
 
 // EquipmentRulesConfig governs which item types can be simultaneously active

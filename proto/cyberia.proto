@@ -375,9 +375,17 @@ message EntityTypeDefault {
 // Maps a server-computed u8 status ID to a ui-icon filename stem and whether
 // the icon should use bounce animation.  Sent in InitPayload.statusIcons so
 // the C client resolves icons dynamically — no hardcoded lookup tables.
+//
+// border_color_* fields define the interaction-bubble border colour for
+// entities that carry this status — fully server-driven, no client-side
+// hardcoded colour tables.
 message StatusIconEntry {
   int32  id      = 1; // u8 status ID (0 = none, 1 = passive, …)
   string icon_id = 2; // ui-icon filename stem (e.g. "arrow-down-red", "skull"); empty = no icon
+  int32  border_color_r = 3; // border colour red   [0-255]
+  int32  border_color_g = 4; // border colour green  [0-255]
+  int32  border_color_b = 5; // border colour blue   [0-255]
+  int32  border_color_a = 6; // border colour alpha  [0-255]
 }
 
 // ═══════════════════════════════════════════════════════════════════

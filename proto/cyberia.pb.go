@@ -1847,10 +1847,18 @@ func (x *EntityTypeDefault) GetDefaultObjectLayers() []*DefaultObjectLayerState 
 // Maps a server-computed u8 status ID to a ui-icon filename stem and whether
 // the icon should use bounce animation.  Sent in InitPayload.statusIcons so
 // the C client resolves icons dynamically — no hardcoded lookup tables.
+//
+// border_color_* fields define the interaction-bubble border colour for
+// entities that carry this status — fully server-driven, no client-side
+// hardcoded colour tables.
 type StatusIconEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int32                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`                      // u8 status ID (0 = none, 1 = passive, …)
-	IconId        string                 `protobuf:"bytes,2,opt,name=icon_id,json=iconId,proto3" json:"icon_id,omitempty"` // ui-icon filename stem (e.g. "arrow-down-red", "skull"); empty = no icon
+	Id            int32                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`                                           // u8 status ID (0 = none, 1 = passive, …)
+	IconId        string                 `protobuf:"bytes,2,opt,name=icon_id,json=iconId,proto3" json:"icon_id,omitempty"`                      // ui-icon filename stem (e.g. "arrow-down-red", "skull"); empty = no icon
+	BorderColorR  int32                  `protobuf:"varint,3,opt,name=border_color_r,json=borderColorR,proto3" json:"border_color_r,omitempty"` // border colour red   [0-255]
+	BorderColorG  int32                  `protobuf:"varint,4,opt,name=border_color_g,json=borderColorG,proto3" json:"border_color_g,omitempty"` // border colour green  [0-255]
+	BorderColorB  int32                  `protobuf:"varint,5,opt,name=border_color_b,json=borderColorB,proto3" json:"border_color_b,omitempty"` // border colour blue   [0-255]
+	BorderColorA  int32                  `protobuf:"varint,6,opt,name=border_color_a,json=borderColorA,proto3" json:"border_color_a,omitempty"` // border colour alpha  [0-255]
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1897,6 +1905,34 @@ func (x *StatusIconEntry) GetIconId() string {
 		return x.IconId
 	}
 	return ""
+}
+
+func (x *StatusIconEntry) GetBorderColorR() int32 {
+	if x != nil {
+		return x.BorderColorR
+	}
+	return 0
+}
+
+func (x *StatusIconEntry) GetBorderColorG() int32 {
+	if x != nil {
+		return x.BorderColorG
+	}
+	return 0
+}
+
+func (x *StatusIconEntry) GetBorderColorB() int32 {
+	if x != nil {
+		return x.BorderColorB
+	}
+	return 0
+}
+
+func (x *StatusIconEntry) GetBorderColorA() int32 {
+	if x != nil {
+		return x.BorderColorA
+	}
+	return 0
 }
 
 type EntityMessage struct {
@@ -2604,10 +2640,14 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\rlive_item_ids\x18\x02 \x03(\tR\vliveItemIds\x12\"\n" +
 	"\rdead_item_ids\x18\x03 \x03(\tR\vdeadItemIds\x12\x1b\n" +
 	"\tcolor_key\x18\x04 \x01(\tR\bcolorKey\x12T\n" +
-	"\x15default_object_layers\x18\x05 \x03(\v2 .cyberia.DefaultObjectLayerStateR\x13defaultObjectLayers\":\n" +
+	"\x15default_object_layers\x18\x05 \x03(\v2 .cyberia.DefaultObjectLayerStateR\x13defaultObjectLayers\"\xd2\x01\n" +
 	"\x0fStatusIconEntry\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x17\n" +
-	"\aicon_id\x18\x02 \x01(\tR\x06iconId\"\x88\x03\n" +
+	"\aicon_id\x18\x02 \x01(\tR\x06iconId\x12$\n" +
+	"\x0eborder_color_r\x18\x03 \x01(\x05R\fborderColorR\x12$\n" +
+	"\x0eborder_color_g\x18\x04 \x01(\x05R\fborderColorG\x12$\n" +
+	"\x0eborder_color_b\x18\x05 \x01(\x05R\fborderColorB\x12$\n" +
+	"\x0eborder_color_a\x18\x06 \x01(\x05R\fborderColorA\"\x88\x03\n" +
 	"\rEntityMessage\x12\x1f\n" +
 	"\ventity_type\x18\x01 \x01(\tR\n" +
 	"entityType\x12\x1e\n" +
