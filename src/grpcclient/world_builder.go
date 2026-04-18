@@ -198,6 +198,46 @@ func (wb *WorldBuilder) HotReload(ctx context.Context) error {
 
 	log.Printf("[WorldBuilder] Hot-reload applied: %d updated, %d deleted, %d errors.",
 		len(updates), len(toDelete), fetchErrors)
+
+	// 8. Re-fetch full instance and rebuild map entities so admin map edits
+	//    (via MapEngineCyberia) are reflected without a server restart.
+	if err := wb.ReloadWorld(ctx); err != nil {
+		log.Printf("[WorldBuilder] Hot-reload: world rebuild failed: %v", err)
+	}
+
+	return nil
+}
+
+// ReloadWorld re-fetches the full instance via gRPC and rebuilds all map
+// entities (floors, obstacles, bots, portals, foregrounds) while preserving
+// connected players.  This closes the gap where admin map edits made through
+// MapEngineCyberia were not reflected until a full Go server restart.
+func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
+	resp, err := wb.client.FetchFullInstance(ctx, wb.InstanceCode)
+	if err != nil {
+		return err
+	}
+
+	// Re-apply config in case it changed.
+	if cfg := resp.GetConfig(); cfg != nil {
+		wb.server.ApplyInstanceConfig(cfg)
+	}
+
+	// Merge any new OLs into the cache (entities may reference new items).
+	for _, olMsg := range resp.GetObjectLayers() {
+		ol := protoToObjectLayer(olMsg)
+		if ol.Data.Item.ID != "" {
+			wb.server.PatchObjectLayerCache(
+				map[string]*game.ObjectLayer{ol.Data.Item.ID: ol},
+				nil,
+			)
+		}
+	}
+
+	// Rebuild world preserving players.
+	wb.server.RebuildWorld(resp.GetInstance(), resp.GetMaps(), resp.GetObjectLayers())
+
+	log.Println("[WorldBuilder] ReloadWorld complete — maps and entities refreshed.")
 	return nil
 }
 

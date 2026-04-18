@@ -56,10 +56,11 @@ type ObjectLayerState struct {
 }
 
 type ObjectState struct {
-	ID   string     `json:"id"`
-	Pos  Point      `json:"Pos"`
-	Dims Dimensions `json:"Dims"`
-	Type string     `json:"Type"`
+	ID    string     `json:"id"`
+	Pos   Point      `json:"Pos"`
+	Dims  Dimensions `json:"Dims"`
+	Type  string     `json:"Type"`
+	Color ColorRGBA  `json:"color"`
 }
 
 type PlayerState struct {
@@ -105,6 +106,7 @@ type FloorState struct {
 	Dims         Dimensions         `json:"Dims"`
 	Type         string             `json:"Type"`
 	ObjectLayers []ObjectLayerState `json:"objectLayers"`
+	Color        ColorRGBA          `json:"color"`
 }
 
 type BotState struct {

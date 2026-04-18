@@ -38,18 +38,89 @@ func (s *GameServer) BuildWorldFromInstance(
 	log.Printf("[InstanceLoader] Building world for instance %q (%d maps, %d object layers)",
 		instance.GetCode(), len(mapMsgs), len(olMsgs))
 
-	// Build map-code → MapDataMessage lookup
+	s.buildMapsFromInstance(instance, mapMsgs)
+
+	log.Printf("[InstanceLoader] World built: %d maps loaded.", len(s.maps))
+
+	// Log entity counts per map
+	for code, ms := range s.maps {
+		log.Printf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots",
+			code, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots))
+	}
+
+	// Print ASCII graph of portal topology
+	printInstanceGraph(instance, s.maps)
+}
+
+// RebuildWorld re-fetches instance data and rebuilds all map entities
+// (floors, obstacles, foregrounds, portals, bots) while preserving
+// connected players.  Called by the hot-reload loop so that map edits
+// made in the admin UI are reflected without a full server restart.
+func (s *GameServer) RebuildWorld(
+	instance *pb.InstanceMessage,
+	mapMsgs []*pb.MapDataMessage,
+	olMsgs []*pb.ObjectLayerMessage,
+) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	log.Printf("[InstanceLoader] RebuildWorld for instance %q (%d maps)", instance.GetCode(), len(mapMsgs))
+
+	// Snapshot existing players per map so they survive the rebuild.
+	savedPlayers := make(map[string]map[string]*PlayerState)
+	for code, ms := range s.maps {
+		ms.mu.RLock()
+		if len(ms.players) > 0 {
+			cp := make(map[string]*PlayerState, len(ms.players))
+			for id, p := range ms.players {
+				cp[id] = p
+			}
+			savedPlayers[code] = cp
+		}
+		ms.mu.RUnlock()
+	}
+
+	// Rebuild via the same path as initial load.
+	s.buildMapsFromInstance(instance, mapMsgs)
+
+	// Restore players into the (possibly new) map states.
+	for code, players := range savedPlayers {
+		ms, ok := s.maps[code]
+		if !ok {
+			// Map was removed — players will be orphaned and eventually
+			// time out or reconnect.  Log a warning.
+			log.Printf("[InstanceLoader] WARNING: map %q was removed during rebuild; %d players orphaned", code, len(players))
+			continue
+		}
+		ms.mu.Lock()
+		for id, p := range players {
+			ms.players[id] = p
+		}
+		ms.mu.Unlock()
+	}
+
+	log.Printf("[InstanceLoader] RebuildWorld complete: %d maps.", len(s.maps))
+	for code, ms := range s.maps {
+		log.Printf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots, %d players",
+			code, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots), len(ms.players))
+	}
+	printInstanceGraph(instance, s.maps)
+}
+
+// buildMapsFromInstance is the shared implementation for BuildWorldFromInstance
+// and RebuildWorld.  Caller MUST hold s.mu.
+func (s *GameServer) buildMapsFromInstance(
+	instance *pb.InstanceMessage,
+	mapMsgs []*pb.MapDataMessage,
+) {
 	mapMsgByCode := make(map[string]*pb.MapDataMessage)
 	for _, m := range mapMsgs {
 		mapMsgByCode[m.GetCode()] = m
 	}
 
-	// Reset maps (keyed by map code)
 	s.maps = make(map[string]*MapState)
+	allPortals := make(map[string][]portalEntry)
 
-	allPortals := make(map[string][]portalEntry) // mapCode → portals
-
-	// Phase 1: Build each map
 	for _, mapCode := range instance.GetMapCodes() {
 		mapMsg, ok := mapMsgByCode[mapCode]
 		if !ok {
@@ -78,7 +149,6 @@ func (s *GameServer) BuildWorldFromInstance(
 			bots:        make(map[string]*BotState),
 		}
 
-		// Process entities from the map
 		for _, ent := range mapMsg.GetEntities() {
 			switch ent.GetEntityType() {
 			case "floor":
@@ -107,7 +177,7 @@ func (s *GameServer) BuildWorldFromInstance(
 		s.maps[mapCode] = ms
 	}
 
-	// Phase 2: Link portals using instance portal edges
+	// Link portals
 	for _, edge := range instance.GetPortals() {
 		srcMapCode := edge.GetSourceMapCode()
 		dstMapCode := edge.GetTargetMapCode()
@@ -119,7 +189,6 @@ func (s *GameServer) BuildWorldFromInstance(
 			continue
 		}
 
-		// Find the source portal by matching cell coordinates
 		srcPortal := findPortalByCell(allPortals[srcMapCode], int(edge.GetSourceCellX()), int(edge.GetSourceCellY()))
 		dstPortal := findPortalByCell(allPortals[dstMapCode], int(edge.GetTargetCellX()), int(edge.GetTargetCellY()))
 
@@ -150,17 +219,6 @@ func (s *GameServer) BuildWorldFromInstance(
 			srcPortal.Label = fmt.Sprintf("%s %s", modeTag, dstMapCode)
 		}
 	}
-
-	log.Printf("[InstanceLoader] World built: %d maps loaded.", len(s.maps))
-
-	// Log entity counts per map
-	for code, ms := range s.maps {
-		log.Printf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots",
-			code, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots))
-	}
-
-	// Print ASCII graph of portal topology
-	printInstanceGraph(instance, s.maps)
 }
 
 // findPortalByCell finds a portal entry by cell coordinates.
@@ -177,10 +235,11 @@ func findPortalByCell(entries []portalEntry, cellX, cellY int) *PortalState {
 
 func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 	floor := &FloorState{
-		ID:   uuid.New().String(),
-		Pos:  Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
-		Dims: Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
-		Type: "floor",
+		ID:    uuid.New().String(),
+		Pos:   Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
+		Dims:  Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
+		Type:  "floor",
+		Color: s.resolveEntityColor(ent, "FLOOR"),
 	}
 	for _, itemID := range ent.GetObjectLayerItemIds() {
 		floor.ObjectLayers = append(floor.ObjectLayers, ObjectLayerState{
@@ -294,10 +353,11 @@ func (s *GameServer) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
 	pos := Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
 
 	obs := ObjectState{
-		ID:   uuid.New().String(),
-		Pos:  pos,
-		Dims: dims,
-		Type: "obstacle",
+		ID:    uuid.New().String(),
+		Pos:   pos,
+		Dims:  dims,
+		Type:  "obstacle",
+		Color: s.resolveEntityColor(ent, "OBSTACLE"),
 	}
 	ms.obstacles[obs.ID] = obs
 
@@ -313,10 +373,11 @@ func (s *GameServer) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
 
 func (s *GameServer) buildForeground(ms *MapState, ent *pb.EntityMessage) {
 	fg := ObjectState{
-		ID:   uuid.New().String(),
-		Pos:  Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
-		Dims: Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
-		Type: "foreground",
+		ID:    uuid.New().String(),
+		Pos:   Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
+		Dims:  Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
+		Type:  "foreground",
+		Color: s.resolveEntityColor(ent, "FOREGROUND"),
 	}
 	ms.foregrounds[fg.ID] = fg
 }

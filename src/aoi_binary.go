@@ -299,12 +299,32 @@ func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLe
 }
 
 func (e *BinaryAOIEncoder) WriteFloor(f *FloorState) {
-	e.writeEntityBase(EntityTypeFloor, f.ID, f.Pos, f.Dims, NONE, IDLE)
+	flags := EntityTypeFloor
+	if f.Color.A > 0 {
+		flags |= FlagHasColor
+	}
+	e.writeEntityBase(flags, f.ID, f.Pos, f.Dims, NONE, IDLE)
+	if f.Color.A > 0 {
+		e.putU8(byte(f.Color.R))
+		e.putU8(byte(f.Color.G))
+		e.putU8(byte(f.Color.B))
+		e.putU8(byte(f.Color.A))
+	}
 	e.writeItemIDs(f.ObjectLayers)
 }
 
 func (e *BinaryAOIEncoder) WriteObstacle(o ObjectState) {
-	e.writeEntityBase(EntityTypeObstacle, o.ID, o.Pos, o.Dims, NONE, IDLE)
+	flags := EntityTypeObstacle
+	if o.Color.A > 0 {
+		flags |= FlagHasColor
+	}
+	e.writeEntityBase(flags, o.ID, o.Pos, o.Dims, NONE, IDLE)
+	if o.Color.A > 0 {
+		e.putU8(byte(o.Color.R))
+		e.putU8(byte(o.Color.G))
+		e.putU8(byte(o.Color.B))
+		e.putU8(byte(o.Color.A))
+	}
 }
 
 func (e *BinaryAOIEncoder) WritePortal(p *PortalState) {
@@ -317,7 +337,17 @@ func (e *BinaryAOIEncoder) WritePortal(p *PortalState) {
 }
 
 func (e *BinaryAOIEncoder) WriteForeground(fg ObjectState) {
-	e.writeEntityBase(EntityTypeForeground, fg.ID, fg.Pos, fg.Dims, NONE, IDLE)
+	flags := EntityTypeForeground
+	if fg.Color.A > 0 {
+		flags |= FlagHasColor
+	}
+	e.writeEntityBase(flags, fg.ID, fg.Pos, fg.Dims, NONE, IDLE)
+	if fg.Color.A > 0 {
+		e.putU8(byte(fg.Color.R))
+		e.putU8(byte(fg.Color.G))
+		e.putU8(byte(fg.Color.B))
+		e.putU8(byte(fg.Color.A))
+	}
 }
 
 func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, coinBalance uint32) {
