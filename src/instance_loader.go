@@ -246,7 +246,10 @@ func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 			ItemID: itemID, Active: true, Quantity: 1,
 		})
 	}
-	if len(floor.ObjectLayers) == 0 {
+	if len(floor.ObjectLayers) == 0 && ent.GetColorA() == 0 {
+		// Apply instance-level default OLs only when the entity has no
+		// explicit DB colour.  A non-zero ColorA means the map creator
+		// intentionally placed a solid-colour floor without sprites.
 		if d, ok := s.entityDefaults["floor"]; ok && len(d.LiveItemIDs) > 0 {
 			for _, itemID := range d.LiveItemIDs {
 				floor.ObjectLayers = append(floor.ObjectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
