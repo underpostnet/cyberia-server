@@ -1951,6 +1951,13 @@ type EntityMessage struct {
 	LifeRegen   float64 `protobuf:"fixed64,11,opt,name=life_regen,json=lifeRegen,proto3" json:"life_regen,omitempty"`      // life regen rate (0 = use server default)
 	// Portal-specific field
 	PortalSubtype string `protobuf:"bytes,12,opt,name=portal_subtype,json=portalSubtype,proto3" json:"portal_subtype,omitempty"` // inter-portal | inter-random | intra-random | intra-portal
+	// Parsed RGBA colour from the DB entity document.
+	// When color_a > 0, the Go server uses these values as the entity's fallback
+	// colour (when it has no ObjectLayer items) instead of the palette default.
+	ColorR        int32 `protobuf:"varint,13,opt,name=color_r,json=colorR,proto3" json:"color_r,omitempty"`
+	ColorG        int32 `protobuf:"varint,14,opt,name=color_g,json=colorG,proto3" json:"color_g,omitempty"`
+	ColorB        int32 `protobuf:"varint,15,opt,name=color_b,json=colorB,proto3" json:"color_b,omitempty"`
+	ColorA        int32 `protobuf:"varint,16,opt,name=color_a,json=colorA,proto3" json:"color_a,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2067,6 +2074,34 @@ func (x *EntityMessage) GetPortalSubtype() string {
 		return x.PortalSubtype
 	}
 	return ""
+}
+
+func (x *EntityMessage) GetColorR() int32 {
+	if x != nil {
+		return x.ColorR
+	}
+	return 0
+}
+
+func (x *EntityMessage) GetColorG() int32 {
+	if x != nil {
+		return x.ColorG
+	}
+	return 0
+}
+
+func (x *EntityMessage) GetColorB() int32 {
+	if x != nil {
+		return x.ColorB
+	}
+	return 0
+}
+
+func (x *EntityMessage) GetColorA() int32 {
+	if x != nil {
+		return x.ColorA
+	}
+	return 0
 }
 
 type MapDataMessage struct {
@@ -2647,7 +2682,7 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\x0eborder_color_r\x18\x03 \x01(\x05R\fborderColorR\x12$\n" +
 	"\x0eborder_color_g\x18\x04 \x01(\x05R\fborderColorG\x12$\n" +
 	"\x0eborder_color_b\x18\x05 \x01(\x05R\fborderColorB\x12$\n" +
-	"\x0eborder_color_a\x18\x06 \x01(\x05R\fborderColorA\"\x88\x03\n" +
+	"\x0eborder_color_a\x18\x06 \x01(\x05R\fborderColorA\"\xec\x03\n" +
 	"\rEntityMessage\x12\x1f\n" +
 	"\ventity_type\x18\x01 \x01(\tR\n" +
 	"entityType\x12\x1e\n" +
@@ -2664,7 +2699,11 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	" \x01(\x01R\amaxLife\x12\x1d\n" +
 	"\n" +
 	"life_regen\x18\v \x01(\x01R\tlifeRegen\x12%\n" +
-	"\x0eportal_subtype\x18\f \x01(\tR\rportalSubtype\"\xf5\x01\n" +
+	"\x0eportal_subtype\x18\f \x01(\tR\rportalSubtype\x12\x17\n" +
+	"\acolor_r\x18\r \x01(\x05R\x06colorR\x12\x17\n" +
+	"\acolor_g\x18\x0e \x01(\x05R\x06colorG\x12\x17\n" +
+	"\acolor_b\x18\x0f \x01(\x05R\x06colorB\x12\x17\n" +
+	"\acolor_a\x18\x10 \x01(\x05R\x06colorA\"\xf5\x01\n" +
 	"\x0eMapDataMessage\x12\x19\n" +
 	"\bmongo_id\x18\x01 \x01(\tR\amongoId\x12\x12\n" +
 	"\x04code\x18\x02 \x01(\tR\x04code\x12\x12\n" +

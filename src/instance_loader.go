@@ -263,7 +263,7 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 		Life:         maxLife * s.initialLifeFraction,
 		LifeRegen:    lifeRegen,
 		ObjectLayers: objectLayers,
-		Color:        s.colors["BOT"],
+		Color:        s.resolveEntityColor(ent, "BOT"),
 	}
 
 	// Apply initial stats
@@ -335,9 +335,8 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 		subtype = "inter-portal"
 	}
 
-	// Resolve colour from palette using subtype-specific key
-	colorKey := portalSubtypeColorKey(subtype)
-	color := s.colors[colorKey]
+	// Resolve colour: per-entity DB colour overrides palette default.
+	color := s.resolveEntityColor(ent, portalSubtypeColorKey(subtype))
 	if color == (ColorRGBA{}) {
 		color = s.colors["PORTAL"]
 	}
@@ -356,6 +355,22 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 	// The player must stand on the portal for portalHoldTime to trigger transport.
 
 	return portal
+}
+
+// resolveEntityColor returns the per-entity DB colour when it has non-zero
+// alpha, falling back to the named palette colour identified by paletteKey.
+// This ensures that map-placed entities with a custom colour in MongoDB
+// override the instance-wide palette default (fallback for no ObjectLayers).
+func (s *GameServer) resolveEntityColor(ent *pb.EntityMessage, paletteKey string) ColorRGBA {
+	if ent.GetColorA() > 0 {
+		return ColorRGBA{
+			R: int(ent.GetColorR()),
+			G: int(ent.GetColorG()),
+			B: int(ent.GetColorB()),
+			A: int(ent.GetColorA()),
+		}
+	}
+	return s.colors[paletteKey]
 }
 
 // portalSubtypeColorKey maps a portal subtype string to its palette colour key.

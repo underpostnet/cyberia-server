@@ -409,6 +409,14 @@ message EntityMessage {
 
   // Portal-specific field
   string          portal_subtype = 12; // inter-portal | inter-random | intra-random | intra-portal
+
+  // Parsed RGBA colour from the DB entity document.
+  // When color_a > 0, the Go server uses these values as the entity's fallback
+  // colour (when it has no ObjectLayer items) instead of the palette default.
+  int32           color_r = 13;
+  int32           color_g = 14;
+  int32           color_b = 15;
+  int32           color_a = 16;
 }
 
 message MapDataMessage {
