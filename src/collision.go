@@ -98,6 +98,30 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 			}
 		}
 
+		// Check collision with resources
+		for _, res := range mapState.resources {
+			if res.IsGhost() {
+				continue // Don't collide with destroyed/respawning resources.
+			}
+			if checkAABBCollision(projectile.Pos, projectile.Dims, res.Pos, res.Dims) {
+				res.Life -= projectileStats.Effect
+				if res.Life <= 0 {
+					res.Life = 0
+					s.handleResourceDeath(res, projectile, mapState)
+				}
+				// FCT: show the hit as a red flying number at the collision point.
+				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
+					// Send FCT to the caster if they are a player.
+					if p, ok := mapState.players[projectile.CasterID]; ok {
+						sendFCT(p, FCTTypeDamage,
+							res.Pos.X+res.Dims.Width*0.5,
+							res.Pos.Y+res.Dims.Height*0.5, dmg)
+					}
+				}
+				isColliding = true
+			}
+		}
+
 		// If the projectile is colliding, it loses life.
 		if isColliding {
 			projectile.Life -= s.collisionLifeLoss
@@ -193,6 +217,91 @@ func (s *GameServer) handleBotDeath(bot *BotState) {
 	bot.Mode = IDLE // Stop movement
 }
 
+// handleResourceDeath sets a resource to a destroyed state and transfers its
+// object layers to the caster (the player or bot that fired the killing projectile).
+// Resources have NO dead item IDs — they simply deactivate all OLs when destroyed.
+func (s *GameServer) handleResourceDeath(res *ResourceState, killerProjectile *BotState, mapState *MapState) {
+	// Save the pre-destruction object layers for restoration on respawn.
+	layersToSave := make([]ObjectLayerState, len(res.ObjectLayers))
+	copy(layersToSave, res.ObjectLayers)
+	res.PreRespawnObjectLayers = layersToSave
+
+	// Transfer resource OLs to the caster (player or bot).
+	if killerProjectile.CasterID != "" {
+		if casterPlayer, ok := mapState.players[killerProjectile.CasterID]; ok {
+			s.transferResourceLayers(res, casterPlayer, mapState)
+		} else if casterBot, ok := mapState.bots[killerProjectile.CasterID]; ok {
+			s.transferResourceLayersToBot(res, casterBot)
+		}
+	}
+
+	// Deactivate all existing object layers — no dead sprite for resources.
+	for i := range res.ObjectLayers {
+		res.ObjectLayers[i].Active = false
+	}
+
+	res.RespawnTime = time.Now().Add(s.respawnDuration)
+	s.InvalidateStats(res)
+}
+
+// transferResourceLayers transfers the active OLs of a destroyed resource to
+// a player.  Each active layer is added to the player's inventory (quantity
+// incremented if already owned, otherwise appended).  FCT events are sent.
+func (s *GameServer) transferResourceLayers(res *ResourceState, player *PlayerState, mapState *MapState) {
+	for _, layer := range res.ObjectLayers {
+		if !layer.Active || layer.Quantity <= 0 {
+			continue
+		}
+		found := false
+		for i := range player.ObjectLayers {
+			if player.ObjectLayers[i].ItemID == layer.ItemID {
+				player.ObjectLayers[i].Quantity += layer.Quantity
+				found = true
+				break
+			}
+		}
+		if !found {
+			player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{
+				ItemID:   layer.ItemID,
+				Active:   false, // added to inventory, not auto-equipped
+				Quantity: layer.Quantity,
+			})
+		}
+		// FCT: show item gain
+		sendItemFCT(player, FCTTypeItemGain,
+			res.Pos.X+res.Dims.Width*0.5,
+			res.Pos.Y+res.Dims.Height*0.5,
+			layer.Quantity, layer.ItemID)
+	}
+	s.InvalidateStats(player)
+}
+
+// transferResourceLayersToBot transfers the active OLs of a destroyed resource
+// to a bot (for bot-triggered resource destruction).
+func (s *GameServer) transferResourceLayersToBot(res *ResourceState, bot *BotState) {
+	for _, layer := range res.ObjectLayers {
+		if !layer.Active || layer.Quantity <= 0 {
+			continue
+		}
+		found := false
+		for i := range bot.ObjectLayers {
+			if bot.ObjectLayers[i].ItemID == layer.ItemID {
+				bot.ObjectLayers[i].Quantity += layer.Quantity
+				found = true
+				break
+			}
+		}
+		if !found {
+			bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{
+				ItemID:   layer.ItemID,
+				Active:   false,
+				Quantity: layer.Quantity,
+			})
+		}
+	}
+	s.InvalidateStats(bot)
+}
+
 // handleRespawns checks and respawns dead players and bots.
 func (s *GameServer) handleRespawns(mapState *MapState) {
 	// Respawn players
@@ -219,6 +328,18 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 
 			// Reset coin supply via the Fountain — single source of truth.
 			s.FountainInitBot(bot)
+		}
+	}
+
+	// Respawn resources — restore original OLs and reset life.
+	for _, res := range mapState.resources {
+		if !res.RespawnTime.IsZero() && time.Now().After(res.RespawnTime) {
+			res.ObjectLayers = res.PreRespawnObjectLayers
+			res.PreRespawnObjectLayers = nil
+			s.InvalidateStats(res)
+			s.ApplyResistanceStat(res, mapState)
+			res.Life = res.MaxLife
+			res.RespawnTime = time.Time{}
 		}
 	}
 }

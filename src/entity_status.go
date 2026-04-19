@@ -26,6 +26,7 @@ const (
 	StatusFrozen  uint8 = 3 // Player in FrozenInteractionState (modal)
 	StatusPlayer  uint8 = 4 // Normal player (alive, not frozen)
 	StatusDead    uint8 = 5 // Entity is dead / respawning
+	StatusResource uint8 = 6 // Resource entity — static, exploitable
 )
 
 // PlayerStatusIcon computes the overhead status icon for a player.
@@ -62,4 +63,16 @@ func BotStatusIcon(b *BotState) uint8 {
 		return StatusHostile
 	}
 	return StatusPassive
+}
+
+// ResourceStatusIcon computes the overhead status icon for a resource entity.
+//
+// Priority chain:
+//  1. Dead/destroyed  → StatusDead
+//  2. Alive           → StatusResource
+func ResourceStatusIcon(r *ResourceState) uint8 {
+	if r.IsGhost() {
+		return StatusDead
+	}
+	return StatusResource
 }

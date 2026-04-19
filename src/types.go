@@ -150,6 +150,29 @@ type PortalConfig struct {
 	DestCellY   float64
 }
 
+// ResourceState represents a static exploitable entity on the map
+// (wood, minerals, organic matter, etc.).  Resources have life, can be
+// destroyed by projectile impact, transfer their OLs to the killer on death,
+// and respawn after a timer.  They never move.
+type ResourceState struct {
+	ID                     string             `json:"id"`
+	MapCode                string             `json:"MapCode"`
+	Pos                    Point              `json:"Pos"`
+	Dims                   Dimensions         `json:"Dims"`
+	Color                  ColorRGBA          `json:"color"`
+	ObjectLayers           []ObjectLayerState `json:"objectLayers"`
+	MaxLife                float64            `json:"maxLife"`
+	Life                   float64            `json:"life"`
+	RespawnTime            time.Time          `json:"-"`
+	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
+	StatsDirty             bool               `json:"-"`
+}
+
+// IsGhost checks if a resource is in a destroyed state (waiting to respawn).
+func (r *ResourceState) IsGhost() bool {
+	return !r.RespawnTime.IsZero()
+}
+
 type PortalState struct {
 	ID           string        `json:"id"`
 	Pos          Point         `json:"Pos"`
@@ -170,6 +193,7 @@ type MapState struct {
 	floors       map[string]*FloorState
 	players      map[string]*PlayerState
 	bots         map[string]*BotState
+	resources    map[string]*ResourceState
 	gridW, gridH int
 }
 

@@ -101,6 +101,7 @@ const (
 	EntityTypeObstacle   byte = 3
 	EntityTypePortal     byte = 4
 	EntityTypeForeground byte = 5
+	EntityTypeResource   byte = 6
 
 	FlagRemoved     byte = 0x08 // bit 3
 	FlagHasLife     byte = 0x10 // bit 4
@@ -351,6 +352,26 @@ func (e *BinaryAOIEncoder) WriteForeground(fg ObjectState) {
 	}
 }
 
+func (e *BinaryAOIEncoder) WriteResource(r *ResourceState, respawnIn *float64) {
+	flags := EntityTypeResource | FlagHasLife | FlagHasColor
+	if respawnIn != nil {
+		flags |= FlagHasRespawn
+	}
+	e.writeEntityBase(flags, r.ID, r.Pos, r.Dims, NONE, IDLE)
+	e.putF32(r.Life)
+	e.putF32(r.MaxLife)
+	if respawnIn != nil {
+		e.putF32(*respawnIn)
+	}
+	e.putU8(byte(r.Color.R))
+	e.putU8(byte(r.Color.G))
+	e.putU8(byte(r.Color.B))
+	e.putU8(byte(r.Color.A))
+	e.writeItemIDs(r.ObjectLayers)
+	// Entity Status Indicator — u8 overhead icon ID (see entity_status.go).
+	e.putU8(ResourceStatusIcon(r))
+}
+
 func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, coinBalance uint32) {
 	flags := EntityTypePlayer | FlagHasLife
 	var respawnIn *float64
@@ -527,6 +548,23 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 			enc.WriteForeground(fg)
 			entityCount++
 		}
+	}
+
+	// Resources — static exploitable entities (depth-sorted with bots by client)
+	for _, r := range mapState.resources {
+		rRect := Rectangle{MinX: r.Pos.X, MinY: r.Pos.Y, MaxX: r.Pos.X + r.Dims.Width, MaxY: r.Pos.Y + r.Dims.Height}
+		if !rectsOverlap(player.AOI, rRect) {
+			continue
+		}
+		var respawnIn *float64
+		if r.IsGhost() {
+			remaining := math.Ceil(time.Until(r.RespawnTime).Seconds())
+			if remaining > 0 {
+				respawnIn = &remaining
+			}
+		}
+		enc.WriteResource(r, respawnIn)
+		entityCount++
 	}
 
 	// Bots

@@ -73,6 +73,11 @@ func (s *GameServer) CalculateStats(source interface{}, mapState *MapState) Comp
 		objectLayers = e.ObjectLayers
 		casterID = e.CasterID
 		dirty = e.StatsDirty
+	case *ResourceState:
+		entityID = e.ID
+		objectLayers = e.ObjectLayers
+		casterID = ""
+		dirty = e.StatsDirty
 	default:
 		return totalStats // Return zero stats for unknown types
 	}
@@ -137,6 +142,8 @@ func (s *GameServer) CalculateStats(source interface{}, mapState *MapState) Comp
 		e.StatsDirty = false
 	case *BotState:
 		e.StatsDirty = false
+	case *ResourceState:
+		e.StatsDirty = false
 	}
 
 	return totalStats
@@ -150,6 +157,8 @@ func (s *GameServer) ApplyResistanceStat(entity interface{}, mapState *MapState)
 	case *PlayerState:
 		e.MaxLife = s.entityBaseMaxLife + stats.Resistance
 	case *BotState:
+		e.MaxLife = s.entityBaseMaxLife + stats.Resistance
+	case *ResourceState:
 		e.MaxLife = s.entityBaseMaxLife + stats.Resistance
 	}
 }
@@ -190,6 +199,9 @@ func (s *GameServer) InvalidateStats(entity interface{}) {
 		e.StatsDirty = true
 		delete(s.statsCache, e.ID)
 	case *BotState:
+		e.StatsDirty = true
+		delete(s.statsCache, e.ID)
+	case *ResourceState:
 		e.StatsDirty = true
 		delete(s.statsCache, e.ID)
 	}

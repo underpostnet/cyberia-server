@@ -101,8 +101,8 @@ func (s *GameServer) RebuildWorld(
 
 	log.Printf("[InstanceLoader] RebuildWorld complete: %d maps.", len(s.maps))
 	for code, ms := range s.maps {
-		log.Printf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots, %d players",
-			code, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots), len(ms.players))
+		log.Printf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots, %d resources, %d players",
+			code, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots), len(ms.resources), len(ms.players))
 	}
 	printInstanceGraph(instance, s.maps)
 }
@@ -147,6 +147,7 @@ func (s *GameServer) buildMapsFromInstance(
 			floors:      make(map[string]*FloorState),
 			pathfinder:  NewPathfinder(gridW, gridH),
 			bots:        make(map[string]*BotState),
+			resources:   make(map[string]*ResourceState),
 		}
 
 		for _, ent := range mapMsg.GetEntities() {
@@ -155,6 +156,8 @@ func (s *GameServer) buildMapsFromInstance(
 				s.buildFloor(ms, ent)
 			case "bot":
 				s.buildBot(ms, mapCode, ent)
+			case "resource":
+				s.buildResource(ms, mapCode, ent)
 			case "obstacle":
 				s.buildObstacle(ms, ent)
 			case "foreground":
@@ -351,6 +354,56 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 	}
 
 	ms.bots[bot.ID] = bot
+}
+
+func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityMessage) {
+	dims := Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())}
+	if dims.Width <= 0 {
+		dims.Width = 2
+	}
+	if dims.Height <= 0 {
+		dims.Height = 2
+	}
+
+	startPos := Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
+
+	maxLife := s.entityBaseMaxLife
+	if ent.GetMaxLife() > 0 {
+		maxLife = ent.GetMaxLife()
+	}
+
+	// Build object layers
+	var objectLayers []ObjectLayerState
+	for _, itemID := range ent.GetObjectLayerItemIds() {
+		objectLayers = append(objectLayers, ObjectLayerState{
+			ItemID: itemID, Active: true, Quantity: 1,
+		})
+	}
+	// Fall back to entity defaults when no items assigned and no explicit colour.
+	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
+		if d, ok := s.entityDefaults["resource"]; ok && len(d.LiveItemIDs) > 0 {
+			for _, itemID := range d.LiveItemIDs {
+				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+			}
+		}
+	}
+
+	res := &ResourceState{
+		ID:           uuid.New().String(),
+		MapCode:      mapCode,
+		Pos:          startPos,
+		Dims:         dims,
+		Color:        s.resolveEntityColor(ent, "RESOURCE"),
+		ObjectLayers: objectLayers,
+		MaxLife:      maxLife,
+		Life:         maxLife,
+	}
+
+	// Apply stats (resistance may increase MaxLife)
+	s.ApplyResistanceStat(res, ms)
+	res.Life = res.MaxLife
+
+	ms.resources[res.ID] = res
 }
 
 func (s *GameServer) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
