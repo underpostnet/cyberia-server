@@ -846,11 +846,15 @@ func (x *GetFullInstanceRequest) GetInstanceCode() string {
 }
 
 type GetFullInstanceResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Instance      *InstanceMessage       `protobuf:"bytes,1,opt,name=instance,proto3" json:"instance,omitempty"`
-	Maps          []*MapDataMessage      `protobuf:"bytes,2,rep,name=maps,proto3" json:"maps,omitempty"`
-	ObjectLayers  []*ObjectLayerMessage  `protobuf:"bytes,3,rep,name=object_layers,json=objectLayers,proto3" json:"object_layers,omitempty"`
-	Config        *InstanceConfig        `protobuf:"bytes,4,opt,name=config,proto3" json:"config,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Instance     *InstanceMessage       `protobuf:"bytes,1,opt,name=instance,proto3" json:"instance,omitempty"`
+	Maps         []*MapDataMessage      `protobuf:"bytes,2,rep,name=maps,proto3" json:"maps,omitempty"`
+	ObjectLayers []*ObjectLayerMessage  `protobuf:"bytes,3,rep,name=object_layers,json=objectLayers,proto3" json:"object_layers,omitempty"`
+	Config       *InstanceConfig        `protobuf:"bytes,4,opt,name=config,proto3" json:"config,omitempty"`
+	// Opaque version string (e.g. combined updatedAt timestamps) for
+	// change-detection.  The Go server compares this with the last known
+	// value and skips a full rebuild when they match.
+	Version       string `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -911,6 +915,13 @@ func (x *GetFullInstanceResponse) GetConfig() *InstanceConfig {
 		return x.Config
 	}
 	return nil
+}
+
+func (x *GetFullInstanceResponse) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
 }
 
 type ColorEntry struct {
@@ -2581,12 +2592,13 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\rtopology_mode\x18\b \x01(\tR\ftopologyMode\x12\x12\n" +
 	"\x04seed\x18\t \x01(\tR\x04seed\"=\n" +
 	"\x16GetFullInstanceRequest\x12#\n" +
-	"\rinstance_code\x18\x01 \x01(\tR\finstanceCode\"\xef\x01\n" +
+	"\rinstance_code\x18\x01 \x01(\tR\finstanceCode\"\x89\x02\n" +
 	"\x17GetFullInstanceResponse\x124\n" +
 	"\binstance\x18\x01 \x01(\v2\x18.cyberia.InstanceMessageR\binstance\x12+\n" +
 	"\x04maps\x18\x02 \x03(\v2\x17.cyberia.MapDataMessageR\x04maps\x12@\n" +
 	"\robject_layers\x18\x03 \x03(\v2\x1b.cyberia.ObjectLayerMessageR\fobjectLayers\x12/\n" +
-	"\x06config\x18\x04 \x01(\v2\x17.cyberia.InstanceConfigR\x06config\"V\n" +
+	"\x06config\x18\x04 \x01(\v2\x17.cyberia.InstanceConfigR\x06config\x12\x18\n" +
+	"\aversion\x18\x05 \x01(\tR\aversion\"V\n" +
 	"\n" +
 	"ColorEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\f\n" +

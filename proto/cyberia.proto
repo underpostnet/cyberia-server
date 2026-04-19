@@ -155,6 +155,10 @@ message GetFullInstanceResponse {
   repeated MapDataMessage       maps          = 2;
   repeated ObjectLayerMessage   object_layers = 3;
   InstanceConfig                config        = 4;
+  // Opaque version string (e.g. combined updatedAt timestamps) for
+  // change-detection.  The Go server compares this with the last known
+  // value and skips a full rebuild when they match.
+  string                        version       = 5;
 }
 
 // ═══════════════════════════════════════════════════════════════════

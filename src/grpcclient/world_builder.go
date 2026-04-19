@@ -27,6 +27,11 @@ type WorldBuilder struct {
 	// manifest tracks the last-known sha256 per item ID for diffing.
 	manifest map[string]string
 
+	// lastInstanceVersion is the opaque version string returned by
+	// GetFullInstance.  ReloadWorld compares it to skip full rebuilds
+	// when the instance, its maps, and its config have not changed.
+	lastInstanceVersion string
+
 	// ReloadInterval is the polling interval for hot-reload (0 = disabled).
 	ReloadInterval time.Duration
 
@@ -89,6 +94,11 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 	for itemID, ol := range cache {
 		wb.manifest[itemID] = ol.Sha256
 	}
+	wb.mu.Unlock()
+
+	// Save initial version for change-detection.
+	wb.mu.Lock()
+	wb.lastInstanceVersion = resp.GetVersion()
 	wb.mu.Unlock()
 
 	// Build the game world from instance data
@@ -163,44 +173,40 @@ func (wb *WorldBuilder) HotReload(ctx context.Context) error {
 		}
 	}
 
-	if len(toFetch) == 0 && len(toDelete) == 0 {
-		log.Println("[WorldBuilder] Hot-reload: no changes detected.")
-		return nil
-	}
+	// 5. Apply OL changes if any were detected.
+	if len(toFetch) > 0 || len(toDelete) > 0 {
+		log.Printf("[WorldBuilder] Hot-reload: %d changed/new, %d deleted.", len(toFetch), len(toDelete))
 
-	log.Printf("[WorldBuilder] Hot-reload: %d changed/new, %d deleted.", len(toFetch), len(toDelete))
-
-	// 5. Fetch changed ObjectLayers one by one
-	updates := make(map[string]*game.ObjectLayer, len(toFetch))
-	fetchErrors := 0
-	for _, itemID := range toFetch {
-		ol, err := wb.client.FetchObjectLayer(ctx, itemID)
-		if err != nil {
-			log.Printf("[WorldBuilder] Warning: failed to fetch ObjectLayer %s: %v", itemID, err)
-			fetchErrors++
-			continue
+		updates := make(map[string]*game.ObjectLayer, len(toFetch))
+		fetchErrors := 0
+		for _, itemID := range toFetch {
+			ol, err := wb.client.FetchObjectLayer(ctx, itemID)
+			if err != nil {
+				log.Printf("[WorldBuilder] Warning: failed to fetch ObjectLayer %s: %v", itemID, err)
+				fetchErrors++
+				continue
+			}
+			updates[itemID] = ol
 		}
-		updates[itemID] = ol
+
+		wb.server.PatchObjectLayerCache(updates, toDelete)
+
+		wb.mu.Lock()
+		for itemID, ol := range updates {
+			wb.manifest[itemID] = ol.Sha256
+		}
+		for _, itemID := range toDelete {
+			delete(wb.manifest, itemID)
+		}
+		wb.mu.Unlock()
+
+		log.Printf("[WorldBuilder] Hot-reload applied: %d updated, %d deleted, %d errors.",
+			len(updates), len(toDelete), fetchErrors)
 	}
 
-	// 6. Apply changes atomically to GameServer
-	wb.server.PatchObjectLayerCache(updates, toDelete)
-
-	// 7. Update local manifest
-	wb.mu.Lock()
-	for itemID, ol := range updates {
-		wb.manifest[itemID] = ol.Sha256
-	}
-	for _, itemID := range toDelete {
-		delete(wb.manifest, itemID)
-	}
-	wb.mu.Unlock()
-
-	log.Printf("[WorldBuilder] Hot-reload applied: %d updated, %d deleted, %d errors.",
-		len(updates), len(toDelete), fetchErrors)
-
-	// 8. Re-fetch full instance and rebuild map entities so admin map edits
-	//    (via MapEngineCyberia) are reflected without a server restart.
+	// 6. Always check instance/map version so that admin map edits (via
+	//    MapEngineCyberia or InstanceEngineCyberia) are picked up even when
+	//    no ObjectLayer binary changed.
 	if err := wb.ReloadWorld(ctx); err != nil {
 		log.Printf("[WorldBuilder] Hot-reload: world rebuild failed: %v", err)
 	}
@@ -208,15 +214,29 @@ func (wb *WorldBuilder) HotReload(ctx context.Context) error {
 	return nil
 }
 
-// ReloadWorld re-fetches the full instance via gRPC and rebuilds all map
-// entities (floors, obstacles, bots, portals, foregrounds) while preserving
-// connected players.  This closes the gap where admin map edits made through
-// MapEngineCyberia were not reflected until a full Go server restart.
+// ReloadWorld re-fetches the full instance via gRPC and, when the version
+// string has changed, rebuilds all map entities while preserving connected
+// players.  When nothing changed the rebuild is skipped to avoid churn.
 func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
 	resp, err := wb.client.FetchFullInstance(ctx, wb.InstanceCode)
 	if err != nil {
 		return err
 	}
+
+	// Compare version — skip rebuild when instance+maps are unchanged.
+	newVersion := resp.GetVersion()
+	wb.mu.Lock()
+	same := newVersion != "" && newVersion == wb.lastInstanceVersion
+	if !same {
+		wb.lastInstanceVersion = newVersion
+	}
+	wb.mu.Unlock()
+
+	if same {
+		return nil
+	}
+
+	log.Printf("[WorldBuilder] Instance version changed — rebuilding world...")
 
 	// Re-apply config in case it changed.
 	if cfg := resp.GetConfig(); cfg != nil {

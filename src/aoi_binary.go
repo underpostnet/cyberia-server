@@ -66,6 +66,7 @@ package game
 import (
 	"encoding/binary"
 	"math"
+	"sort"
 	"time"
 )
 
@@ -479,13 +480,35 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 		}
 	}
 
-	// Floors
+	// Floors — sorted: OL floors first (background), then solid-colour
+	// floors on top.  Within each group sort by Y→X→ID for stability.
+	// This prevents flicker caused by Go map random iteration order when
+	// overlapping floors exist (e.g. a solid-colour floor on top of a
+	// larger textured floor).
+	var aoiFloors []*FloorState
 	for _, f := range mapState.floors {
 		fRect := Rectangle{MinX: f.Pos.X, MinY: f.Pos.Y, MaxX: f.Pos.X + f.Dims.Width, MaxY: f.Pos.Y + f.Dims.Height}
 		if rectsOverlap(player.AOI, fRect) {
-			enc.WriteFloor(f)
-			entityCount++
+			aoiFloors = append(aoiFloors, f)
 		}
+	}
+	sort.Slice(aoiFloors, func(i, j int) bool {
+		iOL := len(aoiFloors[i].ObjectLayers) > 0
+		jOL := len(aoiFloors[j].ObjectLayers) > 0
+		if iOL != jOL {
+			return iOL // OL floors drawn first (underneath)
+		}
+		if aoiFloors[i].Pos.Y != aoiFloors[j].Pos.Y {
+			return aoiFloors[i].Pos.Y < aoiFloors[j].Pos.Y
+		}
+		if aoiFloors[i].Pos.X != aoiFloors[j].Pos.X {
+			return aoiFloors[i].Pos.X < aoiFloors[j].Pos.X
+		}
+		return aoiFloors[i].ID < aoiFloors[j].ID
+	})
+	for _, f := range aoiFloors {
+		enc.WriteFloor(f)
+		entityCount++
 	}
 
 	// Portals
