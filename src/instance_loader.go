@@ -299,8 +299,10 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 		})
 	}
 	// If no items are assigned in the map definition use the instance-level
-	// bot default visual (sprite if present, solid BOT colour otherwise).
-	if len(objectLayers) == 0 {
+	// bot default visual — but only when the entity has no explicit DB colour.
+	// A non-zero ColorA means the map creator intentionally placed a
+	// solid-colour bot without sprites.
+	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
 		if d, ok := s.entityDefaults["bot"]; ok && len(d.LiveItemIDs) > 0 {
 			for _, itemID := range d.LiveItemIDs {
 				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
