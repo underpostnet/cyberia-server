@@ -13,6 +13,9 @@ type SkillContext struct {
 	Target Point
 	// TriggerItemID is the ObjectLayer item that matched the skillConfig entry.
 	TriggerItemID string
+	// SummonedEntityItemID is the item ID of the entity this skill should spawn
+	// (e.g. "atlas_pistol_mk2_bullet", "hatchet-skill"). Comes from SkillDefinition.
+	SummonedEntityItemID string
 	// CallerHoldsLock is true when the server mutex is already held by the caller
 	// (e.g. inside the game-loop / updateBots). Skill implementations that need
 	// the lock must check this flag to avoid a deadlock.
@@ -34,7 +37,7 @@ func registerSkill(logicEventID string, handler SkillHandlerFunc) {
 // InitSkills wires all built-in skill implementations into the registry.
 // Called from ApplyInstanceConfig after all server parameters are set.
 func (s *GameServer) InitSkills() {
-	registerSkill("atlas_pistol_mk2_logic", func(s *GameServer, ctx SkillContext) {
+	registerSkill("projectile", func(s *GameServer, ctx SkillContext) {
 		s.executeProjectileSkill(ctx)
 	})
 	registerSkill("doppelganger", func(s *GameServer, ctx SkillContext) {
@@ -78,11 +81,12 @@ func (s *GameServer) dispatchSkillsForEntity(caster interface{}, mapState *MapSt
 		if skillDefs, ok := s.skillConfig[layer.ItemID]; ok {
 			for _, skillDef := range skillDefs {
 				s.DispatchSkill(skillDef.LogicEventID, SkillContext{
-					Caster:          caster,
-					MapState:        mapState,
-					Target:          target,
-					TriggerItemID:   layer.ItemID,
-					CallerHoldsLock: callerHoldsLock,
+					Caster:               caster,
+					MapState:             mapState,
+					Target:               target,
+					TriggerItemID:        layer.ItemID,
+					SummonedEntityItemID: skillDef.SummonedEntityItemID,
+					CallerHoldsLock:      callerHoldsLock,
 				})
 			}
 		}

@@ -8,15 +8,17 @@ import (
 	"github.com/google/uuid"
 )
 
-// executeProjectileSkill is the unified "atlas_pistol_mk2_logic" handler.
+// executeProjectileSkill is the "projectile" skill handler.
 // It spawns a fast-moving "skill" projectile bot towards the caster's target.
 // Works for both PlayerState and BotState via SkillContext.
 func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 	casterStats := s.CalculateStats(ctx.Caster, ctx.MapState)
 
-	projectileItemIDs := []string{"atlas_pistol_mk2_bullet"}
-	if d, ok := s.entityDefaults["skill"]; ok && len(d.LiveItemIDs) > 0 {
-		projectileItemIDs = d.LiveItemIDs
+	projectileItemIDs := []string{ctx.SummonedEntityItemID}
+	if ctx.SummonedEntityItemID == "" {
+		if d, ok := s.entityDefaults["skill"]; ok && len(d.LiveItemIDs) > 0 {
+			projectileItemIDs = d.LiveItemIDs
+		}
 	}
 
 	// Intelligence stat increases the chance of the skill activating.

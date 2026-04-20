@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// executeDoppelgangerSkill is the unified "doppelganger" handler.
+// executeDoppelgangerSkill is the "doppelganger" skill handler.
 // It has a chance to spawn a temporary, wandering clone of the caster.
 // Works for both PlayerState and BotState via SkillContext.
 func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {

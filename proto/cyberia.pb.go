@@ -1062,7 +1062,7 @@ func (x *DefaultObjectLayerState) GetQuantity() int32 {
 
 type SkillDetail struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
-	LogicEventId         string                 `protobuf:"bytes,1,opt,name=logic_event_id,json=logicEventId,proto3" json:"logic_event_id,omitempty"`                           // skill handler key (e.g. "atlas_pistol_mk2_logic", "doppelganger")
+	LogicEventId         string                 `protobuf:"bytes,1,opt,name=logic_event_id,json=logicEventId,proto3" json:"logic_event_id,omitempty"`                           // skill handler key (e.g. "projectile", "doppelganger")
 	Description          string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`                                                   // human-readable skill description shown in the inventory modal
 	SummonedEntityItemId string                 `protobuf:"bytes,3,opt,name=summoned_entity_item_id,json=summonedEntityItemId,proto3" json:"summoned_entity_item_id,omitempty"` // ObjectLayer item ID of the entity summoned by this skill ("$active_skin" = dynamic)
 	Name                 string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`                                                                 // display name for the skill (e.g. "Projectile", "Doppelganger")

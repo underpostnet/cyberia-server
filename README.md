@@ -73,9 +73,9 @@ Skills map a **trigger item** (the active `ObjectLayer` item equipped by a playe
 
 ```
 ObjectLayer item (equipped + active)
-    └─ skillConfig: triggerItemId → logicEventIds[]
-           ├─ "atlas_pistol_mk2_logic"   → executePlayerBulletSkill / executeBotBulletSkill
-           ├─ "doppelganger"             → executePlayerDoppelgangerSkill / executeBotDoppelgangerSkill
+    └─ skillConfig: triggerItemId → skills[]
+           ├─ "projectile"              → executeProjectileSkill
+           ├─ "doppelganger"            → executeDoppelgangerSkill
            └─ "coin_drop_or_transaction" → no-op on action (fires automatically on kill via HandleOnKillSkills)
 ```
 
