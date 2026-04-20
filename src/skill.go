@@ -1,9 +1,12 @@
 package game
 
-// SkillDefinition defines the properties of a skill, including the ordered list of
-// logic handlers to execute when the trigger item is used.
+// SkillDefinition defines the properties of a single skill logic event
+// associated with a trigger item.
 type SkillDefinition struct {
-	LogicEventIDs []string
+	LogicEventID         string
+	Name                 string
+	Description          string
+	SummonedEntityItemID string
 }
 
 // HandlePlayerTapAction is the canonical handler for every tap/click event from
@@ -60,8 +63,8 @@ func (s *GameServer) GetAssociatedSkillItemIDs(itemID string) []string {
 
 	if skillDefs, ok := s.skillConfig[itemID]; ok {
 		for _, skillDef := range skillDefs {
-			for _, id := range skillDef.LogicEventIDs {
-				associatedIDs[id] = struct{}{}
+			if skillDef.LogicEventID != "" {
+				associatedIDs[skillDef.LogicEventID] = struct{}{}
 			}
 		}
 	}

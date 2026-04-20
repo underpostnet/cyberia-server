@@ -179,11 +179,18 @@ message DefaultObjectLayerState {
   int32  quantity = 3;
 }
 
+message SkillDetail {
+  string logic_event_id          = 1;  // skill handler key (e.g. "atlas_pistol_mk2_logic", "doppelganger")
+  string description             = 2;  // human-readable skill description shown in the inventory modal
+  string summoned_entity_item_id = 3;  // ObjectLayer item ID of the entity summoned by this skill ("$active_skin" = dynamic)
+  string name                    = 4;  // display name for the skill (e.g. "Projectile", "Doppelganger")
+}
+
 message SkillConfigEntry {
   string          trigger_item_id = 1;   // item that triggers the skill
-  reserved 2, 3;
-  reserved "spawned_item_ids", "logic_event_id";
-  repeated string logic_event_ids = 4;   // ordered list of skill handler keys to execute ("atlas_pistol_mk2_logic", "doppelganger", …)
+  reserved 2, 3, 4, 5, 6;
+  reserved "spawned_item_ids", "logic_event_id", "logic_event_ids", "description", "summoned_entity_item_id";
+  repeated SkillDetail skills   = 7;     // per-logic-event skill definitions
 }
 
 // EconomyRules groups all Fountain & Sink economy parameters for one instance.

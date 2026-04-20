@@ -191,9 +191,15 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	// Skill map
 	s.skillConfig = make(map[string][]SkillDefinition, len(cfg.GetSkillConfig()))
 	for _, sc := range cfg.GetSkillConfig() {
-		s.skillConfig[sc.GetTriggerItemId()] = append(s.skillConfig[sc.GetTriggerItemId()], SkillDefinition{
-			LogicEventIDs: sc.GetLogicEventIds(),
-		})
+		triggerID := sc.GetTriggerItemId()
+		for _, sk := range sc.GetSkills() {
+			s.skillConfig[triggerID] = append(s.skillConfig[triggerID], SkillDefinition{
+				LogicEventID:         sk.GetLogicEventId(),
+				Name:                 sk.GetName(),
+				Description:          sk.GetDescription(),
+				SummonedEntityItemID: sk.GetSummonedEntityItemId(),
+			})
+		}
 	}
 
 	// Stats cache (invalidated per-entity via StatsDirty flag + TTL expiry).

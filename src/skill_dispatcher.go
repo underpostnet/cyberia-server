@@ -77,15 +77,13 @@ func (s *GameServer) dispatchSkillsForEntity(caster interface{}, mapState *MapSt
 		}
 		if skillDefs, ok := s.skillConfig[layer.ItemID]; ok {
 			for _, skillDef := range skillDefs {
-				for _, logicID := range skillDef.LogicEventIDs {
-					s.DispatchSkill(logicID, SkillContext{
-						Caster:          caster,
-						MapState:        mapState,
-						Target:          target,
-						TriggerItemID:   layer.ItemID,
-						CallerHoldsLock: callerHoldsLock,
-					})
-				}
+				s.DispatchSkill(skillDef.LogicEventID, SkillContext{
+					Caster:          caster,
+					MapState:        mapState,
+					Target:          target,
+					TriggerItemID:   layer.ItemID,
+					CallerHoldsLock: callerHoldsLock,
+				})
 			}
 		}
 	}

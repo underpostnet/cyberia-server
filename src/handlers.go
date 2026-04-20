@@ -21,22 +21,21 @@ type OLMeta struct {
 	IsStateless   bool            `json:"is_stateless"`
 }
 
-// buildSkillMap returns a compact { triggerItemId → [logicEventIds] } map
+// buildSkillMap returns a compact { triggerItemId → [SkillMapEntry] } map
 // derived from the server's skillConfig — sent to clients in init_data.
-func (s *GameServer) buildSkillMap() map[string][]string {
-	out := make(map[string][]string, len(s.skillConfig))
+func (s *GameServer) buildSkillMap() map[string][]SkillMapEntry {
+	out := make(map[string][]SkillMapEntry, len(s.skillConfig))
 	for triggerID, defs := range s.skillConfig {
-		combined := make(map[string]struct{})
+		entries := make([]SkillMapEntry, 0, len(defs))
 		for _, def := range defs {
-			for _, id := range def.LogicEventIDs {
-				combined[id] = struct{}{}
-			}
+			entries = append(entries, SkillMapEntry{
+				LogicEventID:         def.LogicEventID,
+				Name:                 def.Name,
+				Description:          def.Description,
+				SummonedEntityItemID: def.SummonedEntityItemID,
+			})
 		}
-		ids := make([]string, 0, len(combined))
-		for id := range combined {
-			ids = append(ids, id)
-		}
-		out[triggerID] = ids
+		out[triggerID] = entries
 	}
 	return out
 }

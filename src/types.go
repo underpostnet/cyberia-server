@@ -343,25 +343,34 @@ type ColorRGBA struct {
 	A int `json:"a"`
 }
 
+// SkillMapEntry describes one skill associated with a trigger item,
+// for the init_data JSON payload sent to C clients.
+type SkillMapEntry struct {
+	LogicEventID         string `json:"logicEventId"`
+	Name                 string `json:"name"`
+	Description          string `json:"description"`
+	SummonedEntityItemID string `json:"summonedEntityItemId"`
+}
+
 type InitPayload struct {
-	GridW                     int                  `json:"gridW"`
-	GridH                     int                  `json:"gridH"`
-	DefaultObjectWidth        float64              `json:"defaultObjectWidth"`
-	DefaultObjectHeight       float64              `json:"defaultObjectHeight"`
-	CellSize                  float64              `json:"cellSize"`
-	Fps                       int                  `json:"fps"`
-	InterpolationMs           int                  `json:"interpolationMs"`
-	AoiRadius                 float64              `json:"aoiRadius"`
-	Colors          map[string]ColorRGBA      `json:"colors"`
-	EntityDefaults  []EntityTypeDefaultConfig `json:"entityDefaults"`
-	CameraSmoothing float64                   `json:"cameraSmoothing"`
-	CameraZoom                float64              `json:"cameraZoom"`
-	DefaultWidthScreenFactor  float64              `json:"defaultWidthScreenFactor"`
-	DefaultHeightScreenFactor float64              `json:"defaultHeightScreenFactor"`
-	DevUi                     bool                 `json:"devUi"`
-	SumStatsLimit             int                  `json:"sumStatsLimit"`
-	ObjectLayers              []ObjectLayerState   `json:"objectLayers"`
-	Color                     ColorRGBA            `json:"color"`
-	SkillMap                  map[string][]string  `json:"skillMap"`
-	StatusIcons               []StatusIconConfig   `json:"statusIcons"`
+	GridW                     int                       `json:"gridW"`
+	GridH                     int                       `json:"gridH"`
+	DefaultObjectWidth        float64                   `json:"defaultObjectWidth"`
+	DefaultObjectHeight       float64                   `json:"defaultObjectHeight"`
+	CellSize                  float64                   `json:"cellSize"`
+	Fps                       int                       `json:"fps"`
+	InterpolationMs           int                       `json:"interpolationMs"`
+	AoiRadius                 float64                   `json:"aoiRadius"`
+	Colors          map[string]ColorRGBA           `json:"colors"`
+	EntityDefaults  []EntityTypeDefaultConfig      `json:"entityDefaults"`
+	CameraSmoothing float64                        `json:"cameraSmoothing"`
+	CameraZoom                float64                   `json:"cameraZoom"`
+	DefaultWidthScreenFactor  float64                   `json:"defaultWidthScreenFactor"`
+	DefaultHeightScreenFactor float64                   `json:"defaultHeightScreenFactor"`
+	DevUi                     bool                      `json:"devUi"`
+	SumStatsLimit             int                       `json:"sumStatsLimit"`
+	ObjectLayers              []ObjectLayerState        `json:"objectLayers"`
+	Color                     ColorRGBA                 `json:"color"`
+	SkillMap                  map[string][]SkillMapEntry `json:"skillMap"`
+	StatusIcons               []StatusIconConfig        `json:"statusIcons"`
 }
