@@ -15,9 +15,8 @@ import (
 // OLMeta is the JSON shape sent to the client for each ObjectLayer.
 // Matches the client's parse_object_layer_json expectations.
 type OLMeta struct {
-	Sha256        string          `json:"sha256"`
-	Data          ObjectLayerData `json:"data"`
-	FrameDuration int             `json:"frame_duration"`
+	Sha256 string          `json:"sha256"`
+	Data   ObjectLayerData `json:"data"`
 }
 
 // buildSkillMap returns a compact { triggerItemId → [SkillMapEntry] } map
@@ -47,9 +46,8 @@ func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
 	out := make(map[string]*OLMeta, len(s.objectLayerDataCache))
 	for itemID, ol := range s.objectLayerDataCache {
 		out[itemID] = &OLMeta{
-			Sha256:        ol.Sha256,
-			Data:          ol.Data,
-			FrameDuration: ol.FrameDuration,
+			Sha256: ol.Sha256,
+			Data:   ol.Data,
 		}
 	}
 	return out

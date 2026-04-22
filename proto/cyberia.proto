@@ -101,10 +101,7 @@ message ObjectLayerMessage {
   Render  render          = 5;
   string  sha256          = 6;
   string  cid             = 7; // IPFS CID of the OL data JSON
-
-  // Animation metadata (populated from ObjectLayerRenderFrames ref)
-  int32   frame_duration  = 8; // ms per frame
-  reserved 9;
+  reserved 8, 9;
 }
 
 // ── ObjectLayer requests ──────────────────────────────────────────

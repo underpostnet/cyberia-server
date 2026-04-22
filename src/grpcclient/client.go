@@ -224,10 +224,9 @@ func (c *Client) FetchObjectLayerManifest(ctx context.Context) ([]ManifestEntry,
 
 func protoToObjectLayer(msg *pb.ObjectLayerMessage) *game.ObjectLayer {
 	ol := &game.ObjectLayer{
-		ID:            msg.GetMongoId(),
-		Sha256:        msg.GetSha256(),
-		Cid:           msg.GetCid(),
-		FrameDuration: int(msg.GetFrameDuration()),
+		ID:     msg.GetMongoId(),
+		Sha256: msg.GetSha256(),
+		Cid:    msg.GetCid(),
 		Data: game.ObjectLayerData{
 			Stats: game.Stats{
 				Effect:       int(msg.GetStats().GetEffect()),

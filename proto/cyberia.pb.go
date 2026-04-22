@@ -402,16 +402,14 @@ func (x *Render) GetMetadataCid() string {
 }
 
 type ObjectLayerMessage struct {
-	state   protoimpl.MessageState `protogen:"open.v1"`
-	MongoId string                 `protobuf:"bytes,1,opt,name=mongo_id,json=mongoId,proto3" json:"mongo_id,omitempty"` // MongoDB _id
-	Stats   *Stats                 `protobuf:"bytes,2,opt,name=stats,proto3" json:"stats,omitempty"`
-	Item    *ItemInfo              `protobuf:"bytes,3,opt,name=item,proto3" json:"item,omitempty"`
-	Ledger  *Ledger                `protobuf:"bytes,4,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	Render  *Render                `protobuf:"bytes,5,opt,name=render,proto3" json:"render,omitempty"`
-	Sha256  string                 `protobuf:"bytes,6,opt,name=sha256,proto3" json:"sha256,omitempty"`
-	Cid     string                 `protobuf:"bytes,7,opt,name=cid,proto3" json:"cid,omitempty"` // IPFS CID of the OL data JSON
-	// Animation metadata (populated from ObjectLayerRenderFrames ref)
-	FrameDuration int32 `protobuf:"varint,8,opt,name=frame_duration,json=frameDuration,proto3" json:"frame_duration,omitempty"` // ms per frame
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MongoId       string                 `protobuf:"bytes,1,opt,name=mongo_id,json=mongoId,proto3" json:"mongo_id,omitempty"` // MongoDB _id
+	Stats         *Stats                 `protobuf:"bytes,2,opt,name=stats,proto3" json:"stats,omitempty"`
+	Item          *ItemInfo              `protobuf:"bytes,3,opt,name=item,proto3" json:"item,omitempty"`
+	Ledger        *Ledger                `protobuf:"bytes,4,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	Render        *Render                `protobuf:"bytes,5,opt,name=render,proto3" json:"render,omitempty"`
+	Sha256        string                 `protobuf:"bytes,6,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	Cid           string                 `protobuf:"bytes,7,opt,name=cid,proto3" json:"cid,omitempty"` // IPFS CID of the OL data JSON
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -493,13 +491,6 @@ func (x *ObjectLayerMessage) GetCid() string {
 		return x.Cid
 	}
 	return ""
-}
-
-func (x *ObjectLayerMessage) GetFrameDuration() int32 {
-	if x != nil {
-		return x.FrameDuration
-	}
-	return 0
 }
 
 type GetObjectLayerBatchRequest struct {
@@ -2626,7 +2617,7 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\btoken_id\x18\x03 \x01(\tR\atokenId\"=\n" +
 	"\x06Render\x12\x10\n" +
 	"\x03cid\x18\x01 \x01(\tR\x03cid\x12!\n" +
-	"\fmetadata_cid\x18\x02 \x01(\tR\vmetadataCid\"\xa5\x02\n" +
+	"\fmetadata_cid\x18\x02 \x01(\tR\vmetadataCid\"\x84\x02\n" +
 	"\x12ObjectLayerMessage\x12\x19\n" +
 	"\bmongo_id\x18\x01 \x01(\tR\amongoId\x12$\n" +
 	"\x05stats\x18\x02 \x01(\v2\x0e.cyberia.StatsR\x05stats\x12%\n" +
@@ -2634,8 +2625,7 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\x06ledger\x18\x04 \x01(\v2\x0f.cyberia.LedgerR\x06ledger\x12'\n" +
 	"\x06render\x18\x05 \x01(\v2\x0f.cyberia.RenderR\x06render\x12\x16\n" +
 	"\x06sha256\x18\x06 \x01(\tR\x06sha256\x12\x10\n" +
-	"\x03cid\x18\a \x01(\tR\x03cid\x12%\n" +
-	"\x0eframe_duration\x18\b \x01(\x05R\rframeDurationJ\x04\b\t\x10\n" +
+	"\x03cid\x18\a \x01(\tR\x03cidJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
 	"\"F\n" +
 	"\x1aGetObjectLayerBatchRequest\x12(\n" +
 	"\x10item_type_filter\x18\x01 \x01(\tR\x0eitemTypeFilter\"0\n" +

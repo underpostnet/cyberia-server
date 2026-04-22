@@ -48,7 +48,6 @@ type ObjectLayer struct {
 	Cid                       string          `json:"cid,omitempty"`
 	ObjectLayerRenderFramesId interface{}     `json:"objectLayerRenderFramesId,omitempty"`
 	Sha256                    string          `json:"sha256"`
-	FrameDuration             int             `json:"frame_duration"`
 	CreatedAt                 time.Time       `json:"createdAt,omitempty"`
 	UpdatedAt                 time.Time       `json:"updatedAt,omitempty"`
 }
