@@ -176,7 +176,7 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState) {
 	// This will primarily affect MaxLife.
 	s.InvalidateStats(player)
 	s.ApplyResistanceStat(player, s.maps[player.MapCode]) // This assumes player.MapCode is correct and map exists.
-	player.Mode = IDLE                                  // Stop movement
+	player.Mode = IDLE                                    // Stop movement
 }
 
 // handleBotDeath sets a bot to a dead state.
@@ -217,85 +217,108 @@ func (s *GameServer) handleBotDeath(bot *BotState) {
 	bot.Mode = IDLE // Stop movement
 }
 
-// handleResourceDeath sets a resource to a destroyed state and transfers its
-// object layers to the caster (the player or bot that fired the killing projectile).
-// Resources have NO dead item IDs — they simply deactivate all OLs when destroyed.
+// handleResourceDeath sets a resource to a destroyed state, transfers its
+// configured drop items to the extractor, and activates the dead/extracted
+// resource visuals until respawn.
 func (s *GameServer) handleResourceDeath(res *ResourceState, killerProjectile *BotState, mapState *MapState) {
 	// Save the pre-destruction object layers for restoration on respawn.
 	layersToSave := make([]ObjectLayerState, len(res.ObjectLayers))
 	copy(layersToSave, res.ObjectLayers)
 	res.PreRespawnObjectLayers = layersToSave
+	resourceDefaults, _ := s.resolveEntityDefaultBuild("resource", activeObjectLayerItemIDs(layersToSave))
 
-	// Transfer resource OLs to the caster (player or bot).
+	// Transfer configured resource drop items to the caster (player or bot).
 	if killerProjectile.CasterID != "" {
 		if casterPlayer, ok := mapState.players[killerProjectile.CasterID]; ok {
-			s.transferResourceLayers(res, casterPlayer, mapState)
+			s.transferResourceDropItemsToPlayer(res, casterPlayer, resourceDefaults)
 		} else if casterBot, ok := mapState.bots[killerProjectile.CasterID]; ok {
-			s.transferResourceLayersToBot(res, casterBot)
+			s.transferResourceDropItemsToBot(res, casterBot, resourceDefaults)
 		}
 	}
 
-	// Deactivate all existing object layers — no dead sprite for resources.
+	// Deactivate all existing object layers.
 	for i := range res.ObjectLayers {
 		res.ObjectLayers[i].Active = false
+	}
+
+	// Activate dead/extracted item IDs from the matched resource build.
+	for _, deadID := range resourceDefaults.DeadItemIDs {
+		found := false
+		for i := range res.ObjectLayers {
+			if res.ObjectLayers[i].ItemID == deadID {
+				res.ObjectLayers[i].Active = true
+				res.ObjectLayers[i].Quantity = 1
+				found = true
+				break
+			}
+		}
+		if !found {
+			res.ObjectLayers = append(res.ObjectLayers, ObjectLayerState{ItemID: deadID, Active: true, Quantity: 1})
+		}
 	}
 
 	res.RespawnTime = time.Now().Add(s.respawnDuration)
 	s.InvalidateStats(res)
 }
 
-// transferResourceLayers transfers the active OLs of a destroyed resource to
-// a player.  Each active layer is added to the player's inventory (quantity
-// incremented if already owned, otherwise appended).  FCT events are sent.
-func (s *GameServer) transferResourceLayers(res *ResourceState, player *PlayerState, mapState *MapState) {
-	for _, layer := range res.ObjectLayers {
-		if !layer.Active || layer.Quantity <= 0 {
+// transferResourceDropItemsToPlayer grants the matched resource build's drop items
+// of a destroyed resource to a player. Each configured item is added with
+// quantity 1 (incremented if already owned, otherwise appended). FCT events are sent.
+func (s *GameServer) transferResourceDropItemsToPlayer(res *ResourceState, player *PlayerState, resourceDefaults EntityTypeDefaultConfig) {
+	if len(resourceDefaults.DropItemIDs) == 0 {
+		return
+	}
+	for _, itemID := range resourceDefaults.DropItemIDs {
+		if itemID == "" {
 			continue
 		}
 		found := false
 		for i := range player.ObjectLayers {
-			if player.ObjectLayers[i].ItemID == layer.ItemID {
-				player.ObjectLayers[i].Quantity += layer.Quantity
+			if player.ObjectLayers[i].ItemID == itemID {
+				player.ObjectLayers[i].Quantity += 1
 				found = true
 				break
 			}
 		}
 		if !found {
 			player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{
-				ItemID:   layer.ItemID,
+				ItemID:   itemID,
 				Active:   false, // added to inventory, not auto-equipped
-				Quantity: layer.Quantity,
+				Quantity: 1,
 			})
 		}
 		// FCT: show item gain
 		sendItemFCT(player, FCTTypeItemGain,
 			res.Pos.X+res.Dims.Width*0.5,
 			res.Pos.Y+res.Dims.Height*0.5,
-			layer.Quantity, layer.ItemID)
+			1, itemID)
 	}
 	s.InvalidateStats(player)
 }
 
-// transferResourceLayersToBot transfers the active OLs of a destroyed resource
-// to a bot (for bot-triggered resource destruction).
-func (s *GameServer) transferResourceLayersToBot(res *ResourceState, bot *BotState) {
-	for _, layer := range res.ObjectLayers {
-		if !layer.Active || layer.Quantity <= 0 {
+// transferResourceDropItemsToBot grants the matched resource build's drop items
+// of a destroyed resource to a bot (for bot-triggered resource destruction).
+func (s *GameServer) transferResourceDropItemsToBot(res *ResourceState, bot *BotState, resourceDefaults EntityTypeDefaultConfig) {
+	if len(resourceDefaults.DropItemIDs) == 0 {
+		return
+	}
+	for _, itemID := range resourceDefaults.DropItemIDs {
+		if itemID == "" {
 			continue
 		}
 		found := false
 		for i := range bot.ObjectLayers {
-			if bot.ObjectLayers[i].ItemID == layer.ItemID {
-				bot.ObjectLayers[i].Quantity += layer.Quantity
+			if bot.ObjectLayers[i].ItemID == itemID {
+				bot.ObjectLayers[i].Quantity += 1
 				found = true
 				break
 			}
 		}
 		if !found {
 			bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{
-				ItemID:   layer.ItemID,
+				ItemID:   itemID,
 				Active:   false,
-				Quantity: layer.Quantity,
+				Quantity: 1,
 			})
 		}
 	}

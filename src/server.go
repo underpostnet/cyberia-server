@@ -138,8 +138,10 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 		s.equipmentRules.RequireSkin = true
 	}
 
-	// Per-entity-type visual defaults — build lookup map and derive convenience aliases.
+	// Per-entity-type visual defaults — keep both the ordered build list and
+	// the last-seen per-type lookup for unique entity types.
 	s.entityDefaults = make(map[string]EntityTypeDefaultConfig, len(cfg.GetEntityDefaults()))
+	s.entityDefaultBuilds = make([]EntityTypeDefaultConfig, 0, len(cfg.GetEntityDefaults()))
 	for _, etd := range cfg.GetEntityDefaults() {
 		var dols []ObjectLayerState
 		for _, dol := range etd.GetDefaultObjectLayers() {
@@ -149,13 +151,16 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 				Quantity: int(dol.GetQuantity()),
 			})
 		}
-		s.entityDefaults[etd.GetEntityType()] = EntityTypeDefaultConfig{
+		defaultBuild := EntityTypeDefaultConfig{
 			EntityType:          etd.GetEntityType(),
 			LiveItemIDs:         etd.GetLiveItemIds(),
 			DeadItemIDs:         etd.GetDeadItemIds(),
+			DropItemIDs:         etd.GetDropItemIds(),
 			ColorKey:            etd.GetColorKey(),
 			DefaultObjectLayers: dols,
 		}
+		s.entityDefaultBuilds = append(s.entityDefaultBuilds, defaultBuild)
+		s.entityDefaults[defaultBuild.EntityType] = defaultBuild
 	}
 	if d, ok := s.entityDefaults["player"]; ok && len(d.DeadItemIDs) > 0 {
 		s.ghostItemID = d.DeadItemIDs[0]
@@ -208,18 +213,8 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	// Register built-in skill handlers now that skillConfig is populated.
 	s.InitSkills()
 
-	log.Printf("[GameServer] Instance config applied: cellSize=%.1f, fps=%d, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d colors, %d skills, %d entityDefaults, %d statusIcons, floorItem=%q, ghostItem=%q, coinItem=%q",
-		s.cellSize, s.fps, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.colors), len(s.skillConfig), len(s.entityDefaults), len(s.statusIcons), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
-}
-
-// buildEntityDefaultsSlice converts the internal entityDefaults map into an
-// ordered slice suitable for JSON serialisation in the init payload.
-func (s *GameServer) buildEntityDefaultsSlice() []EntityTypeDefaultConfig {
-	result := make([]EntityTypeDefaultConfig, 0, len(s.entityDefaults))
-	for _, d := range s.entityDefaults {
-		result = append(result, d)
-	}
-	return result
+	log.Printf("[GameServer] Instance config applied: cellSize=%.1f, fps=%d, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d colors, %d skills, %d entityDefaultTypes, %d entityDefaultBuilds, %d statusIcons, floorItem=%q, ghostItem=%q, coinItem=%q",
+		s.cellSize, s.fps, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.colors), len(s.skillConfig), len(s.entityDefaults), len(s.entityDefaultBuilds), len(s.statusIcons), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
 }
 
 // ReplaceObjectLayerCache atomically replaces the entire cache.

@@ -1853,8 +1853,11 @@ type EntityTypeDefault struct {
 	// Supersedes live_item_ids for inventory initialization when non-empty.
 	// The canonical source of truth — shared across all entity config simulation.
 	DefaultObjectLayers []*DefaultObjectLayerState `protobuf:"bytes,5,rep,name=default_object_layers,json=defaultObjectLayers,proto3" json:"default_object_layers,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// Resource-only inventory/drop item IDs granted to the extractor when the
+	// resource is depleted. These are not auto-activated on the entity itself.
+	DropItemIds   []string `protobuf:"bytes,6,rep,name=drop_item_ids,json=dropItemIds,proto3" json:"drop_item_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EntityTypeDefault) Reset() {
@@ -1918,6 +1921,13 @@ func (x *EntityTypeDefault) GetColorKey() string {
 func (x *EntityTypeDefault) GetDefaultObjectLayers() []*DefaultObjectLayerState {
 	if x != nil {
 		return x.DefaultObjectLayers
+	}
+	return nil
+}
+
+func (x *EntityTypeDefault) GetDropItemIds() []string {
+	if x != nil {
+		return x.DropItemIds
 	}
 	return nil
 }
@@ -2753,14 +2763,15 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\reconomy_rules\x18> \x01(\v2\x15.cyberia.EconomyRulesR\feconomyRules\x12@\n" +
 	"\x0fequipment_rules\x18? \x01(\v2\x17.cyberia.EquipmentRulesR\x0eequipmentRules\x12C\n" +
 	"\x0fentity_defaults\x184 \x03(\v2\x1a.cyberia.EntityTypeDefaultR\x0eentityDefaults\x12;\n" +
-	"\fstatus_icons\x18@ \x03(\v2\x18.cyberia.StatusIconEntryR\vstatusIconsJ\x04\b\x1b\x10\x1cJ\x04\b \x10!J\x04\b5\x106J\x04\b6\x107J\x04\b7\x108J\x04\b8\x109J\x04\b9\x10:J\x04\b:\x10;J\x04\b;\x10<J\x04\b<\x10=J\x04\b=\x10>J\x04\b#\x10$J\x04\b$\x10%J\x04\b%\x10&J\x04\b&\x10'J\x04\b'\x10(J\x04\b(\x10)J\x04\b)\x10*J\x04\b*\x10+J\x04\b+\x10,J\x04\b.\x10/J\x04\b\x1d\x10\x1eJ\x04\b\x1f\x10 J\x04\b,\x10-J\x04\b0\x101J\x04\b1\x102J\x04\b2\x103J\x04\b3\x104R\x1cdefault_player_object_layersR\x13bullet_spawn_chanceR\x12bullet_lifetime_msR\fbullet_widthR\rbullet_heightR\x17bullet_speed_multiplierR\x19doppelganger_spawn_chanceR\x18doppelganger_lifetime_msR\x19doppelganger_spawn_radiusR\"doppelganger_initial_life_fractionR\x14default_player_colorR\rghost_item_idR\fcoin_item_idR\x15default_floor_item_idR\x13bot_default_item_idR\x14user_default_item_idR\x16weapon_default_item_idR\x16bullet_default_item_id\"\xef\x01\n" +
+	"\fstatus_icons\x18@ \x03(\v2\x18.cyberia.StatusIconEntryR\vstatusIconsJ\x04\b\x1b\x10\x1cJ\x04\b \x10!J\x04\b5\x106J\x04\b6\x107J\x04\b7\x108J\x04\b8\x109J\x04\b9\x10:J\x04\b:\x10;J\x04\b;\x10<J\x04\b<\x10=J\x04\b=\x10>J\x04\b#\x10$J\x04\b$\x10%J\x04\b%\x10&J\x04\b&\x10'J\x04\b'\x10(J\x04\b(\x10)J\x04\b)\x10*J\x04\b*\x10+J\x04\b+\x10,J\x04\b.\x10/J\x04\b\x1d\x10\x1eJ\x04\b\x1f\x10 J\x04\b,\x10-J\x04\b0\x101J\x04\b1\x102J\x04\b2\x103J\x04\b3\x104R\x1cdefault_player_object_layersR\x13bullet_spawn_chanceR\x12bullet_lifetime_msR\fbullet_widthR\rbullet_heightR\x17bullet_speed_multiplierR\x19doppelganger_spawn_chanceR\x18doppelganger_lifetime_msR\x19doppelganger_spawn_radiusR\"doppelganger_initial_life_fractionR\x14default_player_colorR\rghost_item_idR\fcoin_item_idR\x15default_floor_item_idR\x13bot_default_item_idR\x14user_default_item_idR\x16weapon_default_item_idR\x16bullet_default_item_id\"\x93\x02\n" +
 	"\x11EntityTypeDefault\x12\x1f\n" +
 	"\ventity_type\x18\x01 \x01(\tR\n" +
 	"entityType\x12\"\n" +
 	"\rlive_item_ids\x18\x02 \x03(\tR\vliveItemIds\x12\"\n" +
 	"\rdead_item_ids\x18\x03 \x03(\tR\vdeadItemIds\x12\x1b\n" +
 	"\tcolor_key\x18\x04 \x01(\tR\bcolorKey\x12T\n" +
-	"\x15default_object_layers\x18\x05 \x03(\v2 .cyberia.DefaultObjectLayerStateR\x13defaultObjectLayers\"\xd2\x01\n" +
+	"\x15default_object_layers\x18\x05 \x03(\v2 .cyberia.DefaultObjectLayerStateR\x13defaultObjectLayers\x12\"\n" +
+	"\rdrop_item_ids\x18\x06 \x03(\tR\vdropItemIds\"\xd2\x01\n" +
 	"\x0fStatusIconEntry\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x17\n" +
 	"\aicon_id\x18\x02 \x01(\tR\x06iconId\x12$\n" +

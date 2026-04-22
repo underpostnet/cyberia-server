@@ -380,6 +380,9 @@ message EntityTypeDefault {
   // Supersedes live_item_ids for inventory initialization when non-empty.
   // The canonical source of truth — shared across all entity config simulation.
   repeated DefaultObjectLayerState default_object_layers = 5;
+  // Resource-only inventory/drop item IDs granted to the extractor when the
+  // resource is depleted. These are not auto-activated on the entity itself.
+  repeated string drop_item_ids = 6;
 }
 
 // ── Entity Status Indicator entry (overhead icon config) ────────────────────

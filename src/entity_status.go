@@ -11,22 +11,23 @@
 //
 // ── Protocol ─────────────────────────────────────────────────────────────
 // The status icon is a single u8 appended after `effective_level` in the
-// binary AOI payload for players, bots, and self-player.  Values 0–5 are
-// defined below; 6–255 are reserved for future states (quest, charmed,
-// feared, trading, AFK, …) — no protocol version bump required.
+// binary AOI payload for players, bots, resources, and self-player. Values
+// 0–7 are defined below; 8–255 are reserved for future states (quest,
+// charmed, feared, trading, AFK, …) — no protocol version bump required.
 //
 // ── Status Icon ID Constants ─────────────────────────────────────────────
 // MUST stay in sync with the C client constants in entity_status.h.
 package game
 
 const (
-	StatusNone    uint8 = 0 // No icon (skill/coin bots, world objects)
-	StatusPassive uint8 = 1 // Passive bot (no weapon)
-	StatusHostile uint8 = 2 // Hostile bot (has weapon, aggro indicator)
-	StatusFrozen  uint8 = 3 // Player in FrozenInteractionState (modal)
-	StatusPlayer  uint8 = 4 // Normal player (alive, not frozen)
-	StatusDead    uint8 = 5 // Entity is dead / respawning
-	StatusResource uint8 = 6 // Resource entity — static, exploitable
+	StatusNone              uint8 = 0 // No icon (skill/coin bots, world objects)
+	StatusPassive           uint8 = 1 // Passive bot (no weapon)
+	StatusHostile           uint8 = 2 // Hostile bot (has weapon, aggro indicator)
+	StatusFrozen            uint8 = 3 // Player in FrozenInteractionState (modal)
+	StatusPlayer            uint8 = 4 // Normal player (alive, not frozen)
+	StatusDead              uint8 = 5 // Entity is dead / respawning
+	StatusResource          uint8 = 6 // Resource entity — static, exploitable
+	StatusResourceExtracted uint8 = 7 // Resource entity depleted / extracted
 )
 
 // PlayerStatusIcon computes the overhead status icon for a player.
@@ -68,11 +69,11 @@ func BotStatusIcon(b *BotState) uint8 {
 // ResourceStatusIcon computes the overhead status icon for a resource entity.
 //
 // Priority chain:
-//  1. Dead/destroyed  → StatusDead
+//  1. Dead/destroyed  → StatusResourceExtracted
 //  2. Alive           → StatusResource
 func ResourceStatusIcon(r *ResourceState) uint8 {
 	if r.IsGhost() {
-		return StatusDead
+		return StatusResourceExtracted
 	}
 	return StatusResource
 }

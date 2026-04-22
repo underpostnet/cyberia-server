@@ -84,20 +84,20 @@ type PlayerState struct {
 	Life                   float64            `json:"life"`
 	LifeRegen              float64            `json:"lifeRegen"`
 	RespawnTime            time.Time          `json:"-"`
-        PreRespawnObjectLayers []ObjectLayerState `json:"-"`
-        // Coins is the canonical flat coin balance — the single source of truth
-        // for all economy operations.  O(1) read/write, never iterates ObjectLayers.
-        // The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
-        // visualization only and is always Active: false.
-        Coins     uint32 `json:"-"`
-        // FrozenInteractionState — general-purpose modal protection.
-        // While Frozen, the player cannot deal or receive damage, send or
-        // receive events, or move.  The rest of the world continues.
-        // Managed exclusively by FreezePlayer / ThawPlayer (frozen_state.go).
-        Frozen       bool      `json:"-"`
-        FreezeReason string    `json:"-"` // e.g. "dialogue", "inventory"
-        FreezeStart  time.Time `json:"-"`
-        StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
+	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
+	// Coins is the canonical flat coin balance — the single source of truth
+	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
+	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
+	// visualization only and is always Active: false.
+	Coins uint32 `json:"-"`
+	// FrozenInteractionState — general-purpose modal protection.
+	// While Frozen, the player cannot deal or receive damage, send or
+	// receive events, or move.  The rest of the world continues.
+	// Managed exclusively by FreezePlayer / ThawPlayer (frozen_state.go).
+	Frozen       bool      `json:"-"`
+	FreezeReason string    `json:"-"` // e.g. "dialogue", "inventory"
+	FreezeStart  time.Time `json:"-"`
+	StatsDirty   bool      `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
 }
 
 type FloorState struct {
@@ -134,12 +134,12 @@ type BotState struct {
 	RespawnTime            time.Time          `json:"-"`
 	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
 	CasterID               string             `json:"-"` // ID of the player or bot that created this bot
-        // Coins is the canonical flat coin balance — the single source of truth
-        // for all economy operations.  O(1) read/write, never iterates ObjectLayers.
-        // The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
-        // visualization only and is always Active: false.
-        Coins      uint32 `json:"-"`
-        StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
+	// Coins is the canonical flat coin balance — the single source of truth
+	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
+	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
+	// visualization only and is always Active: false.
+	Coins      uint32 `json:"-"`
+	StatsDirty bool   `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
 }
 
 type PortalConfig struct {
@@ -151,9 +151,10 @@ type PortalConfig struct {
 }
 
 // ResourceState represents a static exploitable entity on the map
-// (wood, minerals, organic matter, etc.).  Resources have life, can be
-// destroyed by projectile impact, transfer their OLs to the killer on death,
-// and respawn after a timer.  They never move.
+// (wood, minerals, organic matter, etc.). Resources have life, can be
+// destroyed by projectile impact, transfer configured drop items to the
+// extractor on death, switch to dead/extracted visuals, and respawn later.
+// They never move.
 type ResourceState struct {
 	ID                     string             `json:"id"`
 	MapCode                string             `json:"MapCode"`
@@ -245,24 +246,24 @@ type GameServer struct {
 	entityBaseMinActionCooldown time.Duration
 
 	// Player defaults
-	defaultPlayerWidth    float64
-	defaultPlayerHeight   float64
+	defaultPlayerWidth     float64
+	defaultPlayerHeight    float64
 	playerBaseLifeRegenMin float64
 	playerBaseLifeRegenMax float64
-	sumStatsLimit         int
-	maxActiveLayers       int
-	initialLifeFraction   float64
+	sumStatsLimit          int
+	maxActiveLayers        int
+	initialLifeFraction    float64
 
 	// Combat / death
-	respawnDuration  time.Duration
-	ghostItemID      string
+	respawnDuration   time.Duration
+	ghostItemID       string
 	collisionLifeLoss float64
 
 	// Economy — Fountain & Sink model
 	// Fountains (coin injection)
-	coinItemID        string
-	botSpawnCoins     int     // coins every bot carries on spawn (infinite mint)
-	playerSpawnCoins  int     // coins given to player on first connect (guest wallet)
+	coinItemID       string
+	botSpawnCoins    int // coins every bot carries on spawn (infinite mint)
+	playerSpawnCoins int // coins given to player on first connect (guest wallet)
 	// Kill Transfer (redistribution)
 	coinKillPercentVsBot    float64 // fraction of victim coins transferred: PvE
 	coinKillPercentVsPlayer float64 // fraction of victim coins transferred: PvP (gentler)
@@ -282,16 +283,19 @@ type GameServer struct {
 	projectileWidth                 float64
 	projectileHeight                float64
 	projectileSpeedMultiplier       float64
-	doppelgangerSpawnChance     float64
-	doppelgangerLifetimeMs      int
-	doppelgangerSpawnRadius     float64
+	doppelgangerSpawnChance         float64
+	doppelgangerLifetimeMs          int
+	doppelgangerSpawnRadius         float64
 	doppelgangerInitialLifeFraction float64
 
 	// Floor defaults
 	defaultFloorItemID string
 
-	// Per-entity-type visual defaults (live items, dead items, color key).
-	entityDefaults map[string]EntityTypeDefaultConfig
+	// Per-entity-type visual defaults.
+	// entityDefaults keeps the last build per type for unique lookups.
+	// entityDefaultBuilds preserves the full ordered config, including duplicates.
+	entityDefaults      map[string]EntityTypeDefaultConfig
+	entityDefaultBuilds []EntityTypeDefaultConfig
 
 	// Portal defaults
 	portalSpawnRadius float64
@@ -312,11 +316,12 @@ type GameServer struct {
 }
 
 type EntityTypeDefaultConfig struct {
-        EntityType          string             `json:"entityType"`
-        LiveItemIDs         []string           `json:"liveItemIds"`
-        DeadItemIDs         []string           `json:"deadItemIds"`
-        ColorKey            string             `json:"colorKey"`
-        DefaultObjectLayers []ObjectLayerState `json:"defaultObjectLayers,omitempty"`
+	EntityType          string             `json:"entityType"`
+	LiveItemIDs         []string           `json:"liveItemIds"`
+	DeadItemIDs         []string           `json:"deadItemIds"`
+	DropItemIDs         []string           `json:"dropItemIds"`
+	ColorKey            string             `json:"colorKey"`
+	DefaultObjectLayers []ObjectLayerState `json:"defaultObjectLayers,omitempty"`
 }
 
 // StatusIconConfig maps a u8 status icon ID to a ui-icon filename stem and an
@@ -353,24 +358,24 @@ type SkillMapEntry struct {
 }
 
 type InitPayload struct {
-	GridW                     int                       `json:"gridW"`
-	GridH                     int                       `json:"gridH"`
-	DefaultObjectWidth        float64                   `json:"defaultObjectWidth"`
-	DefaultObjectHeight       float64                   `json:"defaultObjectHeight"`
-	CellSize                  float64                   `json:"cellSize"`
-	Fps                       int                       `json:"fps"`
-	InterpolationMs           int                       `json:"interpolationMs"`
-	AoiRadius                 float64                   `json:"aoiRadius"`
-	Colors          map[string]ColorRGBA           `json:"colors"`
-	EntityDefaults  []EntityTypeDefaultConfig      `json:"entityDefaults"`
-	CameraSmoothing float64                        `json:"cameraSmoothing"`
-	CameraZoom                float64                   `json:"cameraZoom"`
-	DefaultWidthScreenFactor  float64                   `json:"defaultWidthScreenFactor"`
-	DefaultHeightScreenFactor float64                   `json:"defaultHeightScreenFactor"`
-	DevUi                     bool                      `json:"devUi"`
-	SumStatsLimit             int                       `json:"sumStatsLimit"`
-	ObjectLayers              []ObjectLayerState        `json:"objectLayers"`
-	Color                     ColorRGBA                 `json:"color"`
+	GridW                     int                        `json:"gridW"`
+	GridH                     int                        `json:"gridH"`
+	DefaultObjectWidth        float64                    `json:"defaultObjectWidth"`
+	DefaultObjectHeight       float64                    `json:"defaultObjectHeight"`
+	CellSize                  float64                    `json:"cellSize"`
+	Fps                       int                        `json:"fps"`
+	InterpolationMs           int                        `json:"interpolationMs"`
+	AoiRadius                 float64                    `json:"aoiRadius"`
+	Colors                    map[string]ColorRGBA       `json:"colors"`
+	EntityDefaults            []EntityTypeDefaultConfig  `json:"entityDefaults"`
+	CameraSmoothing           float64                    `json:"cameraSmoothing"`
+	CameraZoom                float64                    `json:"cameraZoom"`
+	DefaultWidthScreenFactor  float64                    `json:"defaultWidthScreenFactor"`
+	DefaultHeightScreenFactor float64                    `json:"defaultHeightScreenFactor"`
+	DevUi                     bool                       `json:"devUi"`
+	SumStatsLimit             int                        `json:"sumStatsLimit"`
+	ObjectLayers              []ObjectLayerState         `json:"objectLayers"`
+	Color                     ColorRGBA                  `json:"color"`
 	SkillMap                  map[string][]SkillMapEntry `json:"skillMap"`
-	StatusIcons               []StatusIconConfig        `json:"statusIcons"`
+	StatusIcons               []StatusIconConfig         `json:"statusIcons"`
 }

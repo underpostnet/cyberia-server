@@ -373,6 +373,7 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 	}
 
 	// Build object layers
+	resourceDefaults, hasResourceDefaults := s.resolveEntityDefaultBuild("resource", ent.GetObjectLayerItemIds())
 	var objectLayers []ObjectLayerState
 	for _, itemID := range ent.GetObjectLayerItemIds() {
 		objectLayers = append(objectLayers, ObjectLayerState{
@@ -381,11 +382,15 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 	}
 	// Fall back to entity defaults when no items assigned and no explicit colour.
 	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
-		if d, ok := s.entityDefaults["resource"]; ok && len(d.LiveItemIDs) > 0 {
-			for _, itemID := range d.LiveItemIDs {
+		if hasResourceDefaults && len(resourceDefaults.LiveItemIDs) > 0 {
+			for _, itemID := range resourceDefaults.LiveItemIDs {
 				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
 			}
 		}
+	}
+	resourceColorKey := "RESOURCE"
+	if hasResourceDefaults && resourceDefaults.ColorKey != "" {
+		resourceColorKey = resourceDefaults.ColorKey
 	}
 
 	res := &ResourceState{
@@ -393,7 +398,7 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 		MapCode:      mapCode,
 		Pos:          startPos,
 		Dims:         dims,
-		Color:        s.resolveEntityColor(ent, "RESOURCE"),
+		Color:        s.resolveEntityColor(ent, resourceColorKey),
 		ObjectLayers: objectLayers,
 		MaxLife:      maxLife,
 		Life:         maxLife,
