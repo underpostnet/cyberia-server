@@ -412,7 +412,6 @@ type ObjectLayerMessage struct {
 	Cid     string                 `protobuf:"bytes,7,opt,name=cid,proto3" json:"cid,omitempty"` // IPFS CID of the OL data JSON
 	// Animation metadata (populated from ObjectLayerRenderFrames ref)
 	FrameDuration int32 `protobuf:"varint,8,opt,name=frame_duration,json=frameDuration,proto3" json:"frame_duration,omitempty"` // ms per frame
-	IsStateless   bool  `protobuf:"varint,9,opt,name=is_stateless,json=isStateless,proto3" json:"is_stateless,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -501,13 +500,6 @@ func (x *ObjectLayerMessage) GetFrameDuration() int32 {
 		return x.FrameDuration
 	}
 	return 0
-}
-
-func (x *ObjectLayerMessage) GetIsStateless() bool {
-	if x != nil {
-		return x.IsStateless
-	}
-	return false
 }
 
 type GetObjectLayerBatchRequest struct {
@@ -2634,7 +2626,7 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\btoken_id\x18\x03 \x01(\tR\atokenId\"=\n" +
 	"\x06Render\x12\x10\n" +
 	"\x03cid\x18\x01 \x01(\tR\x03cid\x12!\n" +
-	"\fmetadata_cid\x18\x02 \x01(\tR\vmetadataCid\"\xc2\x02\n" +
+	"\fmetadata_cid\x18\x02 \x01(\tR\vmetadataCid\"\xa5\x02\n" +
 	"\x12ObjectLayerMessage\x12\x19\n" +
 	"\bmongo_id\x18\x01 \x01(\tR\amongoId\x12$\n" +
 	"\x05stats\x18\x02 \x01(\v2\x0e.cyberia.StatsR\x05stats\x12%\n" +
@@ -2643,8 +2635,8 @@ const file_proto_cyberia_proto_rawDesc = "" +
 	"\x06render\x18\x05 \x01(\v2\x0f.cyberia.RenderR\x06render\x12\x16\n" +
 	"\x06sha256\x18\x06 \x01(\tR\x06sha256\x12\x10\n" +
 	"\x03cid\x18\a \x01(\tR\x03cid\x12%\n" +
-	"\x0eframe_duration\x18\b \x01(\x05R\rframeDuration\x12!\n" +
-	"\fis_stateless\x18\t \x01(\bR\visStateless\"F\n" +
+	"\x0eframe_duration\x18\b \x01(\x05R\rframeDurationJ\x04\b\t\x10\n" +
+	"\"F\n" +
 	"\x1aGetObjectLayerBatchRequest\x12(\n" +
 	"\x10item_type_filter\x18\x01 \x01(\tR\x0eitemTypeFilter\"0\n" +
 	"\x15GetObjectLayerRequest\x12\x17\n" +

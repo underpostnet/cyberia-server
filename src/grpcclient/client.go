@@ -228,7 +228,6 @@ func protoToObjectLayer(msg *pb.ObjectLayerMessage) *game.ObjectLayer {
 		Sha256:        msg.GetSha256(),
 		Cid:           msg.GetCid(),
 		FrameDuration: int(msg.GetFrameDuration()),
-		IsStateless:   msg.GetIsStateless(),
 		Data: game.ObjectLayerData{
 			Stats: game.Stats{
 				Effect:       int(msg.GetStats().GetEffect()),

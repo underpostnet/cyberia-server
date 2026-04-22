@@ -104,7 +104,7 @@ message ObjectLayerMessage {
 
   // Animation metadata (populated from ObjectLayerRenderFrames ref)
   int32   frame_duration  = 8; // ms per frame
-  bool    is_stateless    = 9;
+  reserved 9;
 }
 
 // ── ObjectLayer requests ──────────────────────────────────────────

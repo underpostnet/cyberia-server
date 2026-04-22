@@ -18,7 +18,6 @@ type OLMeta struct {
 	Sha256        string          `json:"sha256"`
 	Data          ObjectLayerData `json:"data"`
 	FrameDuration int             `json:"frame_duration"`
-	IsStateless   bool            `json:"is_stateless"`
 }
 
 // buildSkillMap returns a compact { triggerItemId → [SkillMapEntry] } map
@@ -51,7 +50,6 @@ func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
 			Sha256:        ol.Sha256,
 			Data:          ol.Data,
 			FrameDuration: ol.FrameDuration,
-			IsStateless:   ol.IsStateless,
 		}
 	}
 	return out
