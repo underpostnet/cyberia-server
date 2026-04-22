@@ -414,13 +414,25 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 func (s *GameServer) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
 	dims := Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())}
 	pos := Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
+	var objectLayers []ObjectLayerState
+	for _, itemID := range ent.GetObjectLayerItemIds() {
+		objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+	}
+	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
+		if d, ok := s.entityDefaults["obstacle"]; ok && len(d.LiveItemIDs) > 0 {
+			for _, itemID := range d.LiveItemIDs {
+				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+			}
+		}
+	}
 
 	obs := ObjectState{
-		ID:    uuid.New().String(),
-		Pos:   pos,
-		Dims:  dims,
-		Type:  "obstacle",
-		Color: s.resolveEntityColor(ent, "OBSTACLE"),
+		ID:           uuid.New().String(),
+		Pos:          pos,
+		Dims:         dims,
+		Type:         "obstacle",
+		ObjectLayers: objectLayers,
+		Color:        s.resolveEntityColor(ent, "OBSTACLE"),
 	}
 	ms.obstacles[obs.ID] = obs
 
@@ -435,12 +447,25 @@ func (s *GameServer) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
 }
 
 func (s *GameServer) buildForeground(ms *MapState, ent *pb.EntityMessage) {
+	var objectLayers []ObjectLayerState
+	for _, itemID := range ent.GetObjectLayerItemIds() {
+		objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+	}
+	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
+		if d, ok := s.entityDefaults["foreground"]; ok && len(d.LiveItemIDs) > 0 {
+			for _, itemID := range d.LiveItemIDs {
+				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+			}
+		}
+	}
+
 	fg := ObjectState{
-		ID:    uuid.New().String(),
-		Pos:   Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
-		Dims:  Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
-		Type:  "foreground",
-		Color: s.resolveEntityColor(ent, "FOREGROUND"),
+		ID:           uuid.New().String(),
+		Pos:          Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
+		Dims:         Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
+		Type:         "foreground",
+		ObjectLayers: objectLayers,
+		Color:        s.resolveEntityColor(ent, "FOREGROUND"),
 	}
 	ms.foregrounds[fg.ID] = fg
 }

@@ -60,6 +60,7 @@ type ObjectState struct {
 	Pos   Point      `json:"Pos"`
 	Dims  Dimensions `json:"Dims"`
 	Type  string     `json:"Type"`
+	ObjectLayers []ObjectLayerState `json:"objectLayers"`
 	Color ColorRGBA  `json:"color"`
 }
 

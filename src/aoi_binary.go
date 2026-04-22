@@ -327,6 +327,7 @@ func (e *BinaryAOIEncoder) WriteObstacle(o ObjectState) {
 		e.putU8(byte(o.Color.B))
 		e.putU8(byte(o.Color.A))
 	}
+	e.writeItemIDs(o.ObjectLayers)
 }
 
 func (e *BinaryAOIEncoder) WritePortal(p *PortalState) {
@@ -350,6 +351,7 @@ func (e *BinaryAOIEncoder) WriteForeground(fg ObjectState) {
 		e.putU8(byte(fg.Color.B))
 		e.putU8(byte(fg.Color.A))
 	}
+	e.writeItemIDs(fg.ObjectLayers)
 }
 
 func (e *BinaryAOIEncoder) WriteResource(r *ResourceState, respawnIn *float64) {
