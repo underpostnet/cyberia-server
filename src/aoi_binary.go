@@ -81,7 +81,7 @@ const (
 	//   [2..5]   f32  worldX
 	//   [6..9]   f32  worldY
 	//   [10..13] u32  value (always positive; sign implied by type)
-	MsgTypeFCT     byte = 0x04
+	MsgTypeFCT byte = 0x04
 	// MsgTypeItemFCT — Item quantity Floating Combat Text event (≥15 bytes).
 	// See economy.go buildItemFCTMsg for wire format.
 	MsgTypeItemFCT byte = 0x05
@@ -122,7 +122,7 @@ func NewBinaryAOIEncoder() *BinaryAOIEncoder {
 	return &BinaryAOIEncoder{buf: make([]byte, maxBinaryBufSize)}
 }
 
-func (e *BinaryAOIEncoder) Reset()       { e.pos = 0 }
+func (e *BinaryAOIEncoder) Reset()        { e.pos = 0 }
 func (e *BinaryAOIEncoder) Bytes() []byte { return e.buf[:e.pos] }
 
 func (e *BinaryAOIEncoder) putU8(v byte) {
@@ -337,6 +337,7 @@ func (e *BinaryAOIEncoder) WritePortal(p *PortalState) {
 	e.putU8(byte(p.Color.G))
 	e.putU8(byte(p.Color.B))
 	e.putU8(byte(p.Color.A))
+	e.writeItemIDs(p.ObjectLayers)
 }
 
 func (e *BinaryAOIEncoder) WriteForeground(fg ObjectState) {

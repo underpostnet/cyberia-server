@@ -484,6 +484,19 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 		subtype = "inter-portal"
 	}
 
+	portalDefaults, hasPortalDefaults := s.resolveEntityDefaultBuild("portal", ent.GetObjectLayerItemIds())
+	var objectLayers []ObjectLayerState
+	for _, itemID := range ent.GetObjectLayerItemIds() {
+		objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+	}
+	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
+		if hasPortalDefaults && len(portalDefaults.LiveItemIDs) > 0 {
+			for _, itemID := range portalDefaults.LiveItemIDs {
+				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+			}
+		}
+	}
+
 	// Resolve colour: per-entity DB colour overrides palette default.
 	color := s.resolveEntityColor(ent, portalSubtypeColorKey(subtype))
 	if color == (ColorRGBA{}) {
@@ -491,12 +504,13 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 	}
 
 	portal := &PortalState{
-		ID:      uuid.New().String(),
-		Pos:     Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
-		Dims:    dims,
-		Type:    "portal",
-		Subtype: subtype,
-		Color:   color,
+		ID:           uuid.New().String(),
+		Pos:          Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
+		Dims:         dims,
+		Type:         "portal",
+		ObjectLayers: objectLayers,
+		Subtype:      subtype,
+		Color:        color,
 	}
 	ms.portals[portal.ID] = portal
 

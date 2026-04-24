@@ -547,8 +547,20 @@ func (s *GameServer) GetTotalObjectLayers() int {
 		for _, bot := range mapState.bots {
 			total += len(bot.ObjectLayers)
 		}
+		for _, resource := range mapState.resources {
+			total += len(resource.ObjectLayers)
+		}
 		for _, floor := range mapState.floors {
 			total += len(floor.ObjectLayers)
+		}
+		for _, obstacle := range mapState.obstacles {
+			total += len(obstacle.ObjectLayers)
+		}
+		for _, foreground := range mapState.foregrounds {
+			total += len(foreground.ObjectLayers)
+		}
+		for _, portal := range mapState.portals {
+			total += len(portal.ObjectLayers)
 		}
 	}
 	return total
@@ -575,8 +587,36 @@ func (s *GameServer) GetActiveObjectLayers() int {
 				}
 			}
 		}
+		for _, resource := range mapState.resources {
+			for _, layer := range resource.ObjectLayers {
+				if layer.Active {
+					total++
+				}
+			}
+		}
 		for _, floor := range mapState.floors {
 			for _, layer := range floor.ObjectLayers {
+				if layer.Active {
+					total++
+				}
+			}
+		}
+		for _, obstacle := range mapState.obstacles {
+			for _, layer := range obstacle.ObjectLayers {
+				if layer.Active {
+					total++
+				}
+			}
+		}
+		for _, foreground := range mapState.foregrounds {
+			for _, layer := range foreground.ObjectLayers {
+				if layer.Active {
+					total++
+				}
+			}
+		}
+		for _, portal := range mapState.portals {
+			for _, layer := range portal.ObjectLayers {
 				if layer.Active {
 					total++
 				}
@@ -607,8 +647,36 @@ func (s *GameServer) GetInactiveObjectLayers() int {
 				}
 			}
 		}
+		for _, resource := range mapState.resources {
+			for _, layer := range resource.ObjectLayers {
+				if !layer.Active {
+					total++
+				}
+			}
+		}
 		for _, floor := range mapState.floors {
 			for _, layer := range floor.ObjectLayers {
+				if !layer.Active {
+					total++
+				}
+			}
+		}
+		for _, obstacle := range mapState.obstacles {
+			for _, layer := range obstacle.ObjectLayers {
+				if !layer.Active {
+					total++
+				}
+			}
+		}
+		for _, foreground := range mapState.foregrounds {
+			for _, layer := range foreground.ObjectLayers {
+				if !layer.Active {
+					total++
+				}
+			}
+		}
+		for _, portal := range mapState.portals {
+			for _, layer := range portal.ObjectLayers {
 				if !layer.Active {
 					total++
 				}
@@ -667,7 +735,7 @@ func (s *GameServer) GetServerHealth() map[string]interface{} {
 
 	for _, mapState := range s.maps {
 		totalEntities += len(mapState.players) + len(mapState.bots) + len(mapState.floors) +
-			len(mapState.obstacles) + len(mapState.foregrounds) + len(mapState.portals)
+			len(mapState.obstacles) + len(mapState.foregrounds) + len(mapState.portals) + len(mapState.resources)
 
 		for _, player := range mapState.players {
 			totalObjLayers += len(player.ObjectLayers)
@@ -685,9 +753,41 @@ func (s *GameServer) GetServerHealth() map[string]interface{} {
 				}
 			}
 		}
+		for _, resource := range mapState.resources {
+			totalObjLayers += len(resource.ObjectLayers)
+			for _, layer := range resource.ObjectLayers {
+				if layer.Active {
+					activeObjLayers++
+				}
+			}
+		}
 		for _, floor := range mapState.floors {
 			totalObjLayers += len(floor.ObjectLayers)
 			for _, layer := range floor.ObjectLayers {
+				if layer.Active {
+					activeObjLayers++
+				}
+			}
+		}
+		for _, obstacle := range mapState.obstacles {
+			totalObjLayers += len(obstacle.ObjectLayers)
+			for _, layer := range obstacle.ObjectLayers {
+				if layer.Active {
+					activeObjLayers++
+				}
+			}
+		}
+		for _, foreground := range mapState.foregrounds {
+			totalObjLayers += len(foreground.ObjectLayers)
+			for _, layer := range foreground.ObjectLayers {
+				if layer.Active {
+					activeObjLayers++
+				}
+			}
+		}
+		for _, portal := range mapState.portals {
+			totalObjLayers += len(portal.ObjectLayers)
+			for _, layer := range portal.ObjectLayers {
 				if layer.Active {
 					activeObjLayers++
 				}

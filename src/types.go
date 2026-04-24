@@ -56,12 +56,12 @@ type ObjectLayerState struct {
 }
 
 type ObjectState struct {
-	ID    string     `json:"id"`
-	Pos   Point      `json:"Pos"`
-	Dims  Dimensions `json:"Dims"`
-	Type  string     `json:"Type"`
+	ID           string             `json:"id"`
+	Pos          Point              `json:"Pos"`
+	Dims         Dimensions         `json:"Dims"`
+	Type         string             `json:"Type"`
 	ObjectLayers []ObjectLayerState `json:"objectLayers"`
-	Color ColorRGBA  `json:"color"`
+	Color        ColorRGBA          `json:"color"`
 }
 
 type PlayerState struct {
@@ -176,14 +176,15 @@ func (r *ResourceState) IsGhost() bool {
 }
 
 type PortalState struct {
-	ID           string        `json:"id"`
-	Pos          Point         `json:"Pos"`
-	Dims         Dimensions    `json:"Dims"`
-	Type         string        `json:"Type"`
-	Subtype      string        `json:"Subtype"` // inter-portal | inter-random | intra-random | intra-portal
-	PortalConfig *PortalConfig `json:"-"`
-	Label        string        `json:"PortalLabel"`
-	Color        ColorRGBA     `json:"color"`
+	ID           string             `json:"id"`
+	Pos          Point              `json:"Pos"`
+	Dims         Dimensions         `json:"Dims"`
+	Type         string             `json:"Type"`
+	ObjectLayers []ObjectLayerState `json:"objectLayers"`
+	Subtype      string             `json:"Subtype"` // inter-portal | inter-random | intra-random | intra-portal
+	PortalConfig *PortalConfig      `json:"-"`
+	Label        string             `json:"PortalLabel"`
+	Color        ColorRGBA          `json:"color"`
 }
 
 type MapState struct {
