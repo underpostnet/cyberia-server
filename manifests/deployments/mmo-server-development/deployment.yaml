@@ -1,0 +1,70 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dd-cyberia-mmo-server-development-blue
+  namespace: default
+  labels:
+    app: dd-cyberia-mmo-server-development-blue
+    deploy-id: dd-cyberia-mmo-server-development
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dd-cyberia-mmo-server-development-blue
+  template:
+    metadata:
+      labels:
+        app: dd-cyberia-mmo-server-development-blue
+        deploy-id: dd-cyberia-mmo-server-development
+    spec:
+      containers:
+        - name: dd-cyberia-mmo-server-development-blue
+          image: underpost/cyberia-server:v3.2.5
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: underpost-config
+
+          command:
+            - /bin/sh
+            - -c
+            - >
+              underpost config set container-status dd-cyberia-mmo-server-development-build-deployment &&
+              cd /home/dd/engine && git pull && npm install &&
+              cd /home/dd/engine &&
+              node bin static --title 'Cyberia mmo server metrics' --page src/client/ssr/pages/CyberiaServerMetrics.js --favicon /favicon.ico --output-path /home/dd/engine/cyberia-server/public/index.html &&
+              cd /home/dd/engine/cyberia-server && git pull &&
+              underpost config set container-status dd-cyberia-mmo-server-development-initializing-deployment &&
+              set -a && . /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server/env/development.env && set +a && export ENGINE_GRPC_ADDRESS=dd-cyberia-grpc-service-development-blue.default.svc.cluster.local:50051 && export READY_CMD='underpost config set container-status dd-cyberia-mmo-server-development-running-deployment' && go run main.go
+
+    
+          volumeMounts:
+            - name: instance-cyberia-server-dd-cyberia-mmo-server-development-blue
+              mountPath: /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server/env
+    
+      volumes:
+        - name: instance-cyberia-server-dd-cyberia-mmo-server-development-blue
+          persistentVolumeClaim:
+            claimName: instance-cyberia-server-dd-cyberia-mmo-server-development-blue
+    
+      
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dd-cyberia-mmo-server-development-blue-service
+  namespace: default
+spec:
+  selector:
+    app: dd-cyberia-mmo-server-development-blue
+  ports:
+    - name: 'tcp-8081'
+      protocol: TCP
+      port: 8081
+      targetPort: 8081
+    - name: 'udp-8081'
+      protocol: UDP
+      port: 8081
+      targetPort: 8081
+  type: LoadBalancer
