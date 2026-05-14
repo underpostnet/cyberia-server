@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: dd-cyberia-mmo-server-production-blue
-          image: underpost/cyberia-server:v3.2.5
+          image: underpost/cyberia-server:v3.2.9
           imagePullPolicy: IfNotPresent
           envFrom:
             - secretRef:
@@ -30,10 +30,7 @@ spec:
             - /bin/sh
             - -c
             - >
-              underpost config set container-status dd-cyberia-mmo-server-production-build-deployment &&
-              cd /home/dd/engine && git pull && npm install &&
-              node bin static --title 'Cyberia mmo server metrics' --page src/client/ssr/pages/CyberiaServerMetrics.js --favicon /favicon.ico --output-path /home/dd/engine/cyberia-server/public/index.html &&
-              cd /home/dd/engine/cyberia-server && git pull && ./build.sh &&
+              npm install -g underpost &&
               underpost config set container-status dd-cyberia-mmo-server-production-initializing-deployment &&
               set -a && . /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server/env/production.env && set +a && export ENGINE_GRPC_ADDRESS=dd-cyberia-grpc-service-production-blue.default.svc.cluster.local:50051 && export READY_CMD='underpost config set container-status dd-cyberia-mmo-server-production-running-deployment' && /home/dd/engine/cyberia-server/server
 

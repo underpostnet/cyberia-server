@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: dd-cyberia-mmo-server-development-blue
-          image: underpost/cyberia-server:v3.2.5
+          image: underpost/cyberia-server:v3.2.9
           imagePullPolicy: IfNotPresent
           envFrom:
             - secretRef:
@@ -30,13 +30,9 @@ spec:
             - /bin/sh
             - -c
             - >
-              underpost config set container-status dd-cyberia-mmo-server-development-build-deployment &&
-              cd /home/dd/engine && git pull && npm install &&
-              cd /home/dd/engine &&
-              node bin static --title 'Cyberia mmo server metrics' --page src/client/ssr/pages/CyberiaServerMetrics.js --favicon /favicon.ico --output-path /home/dd/engine/cyberia-server/public/index.html &&
-              cd /home/dd/engine/cyberia-server && git pull &&
+              npm install -g underpost &&
               underpost config set container-status dd-cyberia-mmo-server-development-initializing-deployment &&
-              set -a && . /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server/env/development.env && set +a && export ENGINE_GRPC_ADDRESS=dd-cyberia-grpc-service-development-blue.default.svc.cluster.local:50051 && export READY_CMD='underpost config set container-status dd-cyberia-mmo-server-development-running-deployment' && go run main.go
+              set -a && . /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server/env/development.env && set +a && export ENGINE_GRPC_ADDRESS=dd-cyberia-grpc-service-development-blue.default.svc.cluster.local:50051 && export READY_CMD='underpost config set container-status dd-cyberia-mmo-server-development-running-deployment' && /home/dd/engine/cyberia-server/server
 
     
           volumeMounts:
