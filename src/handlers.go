@@ -1,6 +1,7 @@
 package game
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"log"
 	"math"
@@ -208,12 +209,148 @@ func (c *Client) readPump(server *GameServer) {
 			}
 			break
 		}
-		var msg map[string]interface{}
-		if err := json.Unmarshal(message, &msg); err != nil {
-			log.Printf("Error unmarshaling message: %v", err)
+		if len(message) == 0 {
 			continue
 		}
-		if msg["type"] == "player_action" {
+		if message[0] <= 0x1F {
+			c.handleBinaryUplink(message, server)
+		} else {
+			c.handleJSONUplink(message, server)
+		}
+	}
+}
+
+// uplinkBuf is a little-endian binary reader for client→server uplink frames.
+type uplinkBuf struct {
+	data []byte
+	pos  int
+}
+
+func (r *uplinkBuf) u8() (byte, bool) {
+	if r.pos >= len(r.data) {
+		return 0, false
+	}
+	v := r.data[r.pos]
+	r.pos++
+	return v, true
+}
+
+func (r *uplinkBuf) f32() (float32, bool) {
+	if r.pos+4 > len(r.data) {
+		return 0, false
+	}
+	bits := binary.LittleEndian.Uint32(r.data[r.pos:])
+	r.pos += 4
+	return math.Float32frombits(bits), true
+}
+
+func (r *uplinkBuf) str() (string, bool) {
+	ln, ok := r.u8()
+	if !ok {
+		return "", false
+	}
+	end := r.pos + int(ln)
+	if end > len(r.data) {
+		return "", false
+	}
+	s := string(r.data[r.pos:end])
+	r.pos = end
+	return s, true
+}
+
+// handleBinaryUplink dispatches a binary-framed uplink message.
+// Frame: [msgType byte 0x10-0x16] [payload...]
+// See UPLINK_* constants in cyberia-client/src/serial.h.
+func (c *Client) handleBinaryUplink(message []byte, server *GameServer) {
+	if len(message) < 1 {
+		return
+	}
+	r := &uplinkBuf{data: message[1:]}
+	switch message[0] {
+	case 0x10: // handshake — client already authenticated; ignore
+	case 0x11: // player_action: f32 targetX, f32 targetY
+		x, okX := r.f32()
+		y, okY := r.f32()
+		if !okX || !okY {
+			return
+		}
+		payload := map[string]interface{}{
+			"targetX": float64(x),
+			"targetY": float64(y),
+		}
+		msg := map[string]interface{}{"type": "player_action", "payload": payload}
+		c.handleJSONUplink(mustMarshal(msg), server)
+	case 0x12: // item_activation: str itemId, u8 active
+		itemId, okId := r.str()
+		activeByte, okA := r.u8()
+		if !okId || !okA {
+			return
+		}
+		payload := map[string]interface{}{
+			"itemId": itemId,
+			"active": activeByte != 0,
+		}
+		msg := map[string]interface{}{"type": "item_activation", "payload": payload}
+		c.handleJSONUplink(mustMarshal(msg), server)
+	case 0x13: // freeze_start: str reason
+		reason, _ := r.str()
+		if reason == "" {
+			reason = "freeze"
+		}
+		server.mu.Lock()
+		if player, ok := server.maps[c.playerState.MapCode].players[c.playerID]; ok {
+			FreezePlayer(player, reason)
+		}
+		server.mu.Unlock()
+	case 0x14: // freeze_end: str reason
+		reason, _ := r.str()
+		if reason == "" {
+			reason = "freeze"
+		}
+		server.mu.Lock()
+		if player, ok := server.maps[c.playerState.MapCode].players[c.playerID]; ok {
+			ThawPlayer(player, reason)
+		}
+		server.mu.Unlock()
+	case 0x15: // chat: str toId, str text
+		toID, okTo := r.str()
+		text, okText := r.str()
+		if !okTo || !okText || toID == "" || text == "" {
+			return
+		}
+		payload := map[string]interface{}{"to": toID, "text": text}
+		msg := map[string]interface{}{"type": "chat", "payload": payload}
+		c.handleJSONUplink(mustMarshal(msg), server)
+	case 0x16: // get_items_ids: str itemId
+		itemId, ok := r.str()
+		if !ok || itemId == "" {
+			return
+		}
+		payload := map[string]interface{}{"itemId": itemId}
+		msg := map[string]interface{}{"type": "get_items_ids", "payload": payload}
+		c.handleJSONUplink(mustMarshal(msg), server)
+	default:
+		log.Printf("[WARN] Unknown binary uplink type: 0x%02x from player %s", message[0], c.playerID)
+	}
+}
+
+// mustMarshal marshals v to JSON, panicking on error (should never happen for fixed structs).
+func mustMarshal(v interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+// handleJSONUplink parses and dispatches a JSON-encoded uplink message.
+func (c *Client) handleJSONUplink(message []byte, server *GameServer) {
+	var msg map[string]interface{}
+	if err := json.Unmarshal(message, &msg); err != nil {
+		log.Printf("Error unmarshaling message: %v", err)
+		return
+	}
+	if msg["type"] == "player_action" {
 			payload := msg["payload"].(map[string]interface{})
 			targetX := payload["targetX"].(float64)
 			targetY := payload["targetY"].(float64)
@@ -223,26 +360,26 @@ func (c *Client) readPump(server *GameServer) {
 			if !ok {
 				log.Println("Player not found in map")
 				server.mu.Unlock()
-				continue
+				return
 			}
 
 			// Dead players can't perform actions.
 			if player.IsGhost() {
 				server.mu.Unlock()
-				continue
+				return
 			}
 
 			// Frozen (in modal interaction) players can't move or fire skills.
 			if player.Frozen {
 				server.mu.Unlock()
-				continue
+				return
 			}
 
 			mapState, ok := server.maps[player.MapCode]
 			if !ok {
 				log.Println("Player map not found")
 				server.mu.Unlock()
-				continue
+				return
 			}
 
 			// Compute movement cooldown under lock but do NOT gate skills on it.
@@ -262,7 +399,7 @@ func (c *Client) readPump(server *GameServer) {
 
 			// Movement path is only recalculated when the cooldown allows.
 			if !movementReady {
-				continue
+				return
 			}
 
 			startPosI := PointI{X: int(math.Round(player.Pos.X)), Y: int(math.Round(player.Pos.Y))}
@@ -287,7 +424,7 @@ func (c *Client) readPump(server *GameServer) {
 						player.Mode = IDLE
 					}
 					server.mu.Unlock()
-					continue
+					return
 				}
 				newPath, err = mapState.pathfinder.Astar(startPosI, closest, player.Dims)
 				if err != nil {
@@ -305,7 +442,7 @@ func (c *Client) readPump(server *GameServer) {
 						player.Mode = IDLE
 					}
 					server.mu.Unlock()
-					continue
+					return
 				}
 				usedTarget = closest
 			}
@@ -335,13 +472,13 @@ func (c *Client) readPump(server *GameServer) {
 			payload, ok := msg["payload"].(map[string]interface{})
 			if !ok {
 				log.Printf("Invalid item_activation payload format for player %s", c.playerID)
-				continue
+				return
 			}
 			itemId, okId := payload["itemId"].(string)
 			active, okActive := payload["active"].(bool)
 			if !okId || !okActive {
 				log.Printf("Invalid itemId or active field in item_activation payload for player %s", c.playerID)
-				continue
+				return
 			}
 
 			server.mu.Lock()
@@ -497,12 +634,12 @@ func (c *Client) readPump(server *GameServer) {
 			payload, ok := msg["payload"].(map[string]interface{})
 			if !ok {
 				log.Printf("Invalid get_items_ids payload format for player %s", c.playerID)
-				continue
+				return
 			}
 			itemId, ok := payload["itemId"].(string)
 			if !ok {
 				log.Printf("Invalid itemId in get_items_ids payload for player %s", c.playerID)
-				continue
+				return
 			}
 
 			associatedIDs := server.GetAssociatedSkillItemIDs(itemId)
@@ -514,7 +651,7 @@ func (c *Client) readPump(server *GameServer) {
 			responseMsg, err := json.Marshal(map[string]interface{}{"type": "skill_item_ids", "payload": responsePayload})
 			if err != nil {
 				log.Printf("Error marshaling skill_item_ids response: %v", err)
-				continue
+				return
 			}
 			c.send <- responseMsg
 		} else if msg["type"] == "freeze_start" || msg["type"] == "dialogue_start" {
@@ -550,12 +687,12 @@ func (c *Client) readPump(server *GameServer) {
 			// No game-state mutation — completely decoupled from combat.
 			payload, ok := msg["payload"].(map[string]interface{})
 			if !ok {
-				continue
+				return
 			}
 			toID, _ := payload["to"].(string)
 			text, _ := payload["text"].(string)
 			if toID == "" || text == "" {
-				continue
+				return
 			}
 			// Cap text length to prevent abuse
 			if len(text) > 256 {
@@ -584,7 +721,6 @@ func (c *Client) readPump(server *GameServer) {
 			}
 			server.mu.Unlock()
 		}
-	}
 }
 
 // writePump writes messages to the WebSocket connection.
