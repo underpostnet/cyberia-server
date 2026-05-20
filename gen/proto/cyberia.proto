@@ -14,7 +14,7 @@ syntax = "proto3";
 
 package cyberia;
 
-option go_package = "cyberia-server/proto";
+option go_package = "cyberia-server/gen/proto";
 
 // ═══════════════════════════════════════════════════════════════════
 // Service definition

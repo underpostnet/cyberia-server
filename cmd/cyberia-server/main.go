@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
-	api "cyberia-server/api"
-	game "cyberia-server/src"
-	"cyberia-server/src/grpcclient"
+	"cyberia-server/api"
+	"cyberia-server/game"
+	"cyberia-server/grpcclient"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"

@@ -12,7 +12,7 @@ import (
 	"math"
 	"math/rand"
 
-	pb "cyberia-server/proto"
+	pb "cyberia-server/gen/proto"
 
 	"github.com/google/uuid"
 )

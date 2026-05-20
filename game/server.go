@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"time"
 
-	pb "cyberia-server/proto"
+	pb "cyberia-server/gen/proto"
 )
 
 // NewGameServer creates an empty game server with no hardcoded defaults.

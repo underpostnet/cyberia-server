@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	pb "cyberia-server/proto"
-	game "cyberia-server/src"
+	"cyberia-server/game"
+	pb "cyberia-server/gen/proto"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

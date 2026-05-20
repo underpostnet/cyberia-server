@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	game "cyberia-server/src"
+	"cyberia-server/game"
 )
 
 // WorldBuilder orchestrates data loading from the Engine gRPC server
