@@ -5,12 +5,20 @@
 // directions, modes, life values, and item-ID stacks. The client
 // fetches atlas binaries from Engine-Cyberia REST independently.
 //
-// Wire format (little-endian):
+// Wire format (little-endian).
 //
-//	Header (5 bytes):
-//	  [0]       u8   msgType  (0x01 = aoi_update, 0x02 = init_data, 0x03 = full_aoi)
-//	  [1..2]    u16  reserved (always 0)
-//	  [3..4]    u16  entityCount (number of entity blocks that follow)
+// Header (v2 — used by 0x01 aoi_update and 0x03 full_aoi):
+//
+//	[0]        u8   msgType  (0x01 = aoi_update, 0x02 = init_data, 0x03 = full_aoi)
+//	[1..4]     u32  tick                 — simulation tick when the snapshot was produced
+//	[5..8]     u32  lastAckedSequence    — highest InputCommand.Sequence applied for the
+//	                                       receiving player; the client drops InputCommand
+//	                                       entries with sequence ≤ this from its prediction
+//	                                       buffer.
+//	[9..10]    u16  entityCount (number of entity blocks that follow)
+//
+// 0x02 (init_data) and 0x04/0x05 (FCT) keep their pre-v2 layouts — they are
+// not part of the per-tick replication stream and have no tick semantics.
 //
 //	Per-entity block (variable length):
 //	  [0]       u8   flags
@@ -107,7 +115,8 @@ const (
 	FlagHasLife     byte = 0x10 // bit 4
 	FlagHasRespawn  byte = 0x20 // bit 5
 	FlagHasBehavior byte = 0x40 // bit 6
-	FlagHasColor    byte = 0x80 // bit 7
+	// Bit 7 reserved (was FlagHasColor; per-entity RGBA no longer ships on
+	// the wire — the client resolves colour from its presentation palette).
 
 	maxBinaryBufSize = 64 * 1024 // 64 KB per AOI message
 )
@@ -257,7 +266,7 @@ func (e *BinaryAOIEncoder) writeEntityBase(flags byte, id string, pos Point, dim
 // ═══════════════════════════════════════════════════════════════════
 
 func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64, effectiveLevel int) {
-	flags := EntityTypePlayer | FlagHasLife | FlagHasColor
+	flags := EntityTypePlayer | FlagHasLife
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
 	}
@@ -267,10 +276,6 @@ func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64, effec
 	if respawnIn != nil {
 		e.putF32(*respawnIn)
 	}
-	e.putU8(byte(p.Color.R))
-	e.putU8(byte(p.Color.G))
-	e.putU8(byte(p.Color.B))
-	e.putU8(byte(p.Color.A))
 	e.writeItemIDs(p.ObjectLayers)
 	e.putU16(uint16(effectiveLevel))
 	// Entity Status Indicator — u8 overhead icon ID (see entity_status.go).
@@ -278,7 +283,7 @@ func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64, effec
 }
 
 func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLevel int) {
-	flags := EntityTypeBot | FlagHasLife | FlagHasBehavior | FlagHasColor
+	flags := EntityTypeBot | FlagHasLife | FlagHasBehavior
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
 	}
@@ -289,10 +294,6 @@ func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLe
 		e.putF32(*respawnIn)
 	}
 	e.putString(b.Behavior)
-	e.putU8(byte(b.Color.R))
-	e.putU8(byte(b.Color.G))
-	e.putU8(byte(b.Color.B))
-	e.putU8(byte(b.Color.A))
 	e.writeItemIDs(b.ObjectLayers)
 	e.putString(b.CasterID)
 	e.putU16(uint16(effectiveLevel))
@@ -301,62 +302,28 @@ func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLe
 }
 
 func (e *BinaryAOIEncoder) WriteFloor(f *FloorState) {
-	flags := EntityTypeFloor
-	if f.Color.A > 0 {
-		flags |= FlagHasColor
-	}
-	e.writeEntityBase(flags, f.ID, f.Pos, f.Dims, NONE, IDLE)
-	if f.Color.A > 0 {
-		e.putU8(byte(f.Color.R))
-		e.putU8(byte(f.Color.G))
-		e.putU8(byte(f.Color.B))
-		e.putU8(byte(f.Color.A))
-	}
+	e.writeEntityBase(EntityTypeFloor, f.ID, f.Pos, f.Dims, NONE, IDLE)
 	e.writeItemIDs(f.ObjectLayers)
 }
 
 func (e *BinaryAOIEncoder) WriteObstacle(o ObjectState) {
-	flags := EntityTypeObstacle
-	if o.Color.A > 0 {
-		flags |= FlagHasColor
-	}
-	e.writeEntityBase(flags, o.ID, o.Pos, o.Dims, NONE, IDLE)
-	if o.Color.A > 0 {
-		e.putU8(byte(o.Color.R))
-		e.putU8(byte(o.Color.G))
-		e.putU8(byte(o.Color.B))
-		e.putU8(byte(o.Color.A))
-	}
+	e.writeEntityBase(EntityTypeObstacle, o.ID, o.Pos, o.Dims, NONE, IDLE)
 	e.writeItemIDs(o.ObjectLayers)
 }
 
 func (e *BinaryAOIEncoder) WritePortal(p *PortalState) {
-	e.writeEntityBase(EntityTypePortal|FlagHasColor, p.ID, p.Pos, p.Dims, NONE, IDLE)
+	e.writeEntityBase(EntityTypePortal, p.ID, p.Pos, p.Dims, NONE, IDLE)
 	e.putString(p.Label)
-	e.putU8(byte(p.Color.R))
-	e.putU8(byte(p.Color.G))
-	e.putU8(byte(p.Color.B))
-	e.putU8(byte(p.Color.A))
 	e.writeItemIDs(p.ObjectLayers)
 }
 
 func (e *BinaryAOIEncoder) WriteForeground(fg ObjectState) {
-	flags := EntityTypeForeground
-	if fg.Color.A > 0 {
-		flags |= FlagHasColor
-	}
-	e.writeEntityBase(flags, fg.ID, fg.Pos, fg.Dims, NONE, IDLE)
-	if fg.Color.A > 0 {
-		e.putU8(byte(fg.Color.R))
-		e.putU8(byte(fg.Color.G))
-		e.putU8(byte(fg.Color.B))
-		e.putU8(byte(fg.Color.A))
-	}
+	e.writeEntityBase(EntityTypeForeground, fg.ID, fg.Pos, fg.Dims, NONE, IDLE)
 	e.writeItemIDs(fg.ObjectLayers)
 }
 
 func (e *BinaryAOIEncoder) WriteResource(r *ResourceState, respawnIn *float64) {
-	flags := EntityTypeResource | FlagHasLife | FlagHasColor
+	flags := EntityTypeResource | FlagHasLife
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
 	}
@@ -366,10 +333,6 @@ func (e *BinaryAOIEncoder) WriteResource(r *ResourceState, respawnIn *float64) {
 	if respawnIn != nil {
 		e.putF32(*respawnIn)
 	}
-	e.putU8(byte(r.Color.R))
-	e.putU8(byte(r.Color.G))
-	e.putU8(byte(r.Color.B))
-	e.putU8(byte(r.Color.A))
 	e.writeItemIDs(r.ObjectLayers)
 	// Entity Status Indicator — u8 overhead icon ID (see entity_status.go).
 	e.putU8(ResourceStatusIcon(r))
@@ -379,9 +342,9 @@ func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, c
 	flags := EntityTypePlayer | FlagHasLife
 	var respawnIn *float64
 	if p.IsGhost() {
-		flags |= FlagHasRespawn
 		remaining := math.Ceil(time.Until(p.RespawnTime).Seconds())
 		if remaining > 0 {
+			flags |= FlagHasRespawn
 			respawnIn = &remaining
 		}
 	}
@@ -469,9 +432,13 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 	enc := NewBinaryAOIEncoder()
 
 	headerPos := enc.pos
+	// AOI v2 header — tick + lastAckedSequence carried in every snapshot.
+	// See file-top comment for layout. The entityCount u16 is back-patched
+	// at the end once we know how many blocks were written.
 	enc.putU8(MsgTypeFullAOI)
-	enc.putU16(0) // reserved
-	enc.putU16(0) // placeholder entity count
+	enc.putU32(player.LastSnapshotTick)
+	enc.putU32(player.LastAckedInputSequence)
+	enc.putU16(0) // placeholder entity count — patched below
 
 	entityCount := 0
 
@@ -594,8 +561,10 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 	// player.Coins is the canonical flat balance — read directly (O(1), no OL traversal).
 	enc.WriteSelfPlayer(player, activeStatsSum, player.Coins)
 
-	// Patch entity count in header
-	binary.LittleEndian.PutUint16(enc.buf[headerPos+3:], uint16(entityCount))
+	// Patch entity count in header.
+	// v2 header layout: msgType(1) + tick(4) + lastAckedSequence(4) + entityCount(2)
+	// → entityCount starts at byte 9 inside the header block.
+	binary.LittleEndian.PutUint16(enc.buf[headerPos+9:], uint16(entityCount))
 
 	result := make([]byte, enc.pos)
 	copy(result, enc.buf[:enc.pos])

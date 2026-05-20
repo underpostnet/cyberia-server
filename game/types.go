@@ -61,7 +61,6 @@ type ObjectState struct {
 	Dims         Dimensions         `json:"Dims"`
 	Type         string             `json:"Type"`
 	ObjectLayers []ObjectLayerState `json:"objectLayers"`
-	Color        ColorRGBA          `json:"color"`
 }
 
 type PlayerState struct {
@@ -69,7 +68,6 @@ type PlayerState struct {
 	MapCode                string             `json:"MapCode"`
 	Pos                    Point              `json:"Pos"`
 	Dims                   Dimensions         `json:"Dims"`
-	Color                  ColorRGBA          `json:"color"`
 	Path                   []PointI           `json:"path"`
 	TargetPos              PointI             `json:"targetPos"`
 	AOI                    Rectangle          `json:"AOI"`
@@ -99,6 +97,19 @@ type PlayerState struct {
 	FreezeReason string    `json:"-"` // e.g. "dialogue", "inventory"
 	FreezeStart  time.Time `json:"-"`
 	StatsDirty   bool      `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
+
+	// ── Tick / replication metadata ─────────────────────────────────────────
+	// LastSnapshotTick is stamped by phaseReplication just before the AOI
+	// encoder runs for this player. It is embedded in the snapshot header.
+	// LastAckedInputSequence is the highest InputCommand.Sequence accepted by
+	// the simulation for this player; the snapshot encoder echoes it so the
+	// client can drop acknowledged commands from its prediction buffer.
+	LastSnapshotTick       uint32 `json:"-"`
+	LastAckedInputSequence uint32 `json:"-"`
+	// InputQueue holds InputCommand frames received from the client between
+	// simulation ticks. Drained in fixed order by phaseInput. nil-safe: the
+	// queue is allocated lazily when the first command is enqueued.
+	InputQueue []InputCommand `json:"-"`
 }
 
 type FloorState struct {
@@ -107,7 +118,6 @@ type FloorState struct {
 	Dims         Dimensions         `json:"Dims"`
 	Type         string             `json:"Type"`
 	ObjectLayers []ObjectLayerState `json:"objectLayers"`
-	Color        ColorRGBA          `json:"color"`
 }
 
 type BotState struct {
@@ -115,7 +125,6 @@ type BotState struct {
 	MapCode                string             `json:"MapCode"`
 	Pos                    Point              `json:"Pos"`
 	Dims                   Dimensions         `json:"Dims"`
-	Color                  ColorRGBA          `json:"color"`
 	Path                   []PointI           `json:"path"`
 	TargetPos              PointI             `json:"targetPos"`
 	Direction              Direction          `json:"direction"`
@@ -161,7 +170,6 @@ type ResourceState struct {
 	MapCode                string             `json:"MapCode"`
 	Pos                    Point              `json:"Pos"`
 	Dims                   Dimensions         `json:"Dims"`
-	Color                  ColorRGBA          `json:"color"`
 	ObjectLayers           []ObjectLayerState `json:"objectLayers"`
 	MaxLife                float64            `json:"maxLife"`
 	Life                   float64            `json:"life"`
@@ -184,7 +192,6 @@ type PortalState struct {
 	Subtype      string             `json:"Subtype"` // inter-portal | inter-random | intra-random | intra-portal
 	PortalConfig *PortalConfig      `json:"-"`
 	Label        string             `json:"PortalLabel"`
-	Color        ColorRGBA          `json:"color"`
 }
 
 type MapState struct {
@@ -218,19 +225,16 @@ type GameServer struct {
 	portalHoldTime time.Duration
 
 	cellSize         float64
-	fps              int
-	interpolationMs  int
 	defaultObjWidth  float64
 	defaultObjHeight float64
-	colors           map[string]ColorRGBA
 
-	cameraSmoothing float64
-	cameraZoom      float64
-
-	defaultWidthScreenFactor  float64
-	defaultHeightScreenFactor float64
-
-	devUi bool
+	// ── Tick model (authoritative simulation cadence) ────────────────────────
+	// The server advances one logical Tick per tickDuration. snapshotRate
+	// is the AOI replication Hz; ≤ tickRate.
+	tickRate     int           // simulation Hz (e.g. 30)
+	snapshotRate int           // replication Hz (e.g. 20)
+	tickDuration time.Duration // 1 / tickRate
+	currentTick  uint32        // monotonic; advanced once per simulation tick
 
 	// bot related defaults
 	botAggroRange float64
@@ -312,26 +316,15 @@ type GameServer struct {
 
 	// Equipment rules — governs activation constraints.
 	equipmentRules EquipmentRulesConfig
-
-	// Status icon mapping — u8 ID → icon filename stem (from gRPC config).
-	statusIcons []StatusIconConfig
 }
 
+// EntityTypeDefaultConfig — gameplay defaults for one entity type.
 type EntityTypeDefaultConfig struct {
 	EntityType          string             `json:"entityType"`
 	LiveItemIDs         []string           `json:"liveItemIds"`
 	DeadItemIDs         []string           `json:"deadItemIds"`
 	DropItemIDs         []string           `json:"dropItemIds"`
-	ColorKey            string             `json:"colorKey"`
 	DefaultObjectLayers []ObjectLayerState `json:"defaultObjectLayers,omitempty"`
-}
-
-// StatusIconConfig maps a u8 status icon ID to a ui-icon filename stem and an
-// interaction-bubble border colour.  Sent to clients in InitPayload.
-type StatusIconConfig struct {
-	ID          int       `json:"id"`
-	IconID      string    `json:"iconId"`
-	BorderColor ColorRGBA `json:"borderColor"`
 }
 
 // EquipmentRulesConfig governs which item types can be simultaneously active
@@ -343,13 +336,6 @@ type EquipmentRulesConfig struct {
 	RequireSkin     bool            `json:"requireSkin"`     // require ≥ 1 active skin
 }
 
-type ColorRGBA struct {
-	R int `json:"r"`
-	G int `json:"g"`
-	B int `json:"b"`
-	A int `json:"a"`
-}
-
 // SkillMapEntry describes one skill associated with a trigger item,
 // for the init_data JSON payload sent to C clients.
 type SkillMapEntry struct {
@@ -359,25 +345,19 @@ type SkillMapEntry struct {
 	SummonedEntityItemID string `json:"summonedEntityItemId"`
 }
 
+// InitPayload — bootstrap message sent once on WebSocket connect.
+// Strictly simulation and protocol; no presentation fields.
 type InitPayload struct {
-	GridW                     int                        `json:"gridW"`
-	GridH                     int                        `json:"gridH"`
-	DefaultObjectWidth        float64                    `json:"defaultObjectWidth"`
-	DefaultObjectHeight       float64                    `json:"defaultObjectHeight"`
-	CellSize                  float64                    `json:"cellSize"`
-	Fps                       int                        `json:"fps"`
-	InterpolationMs           int                        `json:"interpolationMs"`
-	AoiRadius                 float64                    `json:"aoiRadius"`
-	Colors                    map[string]ColorRGBA       `json:"colors"`
-	EntityDefaults            []EntityTypeDefaultConfig  `json:"entityDefaults"`
-	CameraSmoothing           float64                    `json:"cameraSmoothing"`
-	CameraZoom                float64                    `json:"cameraZoom"`
-	DefaultWidthScreenFactor  float64                    `json:"defaultWidthScreenFactor"`
-	DefaultHeightScreenFactor float64                    `json:"defaultHeightScreenFactor"`
-	DevUi                     bool                       `json:"devUi"`
-	SumStatsLimit             int                        `json:"sumStatsLimit"`
-	ObjectLayers              []ObjectLayerState         `json:"objectLayers"`
-	Color                     ColorRGBA                  `json:"color"`
-	SkillMap                  map[string][]SkillMapEntry `json:"skillMap"`
-	StatusIcons               []StatusIconConfig         `json:"statusIcons"`
+	GridW               int                        `json:"gridW"`
+	GridH               int                        `json:"gridH"`
+	DefaultObjectWidth  float64                    `json:"defaultObjectWidth"`
+	DefaultObjectHeight float64                    `json:"defaultObjectHeight"`
+	CellSize            float64                    `json:"cellSize"`
+	TickRate            int                        `json:"tickRate"`
+	SnapshotRate        int                        `json:"snapshotRate"`
+	AoiRadius           float64                    `json:"aoiRadius"`
+	SumStatsLimit       int                        `json:"sumStatsLimit"`
+	ObjectLayers        []ObjectLayerState         `json:"objectLayers"`
+	SkillMap            map[string][]SkillMapEntry `json:"skillMap"`
+	EntityDefaults      []EntityTypeDefaultConfig  `json:"entityDefaults"`
 }

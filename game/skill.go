@@ -19,10 +19,10 @@ type SkillDefinition struct {
 // Movement path calculation remains a separate concern handled in readPump
 // (handlers.go) and is gated by the Utility cooldown, independent of this call.
 //
-// Called from readPump AFTER s.mu is released — callerHoldsLock = false.
+// Called from phaseInput (inside simTicker) which holds s.mu — callerHoldsLock = true.
 func (s *GameServer) HandlePlayerTapAction(player *PlayerState, mapState *MapState, target Point) {
 	s.handleProbabilisticRegen(player, mapState)
-	s.dispatchSkillsForEntity(player, mapState, target, false)
+	s.dispatchSkillsForEntity(player, mapState, target, true)
 }
 
 // handleBotSkills checks and executes skills for a bot when it takes an "action".

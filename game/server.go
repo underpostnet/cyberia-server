@@ -13,12 +13,15 @@ import (
 // All configuration must be applied via ApplyInstanceConfig from gRPC data.
 func NewGameServer() *GameServer {
 	gs := &GameServer{
-		maps:                 make(map[string]*MapState),
-		clients:              make(map[string]*Client),
-		register:             make(chan *Client),
-		unregister:           make(chan *Client),
+		maps:    make(map[string]*MapState),
+		clients: make(map[string]*Client),
+		// Buffer register/unregister so HandleConnections never blocks the
+		// HTTP handler goroutine waiting for listenForClients to win the
+		// world lock against gameLoop. 64 outstanding connect/disconnect
+		// events is well beyond any realistic burst.
+		register:             make(chan *Client, 64),
+		unregister:           make(chan *Client, 64),
 		objectLayerDataCache: make(map[string]*ObjectLayer),
-		colors:               make(map[string]ColorRGBA),
 		skillConfig:          make(map[string][]SkillDefinition),
 	}
 	return gs
@@ -35,28 +38,22 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Rendering / camera
+	// ── Simulation / world (gameplay-affecting) ─────────────────────────────
 	s.cellSize = cfg.GetCellSize()
-	s.fps = int(cfg.GetFps())
-	s.interpolationMs = int(cfg.GetInterpolationMs())
+	s.tickRate = int(cfg.GetTickRate())
+	if s.tickRate <= 0 {
+		s.tickRate = DefaultTickRate
+	}
+	s.snapshotRate = int(cfg.GetSnapshotRate())
+	if s.snapshotRate <= 0 {
+		s.snapshotRate = DefaultSnapshotRate
+	}
+	if s.snapshotRate > s.tickRate {
+		s.snapshotRate = s.tickRate
+	}
+	s.tickDuration = computeTickDuration(s.tickRate)
 	s.defaultObjWidth = cfg.GetDefaultObjWidth()
 	s.defaultObjHeight = cfg.GetDefaultObjHeight()
-	s.cameraSmoothing = cfg.GetCameraSmoothing()
-	s.cameraZoom = cfg.GetCameraZoom()
-	s.defaultWidthScreenFactor = cfg.GetDefaultWidthScreenFactor()
-	s.defaultHeightScreenFactor = cfg.GetDefaultHeightScreenFactor()
-	s.devUi = cfg.GetDevUi()
-
-	// Colors
-	s.colors = make(map[string]ColorRGBA, len(cfg.GetColors()))
-	for _, c := range cfg.GetColors() {
-		s.colors[c.GetKey()] = ColorRGBA{
-			R: int(c.GetR()),
-			G: int(c.GetG()),
-			B: int(c.GetB()),
-			A: int(c.GetA()),
-		}
-	}
 
 	// World / AOI
 	s.aoiRadius = cfg.GetAoiRadius()
@@ -156,7 +153,6 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 			LiveItemIDs:         etd.GetLiveItemIds(),
 			DeadItemIDs:         etd.GetDeadItemIds(),
 			DropItemIDs:         etd.GetDropItemIds(),
-			ColorKey:            etd.GetColorKey(),
 			DefaultObjectLayers: dols,
 		}
 		s.entityDefaultBuilds = append(s.entityDefaultBuilds, defaultBuild)
@@ -172,26 +168,10 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 		s.defaultFloorItemID = d.LiveItemIDs[0]
 	}
 
-	// Status icon mapping — u8 ID → icon filename stem + border colour.
-	s.statusIcons = make([]StatusIconConfig, 0, len(cfg.GetStatusIcons()))
-	for _, si := range cfg.GetStatusIcons() {
-		s.statusIcons = append(s.statusIcons, StatusIconConfig{
-			ID:     int(si.GetId()),
-			IconID: si.GetIconId(),
-			BorderColor: ColorRGBA{
-				R: int(si.GetBorderColorR()),
-				G: int(si.GetBorderColorG()),
-				B: int(si.GetBorderColorB()),
-				A: int(si.GetBorderColorA()),
-			},
-		})
-	}
-	for i, si := range s.statusIcons {
-		log.Printf("[GameServer] statusIcon[%d] id=%d iconId=%q border=(%d,%d,%d,%d)",
-			i, si.ID, si.IconID, si.BorderColor.R, si.BorderColor.G, si.BorderColor.B, si.BorderColor.A)
-	}
-
-	// Player color is read from the named PLAYER entry in s.colors at use-time.
+	// Status-icon visuals (iconId + borderColor) are not on the server.
+	// The simulation writes the numeric status_icon u8 into the AOI encoder;
+	// visual resolution happens on the client via domain/presentation_defaults
+	// and the optional /api/cyberia-client-hints override.
 
 	// Skill map
 	s.skillConfig = make(map[string][]SkillDefinition, len(cfg.GetSkillConfig()))
@@ -213,8 +193,8 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	// Register built-in skill handlers now that skillConfig is populated.
 	s.InitSkills()
 
-	log.Printf("[GameServer] Instance config applied: cellSize=%.1f, fps=%d, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d colors, %d skills, %d entityDefaultTypes, %d entityDefaultBuilds, %d statusIcons, floorItem=%q, ghostItem=%q, coinItem=%q",
-		s.cellSize, s.fps, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.colors), len(s.skillConfig), len(s.entityDefaults), len(s.entityDefaultBuilds), len(s.statusIcons), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
+	log.Printf("[GameServer] Instance config applied: cellSize=%.1f, tickRate=%dHz, snapshotRate=%dHz, tickDuration=%v, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d skills, %d entityDefaultTypes, %d entityDefaultBuilds, floorItem=%q, ghostItem=%q, coinItem=%q",
+		s.cellSize, s.tickRate, s.snapshotRate, s.tickDuration, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.skillConfig), len(s.entityDefaults), len(s.entityDefaultBuilds), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
 }
 
 // ReplaceObjectLayerCache atomically replaces the entire cache.
@@ -273,6 +253,12 @@ func (s *GameServer) Run() {
 }
 
 func (s *GameServer) listenForClients() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[listenForClients] PANIC: %v — restarting goroutine", r)
+			go s.listenForClients()
+		}
+	}()
 	log.Println("Starting client listener...")
 	for {
 		select {
@@ -280,6 +266,7 @@ func (s *GameServer) listenForClients() {
 			s.mu.Lock()
 			s.clients[client.playerID] = client
 			s.mu.Unlock()
+			log.Printf("[listenForClients] registered player=%s", client.playerID)
 		case client := <-s.unregister:
 			s.mu.Lock()
 			if _, ok := s.clients[client.playerID]; ok {
@@ -291,39 +278,97 @@ func (s *GameServer) listenForClients() {
 						delete(mapState.players, client.playerID)
 					}
 				}
-				close(client.send)
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("[listenForClients] PANIC closing send for player=%s: %v", client.playerID, r)
+						}
+					}()
+					close(client.send)
+				}()
 			}
 			s.mu.Unlock()
+			log.Printf("[listenForClients] unregistered player=%s", client.playerID)
 		}
 	}
 }
 
+// gameLoop runs two independent tickers:
+//
+//   - simTicker  @ tickRate  Hz  — advances the authoritative world by exactly
+//     one Tick. Calls the named simulation phases in a fixed order. The only
+//     function permitted to mutate world state lives downstream of this path.
+//
+//   - snapTicker @ snapshotRate Hz — produces AOI snapshots (replication).
+//     Decoupled from sim cadence so bandwidth scales independently of
+//     simulation fidelity.
+//
+// Update ordering inside one simulation tick (phase functions live in
+// simulation_phases.go):
+//
+//	phaseInput      drain queued InputCommand per player
+//	phaseLifecycle  respawn timers, despawn expirations
+//	phaseSkills     skill projectile collisions
+//	phaseAI         bot behaviour decisions
+//	phaseMovement   integrate positions using s.tickDuration (NOT 1/fps)
+//	phasePortals    portal entry / teleport
+//
+// Neither phase reads PresentationHints. Replication runs on its own
+// goroutine ticker — it does not block the simulation.
 func (s *GameServer) gameLoop() {
-	fps := s.fps
-	if fps <= 0 {
-		fps = 60
+	if s.tickRate <= 0 {
+		s.tickRate = DefaultTickRate
 	}
-	ticker := time.NewTicker(time.Duration(1000/fps) * time.Millisecond)
-	defer ticker.Stop()
+	if s.snapshotRate <= 0 || s.snapshotRate > s.tickRate {
+		s.snapshotRate = s.tickRate
+	}
+	s.tickDuration = computeTickDuration(s.tickRate)
 
-	for range ticker.C {
-		s.mu.Lock()
-		for _, mapState := range s.maps {
-			// Phase 1: Handle state changes (respawn, death from collisions)
-			s.handleRespawns(mapState)
-			s.handleSkillCollisions(mapState)
+	simTicker := time.NewTicker(s.tickDuration)
+	defer simTicker.Stop()
+	snapTicker := time.NewTicker(time.Second / time.Duration(s.snapshotRate))
+	defer snapTicker.Stop()
 
-			// Phase 2: Update positions based on current state
-			for _, player := range mapState.players {
-				s.updatePlayerPosition(player, mapState)
-				s.checkPortal(player, mapState)
-			}
-			s.updateBots(mapState)
+	log.Printf("[GameServer] simulation @ %d Hz (tick %v), replication @ %d Hz",
+		s.tickRate, s.tickDuration, s.snapshotRate)
 
-			// Phase 3: Broadcast new state to clients
-			s.updateAOIs(mapState)
+	for {
+		select {
+		case <-simTicker.C:
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[GameServer] PANIC in simulation tick: %v", r)
+					}
+				}()
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				tick := s.currentTick
+				for _, mapState := range s.maps {
+					s.phaseInput(tick, mapState)
+					s.phaseLifecycle(tick, mapState)
+					s.phaseSkills(tick, mapState)
+					s.phaseAI(tick, mapState)
+					s.phaseMovement(tick, mapState)
+					s.phasePortals(tick, mapState)
+				}
+				s.currentTick++
+			}()
+		case <-snapTicker.C:
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[GameServer] PANIC in snapshot tick: %v", r)
+					}
+				}()
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				tick := s.currentTick
+				for _, mapState := range s.maps {
+					s.phaseReplication(tick, mapState)
+				}
+			}()
 		}
-		s.mu.Unlock()
 	}
 }
 
@@ -342,7 +387,11 @@ func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapStat
 		dx := float64(targetNode.X) - player.Pos.X
 		dy := float64(targetNode.Y) - player.Pos.Y
 		dist := math.Sqrt(dx*dx + dy*dy)
-		step := speed / float64(s.fps) // cells per tick at current FPS
+		// dt-based integration. speed is cells/second; tickDuration is the
+		// authoritative simulation step (1 / tickRate). Using a frame count
+		// instead — as the prior `speed / fps` did — silently broke movement
+		// every time the loop ran slow or the tickRate config changed.
+		step := speed * s.tickDuration.Seconds() // cells per simulation tick
 
 		if dist < step {
 			player.Pos = Point{X: float64(targetNode.X), Y: float64(targetNode.Y)}
@@ -407,8 +456,12 @@ func (s *GameServer) checkPortal(player *PlayerState, mapState *MapState) {
 }
 
 func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
-	s.mu.Unlock()
-	defer s.mu.Lock()
+	// s.mu is held by the caller (phasePortals → simTicker).
+	// Do NOT release it here — map mutations (delete/insert mapState.players)
+	// must be serialised against snapTicker's phaseReplication reads.
+	// Releasing s.mu and re-acquiring via defer caused a fatal
+	// "concurrent map read and map write" crash: snapTicker could acquire s.mu
+	// and iterate mapState.players while we were still writing to it.
 
 	if portal.PortalConfig == nil {
 		log.Println("Teleportation failed: Portal config is nil.")
@@ -467,19 +520,18 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 	s.sendAOI(player)
 }
 
-// ---------- AOI and state push ----------
-func (s *GameServer) updateAOIs(mapState *MapState) {
-	for _, player := range mapState.players {
-		player.AOI = Rectangle{
-			MinX: player.Pos.X - s.aoiRadius,
-			MinY: player.Pos.Y - s.aoiRadius,
-			MaxX: player.Pos.X + player.Dims.Width + s.aoiRadius,
-			MaxY: player.Pos.Y + player.Dims.Height + s.aoiRadius,
-		}
-		s.sendAOI(player)
-	}
-}
-
+// ---------- AOI snapshot send ----------
+//
+// sendAOI is the one-shot snapshot dispatcher. Two call sites use it:
+//
+//   - phaseReplication (the snapshot-rate ticker) — the canonical path.
+//   - teleportPlayer — pushes an immediate snapshot after a portal so the
+//     client doesn't see a frame of stale geometry; semantically still part
+//     of the replication contract, just out-of-band w.r.t. the tick.
+//
+// Outside these two call sites, simulation code MUST NOT write directly to
+// player.Client.send — replication is the only path that may produce AOI
+// frames.
 func (s *GameServer) sendAOI(player *PlayerState) {
 	mapState, ok := s.maps[player.MapCode]
 	if !ok {

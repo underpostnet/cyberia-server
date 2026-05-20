@@ -63,13 +63,11 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		// --- SKILL PROJECTILE BEHAVIOR ---
 		// Skill projectile bots move in a straight line and are removed if they go out of bounds.
 		if bot.Behavior == "skill" {
-			// Projectiles move at configured speed multiplier. entityBaseSpeed is in units per second.
-			// Projectiles move at configured speed; divide by the actual game loop FPS to get units per tick.
-			loopFps := float64(s.fps)
-			if loopFps <= 0 {
-				loopFps = 60
-			}
-			projectileStep := (s.entityBaseSpeed * s.projectileSpeedMultiplier) / loopFps
+			// dt-based integration. entityBaseSpeed is cells/second; one tick
+			// is s.tickDuration. (The old code used `... / s.fps` which is a
+			// frame-count integration that silently misbehaves when the loop
+			// runs slow or tickRate changes.)
+			projectileStep := s.entityBaseSpeed * s.projectileSpeedMultiplier * s.tickDuration.Seconds()
 			// Calculate movement vector from bot's direction
 			dirX, dirY := getDirectionVector(bot.Direction)
 
@@ -235,7 +233,7 @@ func (s *GameServer) updateBotPosition(bot *BotState, mapState *MapState, stats 
 		dx := float64(targetNode.X) - bot.Pos.X
 		dy := float64(targetNode.Y) - bot.Pos.Y
 		dist := math.Sqrt(dx*dx + dy*dy)
-		step := speed / float64(s.fps) // cells per tick at current FPS
+		step := speed * s.tickDuration.Seconds() // dt-based: cells per simulation tick
 
 		if dist < step {
 			bot.Pos = Point{X: float64(targetNode.X), Y: float64(targetNode.Y)}

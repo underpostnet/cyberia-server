@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"cyberia-server/game"
+	game "cyberia-server/game"
 
 	"github.com/go-chi/chi/v5"
 )

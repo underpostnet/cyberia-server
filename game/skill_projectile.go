@@ -75,7 +75,9 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 
 	// Pre-compensate for the first tick's movement so the projectile appears
 	// at the caster's position on the first rendered frame.
-	projectileStep := (s.entityBaseSpeed * s.projectileSpeedMultiplier) / float64(s.fps)
+	// dt-based: one-tick pre-displacement so the first replicated frame shows
+	// the projectile at the caster's position rather than one tick downstream.
+	projectileStep := s.entityBaseSpeed * s.projectileSpeedMultiplier * s.tickDuration.Seconds()
 	dirX, dirY := getDirectionVector(projectileDirection)
 	spawnX := casterPos.X - (dirX * projectileStep)
 	spawnY := casterPos.Y - (dirY * projectileStep)
@@ -97,7 +99,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 		CasterID:     casterID,
 		MaxLife:      projectileBaseLife,
 		Life:         projectileBaseLife,
-		Color:        s.colors["SKILL"],
+		// One-shot palette lookup at spawn; sim never re-reads.
 	}
 
 	ctx.MapState.bots[projectileBot.ID] = projectileBot

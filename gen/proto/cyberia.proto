@@ -14,7 +14,7 @@ syntax = "proto3";
 
 package cyberia;
 
-option go_package = "cyberia-server/gen/proto";
+option go_package = "cyberia-server/proto";
 
 // ═══════════════════════════════════════════════════════════════════
 // Service definition
@@ -162,13 +162,8 @@ message GetFullInstanceResponse {
 // Instance configuration — replaces all hardcoded server defaults
 // ═══════════════════════════════════════════════════════════════════
 
-message ColorEntry {
-  string key = 1;
-  int32  r   = 2;
-  int32  g   = 3;
-  int32  b   = 4;
-  int32  a   = 5;
-}
+// Palette entries are owned by the C client (presentation_defaults).
+// The gRPC simulation contract carries no palette.
 
 message DefaultObjectLayerState {
   string item_id  = 1;
@@ -269,19 +264,21 @@ message EquipmentRules {
   bool require_skin                 = 3;
 }
 
+// Presentation payload (palette, camera, status-icon visuals, etc.) is
+// served by the engine REST endpoint /api/cyberia-client-hints/:code as
+// JSON.  No protobuf message is involved.  History: see
+// DOCUMENTATION-MIGRATION.md.
+
 message InstanceConfig {
-  // ── Rendering / camera ──
+  // ── Simulation cadence ──
   double cell_size                     = 1;
-  int32  fps                           = 2;
-  int32  interpolation_ms              = 3;
+  // Retired field numbers are reserved. History lives in DOCUMENTATION-MIGRATION.md.
+  reserved 2, 3, 6, 7, 8, 9, 10, 11;
+  reserved "fps", "interpolation_ms", "camera_smoothing", "camera_zoom",
+           "default_width_screen_factor", "default_height_screen_factor",
+           "dev_ui", "colors";
   double default_obj_width             = 4;
   double default_obj_height            = 5;
-  double camera_smoothing              = 6;
-  double camera_zoom                   = 7;
-  double default_width_screen_factor   = 8;
-  double default_height_screen_factor  = 9;
-  bool   dev_ui                        = 10;
-  repeated ColorEntry colors           = 11;
 
   // ── World / AOI ──
   double aoi_radius                    = 12;
@@ -359,20 +356,36 @@ message InstanceConfig {
   repeated EntityTypeDefault entity_defaults = 52;
 
   // ── Entity Status Indicators (overhead icon mapping) ───────────────────────
-  // Dynamic u8→icon_id mapping — the single source of truth for which icon
-  // filename to render for each server-assigned status ID.  Eliminates the
-  // need for hardcoded tables in the C client.
-  repeated StatusIconEntry status_icons = 64;
+  // DEPRECATED — the simulation only ships the numeric u8 status ID via
+  // the AOI binary entity block. Icon stem + border colour have moved
+  // entirely off this contract; the client resolves them from its
+  // built-in presentation_defaults (cyberia-client) and the engine REST
+  // endpoint /api/cyberia-client-hints. Field 64 stays reserved.
+  reserved 64;
+  reserved "status_icons";
+
+  // ── Tick model (authoritative simulation cadence) ─────────────────────────
+  // tick_rate is the canonical simulation Hz on cyberia-server.
+  int32 tick_rate     = 65;
+  // snapshot_rate is the AOI replication Hz. Typically ≤ tick_rate.
+  int32 snapshot_rate = 66;
+
+  // Field 67 (client_hints) reserved — presentation does not travel on
+  // this contract.  See DOCUMENTATION-MIGRATION.md for history.
+  reserved 67;
+  reserved "client_hints";
 }
 
-// ── Entity type defaults (per-entity visual + color configuration) ──────────
-// Replaces the former flat string fields: ghost_item_id (29), coin_item_id (31),
-// default_floor_item_id (44), bot_default_item_id (48), user_default_item_id (49).
+// ── Entity type defaults (per-entity gameplay configuration) ────────────────
+// Pure simulation contract — only the fields the Go server's world build
+// needs to instantiate entities. Per-entity-type color resolution lives on
+// the client (presentation_defaults).
 message EntityTypeDefault {
   string entity_type    = 1; // matches entity_type_str / bot Behavior in game engine
   repeated string live_item_ids = 2; // OL item IDs for the alive/active state
   repeated string dead_item_ids = 3; // OL item IDs for the dead/ghost/respawning state
-  string color_key      = 4; // palette key for solid-color fallback (no OL items)
+  reserved 4;
+  reserved "color_key";
   // Full default ObjectLayer inventory for this entity type.
   // Supersedes live_item_ids for inventory initialization when non-empty.
   // The canonical source of truth — shared across all entity config simulation.
@@ -382,22 +395,10 @@ message EntityTypeDefault {
   repeated string drop_item_ids = 6;
 }
 
-// ── Entity Status Indicator entry (overhead icon config) ────────────────────
-// Maps a server-computed u8 status ID to a ui-icon filename stem and whether
-// the icon should use bounce animation.  Sent in InitPayload.statusIcons so
-// the C client resolves icons dynamically — no hardcoded lookup tables.
-//
-// border_color_* fields define the interaction-bubble border colour for
-// entities that carry this status — fully server-driven, no client-side
-// hardcoded colour tables.
-message StatusIconEntry {
-  int32  id      = 1; // u8 status ID (0 = none, 1 = passive, …)
-  string icon_id = 2; // ui-icon filename stem (e.g. "arrow-down-red", "skull"); empty = no icon
-  int32  border_color_r = 3; // border colour red   [0-255]
-  int32  border_color_g = 4; // border colour green  [0-255]
-  int32  border_color_b = 5; // border colour blue   [0-255]
-  int32  border_color_a = 6; // border colour alpha  [0-255]
-}
+// Status-icon visual config has moved off the gRPC contract.  The numeric
+// status ID rides on the AOI wire; icon stem + border colour are resolved
+// on the C client (presentation_defaults / presentation_runtime), with
+// optional per-instance overrides via /api/cyberia-client-hints.
 
 // ═══════════════════════════════════════════════════════════════════
 // Map messages

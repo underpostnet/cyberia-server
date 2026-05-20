@@ -8,49 +8,74 @@
 
 </div>
 
-Go game server for **Cyberia Online MMO**. Manages real-time multiplayer state via WebSockets using a binary AOI protocol, with all game data sourced from the Node.js Engine via gRPC.
+**`cyberia-server`** is the authoritative simulation runtime for the Cyberia MMO extension on [Underpost Platform](../src/client/public/cyberia-docs/UNDERPOST-PLATFORM.md). It owns world state, advances a fixed-rate simulation tick, drains typed input commands from connected clients, and dispatches AOI-filtered snapshots on a separately-paced replication tick.
+
+It is **not** the content authority — that role belongs to `engine-cyberia`, which serves world configuration over gRPC at boot. It is **not** the render-policy authority — that role belongs to `cyberia-client`, which owns its presentation defaults locally.
 
 ## Architecture
 
+Three processes, sequential startup, non-overlapping roles:
+
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│  Node.js Engine                                                │
-│  ├─ MongoDB (instances, maps, entities, ObjectLayers, atlases) │
-│  ├─ Express REST API (:4005)                                   │
+│  engine-cyberia  (Node.js)         — content authority         │
+│  ├─ MongoDB (maps, entities, object layers, atlas metadata)    │
+│  ├─ REST API (:4005)                                           │
 │  └─ gRPC server (:50051)                                       │
 └────────────────────┬───────────────────────────────────────────┘
-                     │ gRPC (cluster-internal)
+                     │ gRPC GetFullInstance (boot only)
+                     │ → world configuration: AOI radius, economy
+                     │   rules, skill rules, equipment rules,
+                     │   entity gameplay defaults
                      ▼
 ┌────────────────────────────────────────────────────────────────┐
-│  Go Game Server (this repo)                                    │
-│  ├─ gRPC client → WorldBuilder → ApplyInstanceConfig           │
-│  ├─ In-memory game state (maps, entities, pathfinding)         │
-│  ├─ WebSocket (:8081/ws) → binary AOI protocol                 │
-│  ├─ REST API (:8081/api/v1/*) → health, metrics                │
-│  └─ Static file server (WASM client via STATIC_DIR)            │
+│  cyberia-server  (Go, this repo)   — authoritative simulation  │
+│  ├─ simulation tick @ tickRate Hz                              │
+│  ├─ replication tick @ snapshotRate Hz (decoupled)             │
+│  ├─ WebSocket (:8081/ws)  → binary AOI snapshots               │
+│  │                        ← typed input commands               │
+│  ├─ REST API (:8081/api/v1/*)  → health, metrics               │
+│  └─ Static file server  (WASM client via STATIC_DIR)           │
 └────────────────────┬───────────────────────────────────────────┘
-                     │ WebSocket (binary)
+                     │ WebSocket binary
                      ▼
 ┌────────────────────────────────────────────────────────────────┐
-│  C/WASM Client                                                 │
+│  cyberia-client  (C / WASM)        — presentation runtime      │
 │  ├─ Raylib + Emscripten WebAssembly                            │
-│  ├─ Binary AOI decoder (positions, directions, colors, items)  │
-│  └─ Atlas sprite sheet renderer                                │
+│  ├─ prediction · reconciliation · interpolation                │
+│  ├─ AOI snapshot decoder                                       │
+│  └─ client-owned presentation defaults + optional client hints │
 └────────────────────────────────────────────────────────────────┘
 ```
 
-## Core Features
+Architecture is documented end-to-end in [`ARCHITECTURE.md`](../src/client/public/cyberia-docs/ARCHITECTURE.md). The umbrella product is [Underpost Platform](../src/client/public/cyberia-docs/UNDERPOST-PLATFORM.md).
 
-- **Binary AOI Protocol**: Compact binary WebSocket messages with only render-essential data (positions, directions, modes, colors, item stacks)
-- **gRPC Data Pipeline**: All game configuration, maps, entities, ObjectLayers, and AtlasSpriteSheets loaded from the Engine at startup via gRPC
-- **Hot-Reload**: ObjectLayer cache diffing via sha256 manifests — surgical in-memory replacement without restart
-- **Fallback Instance**: When the requested instance is not found in MongoDB, the Engine (`grpc-server.js`) returns a minimal playable instance with a 64×64 floor grid and default config. The Go server always requires gRPC — it exits on connection failure
-- **Item-based Skill System**: Skills are configured per-instance via `skillConfig[]` (`triggerItemId` → `logicEventIds[]` ordered array mapping)
-- **A\* Pathfinding**: Grid-based pathfinding for player movement and bot AI
-- **Dynamic Bot AI**: Bots with passive/hostile behaviors using pathfinding and the skill system
-- **Per-Entity Color**: Each entity color is resolved from a named palette (`PLAYER`, `OTHER_PLAYER`, `BOT`, etc.) configured per-instance via `colors[]`. Used for solid-color rendering when no sprite sheets are available
-- **`SkillRules` config**: Bullet and doppelganger tuning parameters (spawn chances, lifetimes, sizes, speeds) are grouped under `skillRules` in `CyberiaInstanceConf` and transmitted as a nested proto message
-- **Off-chain Economy**: Coin quantities are tracked in-memory as `ObjectLayerState.Quantity` on entity object layers. Blockchain integration is **not active** — the economy operates fully off-chain
+### Startup order — sequential
+
+1. **Persistent backend / sidecar data layer** — databases, `engine-cyberia` (gRPC + REST), static asset backend.
+2. **cyberia-server** — dials engine-cyberia gRPC, loads world configuration, opens WebSocket.
+3. **cyberia-client** — connects to cyberia-server WebSocket.
+
+Do not orchestrate these in parallel. The server exits on gRPC dial failure rather than fabricate a world.
+
+## Core capabilities
+
+- **Tick-based simulation** — fixed-rate `tickRate` (default 30 Hz), `dt`-based integration with `tickDuration`. Frame-count integration is not used anywhere on the server.
+- **Decoupled replication** — AOI snapshots emitted at `snapshotRate` (default 20 Hz), independent of the simulation tick.
+- **Typed input command pipeline** — binary WebSocket frames decoded once into `InputCommand{kind, clientTick, sequence, payload}`, enqueued per-player, drained by `phaseInput` under the world mutex. No JSON intermediate on the binary path; no synchronous game-state mutation on the WebSocket read goroutine.
+- **Simulation phases** — `phaseInput → phaseLifecycle → phaseSkills → phaseAI → phaseMovement → phasePortals`. Phases are the only functions allowed to mutate authoritative world state.
+- **Binary AOI snapshot protocol** — compact wire format with `tick` and `lastAcked` in the header so clients can reconcile their predicted self against authoritative state.
+- **gRPC world load + hot reload** — world configuration loaded once at boot via `GetFullInstance`; ObjectLayer cache hot-reloaded by sha256 manifest diff.
+- **A\* pathfinding** — grid-based, used by both player movement (when input commands request a destination) and bot AI.
+- **Dynamic bot AI** — passive/hostile behaviors driven by the same skill system as players.
+- **Item-based skill system** — `skillConfig[]` maps a `triggerItemId` to an ordered `logicEventIds[]`; configured per-instance and shipped via gRPC.
+- **Off-chain economy** — Fountain & Sink coin model, tracked in-memory; blockchain integration is not active in the current configuration.
+
+### Strict ownership boundary
+
+`cyberia-server` holds **no** presentation state. There is no field on the server for palette, status-icon iconId or border color, camera smoothing or zoom, dev-overlay flag, screen-factor overrides, or interpolation window. Those live entirely in `cyberia-client`'s compile-time defaults, with optional per-instance overrides served by engine-cyberia at `GET /api/cyberia-client-hints/:instanceCode`. The Go process never calls that endpoint.
+
+A small internal RGBA table inside `sim_palette.go` exists solely to fill the optional per-entity color bytes the AOI wire carries for portals, skill projectiles, and freshly spawned players. The client treats those bytes as a hint and resolves the actual fallback color from its own palette.
 
 ## Passive Stats System
 

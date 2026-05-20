@@ -68,6 +68,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
+	log.Printf("[HandleConnections] s.mu acquired, building player")
 
 	if len(s.maps) == 0 {
 		log.Println("[HandleConnections] No maps loaded — rejecting connection. Ensure INSTANCE_CODE is set and Engine gRPC is reachable.")
@@ -111,7 +112,6 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		MapCode:       startMapCode,
 		Pos:           Point{X: float64(startPosI.X), Y: float64(startPosI.Y)},
 		Dims:          playerDims,
-		Color:         s.colors["PLAYER"],
 		Path:          []PointI{},
 		TargetPos:     PointI{-1, -1},
 		Direction:     NONE,
@@ -140,27 +140,24 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	s.ApplyResistanceStat(playerState, startMapState)
 	playerState.Life = playerState.MaxLife * s.initialLifeFraction // Set life based on config fraction
 
+	// InitPayload is strictly simulation/protocol. No palette, no camera,
+	// no devUi, no status-icon visuals, no screen factors, no interp ms.
+	// The client owns presentation locally and may, optionally, fetch
+	// per-instance overrides from the engine's /api/cyberia-client-hints
+	// REST endpoint — that path is independent of this WS connection.
 	initPayload := InitPayload{
-		GridW:                     startMapState.gridW,
-		GridH:                     startMapState.gridH,
-		DefaultObjectWidth:        s.defaultObjWidth,
-		DefaultObjectHeight:       s.defaultObjHeight,
-		CellSize:                  s.cellSize,
-		Fps:                       s.fps,
-		InterpolationMs:           s.interpolationMs,
-		AoiRadius:                 s.aoiRadius,
-		Colors:          s.colors,
-		EntityDefaults:  s.buildEntityDefaultsSlice(),
-		CameraSmoothing:           s.cameraSmoothing,
-		CameraZoom:                s.cameraZoom,
-		DefaultWidthScreenFactor:  s.defaultWidthScreenFactor,
-		DefaultHeightScreenFactor: s.defaultHeightScreenFactor,
-		DevUi:                     s.devUi,
-		SumStatsLimit:             playerState.SumStatsLimit,
-		ObjectLayers:              playerState.ObjectLayers,
-		Color:                     playerState.Color,
-		SkillMap:                  s.buildSkillMap(),
-		StatusIcons:               s.statusIcons,
+		GridW:               startMapState.gridW,
+		GridH:               startMapState.gridH,
+		DefaultObjectWidth:  s.defaultObjWidth,
+		DefaultObjectHeight: s.defaultObjHeight,
+		CellSize:            s.cellSize,
+		TickRate:            s.tickRate,
+		SnapshotRate:        s.snapshotRate,
+		AoiRadius:           s.aoiRadius,
+		SumStatsLimit:       playerState.SumStatsLimit,
+		ObjectLayers:        playerState.ObjectLayers,
+		SkillMap:            s.buildSkillMap(),
+		EntityDefaults:      s.buildEntityDefaultsSlice(),
 	}
 	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
 	select {
@@ -184,18 +181,35 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Unlock()
 
-	s.register <- client
+	// Register the client with listenForClients.
+	// Use a timeout so we get a clear log if listenForClients is dead rather
+	// than hanging the HTTP handler goroutine silently.
+	select {
+	case s.register <- client:
+		// registered successfully
+	case <-time.After(5 * time.Second):
+		log.Printf("[HandleConnections] timeout waiting to register player=%s — listenForClients may be dead", playerID)
+		conn.Close()
+		return
+	}
 	go client.writePump()
 	go client.readPump(s)
 }
 
 // readPump handles incoming messages from the client.
+// Inbound message size cap is 8 KiB — large enough for any current
+// InputCommand (handshake, chat, item activation, player action) with
+// headroom, small enough to bound per-client memory.
 func (c *Client) readPump(server *GameServer) {
 	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[readPump] PANIC player=%s: %v", c.playerID, r)
+		}
+		log.Printf("[readPump] closing player=%s", c.playerID)
 		server.unregister <- c
 		c.conn.Close()
 	}()
-	c.conn.SetReadLimit(512)
+	c.conn.SetReadLimit(8 * 1024)
 	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	c.conn.SetPongHandler(func(string) error {
 		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -205,7 +219,7 @@ func (c *Client) readPump(server *GameServer) {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				log.Printf("[readPump] player=%s read error: %v", c.playerID, err)
 			}
 			break
 		}
@@ -258,80 +272,123 @@ func (r *uplinkBuf) str() (string, bool) {
 	return s, true
 }
 
-// handleBinaryUplink dispatches a binary-framed uplink message.
-// Frame: [msgType byte 0x10-0x16] [payload...]
-// See UPLINK_* constants in cyberia-client/src/serial.h.
+// handleBinaryUplink decodes a binary-framed uplink message into an
+// InputCommand and enqueues it on the player's per-tick input queue.
+// phaseInput drains and applies it exactly once per tick.
+//
+// Frame layout:
+//
+//	[u8 kind][payload-by-kind]
+//	[u8 kind][u32 clientTick][u32 sequence][payload-by-kind]
+//
+// The optional clientTick+sequence suffix is read with readOptionalU32;
+// older clients that omit the suffix produce zero values, which the
+// simulation handles gracefully.
 func (c *Client) handleBinaryUplink(message []byte, server *GameServer) {
 	if len(message) < 1 {
 		return
 	}
 	r := &uplinkBuf{data: message[1:]}
-	switch message[0] {
-	case 0x10: // handshake — client already authenticated; ignore
-	case 0x11: // player_action: f32 targetX, f32 targetY
+	kind := InputKind(message[0])
+
+	switch kind {
+	case InputKindHandshake:
+		// Already authenticated upstream; nothing to do.
+		return
+	case InputKindPlayerAction:
 		x, okX := r.f32()
 		y, okY := r.f32()
 		if !okX || !okY {
 			return
 		}
-		payload := map[string]interface{}{
-			"targetX": float64(x),
-			"targetY": float64(y),
+		cmd := InputCommand{
+			Kind:       kind,
+			ClientTick: readOptionalU32(r),
+			Sequence:   readOptionalU32(r),
+			TargetX:    float64(x),
+			TargetY:    float64(y),
 		}
-		msg := map[string]interface{}{"type": "player_action", "payload": payload}
-		c.handleJSONUplink(mustMarshal(msg), server)
-	case 0x12: // item_activation: str itemId, u8 active
-		itemId, okId := r.str()
+		c.dispatchInputCommand(server, cmd)
+	case InputKindItemActivation:
+		itemID, okID := r.str()
 		activeByte, okA := r.u8()
-		if !okId || !okA {
+		if !okID || !okA {
 			return
 		}
-		payload := map[string]interface{}{
-			"itemId": itemId,
-			"active": activeByte != 0,
+		cmd := InputCommand{
+			Kind:       kind,
+			ClientTick: readOptionalU32(r),
+			Sequence:   readOptionalU32(r),
+			ItemID:     itemID,
+			Active:     activeByte != 0,
 		}
-		msg := map[string]interface{}{"type": "item_activation", "payload": payload}
-		c.handleJSONUplink(mustMarshal(msg), server)
-	case 0x13: // freeze_start: str reason
+		c.dispatchInputCommand(server, cmd)
+	case InputKindFreezeStart, InputKindFreezeEnd:
 		reason, _ := r.str()
 		if reason == "" {
 			reason = "freeze"
 		}
-		server.mu.Lock()
-		if player, ok := server.maps[c.playerState.MapCode].players[c.playerID]; ok {
-			FreezePlayer(player, reason)
+		cmd := InputCommand{
+			Kind:       kind,
+			ClientTick: readOptionalU32(r),
+			Sequence:   readOptionalU32(r),
+			Reason:     reason,
 		}
-		server.mu.Unlock()
-	case 0x14: // freeze_end: str reason
-		reason, _ := r.str()
-		if reason == "" {
-			reason = "freeze"
-		}
-		server.mu.Lock()
-		if player, ok := server.maps[c.playerState.MapCode].players[c.playerID]; ok {
-			ThawPlayer(player, reason)
-		}
-		server.mu.Unlock()
-	case 0x15: // chat: str toId, str text
+		c.dispatchInputCommand(server, cmd)
+	case InputKindChat:
 		toID, okTo := r.str()
 		text, okText := r.str()
 		if !okTo || !okText || toID == "" || text == "" {
 			return
 		}
-		payload := map[string]interface{}{"to": toID, "text": text}
-		msg := map[string]interface{}{"type": "chat", "payload": payload}
-		c.handleJSONUplink(mustMarshal(msg), server)
-	case 0x16: // get_items_ids: str itemId
-		itemId, ok := r.str()
-		if !ok || itemId == "" {
+		cmd := InputCommand{
+			Kind:       kind,
+			ClientTick: readOptionalU32(r),
+			Sequence:   readOptionalU32(r),
+			ItemID:     toID, // chat target id
+			ChatText:   text,
+		}
+		c.dispatchInputCommand(server, cmd)
+	case InputKindGetItemsIDs:
+		itemID, ok := r.str()
+		if !ok || itemID == "" {
 			return
 		}
-		payload := map[string]interface{}{"itemId": itemId}
-		msg := map[string]interface{}{"type": "get_items_ids", "payload": payload}
-		c.handleJSONUplink(mustMarshal(msg), server)
+		cmd := InputCommand{
+			Kind:       kind,
+			ClientTick: readOptionalU32(r),
+			Sequence:   readOptionalU32(r),
+			ItemID:     itemID,
+		}
+		c.dispatchInputCommand(server, cmd)
 	default:
 		log.Printf("[WARN] Unknown binary uplink type: 0x%02x from player %s", message[0], c.playerID)
 	}
+}
+
+// readOptionalU32 reads a u32 at the current position, returning 0 if fewer
+// than 4 bytes remain. Used for the optional clientTick/sequence suffix
+// that older clients don't emit.
+func readOptionalU32(r *uplinkBuf) uint32 {
+	if r.pos+4 > len(r.data) {
+		return 0
+	}
+	v := uint32(r.data[r.pos]) | uint32(r.data[r.pos+1])<<8 | uint32(r.data[r.pos+2])<<16 | uint32(r.data[r.pos+3])<<24
+	r.pos += 4
+	return v
+}
+
+// dispatchInputCommand enqueues a typed InputCommand on the player's
+// per-tick input queue. phaseInput drains and applies it exactly once.
+func (c *Client) dispatchInputCommand(server *GameServer, cmd InputCommand) {
+	server.mu.Lock()
+	mapState, mapOK := server.maps[c.playerState.MapCode]
+	if mapOK {
+		if player := mapState.players[c.playerID]; player != nil {
+			EnqueueInput(player, cmd)
+		}
+	}
+	server.mu.Unlock()
 }
 
 // mustMarshal marshals v to JSON, panicking on error (should never happen for fixed structs).
@@ -343,392 +400,80 @@ func mustMarshal(v interface{}) []byte {
 	return b
 }
 
-// handleJSONUplink parses and dispatches a JSON-encoded uplink message.
+// handleJSONUplink is a thin JSON→InputCommand adapter for text-framed
+// uplink messages. Decodes the message into a typed InputCommand and
+// enqueues it via dispatchInputCommand. phaseInput is the authoritative
+// consumer; no synchronous dispatch occurs here.
 func (c *Client) handleJSONUplink(message []byte, server *GameServer) {
 	var msg map[string]interface{}
 	if err := json.Unmarshal(message, &msg); err != nil {
-		log.Printf("Error unmarshaling message: %v", err)
+		log.Printf("Error unmarshaling JSON uplink: %v", err)
 		return
 	}
-	if msg["type"] == "player_action" {
-			payload := msg["payload"].(map[string]interface{})
-			targetX := payload["targetX"].(float64)
-			targetY := payload["targetY"].(float64)
+	typeStr, _ := msg["type"].(string)
+	payload, _ := msg["payload"].(map[string]interface{})
+	cmd := jsonUplinkToInputCommand(typeStr, payload)
+	if cmd.Kind != InputKindUnknown {
+		c.dispatchInputCommand(server, cmd)
+	}
+}
 
-			server.mu.Lock()
-			player, ok := server.maps[c.playerState.MapCode].players[c.playerID]
-			if !ok {
-				log.Println("Player not found in map")
-				server.mu.Unlock()
-				return
-			}
-
-			// Dead players can't perform actions.
-			if player.IsGhost() {
-				server.mu.Unlock()
-				return
-			}
-
-			// Frozen (in modal interaction) players can't move or fire skills.
-			if player.Frozen {
-				server.mu.Unlock()
-				return
-			}
-
-			mapState, ok := server.maps[player.MapCode]
-			if !ok {
-				log.Println("Player map not found")
-				server.mu.Unlock()
-				return
-			}
-
-			// Compute movement cooldown under lock but do NOT gate skills on it.
-			// TAP is the fundamental event: skills fire on every TAP (probability-
-			// gated), movement is a rendering side-effect gated by the cooldown.
-			playerStats := server.CalculateStats(player, mapState)
-			cooldown := server.CalculateActionCooldown(playerStats)
-			movementReady := time.Since(c.lastAction) >= cooldown
-			if movementReady {
-				c.lastAction = time.Now()
-			}
-
-			server.mu.Unlock()
-
-			// Skills and regen fire on EVERY valid TAP regardless of movement cooldown.
-			server.HandlePlayerTapAction(player, mapState, Point{X: targetX, Y: targetY})
-
-			// Movement path is only recalculated when the cooldown allows.
-			if !movementReady {
-				return
-			}
-
-			startPosI := PointI{X: int(math.Round(player.Pos.X)), Y: int(math.Round(player.Pos.Y))}
-			targetPosI := PointI{X: int(math.Round(targetX)), Y: int(math.Round(targetY))}
-
-			newPath, err := mapState.pathfinder.Astar(startPosI, targetPosI, player.Dims)
-			usedTarget := targetPosI
-			if err != nil {
-				closest, cerr := mapState.pathfinder.findClosestWalkablePoint(targetPosI, player.Dims)
-				if cerr != nil {
-					log.Printf("Pathfinding failed for player %s, no closest walkable: %v", c.playerID, err)
-					server.mu.Lock()
-					dx := float64(targetPosI.X) - player.Pos.X
-					dy := float64(targetPosI.Y) - player.Pos.Y
-					dist := math.Sqrt(dx*dx + dy*dy)
-					if dist > 0 {
-						dirX, dirY := dx/dist, dy/dist
-						server.updatePlayerDirection(player, dirX, dirY)
-						player.Mode = WALKING
-						player.TargetPos = targetPosI
-					} else {
-						player.Mode = IDLE
-					}
-					server.mu.Unlock()
-					return
-				}
-				newPath, err = mapState.pathfinder.Astar(startPosI, closest, player.Dims)
-				if err != nil {
-					log.Printf("Pathfinding failed for player %s even to closest walkable: %v", c.playerID, err)
-					server.mu.Lock()
-					dx := float64(closest.X) - player.Pos.X
-					dy := float64(closest.Y) - player.Pos.Y
-					dist := math.Sqrt(dx*dx + dy*dy)
-					if dist > 0 {
-						dirX, dirY := dx/dist, dy/dist
-						server.updatePlayerDirection(player, dirX, dirY)
-						player.Mode = WALKING
-						player.TargetPos = closest
-					} else {
-						player.Mode = IDLE
-					}
-					server.mu.Unlock()
-					return
-				}
-				usedTarget = closest
-			}
-
-			if len(newPath) > 0 {
-				first := newPath[0]
-				server.mu.Lock()
-				player.Path = newPath
-				player.TargetPos = usedTarget
-				player.Mode = WALKING
-				dx := float64(first.X) - player.Pos.X
-				dy := float64(first.Y) - player.Pos.Y
-				dist := math.Sqrt(dx*dx + dy*dy)
-				if dist > 0 {
-					dirX, dirY := dx/dist, dy/dist
-					server.updatePlayerDirection(player, dirX, dirY)
-				}
-				server.mu.Unlock()
-			} else {
-				server.mu.Lock()
-				if startPosI.X == targetPosI.X && startPosI.Y == targetPosI.Y {
-					player.Mode = IDLE
-				}
-				server.mu.Unlock()
-			}
-		} else if msg["type"] == "item_activation" {
-			payload, ok := msg["payload"].(map[string]interface{})
-			if !ok {
-				log.Printf("Invalid item_activation payload format for player %s", c.playerID)
-				return
-			}
-			itemId, okId := payload["itemId"].(string)
-			active, okActive := payload["active"].(bool)
-			if !okId || !okActive {
-				log.Printf("Invalid itemId or active field in item_activation payload for player %s", c.playerID)
-				return
-			}
-
-			server.mu.Lock()
-			func() { // Use a closure to manage the lock with defer
-				defer server.mu.Unlock()
-
-				player, ok := server.maps[c.playerState.MapCode].players[c.playerID]
-				if !ok {
-					log.Printf("Player %s not found in map %q for item activation", c.playerID, c.playerState.MapCode)
-					return
-				}
-
-				// Check if player is dead - queue activation on pre-respawn layers
-				// so it takes effect when the player revives.
-				if (player.IsGhost() || player.Life <= 0) && active {
-					if player.PreRespawnObjectLayers != nil {
-						for i := range player.PreRespawnObjectLayers {
-							if player.PreRespawnObjectLayers[i].ItemID == itemId {
-								player.PreRespawnObjectLayers[i].Active = true
-								log.Printf("Player %s is dead — queued activation of '%s' on pre-respawn layers (takes effect on revive).", c.playerID, itemId)
-
-								// One-per-type: deactivate other items of same type in pre-respawn layers
-								if server.equipmentRules.OnePerType {
-									var reqType string
-									if itemData, ok := server.GetObjectLayerData(itemId); ok {
-										reqType = itemData.Data.Item.Type
-									}
-									if reqType != "" {
-										for j := range player.PreRespawnObjectLayers {
-											if j == i {
-												continue
-											}
-											if player.PreRespawnObjectLayers[j].Active {
-												var otherType string
-												if otherData, ok := server.GetObjectLayerData(player.PreRespawnObjectLayers[j].ItemID); ok {
-													otherType = otherData.Data.Item.Type
-												}
-												if otherType == reqType {
-													player.PreRespawnObjectLayers[j].Active = false
-												}
-											}
-										}
-									}
-								}
-								break
-							}
-						}
-					}
-					return
-				}
-
-				var targetItemIndex = -1
-				for i := range player.ObjectLayers {
-					if player.ObjectLayers[i].ItemID == itemId {
-						targetItemIndex = i
-						break
-					}
-				}
-
-				if targetItemIndex == -1 {
-					log.Printf("Player %s tried to activate non-existent item '%s'.", c.playerID, itemId)
-					return
-				}
-
-				// --- Step 1: Tentatively apply the requested change ---
-				originalState := player.ObjectLayers[targetItemIndex].Active
-				player.ObjectLayers[targetItemIndex].Active = active
-				log.Printf("Player %s requested to set item '%s' active state to %v. Applying and validating...", c.playerID, itemId, active)
-
-				// --- Step 1b: Check equipment rules — only types in activeItemTypes may be activated ---
-				if active && len(server.equipmentRules.ActiveItemTypes) > 0 {
-					var reqType string
-					if itemData, ok := server.GetObjectLayerData(itemId); ok {
-						reqType = itemData.Data.Item.Type
-					}
-					if reqType != "" && !server.equipmentRules.ActiveItemTypes[reqType] {
-						log.Printf("Player %s tried to activate item '%s' of non-activable type '%s'. Rejecting.", c.playerID, itemId, reqType)
-						player.ObjectLayers[targetItemIndex].Active = originalState
-						return
-					}
-				}
-
-// --- Step 2: If activating an item, deactivate all other items of the SAME type (one-active-per-type rule) ---
-								// This handles swapping uniformly for ALL item types (skins, weapons, armor, etc.)
-								// so the inventory always has at most one active item per type.
-								if active && server.equipmentRules.OnePerType {
-									var requestedItemType string
-									if itemData, ok := server.GetObjectLayerData(itemId); ok {
-										requestedItemType = itemData.Data.Item.Type
-									}
-
-									if requestedItemType != "" {
-										for i := range player.ObjectLayers {
-											if i == targetItemIndex {
-												continue // Don't touch the item we just activated.
-											}
-											var currentItemType string
-											if itemData, ok := server.GetObjectLayerData(player.ObjectLayers[i].ItemID); ok {
-												currentItemType = itemData.Data.Item.Type
-											}
-											if currentItemType == requestedItemType && player.ObjectLayers[i].Active {
-												player.ObjectLayers[i].Active = false
-												log.Printf("Swapping active items: Deactivated '%s' (type=%s) for player %s.", player.ObjectLayers[i].ItemID, currentItemType, c.playerID)
-							}
-						}
-					}
-				}
-
-				// --- Step 3: Run validation and correction logic ---
-				activeLayerCount := 0
-				activeSkinCount := 0
-				hasAnySkin := false
-				firstSkinIndex := -1
-
-				// First pass to count active layers/skins and find the first available skin
-				for i, layer := range player.ObjectLayers {
-					var isSkin bool
-					if itemData, ok := server.GetObjectLayerData(layer.ItemID); ok && itemData.Data.Item.Type == "skin" {
-						isSkin = true
-					}
-
-					if isSkin {
-						hasAnySkin = true
-						if firstSkinIndex == -1 {
-							firstSkinIndex = i
-						}
-						if layer.Active {
-							activeSkinCount++
-						}
-					}
-					if layer.Active {
-						activeLayerCount++
-					}
-				}
-
-				// Correction 1: Player must have at least one active skin if they own one (equipment rule: requireSkin).
-				if server.equipmentRules.RequireSkin && hasAnySkin && activeSkinCount == 0 && firstSkinIndex != -1 {
-					player.ObjectLayers[firstSkinIndex].Active = true
-					log.Printf("Player %s tried to deactivate the last skin. Force-activating skin '%s' to maintain a valid state.", c.playerID, player.ObjectLayers[firstSkinIndex].ItemID)
-				}
-
-				// Correction 2: Player cannot have more than maxActiveLayers active items. Revert the activation if this rule is broken.
-				if activeLayerCount > server.maxActiveLayers {
-					log.Printf("Player %s has more than %d active items after request. Reverting activation of '%s'.", c.playerID, server.maxActiveLayers, itemId)
-					player.ObjectLayers[targetItemIndex].Active = originalState // Revert the specific change
-				}
-
-				// --- Step 4: After all corrections, recalculate stats that affect the player state directly. ---
-				server.InvalidateStats(player)
-				server.ApplyResistanceStat(player, server.maps[player.MapCode])
-			}()
-		} else if msg["type"] == "get_items_ids" {
-			payload, ok := msg["payload"].(map[string]interface{})
-			if !ok {
-				log.Printf("Invalid get_items_ids payload format for player %s", c.playerID)
-				return
-			}
-			itemId, ok := payload["itemId"].(string)
-			if !ok {
-				log.Printf("Invalid itemId in get_items_ids payload for player %s", c.playerID)
-				return
-			}
-
-			associatedIDs := server.GetAssociatedSkillItemIDs(itemId)
-
-			responsePayload := map[string]interface{}{
-				"requestedItemId":   itemId,
-				"associatedItemIds": associatedIDs,
-			}
-			responseMsg, err := json.Marshal(map[string]interface{}{"type": "skill_item_ids", "payload": responsePayload})
-			if err != nil {
-				log.Printf("Error marshaling skill_item_ids response: %v", err)
-				return
-			}
-			c.send <- responseMsg
-		} else if msg["type"] == "freeze_start" || msg["type"] == "dialogue_start" {
-			// Unified FrozenInteractionState entry.
-			// "dialogue_start" is accepted for backward compatibility.
-			reason := "dialogue" // default for legacy messages
-			if payload, ok := msg["payload"].(map[string]interface{}); ok {
-				if r, ok := payload["reason"].(string); ok && r != "" {
-					reason = r
-				}
-			}
-			server.mu.Lock()
-			if player, ok := server.maps[c.playerState.MapCode].players[c.playerID]; ok {
-				FreezePlayer(player, reason)
-			}
-			server.mu.Unlock()
-		} else if msg["type"] == "freeze_end" || msg["type"] == "dialogue_end" {
-			// Unified FrozenInteractionState exit.
-			reason := "dialogue" // default for legacy messages
-			if payload, ok := msg["payload"].(map[string]interface{}); ok {
-				if r, ok := payload["reason"].(string); ok && r != "" {
-					reason = r
-				}
-			}
-			server.mu.Lock()
-			if player, ok := server.maps[c.playerState.MapCode].players[c.playerID]; ok {
-				ThawPlayer(player, reason)
-			}
-			server.mu.Unlock()
-		} else if msg["type"] == "chat" {
-			// ── Chat relay ──────────────────────────────────────────
-			// Pure relay: forward JSON chat message to the target player.
-			// No game-state mutation — completely decoupled from combat.
-			payload, ok := msg["payload"].(map[string]interface{})
-			if !ok {
-				return
-			}
-			toID, _ := payload["to"].(string)
-			text, _ := payload["text"].(string)
-			if toID == "" || text == "" {
-				return
-			}
-			// Cap text length to prevent abuse
-			if len(text) > 256 {
-				text = text[:256]
-			}
-			// Build relay message with sender info
-			relay, _ := json.Marshal(map[string]interface{}{
-				"type": "chat",
-				"payload": map[string]interface{}{
-					"from": c.playerID,
-					"text": text,
-				},
-			})
-			server.mu.Lock()
-			// Find target player in the same map
-			if mapState, ok := server.maps[c.playerState.MapCode]; ok {
-				if targetPlayer, ok := mapState.players[toID]; ok {
-					if targetPlayer.Client != nil {
-						select {
-						case targetPlayer.Client.send <- relay:
-						default:
-							// Target channel full, drop message
-						}
-					}
-				}
-			}
-			server.mu.Unlock()
+// jsonUplinkToInputCommand translates a JSON uplink envelope into a
+// typed InputCommand. Recognises the type strings the server accepts
+// plus the dialogue_* aliases for FREEZE.
+func jsonUplinkToInputCommand(typeStr string, payload map[string]interface{}) InputCommand {
+	cmd := InputCommand{Kind: InputKindUnknown}
+	switch typeStr {
+	case "player_action":
+		x, _ := payload["targetX"].(float64)
+		y, _ := payload["targetY"].(float64)
+		cmd.Kind = InputKindPlayerAction
+		cmd.TargetX = x
+		cmd.TargetY = y
+	case "item_activation":
+		id, _ := payload["itemId"].(string)
+		active, _ := payload["active"].(bool)
+		cmd.Kind = InputKindItemActivation
+		cmd.ItemID = id
+		cmd.Active = active
+	case "freeze_start", "dialogue_start":
+		reason, _ := payload["reason"].(string)
+		if reason == "" {
+			reason = "dialogue"
 		}
+		cmd.Kind = InputKindFreezeStart
+		cmd.Reason = reason
+	case "freeze_end", "dialogue_end":
+		reason, _ := payload["reason"].(string)
+		if reason == "" {
+			reason = "dialogue"
+		}
+		cmd.Kind = InputKindFreezeEnd
+		cmd.Reason = reason
+	case "chat":
+		to, _ := payload["to"].(string)
+		text, _ := payload["text"].(string)
+		cmd.Kind = InputKindChat
+		cmd.ItemID = to
+		cmd.ChatText = text
+	case "get_items_ids":
+		id, _ := payload["itemId"].(string)
+		cmd.Kind = InputKindGetItemsIDs
+		cmd.ItemID = id
+	}
+	return cmd
 }
 
 // writePump writes messages to the WebSocket connection.
 func (c *Client) writePump() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[writePump] PANIC player=%s: %v", c.playerID, r)
+		}
 		ticker.Stop()
 		c.conn.Close()
+		log.Printf("[writePump] closed player=%s", c.playerID)
 	}()
 	for {
 		select {
@@ -738,22 +483,30 @@ func (c *Client) writePump() {
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			// Detect message type: binary AOI starts with 0x01-0x03, JSON starts with '{'
+			// Frame-type heuristic: binary AOI / typed input commands have
+			// a single-byte type prefix (< 0x20); JSON payloads start with
+			// '{' or '['.
 			msgType := websocket.TextMessage
 			if len(message) > 0 && message[0] != '{' && message[0] != '[' {
 				msgType = websocket.BinaryMessage
 			}
 			w, err := c.conn.NextWriter(msgType)
 			if err != nil {
+				log.Printf("[writePump] NextWriter failed player=%s: %v", c.playerID, err)
 				return
 			}
-			w.Write(message)
+			if _, err := w.Write(message); err != nil {
+				log.Printf("[writePump] write failed player=%s: %v", c.playerID, err)
+				return
+			}
 			if err := w.Close(); err != nil {
+				log.Printf("[writePump] flush failed player=%s: %v (size=%d)", c.playerID, err, len(message))
 				return
 			}
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Printf("[writePump] ping failed player=%s: %v", c.playerID, err)
 				return
 			}
 		}

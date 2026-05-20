@@ -242,7 +242,6 @@ func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 		Pos:   Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
 		Dims:  Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
 		Type:  "floor",
-		Color: s.resolveEntityColor(ent, "FLOOR"),
 	}
 	for _, itemID := range ent.GetObjectLayerItemIds() {
 		floor.ObjectLayers = append(floor.ObjectLayers, ObjectLayerState{
@@ -330,7 +329,6 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 		Life:         maxLife * s.initialLifeFraction,
 		LifeRegen:    lifeRegen,
 		ObjectLayers: objectLayers,
-		Color:        s.resolveEntityColor(ent, "BOT"),
 	}
 
 	// Apply initial stats
@@ -388,17 +386,12 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 			}
 		}
 	}
-	resourceColorKey := "RESOURCE"
-	if hasResourceDefaults && resourceDefaults.ColorKey != "" {
-		resourceColorKey = resourceDefaults.ColorKey
-	}
 
 	res := &ResourceState{
 		ID:           uuid.New().String(),
 		MapCode:      mapCode,
 		Pos:          startPos,
 		Dims:         dims,
-		Color:        s.resolveEntityColor(ent, resourceColorKey),
 		ObjectLayers: objectLayers,
 		MaxLife:      maxLife,
 		Life:         maxLife,
@@ -432,7 +425,6 @@ func (s *GameServer) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
 		Dims:         dims,
 		Type:         "obstacle",
 		ObjectLayers: objectLayers,
-		Color:        s.resolveEntityColor(ent, "OBSTACLE"),
 	}
 	ms.obstacles[obs.ID] = obs
 
@@ -465,7 +457,6 @@ func (s *GameServer) buildForeground(ms *MapState, ent *pb.EntityMessage) {
 		Dims:         Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
 		Type:         "foreground",
 		ObjectLayers: objectLayers,
-		Color:        s.resolveEntityColor(ent, "FOREGROUND"),
 	}
 	ms.foregrounds[fg.ID] = fg
 }
@@ -497,11 +488,6 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 		}
 	}
 
-	// Resolve colour: per-entity DB colour overrides palette default.
-	color := s.resolveEntityColor(ent, portalSubtypeColorKey(subtype))
-	if color == (ColorRGBA{}) {
-		color = s.colors["PORTAL"]
-	}
 
 	portal := &PortalState{
 		ID:           uuid.New().String(),
@@ -510,7 +496,6 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 		Type:         "portal",
 		ObjectLayers: objectLayers,
 		Subtype:      subtype,
-		Color:        color,
 	}
 	ms.portals[portal.ID] = portal
 
@@ -520,37 +505,7 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 	return portal
 }
 
-// resolveEntityColor returns the per-entity DB colour when it has non-zero
-// alpha, falling back to the named palette colour identified by paletteKey.
-// This ensures that map-placed entities with a custom colour in MongoDB
-// override the instance-wide palette default (fallback for no ObjectLayers).
-func (s *GameServer) resolveEntityColor(ent *pb.EntityMessage, paletteKey string) ColorRGBA {
-	if ent.GetColorA() > 0 {
-		return ColorRGBA{
-			R: int(ent.GetColorR()),
-			G: int(ent.GetColorG()),
-			B: int(ent.GetColorB()),
-			A: int(ent.GetColorA()),
-		}
-	}
-	return s.colors[paletteKey]
-}
 
-// portalSubtypeColorKey maps a portal subtype string to its palette colour key.
-func portalSubtypeColorKey(subtype string) string {
-	switch subtype {
-	case "inter-portal":
-		return "PORTAL_INTER_PORTAL"
-	case "inter-random":
-		return "PORTAL_INTER_RANDOM"
-	case "intra-random":
-		return "PORTAL_INTRA_RANDOM"
-	case "intra-portal":
-		return "PORTAL_INTRA_PORTAL"
-	default:
-		return "PORTAL"
-	}
-}
 
 // generateFloors creates a default floor grid if no floors are in the DB.
 func (ms *MapState) generateFloors(rows, cols int, floorItemID string) {

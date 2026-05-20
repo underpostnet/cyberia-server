@@ -23,7 +23,6 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 	var casterID, mapCode string
 	var casterPos Point
 	var casterDims Dimensions
-	var casterColor ColorRGBA
 	var casterLayers []ObjectLayerState
 	switch e := ctx.Caster.(type) {
 	case *PlayerState:
@@ -31,14 +30,12 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 		mapCode = e.MapCode
 		casterPos = e.Pos
 		casterDims = e.Dims
-		casterColor = e.Color
 		casterLayers = e.ObjectLayers
 	case *BotState:
 		casterID = e.ID
 		mapCode = e.MapCode
 		casterPos = e.Pos
 		casterDims = e.Dims
-		casterColor = e.Color
 		casterLayers = e.ObjectLayers
 	}
 
@@ -95,7 +92,6 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 		CasterID:     casterID,
 		MaxLife:      s.entityBaseMaxLife,
 		Life:         s.entityBaseMaxLife * s.doppelgangerInitialLifeFraction,
-		Color:        casterColor,
 	}
 
 	ctx.MapState.bots[doppelgangerBot.ID] = doppelgangerBot
