@@ -38,8 +38,11 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// ── Simulation / world (gameplay-affecting) ─────────────────────────────
-	s.cellSize = cfg.GetCellSize()
+	// ── Simulation cadence ─────────────────────────────────────────────────
+	// Presentation defaults (cell-pixel size, object default dims, camera,
+	// palette, interpolation) are deliberately absent — they are not part
+	// of the simulation contract. The cyberia-client fetches them from
+	// /api/cyberia-client-hints using its own CYBERIA_CLIENT_HINTS_CODE.
 	s.tickRate = int(cfg.GetTickRate())
 	if s.tickRate <= 0 {
 		s.tickRate = DefaultTickRate
@@ -52,8 +55,6 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 		s.snapshotRate = s.tickRate
 	}
 	s.tickDuration = computeTickDuration(s.tickRate)
-	s.defaultObjWidth = cfg.GetDefaultObjWidth()
-	s.defaultObjHeight = cfg.GetDefaultObjHeight()
 
 	// World / AOI
 	s.aoiRadius = cfg.GetAoiRadius()
@@ -193,8 +194,8 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	// Register built-in skill handlers now that skillConfig is populated.
 	s.InitSkills()
 
-	log.Printf("[GameServer] Instance config applied: cellSize=%.1f, tickRate=%dHz, snapshotRate=%dHz, tickDuration=%v, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d skills, %d entityDefaultTypes, %d entityDefaultBuilds, floorItem=%q, ghostItem=%q, coinItem=%q",
-		s.cellSize, s.tickRate, s.snapshotRate, s.tickDuration, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.skillConfig), len(s.entityDefaults), len(s.entityDefaultBuilds), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
+	log.Printf("[GameServer] Instance config applied: tickRate=%dHz, snapshotRate=%dHz, tickDuration=%v, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d skills, %d entityDefaultTypes, %d entityDefaultBuilds, floorItem=%q, ghostItem=%q, coinItem=%q",
+		s.tickRate, s.snapshotRate, s.tickDuration, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.skillConfig), len(s.entityDefaults), len(s.entityDefaultBuilds), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
 }
 
 // ReplaceObjectLayerCache atomically replaces the entire cache.

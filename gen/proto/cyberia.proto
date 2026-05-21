@@ -270,15 +270,16 @@ message EquipmentRules {
 // DOCUMENTATION-MIGRATION.md.
 
 message InstanceConfig {
-  // ── Simulation cadence ──
-  double cell_size                     = 1;
-  // Retired field numbers are reserved. History lives in DOCUMENTATION-MIGRATION.md.
-  reserved 2, 3, 6, 7, 8, 9, 10, 11;
-  reserved "fps", "interpolation_ms", "camera_smoothing", "camera_zoom",
+  // Retired field numbers are reserved. Presentation-only fields (cell-pixel
+  // sizing, camera, palette, interpolation window, default object dims,
+  // status-icon visuals, client-hints document) never travel on the
+  // simulation contract — the cyberia-client reads them from
+  // /api/cyberia-client-hints. History lives in DOCUMENTATION-MIGRATION.md.
+  reserved 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11;
+  reserved "cell_size", "fps", "interpolation_ms", "default_obj_width",
+           "default_obj_height", "camera_smoothing", "camera_zoom",
            "default_width_screen_factor", "default_height_screen_factor",
            "dev_ui", "colors";
-  double default_obj_width             = 4;
-  double default_obj_height            = 5;
 
   // ── World / AOI ──
   double aoi_radius                    = 12;

@@ -224,10 +224,6 @@ type GameServer struct {
 	aoiRadius      float64
 	portalHoldTime time.Duration
 
-	cellSize         float64
-	defaultObjWidth  float64
-	defaultObjHeight float64
-
 	// ── Tick model (authoritative simulation cadence) ────────────────────────
 	// The server advances one logical Tick per tickDuration. snapshotRate
 	// is the AOI replication Hz; ≤ tickRate.
@@ -347,17 +343,19 @@ type SkillMapEntry struct {
 
 // InitPayload — bootstrap message sent once on WebSocket connect.
 // Strictly simulation and protocol; no presentation fields.
+//
+// Presentation values (cell-pixel size, camera tunings, palette,
+// interpolation window, status-icon visuals) are NOT sent here. The C
+// client resolves all of those through /api/cyberia-client-hints using
+// its own CYBERIA_CLIENT_HINTS_CODE.
 type InitPayload struct {
-	GridW               int                        `json:"gridW"`
-	GridH               int                        `json:"gridH"`
-	DefaultObjectWidth  float64                    `json:"defaultObjectWidth"`
-	DefaultObjectHeight float64                    `json:"defaultObjectHeight"`
-	CellSize            float64                    `json:"cellSize"`
-	TickRate            int                        `json:"tickRate"`
-	SnapshotRate        int                        `json:"snapshotRate"`
-	AoiRadius           float64                    `json:"aoiRadius"`
-	SumStatsLimit       int                        `json:"sumStatsLimit"`
-	ObjectLayers        []ObjectLayerState         `json:"objectLayers"`
-	SkillMap            map[string][]SkillMapEntry `json:"skillMap"`
-	EntityDefaults      []EntityTypeDefaultConfig  `json:"entityDefaults"`
+	GridW          int                        `json:"gridW"`
+	GridH          int                        `json:"gridH"`
+	TickRate       int                        `json:"tickRate"`
+	SnapshotRate   int                        `json:"snapshotRate"`
+	AoiRadius      float64                    `json:"aoiRadius"`
+	SumStatsLimit  int                        `json:"sumStatsLimit"`
+	ObjectLayers   []ObjectLayerState         `json:"objectLayers"`
+	SkillMap       map[string][]SkillMapEntry `json:"skillMap"`
+	EntityDefaults []EntityTypeDefaultConfig  `json:"entityDefaults"`
 }

@@ -140,24 +140,22 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	s.ApplyResistanceStat(playerState, startMapState)
 	playerState.Life = playerState.MaxLife * s.initialLifeFraction // Set life based on config fraction
 
-	// InitPayload is strictly simulation/protocol. No palette, no camera,
-	// no devUi, no status-icon visuals, no screen factors, no interp ms.
-	// The client owns presentation locally and may, optionally, fetch
-	// per-instance overrides from the engine's /api/cyberia-client-hints
-	// REST endpoint — that path is independent of this WS connection.
+	// InitPayload is strictly simulation/protocol. Zero presentation: no
+	// palette, no camera, no devUi, no status-icon visuals, no screen
+	// factors, no interpolation window, no cell-pixel sizing, no default
+	// object dimensions. The C client owns its render policy and resolves
+	// every visual value through /api/cyberia-client-hints using its own
+	// CYBERIA_CLIENT_HINTS_CODE.
 	initPayload := InitPayload{
-		GridW:               startMapState.gridW,
-		GridH:               startMapState.gridH,
-		DefaultObjectWidth:  s.defaultObjWidth,
-		DefaultObjectHeight: s.defaultObjHeight,
-		CellSize:            s.cellSize,
-		TickRate:            s.tickRate,
-		SnapshotRate:        s.snapshotRate,
-		AoiRadius:           s.aoiRadius,
-		SumStatsLimit:       playerState.SumStatsLimit,
-		ObjectLayers:        playerState.ObjectLayers,
-		SkillMap:            s.buildSkillMap(),
-		EntityDefaults:      s.buildEntityDefaultsSlice(),
+		GridW:          startMapState.gridW,
+		GridH:          startMapState.gridH,
+		TickRate:       s.tickRate,
+		SnapshotRate:   s.snapshotRate,
+		AoiRadius:      s.aoiRadius,
+		SumStatsLimit:  playerState.SumStatsLimit,
+		ObjectLayers:   playerState.ObjectLayers,
+		SkillMap:       s.buildSkillMap(),
+		EntityDefaults: s.buildEntityDefaultsSlice(),
 	}
 	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
 	select {

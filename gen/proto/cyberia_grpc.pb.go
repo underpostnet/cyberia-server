@@ -14,7 +14,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.1
 // - protoc             v3.14.0
-// source: proto/cyberia.proto
+// source: cyberia.proto
 
 package proto
 
@@ -351,5 +351,5 @@ var CyberiaDataService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "proto/cyberia.proto",
+	Metadata: "cyberia.proto",
 }
