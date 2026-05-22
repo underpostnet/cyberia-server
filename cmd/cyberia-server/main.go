@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -17,10 +18,41 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// findEnvFile searches for a .env file starting from the current working
+// directory and walking up the tree until it finds one (or reaches the root).
+// This allows `go run` from cmd/cyberia-server/ to pick up the project-root .env.
+func findEnvFile() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for {
+		candidate := filepath.Join(dir, ".env")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
 func main() {
-	// Load .env file if present (does not override already-set env vars)
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found or failed to load, relying on environment variables.")
+	// Load .env file if present (does not override already-set env vars).
+	// Walks up from CWD so that running from cmd/cyberia-server/ still finds
+	// the project-root .env file.
+	envPath := findEnvFile()
+	if envPath != "" {
+		if err := godotenv.Load(envPath); err != nil {
+			log.Printf("Failed to load %s: %v", envPath, err)
+		} else {
+			log.Printf("Loaded env from %s", envPath)
+		}
+	} else {
+		log.Println("No .env file found; relying on environment variables.")
 	}
 
 	// Core game server
