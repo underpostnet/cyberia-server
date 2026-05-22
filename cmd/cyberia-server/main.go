@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"strconv"
 	"time"
 
@@ -18,9 +17,11 @@ import (
 )
 
 func main() {
-	// Load .env file if present (does not override already-set env vars)
+	// Load .env from CWD if present. In production / K8S the env is sourced
+	// by the shell wrapper before exec'ing the binary, so a missing .env is
+	// the expected case and non-fatal.
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found or failed to load, relying on environment variables.")
+		log.Println("No .env file found; relying on environment variables.")
 	}
 
 	// Core game server
@@ -98,22 +99,13 @@ func main() {
 
 	log.Printf("Server started on :%s", port)
 
-	// Fire READY_CMD in the background once the server is bound and listening.
-	// Mirrors the ready_cmd behaviour in server.py (5th argument pattern).
-	if readyCmd := os.Getenv("READY_CMD"); readyCmd != "" {
-		go func() {
-			// Small grace period so the HTTP server is fully accepting connections.
-			time.Sleep(500 * time.Millisecond)
-			log.Printf("Executing READY_CMD: %s", readyCmd)
-			cmd := exec.Command("sh", "-c", readyCmd)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				log.Printf("READY_CMD failed: %v", err)
-			}
-		}()
-	}
-
+	// The server's lifecycle is owned by the runtime, not by an orchestrator
+	// callback. A successful bind + accept loop means the readinessProbe
+	// (TCP socket on `port`) will pass and Kubernetes will mark the pod
+	// Ready — that is the canonical "running" signal. A failed bind, a
+	// panic, or any other startup error returns from ListenAndServe with
+	// an error and log.Fatal exits non-zero, which the kubelet observes
+	// and surfaces as a CrashLoopBackOff. No shell-callback layer needed.
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal("ListenAndServe:", err)
 	}

@@ -20,7 +20,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PROTO_DIR="${PROJECT_ROOT}/proto"
+PROTO_DIR="${PROJECT_ROOT}/gen/proto"
 
 SKIP_DNF=0
 PROTO_ONLY=0
@@ -125,8 +125,8 @@ fi
 echo ">>> Generating Go protobuf + gRPC stubs..."
 protoc \
   --proto_path="${PROTO_DIR}" \
-  --go_out="${PROTO_DIR}" --go_opt=paths=source_relative \
-  --go-grpc_out="${PROTO_DIR}" --go-grpc_opt=paths=source_relative \
+  --go_out="${PROJECT_ROOT}" --go_opt=module=cyberia-server \
+  --go-grpc_out="${PROJECT_ROOT}" --go-grpc_opt=module=cyberia-server \
   "${PROTO_DIR}/cyberia.proto"
 
 echo ">>> Generated:"
