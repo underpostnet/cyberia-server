@@ -15,3 +15,7 @@ go.work
 go.work.sum
 
 .env
+
+# Build binary
+/cyberia-server
+/server

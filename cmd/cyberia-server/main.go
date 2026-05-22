@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -16,11 +18,45 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// findEnvFile searches for a .env file starting from the current working
+// directory and walking up until it finds one or reaches the project root
+// (identified by go.mod). This allows `go run` from cmd/cyberia-server/
+// to pick up the project-root .env.
+func findEnvFile() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for {
+		candidate := filepath.Join(dir, ".env")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		// Stop at project root (where go.mod lives) to avoid escaping the repo.
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
 func main() {
-	// Load .env from CWD if present. In production / K8S the env is sourced
-	// by the shell wrapper before exec'ing the binary, so a missing .env is
-	// the expected case and non-fatal.
-	if err := godotenv.Load(); err != nil {
+	// Load .env file if present (does not override already-set env vars).
+	// Walks up from CWD so that running from cmd/cyberia-server/ still finds
+	// the project-root .env file.
+	envPath := findEnvFile()
+	if envPath != "" {
+		if err := godotenv.Load(envPath); err != nil {
+			log.Printf("Failed to load %s: %v", envPath, err)
+		} else {
+			log.Printf("Loaded env from %s", envPath)
+		}
+	} else {
 		log.Println("No .env file found; relying on environment variables.")
 	}
 
