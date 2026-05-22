@@ -19,8 +19,9 @@ import (
 )
 
 // findEnvFile searches for a .env file starting from the current working
-// directory and walking up the tree until it finds one (or reaches the root).
-// This allows `go run` from cmd/cyberia-server/ to pick up the project-root .env.
+// directory and walking up until it finds one or reaches the project root
+// (identified by go.mod). This allows `go run` from cmd/cyberia-server/
+// to pick up the project-root .env.
 func findEnvFile() string {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -30,6 +31,10 @@ func findEnvFile() string {
 		candidate := filepath.Join(dir, ".env")
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
+		}
+		// Stop at project root (where go.mod lives) to avoid escaping the repo.
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			break
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
