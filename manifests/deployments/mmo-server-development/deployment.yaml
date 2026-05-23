@@ -25,14 +25,56 @@ spec:
           envFrom:
             - secretRef:
                 name: underpost-config
+          ports:
+            - containerPort: 8083
 
           command:
             - /bin/sh
             - -c
             - >
-              npm install -g underpost &&
-              underpost config set container-status dd-cyberia-mmo-server-development-initializing-deployment &&
-              set -a && . /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server/env/development.env && set +a && export ENGINE_GRPC_ADDRESS=dd-cyberia-grpc-service-development-blue.default.svc.cluster.local:50051 && export READY_CMD='underpost config set container-status dd-cyberia-mmo-server-development-running-deployment' && /home/dd/engine/cyberia-server/server
+              set -a && . /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server/env/development.env && set +a && export ENGINE_GRPC_ADDRESS=dd-cyberia-grpc-service-development-blue.default.svc.cluster.local:50051 && exec /home/dd/engine/cyberia-server/server
+          readinessProbe:
+            {
+              "tcpSocket": {
+                "port": 8083
+              },
+              "initialDelaySeconds": 3,
+              "periodSeconds": 5,
+              "timeoutSeconds": 3,
+              "failureThreshold": 6
+            }
+          livenessProbe:
+            {
+              "tcpSocket": {
+                "port": 8083
+              },
+              "initialDelaySeconds": 30,
+              "periodSeconds": 20,
+              "timeoutSeconds": 5,
+              "failureThreshold": 3
+            }
+          lifecycle:
+            {
+              "postStart": {
+                "exec": {
+                  "command": [
+                    "sh",
+                    "-c",
+                    "underpost config set container-status dd-cyberia-mmo-server-development-initializing-deployment || true"
+                  ]
+                }
+              },
+              "preStop": {
+                "exec": {
+                  "command": [
+                    "sh",
+                    "-c",
+                    "underpost config set container-status dd-cyberia-mmo-server-development-stopping-deployment || true"
+                  ]
+                }
+              }
+            }
+
 
     
           volumeMounts:
@@ -55,12 +97,12 @@ spec:
   selector:
     app: dd-cyberia-mmo-server-development-blue
   ports:
-    - name: 'tcp-8081'
+    - name: 'tcp-8083'
       protocol: TCP
-      port: 8081
-      targetPort: 8081
-    - name: 'udp-8081'
+      port: 8083
+      targetPort: 8083
+    - name: 'udp-8083'
       protocol: UDP
-      port: 8081
-      targetPort: 8081
+      port: 8083
+      targetPort: 8083
   type: LoadBalancer
