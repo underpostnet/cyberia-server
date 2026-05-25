@@ -69,6 +69,8 @@
 //	    u32  coinBalance
 //	    full inventory (writeFullInventory)
 //	    u8   frozen (0=normal, 1=frozen — FrozenInteractionState)
+//	    u8   statusIcon
+//	    f32  moveSpeed (cells/second — fed to client prediction integrator)
 package game
 
 import (
@@ -338,7 +340,12 @@ func (e *BinaryAOIEncoder) WriteResource(r *ResourceState, respawnIn *float64) {
 	e.putU8(ResourceStatusIcon(r))
 }
 
-func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, coinBalance uint32) {
+// WriteSelfPlayer writes the self-player block. The final two fields
+// (frozen + status icon) are followed by the authoritative MoveSpeed in
+// grid-units per second; the C/WASM client feeds this directly into its
+// prediction integrator so the byte-identical step formula matches
+// phaseMovement on every Agility / buff / debuff change.
+func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, coinBalance uint32, moveSpeed float64) {
 	flags := EntityTypePlayer | FlagHasLife
 	var respawnIn *float64
 	if p.IsGhost() {
@@ -402,6 +409,11 @@ func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, c
 	// Self-player also gets the status icon so the client can render the
 	// frozen/dead indicator above its own entity.
 	e.putU8(PlayerStatusIcon(p))
+
+	// Authoritative move speed (cells/second). Fed to the client prediction
+	// integrator so client-side step = moveSpeed * tickDuration matches the
+	// server byte-for-byte.
+	e.putF32(moveSpeed)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -558,8 +570,9 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 	playerStats := s.CalculateStats(player, mapState)
 	activeStatsSum := int(playerStats.Effect + playerStats.Resistance + playerStats.Agility +
 		playerStats.Range + playerStats.Intelligence + playerStats.Utility)
+	moveSpeed := s.CalculateMovementSpeed(playerStats)
 	// player.Coins is the canonical flat balance — read directly (O(1), no OL traversal).
-	enc.WriteSelfPlayer(player, activeStatsSum, player.Coins)
+	enc.WriteSelfPlayer(player, activeStatsSum, player.Coins, moveSpeed)
 
 	// Patch entity count in header.
 	// v2 header layout: msgType(1) + tick(4) + lastAckedSequence(4) + entityCount(2)
