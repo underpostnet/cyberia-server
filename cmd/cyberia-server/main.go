@@ -11,6 +11,7 @@ import (
 	"time"
 
 	api "cyberia-server/api"
+	"cyberia-server/api/problem"
 	game "cyberia-server/game"
 	"cyberia-server/grpcclient"
 
@@ -41,6 +42,48 @@ func findEnvFile() string {
 			break
 		}
 		dir = parent
+	}
+	return ""
+}
+
+// findPublicDir locates the static asset directory. Resolution order:
+//  1. The literal value of STATIC_DIR if set and the directory exists
+//     and contains an index.html.
+//  2. ./public relative to CWD if it contains an index.html.
+//  3. Walk up to the directory containing go.mod and use ./public there.
+//
+// This makes `go run ./cmd/cyberia-server` work from any subdirectory
+// without forcing the operator to set STATIC_DIR. Returning an empty
+// string is the caller's signal that no usable directory was found.
+func findPublicDir() string {
+	hasIndex := func(d string) bool {
+		_, err := os.Stat(filepath.Join(d, "index.html"))
+		return err == nil
+	}
+	if envDir := os.Getenv("STATIC_DIR"); envDir != "" {
+		if abs, err := filepath.Abs(envDir); err == nil && hasIndex(abs) {
+			return abs
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if local := filepath.Join(cwd, "public"); hasIndex(local) {
+			return local
+		}
+		dir := cwd
+		for {
+			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+				root := filepath.Join(dir, "public")
+				if hasIndex(root) {
+					return root
+				}
+				break
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
 	}
 	return ""
 }
@@ -110,16 +153,34 @@ func main() {
 
 	r := chi.NewRouter()
 
-	// Use environment variable `STATIC_DIR` or default to `./public` for static files.
-	// This serves the static frontend application.
-	staticDir := os.Getenv("STATIC_DIR")
+	// Resolve the static asset directory. findPublicDir walks up from
+	// CWD so `go run ./cmd/cyberia-server` works regardless of where
+	// it's invoked from; the operator can still pin a directory via
+	// STATIC_DIR. An empty result is fatal — without a public/index.html
+	// the dashboard renders as a blank page, which is the white-screen
+	// failure mode this branch exists to prevent.
+	staticDir := findPublicDir()
 	if staticDir == "" {
-		staticDir = "./public"
+		log.Fatalf("Static asset directory not found. Expected ./public with an index.html either in CWD, " +
+			"next to go.mod, or pointed at by STATIC_DIR. Run `npm run cyberia:dashboard` from the engine " +
+			"repo root to regenerate it.")
 	}
+	log.Printf("Serving static assets from %s", staticDir)
 	r.Handle("/*", game.StaticFileServer(staticDir, "/index.html"))
 
-	// Mount REST API under /api
-	r.Mount("/api", api.NewAPIRouter(s))
+	// Resolve the dereferenceable base URI for RFC 9457 problem.type
+	// values. Default keeps the dev URI; ops override per-deploy via
+	// CYBERIA_PROBLEM_BASE_URI (e.g. https://api.cyberiaonline.com/errors).
+	if base := os.Getenv("CYBERIA_PROBLEM_BASE_URI"); base != "" {
+		problem.SetBaseTypeURI(base)
+	}
+
+	// Mount REST API under /api. Options drive CORS allow-list, instance
+	// labelling in metric responses, and request timeout.
+	r.Mount("/api", api.NewAPIRouter(api.RouterOptions{
+		GameServer:   s,
+		InstanceCode: instanceCode,
+	}))
 	// Keep websocket endpoint
 	r.HandleFunc("/ws", s.HandleConnections)
 

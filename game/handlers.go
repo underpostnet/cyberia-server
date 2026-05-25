@@ -184,13 +184,13 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// than hanging the HTTP handler goroutine silently.
 	select {
 	case s.register <- client:
-		// registered successfully
+		s.recordWsConnect()
 	case <-time.After(5 * time.Second):
 		log.Printf("[HandleConnections] timeout waiting to register player=%s — listenForClients may be dead", playerID)
 		conn.Close()
 		return
 	}
-	go client.writePump()
+	go client.writePump(s)
 	go client.readPump(s)
 }
 
@@ -204,6 +204,7 @@ func (c *Client) readPump(server *GameServer) {
 			log.Printf("[readPump] PANIC player=%s: %v", c.playerID, r)
 		}
 		log.Printf("[readPump] closing player=%s", c.playerID)
+		server.recordWsDisconnect()
 		server.unregister <- c
 		c.conn.Close()
 	}()
@@ -216,6 +217,7 @@ func (c *Client) readPump(server *GameServer) {
 	for {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
+			server.recordWsReadError()
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("[readPump] player=%s read error: %v", c.playerID, err)
 			}
@@ -224,6 +226,7 @@ func (c *Client) readPump(server *GameServer) {
 		if len(message) == 0 {
 			continue
 		}
+		server.recordWsRead(len(message))
 		if message[0] <= 0x1F {
 			c.handleBinaryUplink(message, server)
 		} else {
@@ -463,7 +466,7 @@ func jsonUplinkToInputCommand(typeStr string, payload map[string]interface{}) In
 }
 
 // writePump writes messages to the WebSocket connection.
-func (c *Client) writePump() {
+func (c *Client) writePump(server *GameServer) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
 		if r := recover(); r != nil {
@@ -490,20 +493,25 @@ func (c *Client) writePump() {
 			}
 			w, err := c.conn.NextWriter(msgType)
 			if err != nil {
+				server.recordWsWriteError()
 				log.Printf("[writePump] NextWriter failed player=%s: %v", c.playerID, err)
 				return
 			}
 			if _, err := w.Write(message); err != nil {
+				server.recordWsWriteError()
 				log.Printf("[writePump] write failed player=%s: %v", c.playerID, err)
 				return
 			}
 			if err := w.Close(); err != nil {
+				server.recordWsWriteError()
 				log.Printf("[writePump] flush failed player=%s: %v (size=%d)", c.playerID, err, len(message))
 				return
 			}
+			server.recordWsWrite(len(message))
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				server.recordWsWriteError()
 				log.Printf("[writePump] ping failed player=%s: %v", c.playerID, err)
 				return
 			}

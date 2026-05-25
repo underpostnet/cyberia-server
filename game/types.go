@@ -312,6 +312,9 @@ type GameServer struct {
 
 	// Equipment rules — governs activation constraints.
 	equipmentRules EquipmentRulesConfig
+
+	// Lock-free observability counters. See metrics_counters.go.
+	counters runtimeCounters
 }
 
 // EntityTypeDefaultConfig — gameplay defaults for one entity type.

@@ -1,0 +1,525 @@
+openapi: 3.1.0
+info:
+  title: Cyberia Server Metrics API
+  summary: Operational metrics and health endpoints for the cyberia-server MMO runtime.
+  description: |
+    The cyberia-server REST API exposes operational metrics, health, and
+    runtime telemetry for the authoritative simulation runtime of the
+    Cyberia Online MMORPG.
+
+    This API is intended for **operations and observability**, not for
+    gameplay. Gameplay traffic flows exclusively over the `/ws` WebSocket
+    on the same host:port; the REST surface is read-only.
+
+    All errors conform to **RFC 9457 — Problem Details for HTTP APIs**
+    and use the media type `application/problem+json`.
+  version: "1.0.0"
+  contact:
+    name: Underpost Engine
+    url: https://underpost.net
+    email: development@underpost.net
+  license:
+    name: MIT
+    identifier: MIT
+
+servers:
+  - url: https://server.cyberiaonline.com
+    description: Production
+  - url: http://localhost:8081
+    description: Local development
+
+tags:
+  - name: health
+    description: Liveness and readiness probes.
+  - name: metrics
+    description: Runtime metrics for dashboards and alerting.
+  - name: docs
+    description: OpenAPI and Postman artefacts.
+
+paths:
+  /api/v1/health:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      description: Returns `200 OK` as long as the HTTP server is accepting traffic. Does not depend on world load state.
+      operationId: getLiveness
+      responses:
+        "200":
+          description: Service is live.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Liveness"
+
+  /api/v1/health/ready:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      description: |
+        Returns `200 OK` once the gRPC WorldBuilder has completed `LoadAll`
+        and at least one map is loaded. Returns `503 Service Unavailable`
+        with an RFC 9457 envelope until then.
+      operationId: getReadiness
+      responses:
+        "200":
+          description: Service is ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Readiness"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/metrics:
+    get:
+      tags: [metrics]
+      summary: Full metrics snapshot
+      operationId: getMetrics
+      responses:
+        "200":
+          description: Full metrics envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricsResponse"
+
+  /api/v1/metrics/health:
+    get:
+      tags: [metrics]
+      summary: Domain health subset
+      operationId: getMetricsHealth
+      responses:
+        "200":
+          description: Domain health summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricsHealth"
+
+  /api/v1/metrics/entities:
+    get:
+      tags: [metrics]
+      summary: Entity census
+      operationId: getMetricsEntities
+      responses:
+        "200":
+          description: Entity counts by type.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityMetrics"
+
+  /api/v1/metrics/websocket:
+    get:
+      tags: [metrics]
+      summary: WebSocket throughput and state
+      operationId: getMetricsWebSocket
+      responses:
+        "200":
+          description: WebSocket counters.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                  websocket:
+                    $ref: "#/components/schemas/WebSocketServerMetrics"
+
+  /api/v1/metrics/workload:
+    get:
+      tags: [metrics]
+      summary: Workload bucket
+      operationId: getMetricsWorkload
+      responses:
+        "200":
+          description: Workload metrics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkloadMetrics"
+
+  /api/v1/metrics/runtime:
+    get:
+      tags: [metrics]
+      summary: Simulation cadence and Go runtime
+      operationId: getMetricsRuntime
+      responses:
+        "200":
+          description: Runtime metrics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeMetrics"
+
+  /api/v1/metrics/maps:
+    get:
+      tags: [metrics]
+      summary: Per-map entity breakdown
+      operationId: getMetricsMaps
+      responses:
+        "200":
+          description: All maps.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                  maps:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MapBreakdown"
+
+  /api/v1/metrics/maps/{code}:
+    get:
+      tags: [metrics]
+      summary: Single-map entity breakdown
+      operationId: getMetricsMap
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Map code (case-sensitive).
+      responses:
+        "200":
+          description: Map breakdown.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapBreakdown"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/openapi.json:
+    get:
+      tags: [docs]
+      summary: OpenAPI 3.1 specification (JSON)
+      operationId: getOpenAPIJSON
+      responses:
+        "200":
+          description: OpenAPI document.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/v1/openapi.yaml:
+    get:
+      tags: [docs]
+      summary: OpenAPI 3.1 specification (YAML)
+      operationId: getOpenAPIYAML
+      responses:
+        "200":
+          description: OpenAPI document.
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /api/v1/postman.json:
+    get:
+      tags: [docs]
+      summary: Postman v2.1 collection
+      operationId: getPostmanCollection
+      responses:
+        "200":
+          description: Postman collection.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/v1/docs:
+    get:
+      tags: [docs]
+      summary: Swagger UI
+      operationId: getSwaggerUI
+      responses:
+        "200":
+          description: Interactive documentation.
+          content:
+            text/html:
+              schema:
+                type: string
+
+components:
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: Resource not found.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    ServiceUnavailable:
+      description: Service is temporarily unavailable.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details for HTTP APIs.
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+          examples: ["https://api.cyberiaonline.com/errors/not-found"]
+        title:
+          type: string
+          examples: ["Resource not found"]
+        status:
+          type: integer
+          minimum: 100
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+
+    Liveness:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          const: ok
+        timestamp:
+          type: string
+          format: date-time
+
+    Readiness:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          const: ready
+        timestamp:
+          type: string
+          format: date-time
+
+    HealthStatus:
+      type: string
+      description: Closed enum, ordered best-to-worst.
+      enum: [healthy, degraded, critical, maintenance]
+
+    WorkloadLevel:
+      type: string
+      enum: [low, moderate, high, critical]
+
+    WebSocketStatus:
+      type: string
+      enum: [running, stopping, error, crashed]
+
+    EntityTypeMetrics:
+      type: object
+      required: [type, count, total_object_layers, active_object_layers, inactive_object_layers]
+      properties:
+        type:
+          type: string
+          description: |
+            One of the seven world entity types. Always emitted, even
+            when `count` is 0, so dashboards can render a stable column
+            order.
+          enum: [player, bot, floor, obstacle, foreground, portal, resource]
+        count:
+          type: integer
+          minimum: 0
+        total_object_layers:
+          type: integer
+          minimum: 0
+        active_object_layers:
+          type: integer
+          minimum: 0
+        inactive_object_layers:
+          type: integer
+          minimum: 0
+
+    EntityMetrics:
+      type: object
+      properties:
+        total_entities:
+          type: integer
+        entities_by_type:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntityTypeMetrics"
+        total_object_layers:
+          type: integer
+        active_object_layers:
+          type: integer
+        inactive_object_layers:
+          type: integer
+        avg_object_layers_per_entity:
+          type: number
+
+    WorkloadMetrics:
+      type: object
+      properties:
+        load_percentage:
+          type: number
+        max_entity_capacity:
+          type: integer
+        max_object_layers:
+          type: integer
+        current_load:
+          $ref: "#/components/schemas/WorkloadLevel"
+
+    WebSocketServerMetrics:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/WebSocketStatus"
+        active_connections:
+          type: integer
+        uptime_sec:
+          type: integer
+        messages_in_total:
+          type: integer
+        messages_out_total:
+          type: integer
+        bytes_in_total:
+          type: integer
+        bytes_out_total:
+          type: integer
+        read_errors_total:
+          type: integer
+        write_errors_total:
+          type: integer
+        connects_total:
+          type: integer
+        disconnects_total:
+          type: integer
+        last_error_message:
+          type: string
+        last_error_time:
+          type: string
+          format: date-time
+
+    RuntimeMetrics:
+      type: object
+      properties:
+        tick_rate_hz:
+          type: integer
+        snapshot_rate_hz:
+          type: integer
+        current_tick:
+          type: integer
+        tick_duration_ms:
+          type: number
+        aoi_radius:
+          type: number
+        ws_messages_in_total:
+          type: integer
+        ws_messages_out_total:
+          type: integer
+        ws_bytes_in_total:
+          type: integer
+        ws_bytes_out_total:
+          type: integer
+        ws_read_errors_total:
+          type: integer
+        ws_write_errors_total:
+          type: integer
+        ws_connects_total:
+          type: integer
+        ws_disconnects_total:
+          type: integer
+        go_version:
+          type: string
+        num_goroutine:
+          type: integer
+        num_cpu:
+          type: integer
+        gomaxprocs:
+          type: integer
+        heap_alloc_mb:
+          type: integer
+        heap_sys_mb:
+          type: integer
+        num_gc:
+          type: integer
+
+    MapBreakdown:
+      type: object
+      properties:
+        map_code:
+          type: string
+        grid_w:
+          type: integer
+        grid_h:
+          type: integer
+        players:
+          type: integer
+        bots:
+          type: integer
+        floors:
+          type: integer
+        obstacles:
+          type: integer
+        foregrounds:
+          type: integer
+        portals:
+          type: integer
+        resources:
+          type: integer
+        total_entities:
+          type: integer
+
+    MetricsHealth:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        health:
+          $ref: "#/components/schemas/HealthStatus"
+        description:
+          type: string
+        uptime_sec:
+          type: integer
+
+    MetricsResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        instance_code:
+          type: string
+        health:
+          $ref: "#/components/schemas/HealthStatus"
+        health_description:
+          type: string
+        server_uptime_sec:
+          type: integer
+        entities:
+          $ref: "#/components/schemas/EntityMetrics"
+        websocket:
+          $ref: "#/components/schemas/WebSocketServerMetrics"
+        workload:
+          $ref: "#/components/schemas/WorkloadMetrics"
+        runtime:
+          $ref: "#/components/schemas/RuntimeMetrics"
+        maps:
+          type: array
+          items:
+            $ref: "#/components/schemas/MapBreakdown"

@@ -1,0 +1,149 @@
+{
+  "info": {
+    "_postman_id": "cyberia-server-metrics-v1",
+    "name": "Cyberia Server — Metrics API (v1)",
+    "description": "Operational metrics endpoints for the cyberia-server MMO runtime.\nKept in lock-step with `api/openapi.yaml` — when one changes, both ship together.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8081",
+      "description": "API base URL. Override to https://server.cyberiaonline.com in the Production environment."
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Liveness",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/health", "host": ["{{baseUrl}}"], "path": ["api", "v1", "health"] }
+          }
+        },
+        {
+          "name": "Readiness",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/health/ready", "host": ["{{baseUrl}}"], "path": ["api", "v1", "health", "ready"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Metrics",
+      "item": [
+        {
+          "name": "Full snapshot",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/metrics", "host": ["{{baseUrl}}"], "path": ["api", "v1", "metrics"] }
+          }
+        },
+        {
+          "name": "Health subset",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/metrics/health", "host": ["{{baseUrl}}"], "path": ["api", "v1", "metrics", "health"] }
+          }
+        },
+        {
+          "name": "Entities",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/metrics/entities", "host": ["{{baseUrl}}"], "path": ["api", "v1", "metrics", "entities"] }
+          }
+        },
+        {
+          "name": "WebSocket",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/metrics/websocket", "host": ["{{baseUrl}}"], "path": ["api", "v1", "metrics", "websocket"] }
+          }
+        },
+        {
+          "name": "Workload",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/metrics/workload", "host": ["{{baseUrl}}"], "path": ["api", "v1", "metrics", "workload"] }
+          }
+        },
+        {
+          "name": "Runtime",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/metrics/runtime", "host": ["{{baseUrl}}"], "path": ["api", "v1", "metrics", "runtime"] }
+          }
+        },
+        {
+          "name": "Maps — all",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/metrics/maps", "host": ["{{baseUrl}}"], "path": ["api", "v1", "metrics", "maps"] }
+          }
+        },
+        {
+          "name": "Maps — by code",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/metrics/maps/:code",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "metrics", "maps", ":code"],
+              "variable": [{ "key": "code", "value": "FOREST" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Docs",
+      "item": [
+        {
+          "name": "OpenAPI (JSON)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/openapi.json", "host": ["{{baseUrl}}"], "path": ["api", "v1", "openapi.json"] }
+          }
+        },
+        {
+          "name": "OpenAPI (YAML)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/yaml" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/openapi.yaml", "host": ["{{baseUrl}}"], "path": ["api", "v1", "openapi.yaml"] }
+          }
+        },
+        {
+          "name": "Postman collection",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/postman.json", "host": ["{{baseUrl}}"], "path": ["api", "v1", "postman.json"] }
+          }
+        },
+        {
+          "name": "Swagger UI",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "text/html" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/docs", "host": ["{{baseUrl}}"], "path": ["api", "v1", "docs"] }
+          }
+        }
+      ]
+    }
+  ]
+}
