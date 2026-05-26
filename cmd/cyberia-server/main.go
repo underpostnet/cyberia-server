@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/exec"
 
 	"path/filepath"
 	"strconv"
@@ -88,6 +90,23 @@ func findPublicDir() string {
 	return ""
 }
 
+func runUnderpostStatus(status string) {
+	containerID := os.Getenv("CONTAINER_DEPLOY_ID")
+	if containerID == "" {
+		return
+	}
+	var value string
+	if status == "error" {
+		value = "error"
+	} else {
+		value = containerID + "-" + status
+	}
+	cmd := exec.Command("underpost", "config", "set", "container-status", value)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("[status] underpost config set container-status %s: %v\n%s", value, err, out)
+	}
+}
+
 func main() {
 	// Load .env file if present (does not override already-set env vars).
 	// Walks up from CWD so that running from cmd/cyberia-server/ still finds
@@ -126,6 +145,7 @@ func main() {
 			Address: grpcAddr,
 		})
 		if err != nil {
+			runUnderpostStatus("error")
 			log.Fatalf("Engine gRPC required: dial %s failed: %v", grpcAddr, err)
 		}
 		wb := grpcclient.NewWorldBuilder(gc, s)
@@ -133,6 +153,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		if err := wb.LoadAll(ctx); err != nil {
 			cancel()
+			runUnderpostStatus("error")
 			log.Fatalf("Engine gRPC world load failed: %v — Engine must be running before starting cyberia-server.", err)
 		}
 		cancel()
@@ -196,14 +217,17 @@ func main() {
 
 	log.Printf("Server started on :%s", port)
 
-	// The server's lifecycle is owned by the runtime, not by an orchestrator
-	// callback. A successful bind + accept loop means the readinessProbe
-	// (TCP socket on `port`) will pass and Kubernetes will mark the pod
-	// Ready — that is the canonical "running" signal. A failed bind, a
-	// panic, or any other startup error returns from ListenAndServe with
-	// an error and log.Fatal exits non-zero, which the kubelet observes
-	// and surfaces as a CrashLoopBackOff. No shell-callback layer needed.
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatal("ListenAndServe:", err)
+	// Bind the TCP port first so we can signal "running" before entering
+	// the accept loop. A failed bind immediately signals "error" and exits.
+	ln, listenErr := net.Listen("tcp", ":"+port)
+	if listenErr != nil {
+		runUnderpostStatus("error")
+		log.Fatal("Listen:", listenErr)
+	}
+	runUnderpostStatus("running-deployment")
+
+	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		runUnderpostStatus("error")
+		log.Fatal("Serve:", err)
 	}
 }
