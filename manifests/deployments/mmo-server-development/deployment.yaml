@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: dd-cyberia-mmo-server-development-blue
-          image: underpost/cyberia-server:v3.2.9
+          image: underpost/cyberia-server:v3.2.14
           imagePullPolicy: Always
           envFrom:
             - secretRef:
@@ -32,7 +32,7 @@ spec:
             - /bin/sh
             - -c
             - >
-              set -a && . /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server/env/development.env && set +a && export ENGINE_GRPC_ADDRESS=dd-cyberia-grpc-service-development-blue.default.svc.cluster.local:50051 && exec /home/dd/engine/cyberia-server/server
+              set -a && . /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server/env/development.env && set +a && export ENGINE_GRPC_ADDRESS=dd-cyberia-grpc-service-development-blue.default.svc.cluster.local:50051 && export SERVER_PORT=8083 && exec /home/dd/engine/cyberia-server/server
           readinessProbe:
             {
               "tcpSocket": {
