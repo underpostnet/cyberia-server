@@ -28,6 +28,7 @@ const (
 	StatusDead              uint8 = 5 // Entity is dead / respawning
 	StatusResource          uint8 = 6 // Resource entity — static, exploitable
 	StatusResourceExtracted uint8 = 7 // Resource entity depleted / extracted
+	StatusActionProvider    uint8 = 8 // Bot with a bound action (talk/quest-talk/shop/craft/storage)
 )
 
 // PlayerStatusIcon computes the overhead status icon for a player.
@@ -59,6 +60,11 @@ func BotStatusIcon(b *BotState) uint8 {
 	}
 	if b.IsGhost() {
 		return StatusDead
+	}
+	// An action-provider icon takes precedence over passive/hostile so the
+	// player sees the interaction affordance. Dead bots still show StatusDead.
+	if b.ActionCode != "" {
+		return StatusActionProvider
 	}
 	if b.Behavior == "hostile" {
 		return StatusHostile

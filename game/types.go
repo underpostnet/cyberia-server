@@ -98,6 +98,19 @@ type PlayerState struct {
 	FreezeStart  time.Time `json:"-"`
 	StatsDirty   bool      `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
 
+	// ── Dialogue interaction context ────────────────────────────────────────
+	// ActiveDialogueEntityID is the entity the player currently has an open
+	// dialogue with (set on dlg_start, cleared on dlg_complete / dlg_cancel).
+	// It is the cross-process contract that lets dlg_complete validate that
+	// the client is acknowledging the dialogue it actually opened — a stale
+	// or spoofed entityId is dropped. The client never declares the action
+	// type or quest code; the server resolves those from actionCache.
+	ActiveDialogueEntityID string `json:"-"`
+	// Quests is the player's per-session quest progress, keyed by quest code.
+	// Authoritative for the session; best-effort mirrored to engine-cyberia
+	// quest-progress REST for persistence.
+	Quests map[string]*QuestProgress `json:"-"`
+
 	// ── Tick / replication metadata ─────────────────────────────────────────
 	// LastSnapshotTick is stamped by phaseReplication just before the AOI
 	// encoder runs for this player. It is embedded in the snapshot header.
@@ -150,6 +163,9 @@ type BotState struct {
 	// visualization only and is always Active: false.
 	Coins      uint32 `json:"-"`
 	StatsDirty bool   `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
+	// ActionCode binds this entity to a cached CyberiaAction (see actionCache).
+	// Non-empty marks the bot as an action-provider (ESI 8 overhead icon).
+	ActionCode string `json:"-"`
 }
 
 type PortalConfig struct {
@@ -305,6 +321,15 @@ type GameServer struct {
 	// Skill map (runtime): trigger item ID → []SkillDefinition
 	skillConfig map[string][]SkillDefinition
 
+	// Action / quest content fetched from engine-cyberia REST at instance
+	// init (actions and quests are not part of the gRPC world payload).
+	//   actionCache  — entityId → bound CyberiaAction (resolved by the server
+	//                  on every dlg_complete; the client never declares it).
+	//   questDefs    — questCode → CyberiaQuest definition (steps/rewards).
+	// Both are rebuilt on every world (re)build; access is under s.mu.
+	actionCache map[string]*CyberiaAction
+	questDefs   map[string]*CyberiaQuest
+
 	// Stats cache: entityID → cached entry with TTL. Invalidated when StatsDirty is set
 	// or when the TTL (statsCacheTTL) expires.
 	statsCache    map[string]statsCacheEntry
@@ -361,4 +386,8 @@ type InitPayload struct {
 	ObjectLayers   []ObjectLayerState         `json:"objectLayers"`
 	SkillMap       map[string][]SkillMapEntry `json:"skillMap"`
 	EntityDefaults []EntityTypeDefaultConfig  `json:"entityDefaults"`
+	// Quests is the player's active/completed quest snapshot on connect.
+	// Empty for a fresh guest. The C client seeds its local quest_store from
+	// this and keeps it live via dlg_ack events (see Quest Journal).
+	Quests []QuestSnapshotEntry `json:"quests"`
 }

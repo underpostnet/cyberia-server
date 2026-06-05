@@ -33,6 +33,9 @@ const (
 	InputKindFreezeEnd      InputKind = 0x14
 	InputKindChat           InputKind = 0x15
 	InputKindGetItemsIDs    InputKind = 0x16
+	InputKindDlgStart       InputKind = 0x17 // dialogue opened — freeze + bind context
+	InputKindDlgComplete    InputKind = 0x18 // all lines read — advance talk/quest, unfreeze
+	InputKindDlgCancel      InputKind = 0x19 // dismissed early — unfreeze, no progress
 )
 
 // InputCommand is the unit of client→server input.
@@ -43,10 +46,12 @@ type InputCommand struct {
 	// Payload fields — only the ones relevant to Kind are populated.
 	TargetX  float64 // PlayerAction
 	TargetY  float64 // PlayerAction
-	ItemID   string  // ItemActivation, GetItemsIDs, Chat target
-	Active   bool    // ItemActivation
-	Reason   string  // FreezeStart, FreezeEnd
-	ChatText string  // Chat
+	ItemID     string // ItemActivation, GetItemsIDs, Chat target
+	Active     bool   // ItemActivation
+	Reason     string // FreezeStart, FreezeEnd
+	ChatText   string // Chat
+	EntityID   string // DlgStart, DlgComplete, DlgCancel — the NPC entity
+	DialogCode string // DlgComplete — the dialogue group the player just read
 }
 
 // EnqueueInput pushes a command onto the player's InputQueue. Called from

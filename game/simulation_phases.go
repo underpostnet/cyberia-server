@@ -83,6 +83,12 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 		s.handleChatInput(player, mapState, cmd)
 	case InputKindGetItemsIDs:
 		s.handleGetItemsIDsInput(player, cmd)
+	case InputKindDlgStart:
+		s.handleDlgStart(player, cmd)
+	case InputKindDlgComplete:
+		s.handleDlgComplete(player, cmd)
+	case InputKindDlgCancel:
+		s.handleDlgCancel(player, cmd)
 	case InputKindHandshake, InputKindUnknown:
 		// no-op
 	}

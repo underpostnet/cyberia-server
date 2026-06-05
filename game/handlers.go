@@ -156,6 +156,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		ObjectLayers:   playerState.ObjectLayers,
 		SkillMap:       s.buildSkillMap(),
 		EntityDefaults: s.buildEntityDefaultsSlice(),
+		Quests:         s.buildQuestSnapshot(playerState),
 	}
 	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
 	select {
@@ -362,6 +363,36 @@ func (c *Client) handleBinaryUplink(message []byte, server *GameServer) {
 			ItemID:     itemID,
 		}
 		c.dispatchInputCommand(server, cmd)
+	case InputKindDlgStart, InputKindDlgCancel:
+		entityID, okE := r.str()
+		itemID, okI := r.str()
+		if !okE || !okI || entityID == "" {
+			return
+		}
+		cmd := InputCommand{
+			Kind:       kind,
+			ClientTick: readOptionalU32(r),
+			Sequence:   readOptionalU32(r),
+			EntityID:   entityID,
+			ItemID:     itemID,
+		}
+		c.dispatchInputCommand(server, cmd)
+	case InputKindDlgComplete:
+		entityID, okE := r.str()
+		itemID, okI := r.str()
+		dialogCode, okD := r.str()
+		if !okE || !okI || !okD || entityID == "" {
+			return
+		}
+		cmd := InputCommand{
+			Kind:       kind,
+			ClientTick: readOptionalU32(r),
+			Sequence:   readOptionalU32(r),
+			EntityID:   entityID,
+			ItemID:     itemID,
+			DialogCode: dialogCode,
+		}
+		c.dispatchInputCommand(server, cmd)
 	default:
 		log.Printf("[WARN] Unknown binary uplink type: 0x%02x from player %s", message[0], c.playerID)
 	}
@@ -461,6 +492,26 @@ func jsonUplinkToInputCommand(typeStr string, payload map[string]interface{}) In
 		id, _ := payload["itemId"].(string)
 		cmd.Kind = InputKindGetItemsIDs
 		cmd.ItemID = id
+	case "dlg_start":
+		entityID, _ := payload["entityId"].(string)
+		itemID, _ := payload["itemId"].(string)
+		cmd.Kind = InputKindDlgStart
+		cmd.EntityID = entityID
+		cmd.ItemID = itemID
+	case "dlg_complete":
+		entityID, _ := payload["entityId"].(string)
+		itemID, _ := payload["itemId"].(string)
+		dialogCode, _ := payload["dialogCode"].(string)
+		cmd.Kind = InputKindDlgComplete
+		cmd.EntityID = entityID
+		cmd.ItemID = itemID
+		cmd.DialogCode = dialogCode
+	case "dlg_cancel":
+		entityID, _ := payload["entityId"].(string)
+		itemID, _ := payload["itemId"].(string)
+		cmd.Kind = InputKindDlgCancel
+		cmd.EntityID = entityID
+		cmd.ItemID = itemID
 	}
 	return cmd
 }

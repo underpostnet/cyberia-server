@@ -40,6 +40,10 @@ func (s *GameServer) BuildWorldFromInstance(
 
 	s.buildMapsFromInstance(instance, mapMsgs)
 
+	// Bind CyberiaAction / CyberiaQuest content (fetched from engine REST)
+	// to the freshly built entities. Safe no-op when engine REST is unset.
+	s.loadActionContent(instance.GetMapCodes())
+
 	log.Printf("[InstanceLoader] World built: %d maps loaded.", len(s.maps))
 
 	// Log entity counts per map
@@ -82,6 +86,7 @@ func (s *GameServer) RebuildWorld(
 
 	// Rebuild via the same path as initial load.
 	s.buildMapsFromInstance(instance, mapMsgs)
+	s.loadActionContent(instance.GetMapCodes())
 
 	// Restore players into the (possibly new) map states.
 	for code, players := range savedPlayers {
