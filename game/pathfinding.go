@@ -3,12 +3,8 @@ package game
 import (
 	"container/heap"
 	"fmt"
-	"log"
 	"math"
 	"math/rand"
-	"time"
-
-	"github.com/google/uuid"
 )
 
 // Pathfinding structures and algorithms
@@ -61,66 +57,6 @@ func NewPathfinder(w, h int) *Pathfinder {
 		p.grid[y] = make([]int, w)
 	}
 	return p
-}
-
-// GenerateObstacles places random obstacles on the map, avoiding specified portal rectangles.
-func (pf *Pathfinder) GenerateObstacles(numObstacles int, portalRects []Rectangle) {
-	pf.obstacles = make(map[string]ObjectState)
-	for y := range pf.grid {
-		for x := range pf.grid[y] {
-			pf.grid[y][x] = 0
-		}
-	}
-
-	maxObsW, maxObsH, minObsDim := int(math.Max(2, float64(pf.gridW)/15.0)), int(math.Max(2, float64(pf.gridH)/15.0)), 2
-	rand.Seed(time.Now().UnixNano())
-	for placed, attempts := 0, 0; placed < numObstacles && attempts < numObstacles*10; attempts++ {
-		w, h := rand.Intn(maxObsW-minObsDim+1) + minObsDim, rand.Intn(maxObsH-minObsDim+1) + minObsDim
-		minX, minY := rand.Intn(pf.gridW - w), rand.Intn(pf.gridH - h)
-		obsRect := Rectangle{MinX: float64(minX), MinY: float64(minY), MaxX: float64(minX + w), MaxY: float64(minY + h)}
-
-		overlap := false
-		for _, pRect := range portalRects {
-			if rectsOverlap(obsRect, pRect) {
-				overlap = true
-				break
-			}
-		}
-		if overlap {
-			continue
-		}
-
-		for _, existingObs := range pf.obstacles {
-			existingRect := Rectangle{
-				MinX: existingObs.Pos.X, MinY: existingObs.Pos.Y,
-				MaxX: existingObs.Pos.X + existingObs.Dims.Width, MaxY: existingObs.Pos.Y + existingObs.Dims.Height,
-			}
-			if rectsOverlap(obsRect, existingRect) {
-				overlap = true
-				break
-			}
-		}
-		if overlap {
-			continue
-		}
-
-		obs := ObjectState{
-			ID:   uuid.New().String(),
-			Pos:  Point{X: float64(minX), Y: float64(minY)},
-			Dims: Dimensions{Width: float64(w), Height: float64(h)},
-			Type: "obstacle",
-		}
-		for y := minY; y < minY+h; y++ {
-			for x := minX; x < minX+w; x++ {
-				if x >= 0 && x < pf.gridW && y >= 0 && y < pf.gridH {
-					pf.grid[y][x] = 1
-				}
-			}
-		}
-		pf.obstacles[obs.ID] = obs
-		placed++
-	}
-	log.Printf("Map generation complete. Placed %d obstacles.", len(pf.obstacles))
 }
 
 // isCellWalkable checks if a single grid cell is walkable.

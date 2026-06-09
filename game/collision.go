@@ -376,15 +376,3 @@ func (p *PlayerState) IsGhost() bool {
 func (b *BotState) IsGhost() bool {
 	return !b.RespawnTime.IsZero()
 }
-
-// isDeadItemID returns true if itemID is among the DeadItemIDs for the given entity type.
-func (s *GameServer) isDeadItemID(entityType, itemID string) bool {
-	if d, ok := s.entityDefaults[entityType]; ok {
-		for _, id := range d.DeadItemIDs {
-			if id == itemID {
-				return true
-			}
-		}
-	}
-	return false
-}

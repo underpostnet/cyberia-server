@@ -423,15 +423,6 @@ func (c *Client) dispatchInputCommand(server *GameServer, cmd InputCommand) {
 	server.mu.Unlock()
 }
 
-// mustMarshal marshals v to JSON, panicking on error (should never happen for fixed structs).
-func mustMarshal(v interface{}) []byte {
-	b, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	return b
-}
-
 // handleJSONUplink is a thin JSON→InputCommand adapter for text-framed
 // uplink messages. Decodes the message into a typed InputCommand and
 // enqueues it via dispatchInputCommand. phaseInput is the authoritative

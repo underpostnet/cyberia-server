@@ -84,10 +84,3 @@ func ThawPlayer(player *PlayerState, reason string) {
 	player.FreezeReason = ""
 	player.FreezeStart = time.Time{}
 }
-
-// IsFrozen is a convenience predicate.  In hot paths (collision loop, game
-// loop), reading player.Frozen directly is fine — this exists for
-// readability in handler code.
-func IsFrozen(player *PlayerState) bool {
-	return player.Frozen
-}

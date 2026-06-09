@@ -127,8 +127,8 @@ default:
 
 // ── Coin helpers (flat-field design) ─────────────────────────────────────────
 //
-// Rule: always use these helpers for coins.  Never call addItemQty/setItemQty
-// with s.coinItemID — those functions are for non-coin items only.
+// Rule: always use these helpers for coins — never manipulate the coin
+// ObjectLayer slot's Quantity directly.
 //
 // Invariant after every helper call:
 //   entity.Coins == coin ObjectLayer slot .Quantity
@@ -197,54 +197,6 @@ return &(*layers)[i]
 }
 *layers = append(*layers, ObjectLayerState{ItemID: itemID, Active: false, Quantity: 0})
 return &(*layers)[len(*layers)-1]
-}
-
-// getItemQty returns the Quantity for itemID in layers, or 0 if absent.
-func getItemQty(layers []ObjectLayerState, itemID string) int {
-for i := range layers {
-if layers[i].ItemID == itemID {
-return layers[i].Quantity
-}
-}
-return 0
-}
-
-// addItemQty adds delta to the ObjectLayer Quantity for itemID (non-coin items).
-// Creates the OL slot if absent.  Clamps to ≥ 0.  Returns new quantity.
-func (s *GameServer) addItemQty(entity interface{}, itemID string, delta int) int {
-switch e := entity.(type) {
-case *PlayerState:
-ol := getOrCreateItemOL(&e.ObjectLayers, itemID)
-ol.Quantity += delta
-if ol.Quantity < 0 {
-ol.Quantity = 0
-}
-return ol.Quantity
-case *BotState:
-ol := getOrCreateItemOL(&e.ObjectLayers, itemID)
-ol.Quantity += delta
-if ol.Quantity < 0 {
-ol.Quantity = 0
-}
-return ol.Quantity
-}
-return 0
-}
-
-// setItemQty sets ObjectLayer Quantity for itemID exactly (non-coin items).
-// Creates the OL slot if absent.  Clamps to ≥ 0.
-func (s *GameServer) setItemQty(entity interface{}, itemID string, amount int) {
-if amount < 0 {
-amount = 0
-}
-switch e := entity.(type) {
-case *PlayerState:
-ol := getOrCreateItemOL(&e.ObjectLayers, itemID)
-ol.Quantity = amount
-case *BotState:
-ol := getOrCreateItemOL(&e.ObjectLayers, itemID)
-ol.Quantity = amount
-}
 }
 
 // ── Fountain helpers ──────────────────────────────────────────────────────
@@ -381,26 +333,6 @@ s.InvalidateStats(player)
 sendFCT(player, FCTTypeCoinLoss, player.Pos.X, player.Pos.Y, burn)
 log.Printf("[ECONOMY] Respawn sink: %s burned %d coins (%.0f%%)",
 player.ID, burn, s.respawnCostPercent*100)
-}
-
-// SinkPortalFee burns a flat fee when a player uses a portal.
-// Alpha default: portalFee = 0 (disabled).
-func (s *GameServer) SinkPortalFee(player *PlayerState) {
-if s.portalFee <= 0 {
-return
-}
-balance := int(coinQuantity(player))
-burn := s.portalFee
-if burn > balance {
-burn = balance
-}
-if burn <= 0 {
-return
-}
-s.addCoins(player, -burn)
-s.InvalidateStats(player)
-sendFCT(player, FCTTypeCoinLoss, player.Pos.X, player.Pos.Y, burn)
-log.Printf("[ECONOMY] Portal sink: %s burned %d coins (flat fee)", player.ID, burn)
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────

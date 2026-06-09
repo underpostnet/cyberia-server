@@ -133,9 +133,6 @@ func NewBinaryAOIEncoder() *BinaryAOIEncoder {
 	return &BinaryAOIEncoder{buf: make([]byte, maxBinaryBufSize)}
 }
 
-func (e *BinaryAOIEncoder) Reset()        { e.pos = 0 }
-func (e *BinaryAOIEncoder) Bytes() []byte { return e.buf[:e.pos] }
-
 func (e *BinaryAOIEncoder) putU8(v byte) {
 	e.buf[e.pos] = v
 	e.pos++

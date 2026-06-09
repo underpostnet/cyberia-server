@@ -512,32 +512,6 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 
 
 
-// generateFloors creates a default floor grid if no floors are in the DB.
-func (ms *MapState) generateFloors(rows, cols int, floorItemID string) {
-	if rows <= 0 || cols <= 0 {
-		return
-	}
-	tileWidth := float64(ms.gridW) / float64(cols)
-	tileHeight := float64(ms.gridH) / float64(rows)
-
-	for r := 0; r < rows; r++ {
-		for c := 0; c < cols; c++ {
-			floor := &FloorState{
-				ID:   uuid.New().String(),
-				Pos:  Point{X: float64(c) * tileWidth, Y: float64(r) * tileHeight},
-				Dims: Dimensions{Width: tileWidth, Height: tileHeight},
-				Type: "floor",
-			}
-			if floorItemID != "" {
-				floor.ObjectLayers = []ObjectLayerState{
-					{ItemID: floorItemID, Active: true, Quantity: 1},
-				}
-			}
-			ms.floors[floor.ID] = floor
-		}
-	}
-}
-
 // printInstanceGraph prints an ASCII representation of the instance's map/portal graph.
 func printInstanceGraph(instance *pb.InstanceMessage, maps map[string]*MapState) {
 	mapCodes := instance.GetMapCodes()

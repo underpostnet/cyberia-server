@@ -33,9 +33,6 @@ func SetBaseTypeURI(uri string) {
 	baseTypeURI = uri
 }
 
-// BaseTypeURI returns the configured root URI.
-func BaseTypeURI() string { return baseTypeURI }
-
 // Problem is the on-the-wire representation of an RFC 9457 document.
 // Extensions (any additional, ad-hoc fields) are flattened into the top
 // level object via MarshalJSON — the RFC explicitly allows this and
@@ -166,17 +163,6 @@ func BadRequest(detail string) Problem {
 		Type:   typeURI("bad-request"),
 		Title:  "Bad request",
 		Status: http.StatusBadRequest,
-		Detail: detail,
-	}
-}
-
-// UnprocessableEntity — RFC 9110 §15.5.21. Use when the payload is
-// syntactically valid but semantically rejected.
-func UnprocessableEntity(detail string) Problem {
-	return Problem{
-		Type:   typeURI("unprocessable-entity"),
-		Title:  "Unprocessable entity",
-		Status: http.StatusUnprocessableEntity,
 		Detail: detail,
 	}
 }
