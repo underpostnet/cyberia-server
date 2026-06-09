@@ -366,13 +366,3 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 		}
 	}
 }
-
-// IsGhost checks if a player is in a ghost state (i.e., dead and waiting to respawn).
-func (p *PlayerState) IsGhost() bool {
-	return !p.RespawnTime.IsZero()
-}
-
-// IsGhost checks if a bot is in a ghost state (i.e., dead and waiting to respawn).
-func (b *BotState) IsGhost() bool {
-	return !b.RespawnTime.IsZero()
-}

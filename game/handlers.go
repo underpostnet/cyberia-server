@@ -108,18 +108,22 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	playerState := &PlayerState{
-		ID:            playerID,
+		EntityBase: EntityBase{
+			ID:           playerID,
+			Pos:          Point{X: float64(startPosI.X), Y: float64(startPosI.Y)},
+			Dims:         playerDims,
+			ObjectLayers: playerOLs,
+		},
+		Mortal: Mortal{
+			MaxLife: s.entityBaseMaxLife,
+			Life:    s.entityBaseMaxLife * s.initialLifeFraction,
+		},
 		MapCode:       startMapCode,
-		Pos:           Point{X: float64(startPosI.X), Y: float64(startPosI.Y)},
-		Dims:          playerDims,
 		Path:          []PointI{},
 		TargetPos:     PointI{-1, -1},
 		Direction:     NONE,
 		Mode:          IDLE,
 		SumStatsLimit: s.sumStatsLimit,
-		ObjectLayers:  playerOLs,
-		MaxLife:       s.entityBaseMaxLife,
-		Life:          s.entityBaseMaxLife * s.initialLifeFraction,
 		LifeRegen:     lifeRegen,
 	}
 	client := &Client{

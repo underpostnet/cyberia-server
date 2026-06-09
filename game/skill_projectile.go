@@ -88,17 +88,21 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 	}
 
 	projectileBot := &BotState{
-		ID:           uuid.New().String(),
-		MapCode:      mapCode,
-		Pos:          Point{X: spawnX, Y: spawnY},
-		Dims:         projectileDims,
-		Behavior:     "skill",
-		Direction:    projectileDirection,
-		ExpiresAt:    time.Now().Add(projectileLifetime),
-		ObjectLayers: projectileOLs,
-		CasterID:     casterID,
-		MaxLife:      projectileBaseLife,
-		Life:         projectileBaseLife,
+		EntityBase: EntityBase{
+			ID:           uuid.New().String(),
+			Pos:          Point{X: spawnX, Y: spawnY},
+			Dims:         projectileDims,
+			ObjectLayers: projectileOLs,
+		},
+		Mortal: Mortal{
+			MaxLife: projectileBaseLife,
+			Life:    projectileBaseLife,
+		},
+		MapCode:   mapCode,
+		Behavior:  "skill",
+		Direction: projectileDirection,
+		ExpiresAt: time.Now().Add(projectileLifetime),
+		CasterID:  casterID,
 		// One-shot palette lookup at spawn; sim never re-reads.
 	}
 

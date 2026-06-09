@@ -243,9 +243,11 @@ func findPortalByCell(entries []portalEntry, cellX, cellY int) *PortalState {
 
 func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 	floor := &FloorState{
-		ID:   uuid.New().String(),
-		Pos:  Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
-		Dims: Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
+		EntityBase: EntityBase{
+			ID:   uuid.New().String(),
+			Pos:  Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
+			Dims: Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
+		},
 		Type: "floor",
 	}
 	for _, itemID := range ent.GetObjectLayerItemIds() {
@@ -318,22 +320,26 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 	}
 
 	bot := &BotState{
-		ID:           uuid.New().String(),
-		MapCode:      mapCode,
-		Pos:          startPos,
-		Dims:         dims,
-		Path:         []PointI{},
-		TargetPos:    PointI{-1, -1},
-		Direction:    NONE,
-		Mode:         IDLE,
-		Behavior:     s.DetermineBotBehavior(objectLayers),
-		SpawnCenter:  startPos,
-		SpawnRadius:  spawnRadius,
-		AggroRange:   aggroRange,
-		MaxLife:      maxLife,
-		Life:         maxLife * s.initialLifeFraction,
-		LifeRegen:    lifeRegen,
-		ObjectLayers: objectLayers,
+		EntityBase: EntityBase{
+			ID:           uuid.New().String(),
+			Pos:          startPos,
+			Dims:         dims,
+			ObjectLayers: objectLayers,
+		},
+		Mortal: Mortal{
+			MaxLife: maxLife,
+			Life:    maxLife * s.initialLifeFraction,
+		},
+		MapCode:     mapCode,
+		Path:        []PointI{},
+		TargetPos:   PointI{-1, -1},
+		Direction:   NONE,
+		Mode:        IDLE,
+		Behavior:    s.DetermineBotBehavior(objectLayers),
+		SpawnCenter: startPos,
+		SpawnRadius: spawnRadius,
+		AggroRange:  aggroRange,
+		LifeRegen:   lifeRegen,
 	}
 
 	// Apply initial stats
@@ -393,13 +399,17 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 	}
 
 	res := &ResourceState{
-		ID:           uuid.New().String(),
-		MapCode:      mapCode,
-		Pos:          startPos,
-		Dims:         dims,
-		ObjectLayers: objectLayers,
-		MaxLife:      maxLife,
-		Life:         maxLife,
+		EntityBase: EntityBase{
+			ID:           uuid.New().String(),
+			Pos:          startPos,
+			Dims:         dims,
+			ObjectLayers: objectLayers,
+		},
+		Mortal: Mortal{
+			MaxLife: maxLife,
+			Life:    maxLife,
+		},
+		MapCode: mapCode,
 	}
 
 	// Apply stats (resistance may increase MaxLife)
@@ -425,11 +435,13 @@ func (s *GameServer) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
 	}
 
 	obs := ObjectState{
-		ID:           uuid.New().String(),
-		Pos:          pos,
-		Dims:         dims,
-		Type:         "obstacle",
-		ObjectLayers: objectLayers,
+		EntityBase: EntityBase{
+			ID:           uuid.New().String(),
+			Pos:          pos,
+			Dims:         dims,
+			ObjectLayers: objectLayers,
+		},
+		Type: "obstacle",
 	}
 	ms.obstacles[obs.ID] = obs
 
@@ -457,11 +469,13 @@ func (s *GameServer) buildForeground(ms *MapState, ent *pb.EntityMessage) {
 	}
 
 	fg := ObjectState{
-		ID:           uuid.New().String(),
-		Pos:          Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
-		Dims:         Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
-		Type:         "foreground",
-		ObjectLayers: objectLayers,
+		EntityBase: EntityBase{
+			ID:           uuid.New().String(),
+			Pos:          Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
+			Dims:         Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
+			ObjectLayers: objectLayers,
+		},
+		Type: "foreground",
 	}
 	ms.foregrounds[fg.ID] = fg
 }
@@ -494,12 +508,14 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 	}
 
 	portal := &PortalState{
-		ID:           uuid.New().String(),
-		Pos:          Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
-		Dims:         dims,
-		Type:         "portal",
-		ObjectLayers: objectLayers,
-		Subtype:      subtype,
+		EntityBase: EntityBase{
+			ID:           uuid.New().String(),
+			Pos:          Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
+			Dims:         dims,
+			ObjectLayers: objectLayers,
+		},
+		Type:    "portal",
+		Subtype: subtype,
 	}
 	ms.portals[portal.ID] = portal
 

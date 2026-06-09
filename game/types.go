@@ -55,35 +55,48 @@ type ObjectLayerState struct {
 	Quantity int    `json:"quantity"`
 }
 
-type ObjectState struct {
+// EntityBase — identity + spatial fields shared by every world entity.
+// Anonymously embedded so field access (e.g. player.Pos) and JSON keys are
+// promoted unchanged.
+type EntityBase struct {
 	ID           string             `json:"id"`
 	Pos          Point              `json:"Pos"`
 	Dims         Dimensions         `json:"Dims"`
-	Type         string             `json:"Type"`
 	ObjectLayers []ObjectLayerState `json:"objectLayers"`
 }
 
-type PlayerState struct {
-	ID                     string             `json:"id"`
-	MapCode                string             `json:"MapCode"`
-	Pos                    Point              `json:"Pos"`
-	Dims                   Dimensions         `json:"Dims"`
-	Path                   []PointI           `json:"path"`
-	TargetPos              PointI             `json:"targetPos"`
-	AOI                    Rectangle          `json:"AOI"`
-	Client                 *Client            `json:"-"`
-	Direction              Direction          `json:"direction"`
-	Mode                   ObjectLayerMode    `json:"mode"`
-	OnPortal               bool               `json:"onPortal"`
-	TimeOnPortal           time.Time          `json:"-"`
-	ActivePortalID         string             `json:"activePortalID"`
-	SumStatsLimit          int                `json:"sumStatsLimit"`
-	ObjectLayers           []ObjectLayerState `json:"objectLayers"`
+// Mortal — life/respawn block for entities that can die (Player, Bot, Resource).
+type Mortal struct {
 	MaxLife                float64            `json:"maxLife"`
 	Life                   float64            `json:"life"`
-	LifeRegen              float64            `json:"lifeRegen"`
 	RespawnTime            time.Time          `json:"-"`
 	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
+	StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
+}
+
+// IsGhost reports whether the entity is dead and waiting to respawn.
+func (m *Mortal) IsGhost() bool { return !m.RespawnTime.IsZero() }
+
+type ObjectState struct {
+	EntityBase
+	Type string `json:"Type"`
+}
+
+type PlayerState struct {
+	EntityBase
+	Mortal
+	MapCode        string          `json:"MapCode"`
+	Path           []PointI        `json:"path"`
+	TargetPos      PointI          `json:"targetPos"`
+	AOI            Rectangle       `json:"AOI"`
+	Client         *Client         `json:"-"`
+	Direction      Direction       `json:"direction"`
+	Mode           ObjectLayerMode `json:"mode"`
+	OnPortal       bool            `json:"onPortal"`
+	TimeOnPortal   time.Time       `json:"-"`
+	ActivePortalID string          `json:"activePortalID"`
+	SumStatsLimit  int             `json:"sumStatsLimit"`
+	LifeRegen      float64         `json:"lifeRegen"`
 	// Coins is the canonical flat coin balance — the single source of truth
 	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
 	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
@@ -96,7 +109,6 @@ type PlayerState struct {
 	Frozen       bool      `json:"-"`
 	FreezeReason string    `json:"-"` // e.g. "dialogue", "inventory"
 	FreezeStart  time.Time `json:"-"`
-	StatsDirty   bool      `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
 
 	// ── Dialogue interaction context ────────────────────────────────────────
 	// ActiveDialogueEntityID is the entity the player currently has an open
@@ -126,43 +138,33 @@ type PlayerState struct {
 }
 
 type FloorState struct {
-	ID           string             `json:"id"`
-	Pos          Point              `json:"Pos"`
-	Dims         Dimensions         `json:"Dims"`
-	Type         string             `json:"Type"`
-	ObjectLayers []ObjectLayerState `json:"objectLayers"`
+	EntityBase
+	Type string `json:"Type"`
 }
 
 type BotState struct {
-	ID                     string             `json:"id"`
-	MapCode                string             `json:"MapCode"`
-	Pos                    Point              `json:"Pos"`
-	Dims                   Dimensions         `json:"Dims"`
-	Path                   []PointI           `json:"path"`
-	TargetPos              PointI             `json:"targetPos"`
-	Direction              Direction          `json:"direction"`
-	Mode                   ObjectLayerMode    `json:"mode"`
-	Behavior               string             `json:"behavior"` // "hostile" or "passive"
-	SpawnCenter            Point              `json:"spawnCenter"`
-	SpawnRadius            float64            `json:"spawnRadius"`
-	AggroRange             float64            `json:"aggroRange"`
-	CurrentTargetPlayer    string             `json:"-"` // player ID currently being pursued (if any)
-	lastPursuitTargetPos   PointI             `json:"-"` // cached player's last cell to know when to re-path
-	lastAction             time.Time          `json:"-"`
-	ObjectLayers           []ObjectLayerState `json:"objectLayers"`
-	ExpiresAt              time.Time          `json:"-"` // bots with a lifetime will be removed after this time
-	MaxLife                float64            `json:"maxLife"`
-	Life                   float64            `json:"life"`
-	LifeRegen              float64            `json:"lifeRegen"`
-	RespawnTime            time.Time          `json:"-"`
-	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
-	CasterID               string             `json:"-"` // ID of the player or bot that created this bot
+	EntityBase
+	Mortal
+	MapCode              string          `json:"MapCode"`
+	Path                 []PointI        `json:"path"`
+	TargetPos            PointI          `json:"targetPos"`
+	Direction            Direction       `json:"direction"`
+	Mode                 ObjectLayerMode `json:"mode"`
+	Behavior             string          `json:"behavior"` // "hostile" or "passive"
+	SpawnCenter          Point           `json:"spawnCenter"`
+	SpawnRadius          float64         `json:"spawnRadius"`
+	AggroRange           float64         `json:"aggroRange"`
+	CurrentTargetPlayer  string          `json:"-"` // player ID currently being pursued (if any)
+	lastPursuitTargetPos PointI          `json:"-"` // cached player's last cell to know when to re-path
+	lastAction           time.Time       `json:"-"`
+	ExpiresAt            time.Time       `json:"-"` // bots with a lifetime will be removed after this time
+	LifeRegen            float64         `json:"lifeRegen"`
+	CasterID             string          `json:"-"` // ID of the player or bot that created this bot
 	// Coins is the canonical flat coin balance — the single source of truth
 	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
 	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
 	// visualization only and is always Active: false.
-	Coins      uint32 `json:"-"`
-	StatsDirty bool   `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
+	Coins uint32 `json:"-"`
 	// ActionCode binds this entity to a cached CyberiaAction (see actionCache).
 	// Non-empty marks the bot as an action-provider (ESI 8 overhead icon).
 	ActionCode string `json:"-"`
@@ -182,32 +184,17 @@ type PortalConfig struct {
 // extractor on death, switch to dead/extracted visuals, and respawn later.
 // They never move.
 type ResourceState struct {
-	ID                     string             `json:"id"`
-	MapCode                string             `json:"MapCode"`
-	Pos                    Point              `json:"Pos"`
-	Dims                   Dimensions         `json:"Dims"`
-	ObjectLayers           []ObjectLayerState `json:"objectLayers"`
-	MaxLife                float64            `json:"maxLife"`
-	Life                   float64            `json:"life"`
-	RespawnTime            time.Time          `json:"-"`
-	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
-	StatsDirty             bool               `json:"-"`
-}
-
-// IsGhost checks if a resource is in a destroyed state (waiting to respawn).
-func (r *ResourceState) IsGhost() bool {
-	return !r.RespawnTime.IsZero()
+	EntityBase
+	Mortal
+	MapCode string `json:"MapCode"`
 }
 
 type PortalState struct {
-	ID           string             `json:"id"`
-	Pos          Point              `json:"Pos"`
-	Dims         Dimensions         `json:"Dims"`
-	Type         string             `json:"Type"`
-	ObjectLayers []ObjectLayerState `json:"objectLayers"`
-	Subtype      string             `json:"Subtype"` // inter-portal | inter-random | intra-random | intra-portal
-	PortalConfig *PortalConfig      `json:"-"`
-	Label        string             `json:"PortalLabel"`
+	EntityBase
+	Type         string        `json:"Type"`
+	Subtype      string        `json:"Subtype"` // inter-portal | inter-random | intra-random | intra-portal
+	PortalConfig *PortalConfig `json:"-"`
+	Label        string        `json:"PortalLabel"`
 }
 
 type MapState struct {
