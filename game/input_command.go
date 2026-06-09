@@ -44,14 +44,14 @@ type InputCommand struct {
 	ClientTick uint32 // client-side estimated server tick when emitted
 	Sequence   uint32 // monotonic per-client sequence number
 	// Payload fields — only the ones relevant to Kind are populated.
-	TargetX  float64 // PlayerAction
-	TargetY  float64 // PlayerAction
-	ItemID     string // ItemActivation, GetItemsIDs, Chat target
-	Active     bool   // ItemActivation
-	Reason     string // FreezeStart, FreezeEnd
-	ChatText   string // Chat
-	EntityID   string // DlgStart, DlgComplete, DlgCancel — the NPC entity
-	DialogCode string // DlgComplete — the dialogue group the player just read
+	TargetX    float64 // PlayerAction
+	TargetY    float64 // PlayerAction
+	ItemID     string  // ItemActivation, GetItemsIDs, Chat target
+	Active     bool    // ItemActivation
+	Reason     string  // FreezeStart, FreezeEnd
+	ChatText   string  // Chat
+	EntityID   string  // DlgStart, DlgComplete, DlgCancel — the NPC entity
+	DialogCode string  // DlgComplete — the dialogue group the player just read
 }
 
 // EnqueueInput pushes a command onto the player's InputQueue. Called from

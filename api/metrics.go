@@ -105,19 +105,19 @@ type WorkloadMetrics struct {
 // throughput counters (since process start). Rates are not computed
 // server-side — the dashboard derives them from successive snapshots.
 type WebSocketServerMetrics struct {
-	Status             WebSocketStatus `json:"status"`
-	ActiveConnections  int             `json:"active_connections"`
-	UptimeSec          int64           `json:"uptime_sec"`
-	MessagesInTotal    uint64          `json:"messages_in_total"`
-	MessagesOutTotal   uint64          `json:"messages_out_total"`
-	BytesInTotal       uint64          `json:"bytes_in_total"`
-	BytesOutTotal      uint64          `json:"bytes_out_total"`
-	ReadErrorsTotal    uint64          `json:"read_errors_total"`
-	WriteErrorsTotal   uint64          `json:"write_errors_total"`
-	ConnectsTotal      uint64          `json:"connects_total"`
-	DisconnectsTotal   uint64          `json:"disconnects_total"`
-	LastErrorMessage   string          `json:"last_error_message,omitempty"`
-	LastErrorTime      *time.Time      `json:"last_error_time,omitempty"`
+	Status            WebSocketStatus `json:"status"`
+	ActiveConnections int             `json:"active_connections"`
+	UptimeSec         int64           `json:"uptime_sec"`
+	MessagesInTotal   uint64          `json:"messages_in_total"`
+	MessagesOutTotal  uint64          `json:"messages_out_total"`
+	BytesInTotal      uint64          `json:"bytes_in_total"`
+	BytesOutTotal     uint64          `json:"bytes_out_total"`
+	ReadErrorsTotal   uint64          `json:"read_errors_total"`
+	WriteErrorsTotal  uint64          `json:"write_errors_total"`
+	ConnectsTotal     uint64          `json:"connects_total"`
+	DisconnectsTotal  uint64          `json:"disconnects_total"`
+	LastErrorMessage  string          `json:"last_error_message,omitempty"`
+	LastErrorTime     *time.Time      `json:"last_error_time,omitempty"`
 }
 
 // RuntimeMetrics combines simulation cadence with Go process telemetry.

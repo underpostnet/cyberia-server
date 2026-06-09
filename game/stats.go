@@ -10,8 +10,8 @@ const defaultStatsCacheTTL = 250 * time.Millisecond
 // statsCacheEntry wraps a ComputedStats value with a timestamp so the
 // cache can expire entries after the configured TTL.
 type statsCacheEntry struct {
-	stats     ComputedStats
-	cachedAt  time.Time
+	stats    ComputedStats
+	cachedAt time.Time
 }
 
 // -----------------------------------------------------------------------------------------

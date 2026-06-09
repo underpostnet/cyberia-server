@@ -243,10 +243,10 @@ func findPortalByCell(entries []portalEntry, cellX, cellY int) *PortalState {
 
 func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 	floor := &FloorState{
-		ID:    uuid.New().String(),
-		Pos:   Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
-		Dims:  Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
-		Type:  "floor",
+		ID:   uuid.New().String(),
+		Pos:  Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
+		Dims: Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
+		Type: "floor",
 	}
 	for _, itemID := range ent.GetObjectLayerItemIds() {
 		floor.ObjectLayers = append(floor.ObjectLayers, ObjectLayerState{
@@ -493,7 +493,6 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 		}
 	}
 
-
 	portal := &PortalState{
 		ID:           uuid.New().String(),
 		Pos:          Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
@@ -509,8 +508,6 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 
 	return portal
 }
-
-
 
 // printInstanceGraph prints an ASCII representation of the instance's map/portal graph.
 func printInstanceGraph(instance *pb.InstanceMessage, maps map[string]*MapState) {

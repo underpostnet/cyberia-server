@@ -14,13 +14,13 @@ import (
 // Counters reset to zero on process restart; rate calculations are the
 // responsibility of the caller (delta over wall-clock window).
 type runtimeCounters struct {
-	wsMessagesIn      atomic.Uint64
-	wsMessagesOut     atomic.Uint64
-	wsBytesIn         atomic.Uint64
-	wsBytesOut        atomic.Uint64
-	wsReadErrors      atomic.Uint64
-	wsWriteErrors     atomic.Uint64
-	wsConnectsTotal   atomic.Uint64
+	wsMessagesIn       atomic.Uint64
+	wsMessagesOut      atomic.Uint64
+	wsBytesIn          atomic.Uint64
+	wsBytesOut         atomic.Uint64
+	wsReadErrors       atomic.Uint64
+	wsWriteErrors      atomic.Uint64
+	wsConnectsTotal    atomic.Uint64
 	wsDisconnectsTotal atomic.Uint64
 
 	// Last observed tick + wall time. Snapshotted on every read so a

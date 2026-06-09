@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	pb "cyberia-server/gen/proto"
 	game "cyberia-server/game"
+	pb "cyberia-server/gen/proto"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -181,5 +181,3 @@ func protoToObjectLayer(msg *pb.ObjectLayerMessage) *game.ObjectLayer {
 
 	return ol
 }
-
-

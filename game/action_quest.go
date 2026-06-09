@@ -158,9 +158,9 @@ func (s *GameServer) loadActionContent(mapCodes []string) {
 
 	// Index actions by (mapCode,cellX,cellY) for entity binding.
 	type cellKey struct {
-		mapCode    string
-		cellX      int
-		cellY      int
+		mapCode string
+		cellX   int
+		cellY   int
 	}
 	byCell := make(map[cellKey]*CyberiaAction)
 	for i := range actions.Data {
