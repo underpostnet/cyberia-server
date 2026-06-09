@@ -1,6 +1,5 @@
 name: CD | Cyberia mmo server | remote ssh
 on:
-  push:
   workflow_dispatch:
     inputs:
       job:
