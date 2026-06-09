@@ -7,6 +7,7 @@ package grpcclient
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -52,12 +53,10 @@ func NewWorldBuilder(client *Client, server *game.GameServer) *WorldBuilder {
 // LoadAll performs the initial full load via gRPC GetFullInstance.
 // It fetches the instance graph, all maps, entities, and object layers,
 // then builds the game world and populates the object layer cache.
-// When INSTANCE_CODE is not set the Engine is queried with the code "default"
-// and returns a minimal fallback instance.
+// INSTANCE_CODE is required — there is no fallback instance.
 func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 	if wb.InstanceCode == "" {
-		wb.InstanceCode = "default"
-		log.Printf("[WorldBuilder] INSTANCE_CODE not set — requesting fallback instance from Engine (code=%q).", wb.InstanceCode)
+		return fmt.Errorf("INSTANCE_CODE required: set it before LoadAll")
 	}
 
 	log.Printf("[WorldBuilder] Loading full instance %q via gRPC...", wb.InstanceCode)
@@ -67,13 +66,14 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 		return err
 	}
 
-	// Apply instance config to GameServer (must happen before building world)
-	if cfg := resp.GetConfig(); cfg != nil {
-		wb.server.ApplyInstanceConfig(cfg)
-		log.Println("[WorldBuilder] Applied instance config from gRPC.")
-	} else {
-		log.Println("[WorldBuilder] WARNING: no instance config in gRPC response.")
+	// Apply instance config to GameServer (must happen before building world).
+	// Config is required — a world without it is misconfigured.
+	cfg := resp.GetConfig()
+	if cfg == nil {
+		return fmt.Errorf("instance %q returned no config", wb.InstanceCode)
 	}
+	wb.server.ApplyInstanceConfig(cfg)
+	log.Println("[WorldBuilder] Applied instance config from gRPC.")
 
 	// Build object layer cache exclusively from the instance response.
 	// getFullInstance already includes OLs for all map entity items.
@@ -105,29 +105,6 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 	wb.server.BuildWorldFromInstance(resp.GetInstance(), resp.GetMaps(), resp.GetObjectLayers())
 
 	log.Printf("[WorldBuilder] Full instance load complete: %d ObjectLayers cached.", len(cache))
-	return nil
-}
-
-// loadObjectLayersOnly is the fallback when no INSTANCE_CODE is set.
-// It only loads the object layer cache without building maps.
-func (wb *WorldBuilder) loadObjectLayersOnly(ctx context.Context) error {
-	log.Println("[WorldBuilder] Starting ObjectLayer-only load via gRPC...")
-
-	cache, err := wb.client.FetchObjectLayerBatch(ctx, "")
-	if err != nil {
-		return err
-	}
-
-	wb.mu.Lock()
-	wb.manifest = make(map[string]string, len(cache))
-	for itemID, ol := range cache {
-		wb.manifest[itemID] = ol.Sha256
-	}
-	wb.mu.Unlock()
-
-	wb.server.ReplaceObjectLayerCache(cache)
-
-	log.Printf("[WorldBuilder] ObjectLayer-only load complete: %d OLs cached.", len(cache))
 	return nil
 }
 

@@ -2,11 +2,10 @@ package api
 
 import (
 	"net/http"
-	"os"
-	"strings"
 	"time"
 
 	"cyberia-server/api/problem"
+	"cyberia-server/config"
 	game "cyberia-server/game"
 
 	"github.com/go-chi/chi/v5"
@@ -40,7 +39,7 @@ func NewAPIRouter(opts RouterOptions) chi.Router {
 		opts.RequestTimeout = 30 * time.Second
 	}
 	if len(opts.AllowedOrigins) == 0 {
-		opts.AllowedOrigins = defaultAllowedOrigins()
+		opts.AllowedOrigins = config.DefaultCORSOrigins()
 	}
 
 	r := chi.NewRouter()
@@ -82,24 +81,6 @@ func NewAPIRouter(opts RouterOptions) chi.Router {
 	})
 
 	return r
-}
-
-// defaultAllowedOrigins reads CYBERIA_CORS_ALLOWED_ORIGINS (comma
-// separated) when set; otherwise falls back to a dev-friendly list.
-// "*" is a single-element list and disables AllowCredentials per CORS spec.
-func defaultAllowedOrigins() []string {
-	raw := os.Getenv("CYBERIA_CORS_ALLOWED_ORIGINS")
-	if raw == "" {
-		return []string{"http://localhost:*", "https://*.cyberiaonline.com"}
-	}
-	parts := strings.Split(raw, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
 }
 
 // livenessHandler — minimal, JSON-shaped "I can serve traffic" response.

@@ -6,9 +6,7 @@ package grpcclient
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
-	"os"
 	"sync"
 	"time"
 
@@ -20,48 +18,24 @@ import (
 	"google.golang.org/grpc/keepalive"
 )
 
-// Config holds connection parameters for the Engine gRPC server.
+// Connection and per-RPC deadlines for the Engine gRPC server.
 // gRPC runs over the Kubernetes internal network (ClusterIP) — always insecure.
-type Config struct {
-	// Address is host:port of the Engine gRPC server (default "localhost:50051").
-	Address string
-
-	// ConnectTimeout is the dial deadline (default 10s).
-	ConnectTimeout time.Duration
-
-	// CallTimeout is the per-RPC deadline (default 30s).
-	CallTimeout time.Duration
-}
-
-func (c *Config) defaults() {
-	if c.Address == "" {
-		if addr := os.Getenv("ENGINE_GRPC_ADDRESS"); addr != "" {
-			c.Address = addr
-		} else {
-			c.Address = "localhost:50051"
-		}
-	}
-	if c.ConnectTimeout == 0 {
-		c.ConnectTimeout = 10 * time.Second
-	}
-	if c.CallTimeout == 0 {
-		c.CallTimeout = 30 * time.Second
-	}
-}
+const (
+	dialTimeout = 10 * time.Second
+	callTimeout = 30 * time.Second
+)
 
 // Client is a high-level wrapper around the generated gRPC client.
 type Client struct {
 	mu     sync.RWMutex
-	cfg    Config
 	conn   *grpc.ClientConn
 	svc    pb.CyberiaDataServiceClient
 	closed bool
 }
 
-// New creates a new Client and dials the Engine gRPC server.
-func New(cfg Config) (*Client, error) {
-	cfg.defaults()
-
+// New dials the Engine gRPC server at address (host:port) and returns a
+// connected Client. The address is required (resolved by package config).
+func New(address string) (*Client, error) {
 	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(64 * 1024 * 1024), // 64 MB
@@ -71,25 +45,22 @@ func New(cfg Config) (*Client, error) {
 			Timeout:             10 * time.Second,
 			PermitWithoutStream: true,
 		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	}
 
-	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.ConnectTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
 	defer cancel()
 
-	conn, err := grpc.DialContext(ctx, cfg.Address, opts...)
+	conn, err := grpc.DialContext(ctx, address, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("grpcclient: dial %s: %w", cfg.Address, err)
+		return nil, fmt.Errorf("grpcclient: dial %s: %w", address, err)
 	}
 
-	c := &Client{
-		cfg:  cfg,
+	log.Printf("gRPC client connected to Engine at %s", address)
+	return &Client{
 		conn: conn,
 		svc:  pb.NewCyberiaDataServiceClient(conn),
-	}
-	log.Printf("gRPC client connected to Engine at %s", cfg.Address)
-	return c, nil
+	}, nil
 }
 
 // Close tears down the underlying gRPC connection.
@@ -109,7 +80,7 @@ func (c *Client) Close() error {
 
 // Ping checks Engine liveness.
 func (c *Client) Ping(ctx context.Context) (int64, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.cfg.CallTimeout)
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 	resp, err := c.svc.Ping(ctx, &pb.PingRequest{})
 	if err != nil {
@@ -118,45 +89,9 @@ func (c *Client) Ping(ctx context.Context) (int64, error) {
 	return resp.GetServerTimeMs(), nil
 }
 
-// FetchObjectLayerBatch streams all ObjectLayers from Engine and converts
-// them into the game server's *ObjectLayer type, keyed by item ID.
-func (c *Client) FetchObjectLayerBatch(ctx context.Context, itemTypeFilter string) (map[string]*game.ObjectLayer, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute) // large dataset
-	defer cancel()
-
-	stream, err := c.svc.GetObjectLayerBatch(ctx, &pb.GetObjectLayerBatchRequest{
-		ItemTypeFilter: itemTypeFilter,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("GetObjectLayerBatch: %w", err)
-	}
-
-	cache := make(map[string]*game.ObjectLayer)
-	count := 0
-	for {
-		msg, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("GetObjectLayerBatch stream recv: %w", err)
-		}
-		ol := protoToObjectLayer(msg)
-		if ol.Data.Item.ID != "" {
-			cache[ol.Data.Item.ID] = ol
-		}
-		count++
-		if count%50 == 0 {
-			log.Printf("gRPC: streamed %d ObjectLayers so far...", count)
-		}
-	}
-	log.Printf("gRPC: received %d ObjectLayers total, %d cached.", count, len(cache))
-	return cache, nil
-}
-
 // FetchObjectLayer fetches a single ObjectLayer by item ID.
 func (c *Client) FetchObjectLayer(ctx context.Context, itemID string) (*game.ObjectLayer, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.cfg.CallTimeout)
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 
 	msg, err := c.svc.GetObjectLayer(ctx, &pb.GetObjectLayerRequest{ItemId: itemID})
@@ -182,7 +117,7 @@ func (c *Client) FetchFullInstance(ctx context.Context, instanceCode string) (*p
 // instanceCode identifies the calling Go server instance so the Engine can
 // update the global map-code registry for live tracking.
 func (c *Client) FetchMapData(ctx context.Context, mapCode, instanceCode string) (*pb.MapDataMessage, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.cfg.CallTimeout)
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 
 	resp, err := c.svc.GetMapData(ctx, &pb.GetMapDataRequest{MapCode: mapCode, InstanceCode: instanceCode})
@@ -200,7 +135,7 @@ type ManifestEntry struct {
 
 // FetchObjectLayerManifest returns the manifest of all item IDs + hashes.
 func (c *Client) FetchObjectLayerManifest(ctx context.Context) ([]ManifestEntry, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.cfg.CallTimeout)
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 
 	resp, err := c.svc.GetObjectLayerManifest(ctx, &pb.GetObjectLayerManifestRequest{})
