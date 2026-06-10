@@ -32,6 +32,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	pb "cyberia-server/gen/proto"
 )
 
 // ── Content shapes (mirror engine-cyberia Mongo schemas) ────────────────────
@@ -45,7 +47,6 @@ type CyberiaAction struct {
 	SourceMapCode      string   `json:"sourceMapCode"`
 	SourceCellX        int      `json:"sourceCellX"`
 	SourceCellY        int      `json:"sourceCellY"`
-	ProvideItemID      string   `json:"provideItemId"`
 	GrantQuestCode     string   `json:"grantQuestCode"`
 	DialogCode         string   `json:"dialogCode"`
 	QuestDialogueCodes []string `json:"questDialogueCodes"`
@@ -103,57 +104,40 @@ type QuestObjectiveProgress struct {
 }
 
 // QuestSnapshotEntry is the client-facing projection used by both init_data
-// and dlg_ack so the C client's quest_store can render the Quest Journal
-// without extra REST calls.
+// and dlg_ack.  It carries ONLY authoritative runtime data that the
+// simulation owns: code, status, and progress counters.  All metadata
+// (title, description, steps, rewards) is fetched by the C client from
+// the engine REST endpoint /api/cyberia-quest/:code — the simulation
+// never transmits non-authoritative presentation data.
 type QuestSnapshotEntry struct {
 	Code           string `json:"code"`
-	Title          string `json:"title"`
-	Description    string `json:"description"`
-	Status         string `json:"status"`
-	ActiveStep     string `json:"activeStep"`
-	ObjectivesText string `json:"objectivesText"`
+	Status         string `json:"status"`         // "active" | "completed"
+	ActiveStep     string `json:"activeStep"`     // first incomplete step ID
+	ObjectivesText string `json:"objectivesText"` // "2/3 kill scp-2040, 1/1 talk wason"
 }
 
-// ── Instance init: REST fetch + entity binding ──────────────────────────────
+// ── Instance init: bind gRPC-delivered content to entities ──────────────────
 
-// engineRESTList holds the paginated list envelope returned by the engine
-// content controllers ({ data, total, page, totalPages }).
-type engineRESTList[T any] struct {
-	Data []T `json:"data"`
-}
-
-// loadActionContent fetches the CyberiaAction / CyberiaQuest documents for the
-// instance's maps from engine-cyberia REST and binds each action to the
-// matching runtime entity. Resilient: any fetch failure leaves the caches
-// empty and logs — the world still runs, entities simply provide no actions.
+// bindActionContent caches the CyberiaAction / CyberiaQuest content that the
+// engine delivered with the world over gRPC and binds each action to the
+// runtime entity at its (sourceMapCode, sourceCellX, sourceCellY) cell. The
+// Go server never fetches this over a separate channel — for the procedural
+// fallback the engine's fallback builder fills it from the canonical defaults.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) loadActionContent(mapCodes []string) {
+func (s *GameServer) bindActionContent(mapCodes []string,
+	actions []*pb.CyberiaActionMessage, quests []*pb.CyberiaQuestMessage) {
 	s.actionCache = make(map[string]*CyberiaAction)
 	s.questDefs = make(map[string]*CyberiaQuest)
-
-	if s.engineApiBaseUrl == "" {
-		log.Printf("[ActionContent] ENGINE_API_BASE_URL unset — skipping action/quest load")
-		return
-	}
 
 	mapSet := make(map[string]bool, len(mapCodes))
 	for _, c := range mapCodes {
 		mapSet[c] = true
 	}
 
-	var actions engineRESTList[CyberiaAction]
-	if err := s.engineGetJSON("/api/cyberia-action?limit=10000", &actions); err != nil {
-		log.Printf("[ActionContent] action fetch failed: %v", err)
-	}
-	var quests engineRESTList[CyberiaQuest]
-	if err := s.engineGetJSON("/api/cyberia-quest?limit=10000", &quests); err != nil {
-		log.Printf("[ActionContent] quest fetch failed: %v", err)
-	}
-
-	for i := range quests.Data {
-		q := quests.Data[i]
-		s.questDefs[q.Code] = &q
+	for _, q := range quests {
+		cq := protoToQuest(q)
+		s.questDefs[cq.Code] = cq
 	}
 
 	// Index actions by (mapCode,cellX,cellY) for entity binding.
@@ -163,12 +147,12 @@ func (s *GameServer) loadActionContent(mapCodes []string) {
 		cellY   int
 	}
 	byCell := make(map[cellKey]*CyberiaAction)
-	for i := range actions.Data {
-		a := actions.Data[i]
-		if !mapSet[a.SourceMapCode] {
+	for _, a := range actions {
+		ca := protoToAction(a)
+		if !mapSet[ca.SourceMapCode] {
 			continue
 		}
-		byCell[cellKey{a.SourceMapCode, a.SourceCellX, a.SourceCellY}] = &a
+		byCell[cellKey{ca.SourceMapCode, ca.SourceCellX, ca.SourceCellY}] = ca
 	}
 
 	bound := 0
@@ -184,24 +168,74 @@ func (s *GameServer) loadActionContent(mapCodes []string) {
 			bound++
 		}
 	}
-	log.Printf("[ActionContent] loaded %d actions, %d quests; bound %d entities",
-		len(actions.Data), len(s.questDefs), bound)
+	log.Printf("[ActionContent] gRPC delivered %d actions, %d quests; bound %d entities",
+		len(actions), len(quests), bound)
 }
 
-// engineGetJSON performs a GET against the engine REST API and decodes the
-// JSON body into out. Short timeout; never blocks the simulation for long.
-func (s *GameServer) engineGetJSON(path string, out interface{}) error {
-	url := strings.TrimRight(s.engineApiBaseUrl, "/") + path
-	client := &http.Client{Timeout: 8 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
+func protoToAction(a *pb.CyberiaActionMessage) *CyberiaAction {
+	return &CyberiaAction{
+		Code:               a.GetCode(),
+		Type:               a.GetType(),
+		Label:              a.GetLabel(),
+		SourceMapCode:      a.GetSourceMapCode(),
+		SourceCellX:        int(a.GetSourceCellX()),
+		SourceCellY:        int(a.GetSourceCellY()),
+		GrantQuestCode:     a.GetGrantQuestCode(),
+		DialogCode:         a.GetDialogCode(),
+		QuestDialogueCodes: a.GetQuestDialogueCodes(),
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GET %s → %d", path, resp.StatusCode)
+}
+
+func protoToQuest(q *pb.CyberiaQuestMessage) *CyberiaQuest {
+	cq := &CyberiaQuest{
+		Code:              q.GetCode(),
+		Title:             q.GetTitle(),
+		Description:       q.GetDescription(),
+		UnlocksQuestCodes: q.GetUnlocksQuestCodes(),
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	for _, st := range q.GetSteps() {
+		step := QuestStep{ID: st.GetId(), Description: st.GetDescription()}
+		for _, o := range st.GetObjectives() {
+			step.Objectives = append(step.Objectives, QuestObjective{
+				Type: o.GetType(), ItemID: o.GetItemId(), Quantity: int(o.GetQuantity()),
+			})
+		}
+		cq.Steps = append(cq.Steps, step)
+	}
+	for _, r := range q.GetRewards() {
+		cq.Rewards = append(cq.Rewards, QuestReward{
+			ItemID: r.GetItemId(), Quantity: int(r.GetQuantity()),
+		})
+	}
+	return cq
+}
+
+// logActionProviders prints every entity bound to an action — map, action
+// code, entity id, initial cell (the centre of its movement radius), and
+// action type. Called after the instance graph so operators can confirm the
+// mission NPCs were instantiated and bound.
+func (s *GameServer) logActionProviders() {
+	if len(s.actionCache) == 0 {
+		log.Printf("[ActionProviders] none bound (no actions delivered via gRPC, or none match an entity cell)")
+		return
+	}
+	log.Printf("[ActionProviders] %d action-provider entities:", len(s.actionCache))
+	for _, ms := range s.maps {
+		for _, bot := range ms.bots {
+			if bot.ActionCode == "" {
+				continue
+			}
+			a := s.actionCache[bot.ID]
+			atype, grant := "", ""
+			if a != nil {
+				atype = a.Type
+				grant = a.GrantQuestCode
+			}
+			log.Printf("[ActionProviders]   map=%s action=%s type=%s grantQuest=%q entity=%s initPos=(%d,%d)",
+				bot.MapCode, bot.ActionCode, atype, grant, bot.ID,
+				int(bot.Pos.X), int(bot.Pos.Y))
+		}
+	}
 }
 
 // ── Dialogue handlers (phaseInput) ──────────────────────────────────────────
@@ -266,9 +300,26 @@ func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {
 		}
 	}
 
-	objectivesDone := s.advanceTalkObjectives(player, action, cmd.DialogCode, &affected)
+	talkedSkin := s.botActiveSkin(cmd.EntityID)
+	objectivesDone := s.advanceTalkObjectives(player, action, talkedSkin, cmd.DialogCode, &affected)
 
 	s.sendDlgAck(player, questGranted, objectivesDone, affected)
+}
+
+// botActiveSkin returns the active skin item ID of the bot with this entity ID
+// (searched across maps), or "" if not found. The bot's own active skin — not
+// any action field — is what 'talk' objectives match against.
+func (s *GameServer) botActiveSkin(entityID string) string {
+	for _, ms := range s.maps {
+		if bot := ms.bots[entityID]; bot != nil {
+			for _, ol := range bot.ObjectLayers {
+				if ol.Active && s.itemType(ol.ItemID) == "skin" {
+					return ol.ItemID
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // ── Quest helpers ───────────────────────────────────────────────────────────
@@ -350,17 +401,18 @@ func questComplete(qp *QuestProgress) bool {
 }
 
 // advanceTalkObjectives increments any active-step `talk` objective in the
-// player's active quests that matches the action's provideItemId, but only
-// when the just-read dialogCode is one of the action's questDialogueCodes.
-// On quest completion it delivers rewards and unlocks successors. Returns
-// true if any objective advanced.
+// player's active quests whose target skin matches the talked-to NPC's active
+// skin, but only when the just-read dialogCode is one of the action's
+// questDialogueCodes. On quest completion it delivers rewards and unlocks
+// successors. Returns true if any objective advanced.
 func (s *GameServer) advanceTalkObjectives(
 	player *PlayerState,
 	action *CyberiaAction,
+	talkedSkin string,
 	dialogCode string,
 	affected *[]QuestSnapshotEntry,
 ) bool {
-	if !containsStr(action.QuestDialogueCodes, dialogCode) {
+	if talkedSkin == "" || !containsStr(action.QuestDialogueCodes, dialogCode) {
 		return false
 	}
 	advanced := false
@@ -375,7 +427,7 @@ func (s *GameServer) advanceTalkObjectives(
 		sp := &qp.Steps[stepIdx]
 		for oi := range sp.Objectives {
 			op := &sp.Objectives[oi]
-			if op.Type != "talk" || op.ItemID != action.ProvideItemID {
+			if op.Type != "talk" || op.ItemID != talkedSkin {
 				continue
 			}
 			if op.Current < op.Required {
@@ -458,18 +510,13 @@ func (s *GameServer) deliverQuestRewards(player *PlayerState, code string) {
 	s.InvalidateStats(player)
 }
 
-// questSnapshot projects a progress record into the client-facing entry,
-// resolving title/description and the active-step summary from the def.
+// questSnapshot projects a progress record into the client-facing entry.
+// Only authoritative runtime data is included — code, status, and progress
+// counters.  All metadata (title, description, steps, rewards) is fetched
+// by the C client from the engine REST endpoint /api/cyberia-quest/:code.
 func (s *GameServer) questSnapshot(qp *QuestProgress) QuestSnapshotEntry {
 	entry := QuestSnapshotEntry{Code: qp.QuestCode, Status: qp.Status}
 	def, ok := s.questDefs[qp.QuestCode]
-	if ok {
-		entry.Title = def.Title
-		entry.Description = def.Description
-	}
-	if entry.Title == "" {
-		entry.Title = qp.QuestCode
-	}
 	if stepIdx := firstIncompleteStepIndex(qp); stepIdx >= 0 {
 		sp := &qp.Steps[stepIdx]
 		if ok && stepIdx < len(def.Steps) {

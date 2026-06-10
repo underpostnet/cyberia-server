@@ -143,6 +143,51 @@ message InstanceMessage {
   string              seed           = 9;
 }
 
+// ── Action / quest content (mission system) ──────────────────────────
+// Delivered with the world so the Go server never fetches content over a
+// separate REST channel. For the procedural fallback the engine's fallback
+// builder fills these from the canonical defaults; real instances fill them
+// from MongoDB.
+
+message CyberiaActionMessage {
+  string          code                 = 1;
+  string          type                 = 2;  // talk | quest-talk | shop | craft | storage
+  string          label                = 3;
+  string          source_map_code      = 4;
+  int32           source_cell_x        = 5;
+  int32           source_cell_y        = 6;
+  reserved 7; // was provide_item_id — NPC skin is derived from default-<skin>
+  string          grant_quest_code     = 8;
+  string          dialog_code          = 9;
+  repeated string quest_dialogue_codes = 10;
+}
+
+message QuestObjectiveMessage {
+  string type     = 1; // collect | talk | kill
+  string item_id  = 2;
+  int32  quantity = 3;
+}
+
+message QuestStepMessage {
+  string                         id          = 1;
+  string                         description = 2;
+  repeated QuestObjectiveMessage objectives  = 3;
+}
+
+message QuestRewardMessage {
+  string item_id  = 1;
+  int32  quantity = 2;
+}
+
+message CyberiaQuestMessage {
+  string                      code                = 1;
+  string                      title               = 2;
+  string                      description         = 3;
+  repeated string             unlocks_quest_codes = 4;
+  repeated QuestStepMessage   steps               = 5;
+  repeated QuestRewardMessage rewards             = 6;
+}
+
 message GetFullInstanceRequest {
   string instance_code = 1;
 }
@@ -156,6 +201,9 @@ message GetFullInstanceResponse {
   // change-detection.  The Go server compares this with the last known
   // value and skips a full rebuild when they match.
   string                        version       = 5;
+  // Mission content delivered with the world.
+  repeated CyberiaActionMessage actions       = 6;
+  repeated CyberiaQuestMessage  quests        = 7;
 }
 
 // ═══════════════════════════════════════════════════════════════════

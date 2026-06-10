@@ -31,6 +31,8 @@ func (s *GameServer) BuildWorldFromInstance(
 	instance *pb.InstanceMessage,
 	mapMsgs []*pb.MapDataMessage,
 	olMsgs []*pb.ObjectLayerMessage,
+	actions []*pb.CyberiaActionMessage,
+	quests []*pb.CyberiaQuestMessage,
 ) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -40,9 +42,9 @@ func (s *GameServer) BuildWorldFromInstance(
 
 	s.buildMapsFromInstance(instance, mapMsgs)
 
-	// Bind CyberiaAction / CyberiaQuest content (fetched from engine REST)
-	// to the freshly built entities. Safe no-op when engine REST is unset.
-	s.loadActionContent(instance.GetMapCodes())
+	// Bind the CyberiaAction / CyberiaQuest content the engine delivered with
+	// the world to the freshly built entities. No separate fetch.
+	s.bindActionContent(instance.GetMapCodes(), actions, quests)
 
 	log.Printf("[InstanceLoader] World built: %d maps loaded.", len(s.maps))
 
@@ -54,6 +56,9 @@ func (s *GameServer) BuildWorldFromInstance(
 
 	// Print ASCII graph of portal topology
 	printInstanceGraph(instance, s.maps)
+
+	// List the entities bound to a CyberiaAction (mission providers).
+	s.logActionProviders()
 }
 
 // RebuildWorld re-fetches instance data and rebuilds all map entities
@@ -64,6 +69,8 @@ func (s *GameServer) RebuildWorld(
 	instance *pb.InstanceMessage,
 	mapMsgs []*pb.MapDataMessage,
 	olMsgs []*pb.ObjectLayerMessage,
+	actions []*pb.CyberiaActionMessage,
+	quests []*pb.CyberiaQuestMessage,
 ) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -86,7 +93,7 @@ func (s *GameServer) RebuildWorld(
 
 	// Rebuild via the same path as initial load.
 	s.buildMapsFromInstance(instance, mapMsgs)
-	s.loadActionContent(instance.GetMapCodes())
+	s.bindActionContent(instance.GetMapCodes(), actions, quests)
 
 	// Restore players into the (possibly new) map states.
 	for code, players := range savedPlayers {

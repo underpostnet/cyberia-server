@@ -102,7 +102,8 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 	wb.mu.Unlock()
 
 	// Build the game world from instance data
-	wb.server.BuildWorldFromInstance(resp.GetInstance(), resp.GetMaps(), resp.GetObjectLayers())
+	wb.server.BuildWorldFromInstance(resp.GetInstance(), resp.GetMaps(), resp.GetObjectLayers(),
+		resp.GetActions(), resp.GetQuests())
 
 	log.Printf("[WorldBuilder] Full instance load complete: %d ObjectLayers cached.", len(cache))
 	return nil
@@ -232,7 +233,8 @@ func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
 	}
 
 	// Rebuild world preserving players.
-	wb.server.RebuildWorld(resp.GetInstance(), resp.GetMaps(), resp.GetObjectLayers())
+	wb.server.RebuildWorld(resp.GetInstance(), resp.GetMaps(), resp.GetObjectLayers(),
+		resp.GetActions(), resp.GetQuests())
 
 	log.Println("[WorldBuilder] ReloadWorld complete — maps and entities refreshed.")
 	return nil
