@@ -302,6 +302,11 @@ func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {
 
 	talkedSkin := s.botActiveSkin(cmd.EntityID)
 	objectivesDone := s.advanceTalkObjectives(player, action, talkedSkin, cmd.DialogCode, &affected)
+	// Reconcile collect objectives too — accepting a quest whose items the
+	// player already holds should reflect immediately.
+	if s.advanceCollectObjectives(player, &affected) {
+		objectivesDone = true
+	}
 
 	s.sendDlgAck(player, questGranted, objectivesDone, affected)
 }
@@ -435,14 +440,140 @@ func (s *GameServer) advanceTalkObjectives(
 				advanced = true
 			}
 		}
-		if advanced && questComplete(qp) {
-			s.completeQuest(player, qp, affected)
-		} else if advanced {
-			s.persistQuestProgress(player, qp)
-			*affected = append(*affected, s.questSnapshot(qp))
+		if advanced {
+			s.finalizeQuestProgress(player, qp, affected)
 		}
 	}
 	return advanced
+}
+
+// finalizeQuestProgress records an advanced quest: completing it (rewards +
+// unlocks) when all steps are done, otherwise persisting and snapshotting the
+// new progress. Always appends exactly one snapshot entry per advance.
+func (s *GameServer) finalizeQuestProgress(player *PlayerState, qp *QuestProgress, affected *[]QuestSnapshotEntry) {
+	if questComplete(qp) {
+		s.completeQuest(player, qp, affected)
+	} else {
+		s.persistQuestProgress(player, qp)
+		*affected = append(*affected, s.questSnapshot(qp))
+	}
+}
+
+// playerItemQuantity returns how many of itemID the player holds. Coins route
+// through the flat balance; everything else sums matching ObjectLayer rows.
+func (s *GameServer) playerItemQuantity(player *PlayerState, itemID string) int {
+	if itemID == s.coinItemID {
+		return int(player.Coins)
+	}
+	total := 0
+	for i := range player.ObjectLayers {
+		if player.ObjectLayers[i].ItemID == itemID {
+			total += player.ObjectLayers[i].Quantity
+		}
+	}
+	return total
+}
+
+// advanceKillObjectives advances any active-step `kill` objective whose target
+// skin matches the just-killed entity's skin. Returns true if any advanced.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) advanceKillObjectives(player *PlayerState, killedSkin string, affected *[]QuestSnapshotEntry) bool {
+	if player == nil || killedSkin == "" {
+		return false
+	}
+	advanced := false
+	for _, qp := range player.Quests {
+		if qp.Status != "active" {
+			continue
+		}
+		stepIdx := firstIncompleteStepIndex(qp)
+		if stepIdx < 0 {
+			continue
+		}
+		sp := &qp.Steps[stepIdx]
+		stepAdvanced := false
+		for oi := range sp.Objectives {
+			op := &sp.Objectives[oi]
+			if op.Type != "kill" || op.ItemID != killedSkin || op.Current >= op.Required {
+				continue
+			}
+			op.Current++
+			stepAdvanced = true
+			advanced = true
+		}
+		if stepAdvanced {
+			s.finalizeQuestProgress(player, qp, affected)
+		}
+	}
+	return advanced
+}
+
+// advanceCollectObjectives reconciles every active-step `collect` objective with
+// the player's current inventory (idempotent: progress = min(required, held)).
+// Run after any inventory gain. Returns true if any objective changed.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) advanceCollectObjectives(player *PlayerState, affected *[]QuestSnapshotEntry) bool {
+	if player == nil {
+		return false
+	}
+	advanced := false
+	for _, qp := range player.Quests {
+		if qp.Status != "active" {
+			continue
+		}
+		stepIdx := firstIncompleteStepIndex(qp)
+		if stepIdx < 0 {
+			continue
+		}
+		sp := &qp.Steps[stepIdx]
+		stepAdvanced := false
+		for oi := range sp.Objectives {
+			op := &sp.Objectives[oi]
+			if op.Type != "collect" {
+				continue
+			}
+			held := s.playerItemQuantity(player, op.ItemID)
+			if held > op.Required {
+				held = op.Required
+			}
+			if held != op.Current {
+				op.Current = held
+				stepAdvanced = true
+				advanced = true
+			}
+		}
+		if stepAdvanced {
+			s.finalizeQuestProgress(player, qp, affected)
+		}
+	}
+	return advanced
+}
+
+// advancePlayerQuestsOnGain runs the inventory-driven objective checks (collect
+// today) and pushes a live quest update to the player when anything changed.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) advancePlayerQuestsOnGain(player *PlayerState) {
+	var affected []QuestSnapshotEntry
+	s.advanceCollectObjectives(player, &affected)
+	if len(affected) > 0 {
+		s.sendQuestUpdate(player, affected)
+	}
+}
+
+// advancePlayerQuestsOnKill runs kill-objective advancement for the killer plus
+// the inventory reconcile (loot/coins from the kill), pushing one live update.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) advancePlayerQuestsOnKill(player *PlayerState, killedSkin string) {
+	var affected []QuestSnapshotEntry
+	s.advanceKillObjectives(player, killedSkin, &affected)
+	s.advanceCollectObjectives(player, &affected)
+	if len(affected) > 0 {
+		s.sendQuestUpdate(player, affected)
+	}
 }
 
 // completeQuest marks a quest completed, delivers its rewards, unlocks
@@ -563,6 +694,19 @@ func (s *GameServer) sendDlgAck(player *PlayerState, questGranted string, object
 	case player.Client.send <- msg:
 	default:
 	}
+}
+
+// sendQuestUpdate pushes a live quest-progress update outside the dialogue flow
+// (kill / collect advancement). It reuses the dlg_ack envelope the client
+// already consumes: questGranted is empty and objectivesDone marks that real
+// progress landed, so the journal and notification paths fire identically.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) sendQuestUpdate(player *PlayerState, affected []QuestSnapshotEntry) {
+	if player.Client == nil || len(affected) == 0 {
+		return
+	}
+	s.sendDlgAck(player, "", true, affected)
 }
 
 // persistQuestProgress best-effort mirrors a progress record to engine REST.
