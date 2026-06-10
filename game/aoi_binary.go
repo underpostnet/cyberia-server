@@ -281,7 +281,7 @@ func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64, effec
 	e.putU8(PlayerStatusIcon(p))
 }
 
-func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLevel int) {
+func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLevel int, grantQuestCode string) {
 	flags := EntityTypeBot | FlagHasLife | FlagHasBehavior
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
@@ -298,6 +298,10 @@ func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLe
 	e.putU16(uint16(effectiveLevel))
 	// Entity Status Indicator — u8 overhead icon ID (see entity_status.go).
 	e.putU8(BotStatusIcon(b))
+	// Authoritative quest binding: the code this action-provider grants, "" for
+	// ordinary bots. Position-independent — the client resolves the offered
+	// quest by code (metadata via REST), so a wandering NPC keeps its offer.
+	e.putString(grantQuestCode)
 }
 
 func (e *BinaryAOIEncoder) WriteFloor(f *FloorState) {
@@ -559,7 +563,11 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 				respawnIn = &r
 			}
 		}
-		enc.WriteBot(b, respawnIn, s.effLevel(b, mapState))
+		grantQuestCode := ""
+		if a := s.actionCache[b.ID]; a != nil {
+			grantQuestCode = a.GrantQuestCode
+		}
+		enc.WriteBot(b, respawnIn, s.effLevel(b, mapState), grantQuestCode)
 		entityCount++
 	}
 
