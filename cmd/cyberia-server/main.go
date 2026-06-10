@@ -89,11 +89,16 @@ func main() {
 
 	// Panic if the static dir lacks index.html — serving a dir without one
 	// renders the dashboard as a blank page (the white-screen failure mode).
-	if _, err := os.Stat(filepath.Join(cfg.StaticDir, "index.html")); err != nil {
-		panic("no " + filepath.Join(cfg.StaticDir, "index.html") + ": run `npm run cyberia:dashboard` — " + err.Error())
+	// Resolve static dir relative to the binary at cmd/cyberia-server/.
+	staticDir := cfg.StaticDir
+	if !filepath.IsAbs(staticDir) {
+		staticDir = filepath.Clean(filepath.Join("..", "..", staticDir))
 	}
-	log.Printf("Serving static assets from %s", cfg.StaticDir)
-	r.Handle("/*", game.StaticFileServer(cfg.StaticDir, "/index.html"))
+	if _, err := os.Stat(filepath.Join(staticDir, "index.html")); err != nil {
+		panic("no " + filepath.Join(staticDir, "index.html") + " — " + err.Error())
+	}
+	log.Printf("Serving static assets from %s", staticDir)
+	r.Handle("/*", game.StaticFileServer(staticDir, "/index.html"))
 
 	// Override the RFC 9457 problem.type base URI when set; otherwise the
 	// package keeps its dev default.
