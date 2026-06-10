@@ -39,7 +39,7 @@ func runUnderpostStatus(containerID, status string) {
 func main() {
 	// Load .env from CWD (project root) if present. Does not override
 	// already-set env vars. Absence is fine — env vars may be set directly.
-	if err := godotenv.Load(); err != nil {
+	if err := godotenv.Load("../../.env"); err != nil {
 		log.Println("No .env file; relying on environment variables.")
 	}
 
