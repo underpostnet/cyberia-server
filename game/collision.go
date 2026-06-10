@@ -84,8 +84,14 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				otherBot.Life -= projectileStats.Effect
 				if otherBot.Life <= 0 {
 					otherBot.Life = 0
+					// Capture the victim's skin before death deactivates its
+					// layers — quest `kill` objectives match on it.
+					killedSkin := s.botActiveSkin(otherBot.ID)
 					s.HandleOnKillSkills(projectile, otherBot, mapState)
 					s.handleBotDeath(otherBot)
+					if killer, ok := mapState.players[projectile.CasterID]; ok {
+						s.advancePlayerQuestsOnKill(killer, killedSkin)
+					}
 				}
 
 				// "Thorns" effect: The other bot's Effect stat damages the projectile.
@@ -231,6 +237,7 @@ func (s *GameServer) handleResourceDeath(res *ResourceState, killerProjectile *B
 	if killerProjectile.CasterID != "" {
 		if casterPlayer, ok := mapState.players[killerProjectile.CasterID]; ok {
 			s.transferResourceDropItemsToPlayer(res, casterPlayer, resourceDefaults)
+			s.advancePlayerQuestsOnGain(casterPlayer)
 		} else if casterBot, ok := mapState.bots[killerProjectile.CasterID]; ok {
 			s.transferResourceDropItemsToBot(res, casterBot, resourceDefaults)
 		}
