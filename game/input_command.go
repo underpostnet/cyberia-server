@@ -36,6 +36,8 @@ const (
 	InputKindDlgStart       InputKind = 0x17 // dialogue opened — freeze + bind context
 	InputKindDlgComplete    InputKind = 0x18 // all lines read — advance talk/quest, unfreeze
 	InputKindDlgCancel      InputKind = 0x19 // dismissed early — unfreeze, no progress
+	InputKindQuestAbandon   InputKind = 0x1A // drop an active quest — moves it to failed
+	InputKindQuestAccept    InputKind = 0x1B // explicitly accept the NPC's offered quest
 )
 
 // InputCommand is the unit of client→server input.

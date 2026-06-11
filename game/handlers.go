@@ -397,6 +397,30 @@ func (c *Client) handleBinaryUplink(message []byte, server *GameServer) {
 			DialogCode: dialogCode,
 		}
 		c.dispatchInputCommand(server, cmd)
+	case InputKindQuestAbandon:
+		questCode, ok := r.str()
+		if !ok || questCode == "" {
+			return
+		}
+		cmd := InputCommand{
+			Kind:       kind,
+			ClientTick: readOptionalU32(r),
+			Sequence:   readOptionalU32(r),
+			ItemID:     questCode,
+		}
+		c.dispatchInputCommand(server, cmd)
+	case InputKindQuestAccept:
+		entityID, ok := r.str()
+		if !ok || entityID == "" {
+			return
+		}
+		cmd := InputCommand{
+			Kind:       kind,
+			ClientTick: readOptionalU32(r),
+			Sequence:   readOptionalU32(r),
+			EntityID:   entityID,
+		}
+		c.dispatchInputCommand(server, cmd)
 	default:
 		log.Printf("[WARN] Unknown binary uplink type: 0x%02x from player %s", message[0], c.playerID)
 	}
@@ -507,6 +531,14 @@ func jsonUplinkToInputCommand(typeStr string, payload map[string]interface{}) In
 		cmd.Kind = InputKindDlgCancel
 		cmd.EntityID = entityID
 		cmd.ItemID = itemID
+	case "quest_abandon":
+		questCode, _ := payload["questCode"].(string)
+		cmd.Kind = InputKindQuestAbandon
+		cmd.ItemID = questCode
+	case "quest_accept":
+		entityID, _ := payload["entityId"].(string)
+		cmd.Kind = InputKindQuestAccept
+		cmd.EntityID = entityID
 	}
 	return cmd
 }

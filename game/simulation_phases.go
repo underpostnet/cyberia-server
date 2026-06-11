@@ -89,6 +89,10 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 		s.handleDlgComplete(player, cmd)
 	case InputKindDlgCancel:
 		s.handleDlgCancel(player, cmd)
+	case InputKindQuestAbandon:
+		s.handleQuestAbandon(player, cmd)
+	case InputKindQuestAccept:
+		s.handleQuestAccept(player, cmd)
 	case InputKindHandshake, InputKindUnknown:
 		// no-op
 	}
