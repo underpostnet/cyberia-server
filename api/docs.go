@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"cyberia-server/api/problem"
+	"cyberia-server/httpserver/problem"
 
 	"github.com/go-chi/chi/v5"
 	"gopkg.in/yaml.v3"

@@ -5,16 +5,16 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
 
 	api "cyberia-server/api"
-	"cyberia-server/api/problem"
 	"cyberia-server/config"
 	game "cyberia-server/game"
 	"cyberia-server/grpcclient"
+	"cyberia-server/httpserver"
+	"cyberia-server/httpserver/problem"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"
@@ -87,18 +87,14 @@ func main() {
 
 	r := chi.NewRouter()
 
-	// Panic if the static dir lacks index.html — serving a dir without one
-	// renders the dashboard as a blank page (the white-screen failure mode).
 	// Resolve static dir relative to the binary at cmd/cyberia-server/.
+	// StaticFileServer fatals if the dir or its index.html is missing.
 	staticDir := cfg.StaticDir
 	if !filepath.IsAbs(staticDir) {
 		staticDir = filepath.Clean(filepath.Join("..", "..", staticDir))
 	}
-	if _, err := os.Stat(filepath.Join(staticDir, "index.html")); err != nil {
-		panic("no " + filepath.Join(staticDir, "index.html") + " — " + err.Error())
-	}
 	log.Printf("Serving static assets from %s", staticDir)
-	r.Handle("/*", game.StaticFileServer(staticDir, "/index.html"))
+	r.Handle("/*", httpserver.StaticFileServer(staticDir, "/index.html"))
 
 	// Override the RFC 9457 problem.type base URI when set; otherwise the
 	// package keeps its dev default.
@@ -108,11 +104,11 @@ func main() {
 
 	// Mount REST API under /api. Options drive CORS allow-list, instance
 	// labelling in metric responses, and request timeout.
-	r.Mount("/api", api.NewAPIRouter(api.RouterOptions{
+	api.Mount(r, api.RouterOptions{
 		GameServer:     s,
 		InstanceCode:   cfg.InstanceCode,
 		AllowedOrigins: cfg.CORSAllowedOrigins,
-	}))
+	})
 	// Keep websocket endpoint
 	r.HandleFunc("/ws", s.HandleConnections)
 

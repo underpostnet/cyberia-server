@@ -1,4 +1,7 @@
-package game
+// Package httpserver holds HTTP-transport plumbing that is not part of the
+// game simulation: static asset serving, SPA fallback, and related hardening.
+// It depends on nothing in the game package — keep it that way.
+package httpserver
 
 import (
 	"log"
@@ -8,23 +11,17 @@ import (
 	"strings"
 )
 
-// StaticFileServer serves static assets from dir and falls back to
+// StaticFileServer serves static assets from dir, falling back to
 // fallbackPath (typically /index.html) for SPA-style routing.
 //
-// Hardening guarantees:
+// Invariants:
 //
-//   - The handler resolves every request path under dir to prevent
-//     `../` traversal (an unresolved `http.ServeFile` call would happily
-//     read outside dir if the URL contained `..`).
-//   - If dir does not exist or does not contain a fallback file, the
-//     handler refuses to start. The previous implementation would
-//     silently `os.MkdirAll` an empty dir, then serve an empty 404 —
-//     the visible symptom was a blank white page in the browser.
-//   - Falls back to the SPA index ONLY for GET/HEAD requests and only
-//     when no real file matches; other methods get 405.
-//   - Adds Content-Type-Options + a short cache TTL for the asset
-//     directory; the SPA shell itself is served `no-store` so dashboard
-//     edits propagate immediately during ops work.
+//   - Resolves every request path under dir; rejects `../` traversal.
+//   - Refuses to start if dir is missing or holds no fallback file.
+//   - Serves the SPA fallback only for GET/HEAD when no real file matches;
+//     other methods get 405.
+//   - Asset files get nosniff + a short cache TTL; the SPA shell is served
+//     no-store so dashboard edits show on the next refresh.
 func StaticFileServer(dir string, fallbackPath string) http.Handler {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
@@ -60,10 +57,8 @@ func StaticFileServer(dir string, fallbackPath string) http.Handler {
 			return
 		}
 
-		// Resolve the requested path under absDir without allowing
-		// `..` to escape. filepath.Join already cleans the result; we
-		// re-check the prefix because path-traversal payloads can
-		// produce a sibling-absolute path after cleaning.
+		// Resolve under absDir and reject escapes: filepath.Join cleans
+		// `..` but can still yield a sibling-absolute path, so re-check the prefix.
 		urlPath := r.URL.Path
 		if urlPath == "" || urlPath == "/" {
 			urlPath = fallbackPath

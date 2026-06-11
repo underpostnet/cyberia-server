@@ -3,7 +3,7 @@
 // Contract:
 //   - All success responses are application/json; charset=utf-8.
 //   - All error responses are application/problem+json (RFC 9457) and
-//     constructed via the cyberia-server/api/problem package.
+//     constructed via the cyberia-server/httpserver/problem package.
 //   - Resource representations are stable: field names use snake_case
 //     and are versioned implicitly via the /v1 prefix. Breaking changes
 //     require a /v2 carve-out.
@@ -34,8 +34,8 @@ import (
 	"sync"
 	"time"
 
-	"cyberia-server/api/problem"
 	game "cyberia-server/game"
+	"cyberia-server/httpserver/problem"
 
 	"github.com/go-chi/chi/v5"
 )
