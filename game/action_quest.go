@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -58,6 +59,7 @@ type CyberiaQuest struct {
 	Title             string        `json:"title"`
 	Description       string        `json:"description"`
 	UnlocksQuestCodes []string      `json:"unlocksQuestCodes"`
+	PrerequisiteCodes []string      `json:"prerequisiteCodes"`
 	Steps             []QuestStep   `json:"steps"`
 	Rewards           []QuestReward `json:"rewards"`
 }
@@ -94,6 +96,9 @@ type QuestProgress struct {
 type QuestStepProgress struct {
 	StepID     string                   `json:"stepId"`
 	Objectives []QuestObjectiveProgress `json:"objectives"`
+	// Consumed marks that this step's `collect` items were removed from the
+	// player's inventory on step completion (idempotent guard).
+	Consumed bool `json:"-"`
 }
 
 type QuestObjectiveProgress struct {
@@ -158,7 +163,10 @@ func (s *GameServer) bindActionContent(mapCodes []string,
 	bound := 0
 	for mapCode, ms := range s.maps {
 		for _, bot := range ms.bots {
-			key := cellKey{mapCode, int(bot.Pos.X), int(bot.Pos.Y)}
+			// Bind by the bot's stable spawn-centre (its initial cell), not its
+			// live position — action NPCs wander within their radius, so live
+			// Pos drifts off the action's source cell after the first tick.
+			key := cellKey{mapCode, int(bot.SpawnCenter.X), int(bot.SpawnCenter.Y)}
 			action, ok := byCell[key]
 			if !ok {
 				continue
@@ -192,6 +200,7 @@ func protoToQuest(q *pb.CyberiaQuestMessage) *CyberiaQuest {
 		Title:             q.GetTitle(),
 		Description:       q.GetDescription(),
 		UnlocksQuestCodes: q.GetUnlocksQuestCodes(),
+		PrerequisiteCodes: q.GetPrerequisiteCodes(),
 	}
 	for _, st := range q.GetSteps() {
 		step := QuestStep{ID: st.GetId(), Description: st.GetDescription()}
@@ -264,6 +273,23 @@ func (s *GameServer) handleDlgCancel(player *PlayerState, cmd *InputCommand) {
 	ThawPlayer(player, "dialogue")
 }
 
+// handleQuestAbandon drops an active quest, moving it to the failed section.
+// Only active quests can be abandoned; completed quests are immutable. The
+// failed record is kept (not deleted) so the journal can show it and so the
+// grantor NPC can re-offer the quest (prerequisites permitting).
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) handleQuestAbandon(player *PlayerState, cmd *InputCommand) {
+	qp, ok := s.playerQuest(player, cmd.ItemID)
+	if !ok || qp.Status != "active" {
+		return
+	}
+	qp.Status = "failed"
+	s.persistQuestProgress(player, qp)
+	s.sendQuestUpdate(player, []QuestSnapshotEntry{s.questSnapshot(qp)})
+	log.Printf("[Quest] player %s abandoned quest %q", player.ID, qp.QuestCode)
+}
+
 // handleDlgComplete is the authoritative completion path. It validates the
 // dialogue context, branches on the resolved action type, advances talk
 // objectives for quest-talk, and notifies the client via dlg_ack.
@@ -282,33 +308,47 @@ func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {
 		return
 	}
 
-	// `talk` — acknowledge only, no quest side effects.
+	// dlg_complete NEVER grants a quest — acceptance is explicit (quest_accept,
+	// the Take Quest button). Reading the dialogue only advances `talk`
+	// objectives of quests the player already accepted. `talk` actions ack only.
 	if action.Type == "talk" {
 		s.sendDlgAck(player, "", false, nil)
 		return
 	}
 
-	// `quest-talk` — grant on first contact, then advance talk objectives.
 	var affected []QuestSnapshotEntry
-	questGranted := ""
-	if action.GrantQuestCode != "" {
-		if _, exists := s.playerQuest(player, action.GrantQuestCode); !exists {
-			if qp := s.grantQuest(player, action.GrantQuestCode); qp != nil {
-				questGranted = action.GrantQuestCode
-				affected = append(affected, s.questSnapshot(qp))
-			}
-		}
-	}
-
 	talkedSkin := s.botActiveSkin(cmd.EntityID)
 	objectivesDone := s.advanceTalkObjectives(player, action, talkedSkin, cmd.DialogCode, &affected)
-	// Reconcile collect objectives too — accepting a quest whose items the
-	// player already holds should reflect immediately.
 	if s.advanceCollectObjectives(player, &affected) {
 		objectivesDone = true
 	}
 
-	s.sendDlgAck(player, questGranted, objectivesDone, affected)
+	s.sendDlgAck(player, "", objectivesDone, affected)
+}
+
+// handleQuestAccept grants the quest the interacted NPC offers — the only path
+// to start a mission. Validates that the entity provides an action with a grant
+// code, the prerequisites are met, and the quest is not already active or
+// completed (a failed/abandoned quest may be re-accepted). Quests are never
+// granted implicitly by reading dialogue.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) handleQuestAccept(player *PlayerState, cmd *InputCommand) {
+	action := s.actionCache[cmd.EntityID]
+	if action == nil || action.GrantQuestCode == "" {
+		return
+	}
+	if existing, ok := s.playerQuest(player, action.GrantQuestCode); ok && existing.Status != "failed" {
+		return
+	}
+	if !s.prerequisitesMet(player, action.GrantQuestCode) {
+		return
+	}
+	qp := s.grantQuest(player, action.GrantQuestCode)
+	if qp == nil {
+		return
+	}
+	s.sendDlgAck(player, action.GrantQuestCode, false, []QuestSnapshotEntry{s.questSnapshot(qp)})
 }
 
 // botActiveSkin returns the active skin item ID of the bot with this entity ID
@@ -344,12 +384,41 @@ func (s *GameServer) playerQuest(player *PlayerState, code string) (*QuestProgre
 	return qp, ok
 }
 
+// questCompleted reports whether the player has finished a quest.
+func (s *GameServer) questCompleted(player *PlayerState, code string) bool {
+	qp, ok := s.playerQuest(player, code)
+	return ok && qp.Status == "completed"
+}
+
+// prerequisitesMet reports whether every prerequisite quest of `code` is
+// completed for the player (AND logic). Unknown quests fail closed.
+func (s *GameServer) prerequisitesMet(player *PlayerState, code string) bool {
+	def, ok := s.questDefs[code]
+	if !ok {
+		return false
+	}
+	for _, pre := range def.PrerequisiteCodes {
+		if pre == "" {
+			continue
+		}
+		if !s.questCompleted(player, pre) {
+			return false
+		}
+	}
+	return true
+}
+
 // grantQuest creates an active progress record from the quest definition,
-// denormalizing required counts. Best-effort persists to engine REST.
+// denormalizing required counts. Best-effort persists to engine REST. Returns
+// nil when the quest is unknown or its prerequisites are unmet.
 func (s *GameServer) grantQuest(player *PlayerState, code string) *QuestProgress {
 	def, ok := s.questDefs[code]
 	if !ok {
 		log.Printf("[Quest] grant skipped — unknown quest %q", code)
+		return nil
+	}
+	if !s.prerequisitesMet(player, code) {
+		log.Printf("[Quest] grant denied — prerequisites unmet for %q", code)
 		return nil
 	}
 	s.ensurePlayerQuests(player)
@@ -408,8 +477,12 @@ func questComplete(qp *QuestProgress) bool {
 // advanceTalkObjectives increments any active-step `talk` objective in the
 // player's active quests whose target skin matches the talked-to NPC's active
 // skin, but only when the just-read dialogCode is one of the action's
-// questDialogueCodes. On quest completion it delivers rewards and unlocks
-// successors. Returns true if any objective advanced.
+// questDialogueCodes.  Each quest is evaluated independently — advancing
+// quest A's talk step never leaks progress to quest B, even when both
+// reference the same NPC skin and use the same dialogue group.
+//
+// On step/quest completion it delivers rewards and unlocks successors.
+// Returns true if any objective advanced.
 func (s *GameServer) advanceTalkObjectives(
 	player *PlayerState,
 	action *CyberiaAction,
@@ -420,43 +493,112 @@ func (s *GameServer) advanceTalkObjectives(
 	if talkedSkin == "" || !containsStr(action.QuestDialogueCodes, dialogCode) {
 		return false
 	}
-	advanced := false
-	for _, qp := range player.Quests {
-		if qp.Status != "active" {
-			continue
-		}
+	// Isolation: a single talk advances at most ONE quest's talk objective, so
+	// two parallel quests that both need to talk to this NPC don't both tick on
+	// one interaction. Iterate a stable (sorted) order — Go map order is random
+	// — and stop after the first quest that advances. The player talks again to
+	// progress the next quest waiting on the same NPC.
+	for _, code := range s.sortedActiveQuestCodes(player) {
+		qp := player.Quests[code]
 		stepIdx := firstIncompleteStepIndex(qp)
 		if stepIdx < 0 {
 			continue
 		}
 		sp := &qp.Steps[stepIdx]
+		stepAdvanced := false
 		for oi := range sp.Objectives {
 			op := &sp.Objectives[oi]
-			if op.Type != "talk" || op.ItemID != talkedSkin {
+			if op.Type != "talk" || op.ItemID != talkedSkin || op.Current >= op.Required {
 				continue
 			}
-			if op.Current < op.Required {
-				op.Current++
-				advanced = true
-			}
+			op.Current++
+			stepAdvanced = true
 		}
-		if advanced {
+		if stepAdvanced {
 			s.finalizeQuestProgress(player, qp, affected)
+			return true
 		}
 	}
-	return advanced
+	return false
 }
 
-// finalizeQuestProgress records an advanced quest: completing it (rewards +
-// unlocks) when all steps are done, otherwise persisting and snapshotting the
-// new progress. Always appends exactly one snapshot entry per advance.
+// sortedActiveQuestCodes returns the player's active quest codes in a stable
+// lexical order so map-iteration randomness never affects which quest a shared
+// talk objective advances.
+func (s *GameServer) sortedActiveQuestCodes(player *PlayerState) []string {
+	codes := make([]string, 0, len(player.Quests))
+	for code, qp := range player.Quests {
+		if qp.Status == "active" {
+			codes = append(codes, code)
+		}
+	}
+	sort.Strings(codes)
+	return codes
+}
+
+// finalizeQuestProgress records an advanced quest: consuming the collect items
+// of any newly-completed step, then completing the quest (rewards + unlocks)
+// when all steps are done, otherwise persisting and snapshotting the new
+// progress. Always appends exactly one snapshot entry per advance.
 func (s *GameServer) finalizeQuestProgress(player *PlayerState, qp *QuestProgress, affected *[]QuestSnapshotEntry) {
+	s.settleCompletedSteps(player, qp)
 	if questComplete(qp) {
 		s.completeQuest(player, qp, affected)
 	} else {
 		s.persistQuestProgress(player, qp)
 		*affected = append(*affected, s.questSnapshot(qp))
 	}
+}
+
+// settleCompletedSteps removes the `collect` items of every step that is now
+// complete and not yet consumed. A step's collect items are only taken once all
+// of its objectives are satisfied, so partial progress never drains inventory.
+func (s *GameServer) settleCompletedSteps(player *PlayerState, qp *QuestProgress) {
+	for i := range qp.Steps {
+		sp := &qp.Steps[i]
+		if sp.Consumed || !stepComplete(sp) {
+			continue
+		}
+		for j := range sp.Objectives {
+			op := &sp.Objectives[j]
+			if op.Type == "collect" {
+				s.removePlayerItem(player, op.ItemID, op.Required)
+			}
+		}
+		sp.Consumed = true
+	}
+}
+
+// removePlayerItem deducts qty of itemID from the player's inventory. Coins
+// route through the flat balance; other items drain matching ObjectLayer rows.
+func (s *GameServer) removePlayerItem(player *PlayerState, itemID string, qty int) {
+	if qty <= 0 {
+		return
+	}
+	if itemID == s.coinItemID {
+		if int(player.Coins) <= qty {
+			player.Coins = 0
+		} else {
+			player.Coins -= uint32(qty)
+		}
+		return
+	}
+	remaining := qty
+	for i := range player.ObjectLayers {
+		if player.ObjectLayers[i].ItemID != itemID {
+			continue
+		}
+		take := player.ObjectLayers[i].Quantity
+		if take > remaining {
+			take = remaining
+		}
+		player.ObjectLayers[i].Quantity -= take
+		remaining -= take
+		if remaining <= 0 {
+			break
+		}
+	}
+	s.InvalidateStats(player)
 }
 
 // playerItemQuantity returns how many of itemID the player holds. Coins route
@@ -584,22 +726,9 @@ func (s *GameServer) completeQuest(player *PlayerState, qp *QuestProgress, affec
 	s.persistQuestProgress(player, qp)
 	*affected = append(*affected, s.questSnapshot(qp))
 	log.Printf("[Quest] player %s completed quest %q", player.ID, qp.QuestCode)
-
-	def, ok := s.questDefs[qp.QuestCode]
-	if !ok {
-		return
-	}
-	for _, next := range def.UnlocksQuestCodes {
-		if next == "" {
-			continue
-		}
-		if _, exists := s.playerQuest(player, next); exists {
-			continue
-		}
-		if nqp := s.grantQuest(player, next); nqp != nil {
-			*affected = append(*affected, s.questSnapshot(nqp))
-		}
-	}
+	// Successors are NOT auto-granted. Completing this quest only satisfies the
+	// successors' prerequisites; the player must still explicitly accept each
+	// one from its grantor NPC. Quests are never assigned automatically.
 }
 
 // deliverQuestRewards grants each reward item to the player's inventory and
