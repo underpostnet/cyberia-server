@@ -1072,6 +1072,7 @@ type CyberiaQuestMessage struct {
 	UnlocksQuestCodes []string               `protobuf:"bytes,4,rep,name=unlocks_quest_codes,json=unlocksQuestCodes,proto3" json:"unlocks_quest_codes,omitempty"`
 	Steps             []*QuestStepMessage    `protobuf:"bytes,5,rep,name=steps,proto3" json:"steps,omitempty"`
 	Rewards           []*QuestRewardMessage  `protobuf:"bytes,6,rep,name=rewards,proto3" json:"rewards,omitempty"`
+	PrerequisiteCodes []string               `protobuf:"bytes,7,rep,name=prerequisite_codes,json=prerequisiteCodes,proto3" json:"prerequisite_codes,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1144,6 +1145,13 @@ func (x *CyberiaQuestMessage) GetSteps() []*QuestStepMessage {
 func (x *CyberiaQuestMessage) GetRewards() []*QuestRewardMessage {
 	if x != nil {
 		return x.Rewards
+	}
+	return nil
+}
+
+func (x *CyberiaQuestMessage) GetPrerequisiteCodes() []string {
+	if x != nil {
+		return x.PrerequisiteCodes
 	}
 	return nil
 }
@@ -2799,14 +2807,15 @@ const file_cyberia_proto_rawDesc = "" +
 	"objectives\"I\n" +
 	"\x12QuestRewardMessage\x12\x17\n" +
 	"\aitem_id\x18\x01 \x01(\tR\x06itemId\x12\x1a\n" +
-	"\bquantity\x18\x02 \x01(\x05R\bquantity\"\xf9\x01\n" +
+	"\bquantity\x18\x02 \x01(\x05R\bquantity\"\xa8\x02\n" +
 	"\x13CyberiaQuestMessage\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12.\n" +
 	"\x13unlocks_quest_codes\x18\x04 \x03(\tR\x11unlocksQuestCodes\x12/\n" +
 	"\x05steps\x18\x05 \x03(\v2\x19.cyberia.QuestStepMessageR\x05steps\x125\n" +
-	"\arewards\x18\x06 \x03(\v2\x1b.cyberia.QuestRewardMessageR\arewards\"=\n" +
+	"\arewards\x18\x06 \x03(\v2\x1b.cyberia.QuestRewardMessageR\arewards\x12-\n" +
+	"\x12prerequisite_codes\x18\a \x03(\tR\x11prerequisiteCodes\"=\n" +
 	"\x16GetFullInstanceRequest\x12#\n" +
 	"\rinstance_code\x18\x01 \x01(\tR\finstanceCode\"\xf8\x02\n" +
 	"\x17GetFullInstanceResponse\x124\n" +

@@ -186,6 +186,7 @@ message CyberiaQuestMessage {
   repeated string             unlocks_quest_codes = 4;
   repeated QuestStepMessage   steps               = 5;
   repeated QuestRewardMessage rewards             = 6;
+  repeated string             prerequisite_codes  = 7;
 }
 
 message GetFullInstanceRequest {
