@@ -41,16 +41,42 @@ import (
 
 // CyberiaAction mirrors src/api/cyberia-action/cyberia-action.model.js.
 // Only the fields the simulation needs are decoded.
+// ActionQuestDialogue maps a quest this NPC handles to the dialogue shown for
+// it (offer + talk-objective validation).
+type ActionQuestDialogue struct {
+	QuestCode  string `json:"questCode"`
+	DialogCode string `json:"dialogCode"`
+}
+
 type CyberiaAction struct {
-	Code               string   `json:"code"`
-	Type               string   `json:"type"`
-	Label              string   `json:"label"`
-	SourceMapCode      string   `json:"sourceMapCode"`
-	SourceCellX        int      `json:"sourceCellX"`
-	SourceCellY        int      `json:"sourceCellY"`
-	GrantQuestCode     string   `json:"grantQuestCode"`
-	DialogCode         string   `json:"dialogCode"`
-	QuestDialogueCodes []string `json:"questDialogueCodes"`
+	Code               string                `json:"code"`
+	Label              string                `json:"label"`
+	SourceMapCode      string                `json:"sourceMapCode"`
+	SourceCellX        int                   `json:"sourceCellX"`
+	SourceCellY        int                   `json:"sourceCellY"`
+	DialogCode         string                `json:"dialogCode"`
+	QuestDialogueCodes []ActionQuestDialogue `json:"questDialogueCodes"`
+}
+
+// dialogCodeForQuest returns the dialogue code this action shows for questCode,
+// or "" when the NPC doesn't handle that quest.
+func (a *CyberiaAction) dialogCodeForQuest(questCode string) string {
+	for _, qd := range a.QuestDialogueCodes {
+		if qd.QuestCode == questCode {
+			return qd.DialogCode
+		}
+	}
+	return ""
+}
+
+// questCodeForDialog is the inverse: the quest a viewed dialogCode validates.
+func (a *CyberiaAction) questCodeForDialog(dialogCode string) string {
+	for _, qd := range a.QuestDialogueCodes {
+		if qd.DialogCode == dialogCode {
+			return qd.QuestCode
+		}
+	}
+	return ""
 }
 
 // CyberiaQuest mirrors src/api/cyberia-quest/cyberia-quest.model.js.
@@ -60,6 +86,9 @@ type CyberiaQuest struct {
 	Description       string        `json:"description"`
 	UnlocksQuestCodes []string      `json:"unlocksQuestCodes"`
 	PrerequisiteCodes []string      `json:"prerequisiteCodes"`
+	SourceMapCode     string        `json:"sourceMapCode"`
+	SourceCellX       int           `json:"sourceCellX"`
+	SourceCellY       int           `json:"sourceCellY"`
 	Steps             []QuestStep   `json:"steps"`
 	Rewards           []QuestReward `json:"rewards"`
 }
@@ -140,17 +169,23 @@ func (s *GameServer) bindActionContent(mapCodes []string,
 		mapSet[c] = true
 	}
 
+	// Index quests by their source cell — an action awards the quest(s) whose
+	// source cell matches its own. Codes are sorted so per-player resolution is
+	// deterministic.
+	s.questsByCell = make(map[cellKey][]string)
 	for _, q := range quests {
 		cq := protoToQuest(q)
 		s.questDefs[cq.Code] = cq
+		if cq.SourceMapCode != "" {
+			k := cellKey{cq.SourceMapCode, cq.SourceCellX, cq.SourceCellY}
+			s.questsByCell[k] = append(s.questsByCell[k], cq.Code)
+		}
+	}
+	for k := range s.questsByCell {
+		sort.Strings(s.questsByCell[k])
 	}
 
 	// Index actions by (mapCode,cellX,cellY) for entity binding.
-	type cellKey struct {
-		mapCode string
-		cellX   int
-		cellY   int
-	}
 	byCell := make(map[cellKey]*CyberiaAction)
 	for _, a := range actions {
 		ca := protoToAction(a)
@@ -180,18 +215,61 @@ func (s *GameServer) bindActionContent(mapCodes []string,
 		len(actions), len(quests), bound)
 }
 
-func protoToAction(a *pb.CyberiaActionMessage) *CyberiaAction {
-	return &CyberiaAction{
-		Code:               a.GetCode(),
-		Type:               a.GetType(),
-		Label:              a.GetLabel(),
-		SourceMapCode:      a.GetSourceMapCode(),
-		SourceCellX:        int(a.GetSourceCellX()),
-		SourceCellY:        int(a.GetSourceCellY()),
-		GrantQuestCode:     a.GetGrantQuestCode(),
-		DialogCode:         a.GetDialogCode(),
-		QuestDialogueCodes: a.GetQuestDialogueCodes(),
+// cellKey identifies a map cell shared by an action and the quest(s) it awards.
+type cellKey struct {
+	mapCode string
+	cellX   int
+	cellY   int
+}
+
+// actionCell returns the cell key for an action's source cell.
+func actionCell(a *CyberiaAction) cellKey {
+	return cellKey{a.SourceMapCode, a.SourceCellX, a.SourceCellY}
+}
+
+// questAcceptableFor reports whether the player may start quest `code` now: it
+// is not already active or completed (a failed/abandoned one is re-acceptable)
+// and all its prerequisites are completed.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) questAcceptableFor(player *PlayerState, code string) bool {
+	if _, ok := s.questDefs[code]; !ok {
+		return false
 	}
+	if qp, ok := s.playerQuest(player, code); ok && (qp.Status == "active" || qp.Status == "completed") {
+		return false
+	}
+	return s.prerequisitesMet(player, code)
+}
+
+// resolveAcceptableQuest returns the first acceptable quest bound to the action's
+// cell, or "" when none can be started right now.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) resolveAcceptableQuest(player *PlayerState, action *CyberiaAction) string {
+	for _, code := range s.questsByCell[actionCell(action)] {
+		if s.questAcceptableFor(player, code) {
+			return code
+		}
+	}
+	return ""
+}
+
+func protoToAction(a *pb.CyberiaActionMessage) *CyberiaAction {
+	ca := &CyberiaAction{
+		Code:          a.GetCode(),
+		Label:         a.GetLabel(),
+		SourceMapCode: a.GetSourceMapCode(),
+		SourceCellX:   int(a.GetSourceCellX()),
+		SourceCellY:   int(a.GetSourceCellY()),
+		DialogCode:    a.GetDialogCode(),
+	}
+	for _, qd := range a.GetQuestDialogueCodes() {
+		ca.QuestDialogueCodes = append(ca.QuestDialogueCodes, ActionQuestDialogue{
+			QuestCode: qd.GetQuestCode(), DialogCode: qd.GetDialogCode(),
+		})
+	}
+	return ca
 }
 
 func protoToQuest(q *pb.CyberiaQuestMessage) *CyberiaQuest {
@@ -201,6 +279,9 @@ func protoToQuest(q *pb.CyberiaQuestMessage) *CyberiaQuest {
 		Description:       q.GetDescription(),
 		UnlocksQuestCodes: q.GetUnlocksQuestCodes(),
 		PrerequisiteCodes: q.GetPrerequisiteCodes(),
+		SourceMapCode:     q.GetSourceMapCode(),
+		SourceCellX:       int(q.GetSourceCellX()),
+		SourceCellY:       int(q.GetSourceCellY()),
 	}
 	for _, st := range q.GetSteps() {
 		step := QuestStep{ID: st.GetId(), Description: st.GetDescription()}
@@ -235,13 +316,14 @@ func (s *GameServer) logActionProviders() {
 				continue
 			}
 			a := s.actionCache[bot.ID]
-			atype, grant := "", ""
+			label := ""
+			var quests []string
 			if a != nil {
-				atype = a.Type
-				grant = a.GrantQuestCode
+				label = a.Label
+				quests = s.questsByCell[actionCell(a)]
 			}
-			log.Printf("[ActionProviders]   map=%s action=%s type=%s grantQuest=%q entity=%s initPos=(%d,%d)",
-				bot.MapCode, bot.ActionCode, atype, grant, bot.ID,
+			log.Printf("[ActionProviders]   map=%s action=%s label=%q quests=%v entity=%s initPos=(%d,%d)",
+				bot.MapCode, bot.ActionCode, label, quests, bot.ID,
 				int(bot.Pos.X), int(bot.Pos.Y))
 		}
 	}
@@ -258,7 +340,12 @@ func (s *GameServer) handleDlgStart(player *PlayerState, cmd *InputCommand) {
 	if player.IsGhost() {
 		return
 	}
+	// Snapshot the provider's interaction context now, while the bot is in range.
+	// dlg_complete validates against this frozen snapshot, not a live re-lookup,
+	// so the talk objective still resolves if the bot later dies or leaves AOI.
 	player.ActiveDialogueEntityID = cmd.EntityID
+	player.ActiveDialogueAction = s.actionCache[cmd.EntityID]
+	player.ActiveDialogueSkin = s.botActiveSkin(cmd.EntityID)
 	FreezePlayer(player, "dialogue")
 }
 
@@ -270,6 +357,8 @@ func (s *GameServer) handleDlgCancel(player *PlayerState, cmd *InputCommand) {
 		return
 	}
 	player.ActiveDialogueEntityID = ""
+	player.ActiveDialogueAction = nil
+	player.ActiveDialogueSkin = ""
 	ThawPlayer(player, "dialogue")
 }
 
@@ -300,24 +389,23 @@ func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {
 	if player.ActiveDialogueEntityID == "" || player.ActiveDialogueEntityID != cmd.EntityID {
 		return
 	}
+	// Resolve against the snapshot frozen at dlg_start, not a live re-lookup, so
+	// completion is independent of the bot's current alive/AOI state.
+	action := player.ActiveDialogueAction
+	talkedSkin := player.ActiveDialogueSkin
 	player.ActiveDialogueEntityID = ""
+	player.ActiveDialogueAction = nil
+	player.ActiveDialogueSkin = ""
 	ThawPlayer(player, "dialogue")
 
-	action := s.actionCache[cmd.EntityID]
 	if action == nil {
 		return
 	}
 
 	// dlg_complete NEVER grants a quest — acceptance is explicit (quest_accept,
-	// the Take Quest button). Reading the dialogue only advances `talk`
-	// objectives of quests the player already accepted. `talk` actions ack only.
-	if action.Type == "talk" {
-		s.sendDlgAck(player, "", false, nil)
-		return
-	}
-
+	// the Take Quest button). Reading the dialogue only advances the `talk`
+	// objective of the quest the viewed dialogCode maps to.
 	var affected []QuestSnapshotEntry
-	talkedSkin := s.botActiveSkin(cmd.EntityID)
 	objectivesDone := s.advanceTalkObjectives(player, action, talkedSkin, cmd.DialogCode, &affected)
 	if s.advanceCollectObjectives(player, &affected) {
 		objectivesDone = true
@@ -335,20 +423,47 @@ func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {
 // Caller MUST hold s.mu.
 func (s *GameServer) handleQuestAccept(player *PlayerState, cmd *InputCommand) {
 	action := s.actionCache[cmd.EntityID]
-	if action == nil || action.GrantQuestCode == "" {
+	if action == nil {
 		return
 	}
-	if existing, ok := s.playerQuest(player, action.GrantQuestCode); ok && existing.Status != "failed" {
+	// The client names which mission to accept (an NPC can offer several). It
+	// must be a quest bound to this NPC's cell and acceptable right now; when the
+	// client sends no code, fall back to the first acceptable one.
+	code := cmd.ItemID
+	if code != "" {
+		if !containsStr(s.questsByCell[actionCell(action)], code) || !s.questAcceptableFor(player, code) {
+			return
+		}
+	} else {
+		code = s.resolveAcceptableQuest(player, action)
+	}
+	if code == "" {
 		return
 	}
-	if !s.prerequisitesMet(player, action.GrantQuestCode) {
-		return
-	}
-	qp := s.grantQuest(player, action.GrantQuestCode)
+	qp := s.grantQuest(player, code)
 	if qp == nil {
 		return
 	}
-	s.sendDlgAck(player, action.GrantQuestCode, false, []QuestSnapshotEntry{s.questSnapshot(qp)})
+	// Count items the player already holds toward the first step's collect
+	// objectives at accept time — and settle/complete the step immediately when
+	// they already satisfy it — so progress never waits on a fresh pickup.
+	affected := []QuestSnapshotEntry{}
+	s.advanceCollectObjectives(player, &affected)
+	if !questSnapshotContains(affected, code) {
+		affected = append(affected, s.questSnapshot(qp))
+	}
+	s.sendDlgAck(player, code, false, affected)
+}
+
+// questSnapshotContains reports whether a snapshot for the quest code is already
+// in the list, so the granted-quest snapshot isn't appended twice.
+func questSnapshotContains(entries []QuestSnapshotEntry, code string) bool {
+	for i := range entries {
+		if entries[i].Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 // botActiveSkin returns the active skin item ID of the bot with this entity ID
@@ -356,11 +471,21 @@ func (s *GameServer) handleQuestAccept(player *PlayerState, cmd *InputCommand) {
 // any action field — is what 'talk' objectives match against.
 func (s *GameServer) botActiveSkin(entityID string) string {
 	for _, ms := range s.maps {
-		if bot := ms.bots[entityID]; bot != nil {
-			for _, ol := range bot.ObjectLayers {
-				if ol.Active && s.itemType(ol.ItemID) == "skin" {
-					return ol.ItemID
-				}
+		bot := ms.bots[entityID]
+		if bot == nil {
+			continue
+		}
+		// When the NPC is dead its active layers hold the ghost skin; the live
+		// skin is preserved in PreRespawnObjectLayers. Read from there so a talk
+		// objective still validates against a quest-giver that just died — the
+		// interaction context is independent of the entity's alive/AOI state.
+		layers := bot.ObjectLayers
+		if bot.IsGhost() && len(bot.PreRespawnObjectLayers) > 0 {
+			layers = bot.PreRespawnObjectLayers
+		}
+		for _, ol := range layers {
+			if ol.Active && s.itemType(ol.ItemID) == "skin" {
+				return ol.ItemID
 			}
 		}
 	}
@@ -398,11 +523,8 @@ func (s *GameServer) questCompleted(player *PlayerState, code string) bool {
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) playerHasActionInteraction(player *PlayerState, action *CyberiaAction, bot *BotState) bool {
-	if action.GrantQuestCode != "" {
-		existing, ok := s.playerQuest(player, action.GrantQuestCode)
-		if (!ok || existing.Status == "failed") && s.prerequisitesMet(player, action.GrantQuestCode) {
-			return true
-		}
+	if s.resolveAcceptableQuest(player, action) != "" {
+		return true
 	}
 	skin := s.botActiveSkin(bot.ID)
 	if skin == "" {
@@ -510,15 +632,19 @@ func questComplete(qp *QuestProgress) bool {
 	return firstIncompleteStepIndex(qp) == -1
 }
 
-// advanceTalkObjectives increments any active-step `talk` objective in the
-// player's active quests whose target skin matches the talked-to NPC's active
-// skin, but only when the just-read dialogCode is one of the action's
-// questDialogueCodes.  Each quest is evaluated independently — advancing
-// quest A's talk step never leaks progress to quest B, even when both
-// reference the same NPC skin and use the same dialogue group.
+// advanceTalkObjectives advances the active-step `talk` objective of exactly the
+// quest the viewed dialogCode maps to (via the action's questDialogueCodes).
+// Because the dialogCode is action-specific it already proves the player read the
+// right quest's dialogue at the right NPC, so validation is independent of the
+// provider being alive, dead, far, or outside the player's AOI. Two parallel
+// quests sharing one NPC stay isolated — reading quest A's dialogue never ticks B.
 //
-// On step/quest completion it delivers rewards and unlocks successors.
-// Returns true if any objective advanced.
+// When the NPC's live skin is known it scopes the advance to the objective
+// targeting that skin (keeping multi-NPC steps precise); when it isn't — the
+// provider is dead or its skin layer is inactive — the active-step talk still
+// completes rather than silently failing.
+//
+// On step/quest completion it delivers rewards. Returns true if it advanced.
 func (s *GameServer) advanceTalkObjectives(
 	player *PlayerState,
 	action *CyberiaAction,
@@ -526,50 +652,35 @@ func (s *GameServer) advanceTalkObjectives(
 	dialogCode string,
 	affected *[]QuestSnapshotEntry,
 ) bool {
-	if talkedSkin == "" || !containsStr(action.QuestDialogueCodes, dialogCode) {
+	questCode := action.questCodeForDialog(dialogCode)
+	if questCode == "" {
 		return false
 	}
-	// Isolation: a single talk advances at most ONE quest's talk objective, so
-	// two parallel quests that both need to talk to this NPC don't both tick on
-	// one interaction. Iterate a stable (sorted) order — Go map order is random
-	// — and stop after the first quest that advances. The player talks again to
-	// progress the next quest waiting on the same NPC.
-	for _, code := range s.sortedActiveQuestCodes(player) {
-		qp := player.Quests[code]
-		stepIdx := firstIncompleteStepIndex(qp)
-		if stepIdx < 0 {
+	qp, ok := s.playerQuest(player, questCode)
+	if !ok || qp.Status != "active" {
+		return false
+	}
+	stepIdx := firstIncompleteStepIndex(qp)
+	if stepIdx < 0 {
+		return false
+	}
+	sp := &qp.Steps[stepIdx]
+	advanced := false
+	for oi := range sp.Objectives {
+		op := &sp.Objectives[oi]
+		if op.Type != "talk" || op.Current >= op.Required {
 			continue
 		}
-		sp := &qp.Steps[stepIdx]
-		stepAdvanced := false
-		for oi := range sp.Objectives {
-			op := &sp.Objectives[oi]
-			if op.Type != "talk" || op.ItemID != talkedSkin || op.Current >= op.Required {
-				continue
-			}
-			op.Current++
-			stepAdvanced = true
+		if talkedSkin != "" && op.ItemID != talkedSkin {
+			continue
 		}
-		if stepAdvanced {
-			s.finalizeQuestProgress(player, qp, affected)
-			return true
-		}
+		op.Current++
+		advanced = true
 	}
-	return false
-}
-
-// sortedActiveQuestCodes returns the player's active quest codes in a stable
-// lexical order so map-iteration randomness never affects which quest a shared
-// talk objective advances.
-func (s *GameServer) sortedActiveQuestCodes(player *PlayerState) []string {
-	codes := make([]string, 0, len(player.Quests))
-	for code, qp := range player.Quests {
-		if qp.Status == "active" {
-			codes = append(codes, code)
-		}
+	if advanced {
+		s.finalizeQuestProgress(player, qp, affected)
 	}
-	sort.Strings(codes)
-	return codes
+	return advanced
 }
 
 // finalizeQuestProgress records an advanced quest: consuming the collect items
@@ -620,20 +731,23 @@ func (s *GameServer) removePlayerItem(player *PlayerState, itemID string, qty in
 		return
 	}
 	remaining := qty
+	kept := player.ObjectLayers[:0]
 	for i := range player.ObjectLayers {
-		if player.ObjectLayers[i].ItemID != itemID {
-			continue
+		ol := player.ObjectLayers[i]
+		if ol.ItemID == itemID && remaining > 0 {
+			take := ol.Quantity
+			if take > remaining {
+				take = remaining
+			}
+			ol.Quantity -= take
+			remaining -= take
+			if ol.Quantity <= 0 {
+				continue // drop the emptied stack so it leaves the inventory bar
+			}
 		}
-		take := player.ObjectLayers[i].Quantity
-		if take > remaining {
-			take = remaining
-		}
-		player.ObjectLayers[i].Quantity -= take
-		remaining -= take
-		if remaining <= 0 {
-			break
-		}
+		kept = append(kept, ol)
 	}
+	player.ObjectLayers = kept
 	s.InvalidateStats(player)
 }
 
@@ -698,32 +812,39 @@ func (s *GameServer) advanceCollectObjectives(player *PlayerState, affected *[]Q
 	}
 	advanced := false
 	for _, qp := range player.Quests {
-		if qp.Status != "active" {
-			continue
-		}
-		stepIdx := firstIncompleteStepIndex(qp)
-		if stepIdx < 0 {
-			continue
-		}
-		sp := &qp.Steps[stepIdx]
-		stepAdvanced := false
-		for oi := range sp.Objectives {
-			op := &sp.Objectives[oi]
-			if op.Type != "collect" {
-				continue
+		// Reconcile the active step; if completing it reveals a new step whose
+		// collect objectives the player already satisfies, keep going so the
+		// next step counts its held items too (each completed step's items are
+		// deducted by settleCompletedSteps before the next reconcile reads them).
+		for qp.Status == "active" {
+			stepIdx := firstIncompleteStepIndex(qp)
+			if stepIdx < 0 {
+				break
 			}
-			held := s.playerItemQuantity(player, op.ItemID)
-			if held > op.Required {
-				held = op.Required
+			sp := &qp.Steps[stepIdx]
+			stepAdvanced := false
+			for oi := range sp.Objectives {
+				op := &sp.Objectives[oi]
+				if op.Type != "collect" {
+					continue
+				}
+				held := s.playerItemQuantity(player, op.ItemID)
+				if held > op.Required {
+					held = op.Required
+				}
+				if held != op.Current {
+					op.Current = held
+					stepAdvanced = true
+				}
 			}
-			if held != op.Current {
-				op.Current = held
-				stepAdvanced = true
-				advanced = true
+			if !stepAdvanced {
+				break
 			}
-		}
-		if stepAdvanced {
+			advanced = true
 			s.finalizeQuestProgress(player, qp, affected)
+			if firstIncompleteStepIndex(qp) == stepIdx {
+				break // collect counted but step not fully done (e.g. needs a talk)
+			}
 		}
 	}
 	return advanced
