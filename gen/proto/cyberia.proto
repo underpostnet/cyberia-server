@@ -149,17 +149,22 @@ message InstanceMessage {
 // builder fills these from the canonical defaults; real instances fill them
 // from MongoDB.
 
+message ActionQuestDialogue {
+  string quest_code  = 1;
+  string dialog_code = 2;
+}
+
 message CyberiaActionMessage {
-  string          code                 = 1;
-  string          type                 = 2;  // talk | quest-talk | shop | craft | storage
-  string          label                = 3;
-  string          source_map_code      = 4;
-  int32           source_cell_x        = 5;
-  int32           source_cell_y        = 6;
+  string                       code                 = 1;
+  reserved 2; // was type — actions are typeless, capability-driven
+  string                       label                = 3;
+  string                       source_map_code      = 4;
+  int32                        source_cell_x        = 5;
+  int32                        source_cell_y        = 6;
   reserved 7; // was provide_item_id — NPC skin is derived from default-<skin>
-  string          grant_quest_code     = 8;
-  string          dialog_code          = 9;
-  repeated string quest_dialogue_codes = 10;
+  reserved 8; // was grant_quest_code — derived from quests bound to this cell
+  string                       dialog_code          = 9;
+  repeated ActionQuestDialogue quest_dialogue_codes = 10;
 }
 
 message QuestObjectiveMessage {
@@ -187,6 +192,11 @@ message CyberiaQuestMessage {
   repeated QuestStepMessage   steps               = 5;
   repeated QuestRewardMessage rewards             = 6;
   repeated string             prerequisite_codes  = 7;
+  // Spatial origin — the action NPC cell that awards this quest. The server
+  // binds an action to its quest(s) by matching these to the action's cell.
+  string                      source_map_code     = 8;
+  int32                       source_cell_x       = 9;
+  int32                       source_cell_y       = 10;
 }
 
 message GetFullInstanceRequest {
