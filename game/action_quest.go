@@ -69,16 +69,6 @@ func (a *CyberiaAction) dialogCodeForQuest(questCode string) string {
 	return ""
 }
 
-// questCodeForDialog is the inverse: the quest a viewed dialogCode validates.
-func (a *CyberiaAction) questCodeForDialog(dialogCode string) string {
-	for _, qd := range a.QuestDialogueCodes {
-		if qd.DialogCode == dialogCode {
-			return qd.QuestCode
-		}
-	}
-	return ""
-}
-
 // CyberiaQuest mirrors src/api/cyberia-quest/cyberia-quest.model.js.
 type CyberiaQuest struct {
 	Code              string        `json:"code"`
@@ -403,10 +393,10 @@ func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {
 	}
 
 	// dlg_complete NEVER grants a quest — acceptance is explicit (quest_accept,
-	// the Take Quest button). Reading the dialogue only advances the `talk`
-	// objective of the quest the viewed dialogCode maps to.
+	// the Take Quest button). Reading the dialogue only advances `talk` objectives
+	// that target the NPC the player spoke with.
 	var affected []QuestSnapshotEntry
-	objectivesDone := s.advanceTalkObjectives(player, action, talkedSkin, cmd.DialogCode, &affected)
+	objectivesDone := s.advanceTalkObjectives(player, talkedSkin, &affected)
 	if s.advanceCollectObjectives(player, &affected) {
 		objectivesDone = true
 	}
@@ -632,53 +622,48 @@ func questComplete(qp *QuestProgress) bool {
 	return firstIncompleteStepIndex(qp) == -1
 }
 
-// advanceTalkObjectives advances the active-step `talk` objective of exactly the
-// quest the viewed dialogCode maps to (via the action's questDialogueCodes).
-// Because the dialogCode is action-specific it already proves the player read the
-// right quest's dialogue at the right NPC, so validation is independent of the
-// provider being alive, dead, far, or outside the player's AOI. Two parallel
-// quests sharing one NPC stay isolated — reading quest A's dialogue never ticks B.
-//
-// When the NPC's live skin is known it scopes the advance to the objective
-// targeting that skin (keeping multi-NPC steps precise); when it isn't — the
-// provider is dead or its skin layer is inactive — the active-step talk still
-// completes rather than silently failing.
+// advanceTalkObjectives advances, across all the player's active quests, every
+// current-step `talk` objective that targets the NPC the player just spoke with
+// (matched by the skin frozen at dlg_start). Matching on the skin — the NPC's
+// identity — rather than the client-supplied dialogCode makes validation
+// deterministic: it can't be stranded by the client sending a stale or
+// not-yet-resolved per-quest dialogCode, and it stays correct when one NPC line
+// serves several quests (Wason's intro and bounty report-back). It is also
+// independent of the provider's current alive/AOI state, since the skin was
+// captured while the modal was opening.
 //
 // On step/quest completion it delivers rewards. Returns true if it advanced.
 func (s *GameServer) advanceTalkObjectives(
 	player *PlayerState,
-	action *CyberiaAction,
 	talkedSkin string,
-	dialogCode string,
 	affected *[]QuestSnapshotEntry,
 ) bool {
-	questCode := action.questCodeForDialog(dialogCode)
-	if questCode == "" {
+	if talkedSkin == "" {
 		return false
 	}
-	qp, ok := s.playerQuest(player, questCode)
-	if !ok || qp.Status != "active" {
-		return false
-	}
-	stepIdx := firstIncompleteStepIndex(qp)
-	if stepIdx < 0 {
-		return false
-	}
-	sp := &qp.Steps[stepIdx]
 	advanced := false
-	for oi := range sp.Objectives {
-		op := &sp.Objectives[oi]
-		if op.Type != "talk" || op.Current >= op.Required {
+	for _, qp := range player.Quests {
+		if qp.Status != "active" {
 			continue
 		}
-		if talkedSkin != "" && op.ItemID != talkedSkin {
+		stepIdx := firstIncompleteStepIndex(qp)
+		if stepIdx < 0 {
 			continue
 		}
-		op.Current++
-		advanced = true
-	}
-	if advanced {
-		s.finalizeQuestProgress(player, qp, affected)
+		sp := &qp.Steps[stepIdx]
+		questAdvanced := false
+		for oi := range sp.Objectives {
+			op := &sp.Objectives[oi]
+			if op.Type != "talk" || op.Current >= op.Required || op.ItemID != talkedSkin {
+				continue
+			}
+			op.Current++
+			questAdvanced = true
+		}
+		if questAdvanced {
+			s.finalizeQuestProgress(player, qp, affected)
+			advanced = true
+		}
 	}
 	return advanced
 }
