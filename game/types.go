@@ -118,6 +118,13 @@ type PlayerState struct {
 	// or spoofed entityId is dropped. The client never declares the action
 	// type or quest code; the server resolves those from actionCache.
 	ActiveDialogueEntityID string `json:"-"`
+	// ActiveDialogueAction / ActiveDialogueSkin freeze the provider's interaction
+	// context at dlg_start, when the bot is in range and the modal opens. They are
+	// the authority dlg_complete validates against, so a talk objective resolves
+	// from the snapshot taken on open — independent of whether the bot later dies,
+	// wanders off, or leaves the player's AOI before the dialogue is finished.
+	ActiveDialogueAction *CyberiaAction `json:"-"`
+	ActiveDialogueSkin   string         `json:"-"`
 	// Quests is the player's per-session quest progress, keyed by quest code.
 	// Authoritative for the session; best-effort mirrored to engine-cyberia
 	// quest-progress REST for persistence.
@@ -223,6 +230,7 @@ type GameServer struct {
 	maps           map[string]*MapState
 	mapCodeOrder   []string // instance map codes in declared order (spawn order)
 	instanceCode   string   // INSTANCE_CODE — "TEST" forces first-map spawn
+	questsByCell   map[cellKey][]string // quest codes bound to each action cell
 	clients        map[string]*Client
 	register       chan *Client
 	unregister     chan *Client

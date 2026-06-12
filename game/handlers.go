@@ -419,8 +419,9 @@ func (c *Client) handleBinaryUplink(message []byte, server *GameServer) {
 		}
 		c.dispatchInputCommand(server, cmd)
 	case InputKindQuestAccept:
-		entityID, ok := r.str()
-		if !ok || entityID == "" {
+		entityID, okE := r.str()
+		questCode, okQ := r.str()
+		if !okE || !okQ || entityID == "" {
 			return
 		}
 		cmd := InputCommand{
@@ -428,6 +429,7 @@ func (c *Client) handleBinaryUplink(message []byte, server *GameServer) {
 			ClientTick: readOptionalU32(r),
 			Sequence:   readOptionalU32(r),
 			EntityID:   entityID,
+			ItemID:     questCode,
 		}
 		c.dispatchInputCommand(server, cmd)
 	default:
@@ -546,8 +548,10 @@ func jsonUplinkToInputCommand(typeStr string, payload map[string]interface{}) In
 		cmd.ItemID = questCode
 	case "quest_accept":
 		entityID, _ := payload["entityId"].(string)
+		questCode, _ := payload["questCode"].(string)
 		cmd.Kind = InputKindQuestAccept
 		cmd.EntityID = entityID
+		cmd.ItemID = questCode
 	}
 	return cmd
 }
