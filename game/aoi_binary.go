@@ -281,7 +281,7 @@ func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64, effec
 	e.putU8(PlayerStatusIcon(p))
 }
 
-func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLevel int, grantQuestCode string) {
+func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLevel int, grantQuestCode string, statusIcon uint8) {
 	flags := EntityTypeBot | FlagHasLife | FlagHasBehavior
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
@@ -296,8 +296,9 @@ func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLe
 	e.writeItemIDs(b.ObjectLayers)
 	e.putString(b.CasterID)
 	e.putU16(uint16(effectiveLevel))
-	// Entity Status Indicator — u8 overhead icon ID (see entity_status.go).
-	e.putU8(BotStatusIcon(b))
+	// Entity Status Indicator — u8 overhead icon ID, resolved PER VIEWING
+	// PLAYER (see entity_status.go / botStatusFor).
+	e.putU8(statusIcon)
 	// Authoritative quest binding: the code this action-provider grants, "" for
 	// ordinary bots. Position-independent — the client resolves the offered
 	// quest by code (metadata via REST), so a wandering NPC keeps its offer.
@@ -564,10 +565,18 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 			}
 		}
 		grantQuestCode := ""
+		statusIcon := BotStatusIcon(b)
 		if a := s.actionCache[b.ID]; a != nil {
 			grantQuestCode = a.GrantQuestCode
+			// Per-player Action Provider status: the quest-talk icon (ESI 8)
+			// shows ONLY to a viewing player who has a real interaction with
+			// this NPC right now (an acceptable offer or an active talk step);
+			// to everyone else it reads as a plain passive bot.
+			if statusIcon == StatusActionProvider && !s.playerHasActionInteraction(player, a, b) {
+				statusIcon = StatusPassive
+			}
 		}
-		enc.WriteBot(b, respawnIn, s.effLevel(b, mapState), grantQuestCode)
+		enc.WriteBot(b, respawnIn, s.effLevel(b, mapState), grantQuestCode, statusIcon)
 		entityCount++
 	}
 

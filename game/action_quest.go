@@ -390,6 +390,42 @@ func (s *GameServer) questCompleted(player *PlayerState, code string) bool {
 	return ok && qp.Status == "completed"
 }
 
+// playerHasActionInteraction reports whether `player` currently has a real
+// interaction with the action NPC `bot`: an acceptable offer (a grantable quest
+// not yet active/completed with prerequisites met), or an active quest whose
+// current step needs a talk with this NPC's skin. Drives the per-player Action
+// Provider status so the quest-talk icon is shown only when actionable.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) playerHasActionInteraction(player *PlayerState, action *CyberiaAction, bot *BotState) bool {
+	if action.GrantQuestCode != "" {
+		existing, ok := s.playerQuest(player, action.GrantQuestCode)
+		if (!ok || existing.Status == "failed") && s.prerequisitesMet(player, action.GrantQuestCode) {
+			return true
+		}
+	}
+	skin := s.botActiveSkin(bot.ID)
+	if skin == "" {
+		return false
+	}
+	for _, qp := range player.Quests {
+		if qp.Status != "active" {
+			continue
+		}
+		stepIdx := firstIncompleteStepIndex(qp)
+		if stepIdx < 0 {
+			continue
+		}
+		for i := range qp.Steps[stepIdx].Objectives {
+			op := &qp.Steps[stepIdx].Objectives[i]
+			if op.Type == "talk" && op.ItemID == skin && op.Current < op.Required {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // prerequisitesMet reports whether every prerequisite quest of `code` is
 // completed for the player (AND logic). Unknown quests fail closed.
 func (s *GameServer) prerequisitesMet(player *PlayerState, code string) bool {
