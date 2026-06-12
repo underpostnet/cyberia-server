@@ -80,12 +80,21 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	playerID := uuid.New().String()
 	playerDims := Dimensions{Width: s.defaultPlayerWidth, Height: s.defaultPlayerHeight}
 
-	// Pick a random starting map by code
+	// Pick the starting map. INSTANCE_CODE=TEST always spawns on the first
+	// declared map (deterministic); otherwise pick a random map.
 	mapCodes := make([]string, 0, len(s.maps))
 	for code := range s.maps {
 		mapCodes = append(mapCodes, code)
 	}
 	startMapCode := mapCodes[rand.Intn(len(mapCodes))]
+	if s.instanceCode == "TEST" {
+		for _, code := range s.mapCodeOrder {
+			if _, ok := s.maps[code]; ok {
+				startMapCode = code
+				break
+			}
+		}
+	}
 	startMapState := s.maps[startMapCode]
 	startPosI, err := startMapState.pathfinder.findRandomWalkablePoint(playerDims)
 	if err != nil {

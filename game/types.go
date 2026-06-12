@@ -221,6 +221,8 @@ type Client struct {
 type GameServer struct {
 	mu             sync.Mutex
 	maps           map[string]*MapState
+	mapCodeOrder   []string // instance map codes in declared order (spawn order)
+	instanceCode   string   // INSTANCE_CODE — "TEST" forces first-map spawn
 	clients        map[string]*Client
 	register       chan *Client
 	unregister     chan *Client

@@ -60,6 +60,7 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 	}
 
 	log.Printf("[WorldBuilder] Loading full instance %q via gRPC...", wb.InstanceCode)
+	wb.server.SetInstanceCode(wb.InstanceCode)
 
 	resp, err := wb.client.FetchFullInstance(ctx, wb.InstanceCode)
 	if err != nil {

@@ -41,6 +41,7 @@ func (s *GameServer) BuildWorldFromInstance(
 		instance.GetCode(), len(mapMsgs), len(olMsgs))
 
 	s.buildMapsFromInstance(instance, mapMsgs)
+	s.mapCodeOrder = instance.GetMapCodes()
 
 	// Bind the CyberiaAction / CyberiaQuest content the engine delivered with
 	// the world to the freshly built entities. No separate fetch.
@@ -59,6 +60,15 @@ func (s *GameServer) BuildWorldFromInstance(
 
 	// List the entities bound to a CyberiaAction (mission providers).
 	s.logActionProviders()
+}
+
+// SetInstanceCode records the INSTANCE_CODE the world was loaded for. When it is
+// "TEST", new players always spawn on the first declared map (deterministic for
+// testing) instead of a random one.
+func (s *GameServer) SetInstanceCode(code string) {
+	s.mu.Lock()
+	s.instanceCode = code
+	s.mu.Unlock()
 }
 
 // RebuildWorld re-fetches instance data and rebuilds all map entities
@@ -93,6 +103,7 @@ func (s *GameServer) RebuildWorld(
 
 	// Rebuild via the same path as initial load.
 	s.buildMapsFromInstance(instance, mapMsgs)
+	s.mapCodeOrder = instance.GetMapCodes()
 	s.bindActionContent(instance.GetMapCodes(), actions, quests)
 
 	// Restore players into the (possibly new) map states.
