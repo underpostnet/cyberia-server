@@ -45,7 +45,8 @@ func (s *GameServer) BuildWorldFromInstance(
 
 	// Bind the CyberiaAction / CyberiaQuest content the engine delivered with
 	// the world to the freshly built entities. No separate fetch.
-	s.bindActionContent(instance.GetMapCodes(), actions, quests)
+	s.bindQuests(instance.GetMapCodes(), quests)
+	s.bindActions(instance.GetMapCodes(), actions)
 
 	log.Printf("[InstanceLoader] World built: %d maps loaded.", len(s.maps))
 
@@ -58,8 +59,9 @@ func (s *GameServer) BuildWorldFromInstance(
 	// Print ASCII graph of portal topology
 	printInstanceGraph(instance, s.maps)
 
-	// List the entities bound to a CyberiaAction (mission providers).
+	// List the entities bound to a CyberiaAction and the quests each cell offers.
 	s.logActionProviders()
+	s.logQuestProviders()
 }
 
 // SetInstanceCode records the INSTANCE_CODE the world was loaded for. When it is
@@ -104,7 +106,8 @@ func (s *GameServer) RebuildWorld(
 	// Rebuild via the same path as initial load.
 	s.buildMapsFromInstance(instance, mapMsgs)
 	s.mapCodeOrder = instance.GetMapCodes()
-	s.bindActionContent(instance.GetMapCodes(), actions, quests)
+	s.bindQuests(instance.GetMapCodes(), quests)
+	s.bindActions(instance.GetMapCodes(), actions)
 
 	// Restore players into the (possibly new) map states.
 	for code, players := range savedPlayers {

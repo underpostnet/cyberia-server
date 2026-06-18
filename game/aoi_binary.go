@@ -168,6 +168,18 @@ func (e *BinaryAOIEncoder) putString(s string) {
 	e.pos += n
 }
 
+// putStringList writes a u8 count followed by each length-prefixed string.
+func (e *BinaryAOIEncoder) putStringList(items []string) {
+	n := len(items)
+	if n > 255 {
+		n = 255
+	}
+	e.putU8(byte(n))
+	for i := 0; i < n; i++ {
+		e.putString(items[i])
+	}
+}
+
 func (e *BinaryAOIEncoder) putID(id string) {
 	n := len(id)
 	if n > 36 {
@@ -281,7 +293,7 @@ func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64, effec
 	e.putU8(PlayerStatusIcon(p))
 }
 
-func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLevel int, actionCode string, statusIcon uint8) {
+func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLevel int, actionCode string, statusIcon uint8, interactionFlags uint8, questCodes []string) {
 	flags := EntityTypeBot | FlagHasLife | FlagHasBehavior
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
@@ -296,12 +308,17 @@ func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLe
 	e.writeItemIDs(b.ObjectLayers)
 	e.putString(b.CasterID)
 	e.putU16(uint16(effectiveLevel))
-	// Entity Status Indicator — u8 overhead icon ID, resolved PER VIEWING
-	// PLAYER (see entity_status.go / botStatusFor).
+	// Presence status — u8 lifecycle icon ID (entity_status.go).
 	e.putU8(statusIcon)
+	// Interaction capability bitmask — u8, resolved PER VIEWING PLAYER. Each set
+	// bit (action/quest) enables an overlay icon and its interact-modal tab.
+	e.putU8(interactionFlags)
 	// The bot's action code, "" for ordinary bots. The client fetches the action
 	// metadata (label, dialogue map) by this code via REST.
 	e.putString(actionCode)
+	// Authoritative quest codes this NPC provides to the viewing player; the
+	// client fetches quest metadata by code only when not already cached.
+	e.putStringList(questCodes)
 }
 
 func (e *BinaryAOIEncoder) WriteFloor(f *FloorState) {
@@ -565,19 +582,16 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 		}
 		// The bot's action code (location-scoped, position-independent). The
 		// client fetches the action metadata (label, dialogue map) by code via
-		// REST and resolves the offered quests itself.
+		// REST; offered quests are located via the cyberia-quest API by the bot's
+		// binding cell, decoupled from CyberiaAction.
 		actionCode := b.ActionCode
 		statusIcon := BotStatusIcon(b)
-		if a := s.actionCache[b.ID]; a != nil {
-			// Per-player Action Provider status: the quest icon (ESI 8) shows
-			// ONLY to a viewing player who has a real interaction with this NPC
-			// right now (an acceptable offer or an active talk step); to everyone
-			// else it reads as a plain passive bot.
-			if statusIcon == StatusActionProvider && !s.playerHasActionInteraction(player, a, b) {
-				statusIcon = StatusPassive
-			}
-		}
-		enc.WriteBot(b, respawnIn, s.effLevel(b, mapState), actionCode, statusIcon)
+		// Interaction capabilities + provided quests are resolved PER VIEWING
+		// PLAYER and per cell — independent of any cyberia-action — so the quest
+		// bit/codes appear whenever this NPC offers or advances a quest right now.
+		questCodes := s.botQuestCodes(player, b)
+		interactionFlags := s.botInteractionFlags(b, len(questCodes) > 0)
+		enc.WriteBot(b, respawnIn, s.effLevel(b, mapState), actionCode, statusIcon, interactionFlags, questCodes)
 		entityCount++
 	}
 

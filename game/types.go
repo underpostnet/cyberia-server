@@ -18,6 +18,14 @@ type PointI struct {
 	X, Y int
 }
 
+// cellKey identifies a map cell. Both cyberia-action and cyberia-quest bind to
+// entities by this cell, so a bot on a quest's cell can offer it.
+type cellKey struct {
+	mapCode string
+	cellX   int
+	cellY   int
+}
+
 type Rectangle struct {
 	MinX, MinY, MaxX, MaxY float64
 }

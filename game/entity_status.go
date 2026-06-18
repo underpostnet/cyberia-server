@@ -19,6 +19,8 @@
 // MUST stay in sync with the C client constants in entity_status.h.
 package game
 
+// Presence status IDs (0–7) — the single, mutually-exclusive lifecycle icon
+// stamped into the AOI `statusIcon` u8 for every entity.
 const (
 	StatusNone              uint8 = 0 // No icon (skill/coin bots, world objects)
 	StatusPassive           uint8 = 1 // Passive bot (no weapon)
@@ -28,7 +30,23 @@ const (
 	StatusDead              uint8 = 5 // Entity is dead / respawning
 	StatusResource          uint8 = 6 // Resource entity — static, exploitable
 	StatusResourceExtracted uint8 = 7 // Resource entity depleted / extracted
-	StatusActionProvider    uint8 = 8 // Bot with a bound action (talk/quest-talk/shop/craft/storage)
+)
+
+// Capability icon IDs (8+) — NOT presence states. They are conveyed per entity
+// as the `interactionFlags` bitmask below and rendered by the client as overlay
+// icons alongside the presence icon. The IDs are the client presentation-table
+// keys (STATUS_ICONS / STATUS_ICONS_PRESENTATION) the client resolves to an icon.
+const (
+	StatusActionProvider uint8 = 8 // bot exposes a usable cyberia-action (talk/shop/craft/storage)
+	StatusQuestProvider  uint8 = 9 // bot offers/advances a cyberia-quest for the viewing player
+)
+
+// Interaction capability bits — an entity may carry several at once. Each set
+// bit enables its own interact-modal tab and overlay status icon. Bit positions
+// pair with the capability icon IDs above (bit i ↔ icon 8+i).
+const (
+	InteractionFlagAction uint8 = 1 << 0 // ↔ StatusActionProvider
+	InteractionFlagQuest  uint8 = 1 << 1 // ↔ StatusQuestProvider
 )
 
 // PlayerStatusIcon computes the overhead status icon for a player.
@@ -60,11 +78,6 @@ func BotStatusIcon(b *BotState) uint8 {
 	}
 	if b.IsGhost() {
 		return StatusDead
-	}
-	// An action-provider icon takes precedence over passive/hostile so the
-	// player sees the interaction affordance. Dead bots still show StatusDead.
-	if b.ActionCode != "" {
-		return StatusActionProvider
 	}
 	if b.Behavior == "hostile" {
 		return StatusHostile

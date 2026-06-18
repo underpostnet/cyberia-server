@@ -1,28 +1,17 @@
-// Package game — action_quest.go
+// Package game — quest.go
 //
-// Server-side Action & Quest runtime for the Talk / Quest-Talk system.
+// Server-side cyberia-quest runtime: mission definitions, per-player progress,
+// objective advancement (talk / collect / kill), rewards, and persistence.
+// Quests bind to entities by source cell, independently of any cyberia-action —
+// collect/kill objectives need no NPC interaction; a `talk` objective is the one
+// place a quest leans on the action/dialogue layer (see action.go).
 //
-// engine-cyberia owns the persisted CyberiaAction / CyberiaQuest content and
-// exposes it over REST. The Go simulation is the authority that *resolves*
-// which action an entity provides and *validates* dialogue completion before
-// advancing quest progress. The client never declares the action type, quest
-// code, or dialogue codes — it only reports which entity it talked to and
-// which dialogue group it finished reading (dlg_complete). Everything else is
-// resolved here from actionCache / questDefs, both bound at instance init.
+// Progress is computed, never stored as done-flags (mirrors CyberiaQuestProgress).
+// The client never declares quest codes or progress — the simulation is the
+// authority; it sends snapshots (dlg_ack) the Quest Journal store consumes.
 //
-// Cross-process contract:
-//
-//	dlg_start    (client→server) — bind PlayerState.ActiveDialogueEntityID, freeze
-//	dlg_complete (client→server) — validate context, branch on action.Type,
-//	                               advance talk objectives, send dlg_ack, thaw
-//	dlg_cancel   (client→server) — clear context, thaw, no progress
-//	dlg_ack      (server→client) — notify-only: questGranted + objectivesDone
-//	                               (+ affected quest snapshot entries for the
-//	                                Quest Journal store)
-//
-// Caller MUST hold s.mu for every handler / mutation helper in this file
-// (they run inside phaseInput). Only loadActionContent does network I/O and
-// it runs at world (re)build time, also under s.mu.
+// Caller MUST hold s.mu for every mutation helper here (they run inside
+// phaseInput). Binding runs at world (re)build time, also under s.mu.
 package game
 
 import (
@@ -38,36 +27,6 @@ import (
 )
 
 // ── Content shapes (mirror engine-cyberia Mongo schemas) ────────────────────
-
-// CyberiaAction mirrors src/api/cyberia-action/cyberia-action.model.js.
-// Only the fields the simulation needs are decoded.
-// ActionQuestDialogue maps a quest this NPC handles to the dialogue shown for
-// it (offer + talk-objective validation).
-type ActionQuestDialogue struct {
-	QuestCode  string `json:"questCode"`
-	DialogCode string `json:"dialogCode"`
-}
-
-type CyberiaAction struct {
-	Code               string                `json:"code"`
-	Label              string                `json:"label"`
-	SourceMapCode      string                `json:"sourceMapCode"`
-	SourceCellX        int                   `json:"sourceCellX"`
-	SourceCellY        int                   `json:"sourceCellY"`
-	DialogCode         string                `json:"dialogCode"`
-	QuestDialogueCodes []ActionQuestDialogue `json:"questDialogueCodes"`
-}
-
-// dialogCodeForQuest returns the dialogue code this action shows for questCode,
-// or "" when the NPC doesn't handle that quest.
-func (a *CyberiaAction) dialogCodeForQuest(questCode string) string {
-	for _, qd := range a.QuestDialogueCodes {
-		if qd.QuestCode == questCode {
-			return qd.DialogCode
-		}
-	}
-	return ""
-}
 
 // CyberiaQuest mirrors src/api/cyberia-quest/cyberia-quest.model.js.
 type CyberiaQuest struct {
@@ -140,126 +99,12 @@ type QuestSnapshotEntry struct {
 	ObjectivesText string `json:"objectivesText"` // "2/3 kill scp-2040, 1/1 talk wason"
 }
 
-// ── Instance init: bind gRPC-delivered content to entities ──────────────────
-
-// bindActionContent caches the CyberiaAction / CyberiaQuest content that the
-// engine delivered with the world over gRPC and binds each action to the
-// runtime entity at its (sourceMapCode, sourceCellX, sourceCellY) cell. The
-// Go server never fetches this over a separate channel — for the procedural
-// fallback the engine's fallback builder fills it from the canonical defaults.
-//
-// Caller MUST hold s.mu.
-func (s *GameServer) bindActionContent(mapCodes []string,
-	actions []*pb.CyberiaActionMessage, quests []*pb.CyberiaQuestMessage) {
-	s.actionCache = make(map[string]*CyberiaAction)
-	s.questDefs = make(map[string]*CyberiaQuest)
-
-	mapSet := make(map[string]bool, len(mapCodes))
-	for _, c := range mapCodes {
-		mapSet[c] = true
-	}
-
-	// Index quests by their source cell — an action awards the quest(s) whose
-	// source cell matches its own. Codes are sorted so per-player resolution is
-	// deterministic.
-	s.questsByCell = make(map[cellKey][]string)
-	for _, q := range quests {
-		cq := protoToQuest(q)
-		s.questDefs[cq.Code] = cq
-		if cq.SourceMapCode != "" {
-			k := cellKey{cq.SourceMapCode, cq.SourceCellX, cq.SourceCellY}
-			s.questsByCell[k] = append(s.questsByCell[k], cq.Code)
-		}
-	}
-	for k := range s.questsByCell {
-		sort.Strings(s.questsByCell[k])
-	}
-
-	// Index actions by (mapCode,cellX,cellY) for entity binding.
-	byCell := make(map[cellKey]*CyberiaAction)
-	for _, a := range actions {
-		ca := protoToAction(a)
-		if !mapSet[ca.SourceMapCode] {
-			continue
-		}
-		byCell[cellKey{ca.SourceMapCode, ca.SourceCellX, ca.SourceCellY}] = ca
-	}
-
-	bound := 0
-	for mapCode, ms := range s.maps {
-		for _, bot := range ms.bots {
-			// Bind by the bot's stable spawn-centre (its initial cell), not its
-			// live position — action NPCs wander within their radius, so live
-			// Pos drifts off the action's source cell after the first tick.
-			key := cellKey{mapCode, int(bot.SpawnCenter.X), int(bot.SpawnCenter.Y)}
-			action, ok := byCell[key]
-			if !ok {
-				continue
-			}
-			bot.ActionCode = action.Code
-			s.actionCache[bot.ID] = action
-			bound++
-		}
-	}
-	log.Printf("[ActionContent] gRPC delivered %d actions, %d quests; bound %d entities",
-		len(actions), len(quests), bound)
-}
-
-// cellKey identifies a map cell shared by an action and the quest(s) it awards.
-type cellKey struct {
-	mapCode string
-	cellX   int
-	cellY   int
-}
-
-// actionCell returns the cell key for an action's source cell.
-func actionCell(a *CyberiaAction) cellKey {
-	return cellKey{a.SourceMapCode, a.SourceCellX, a.SourceCellY}
-}
-
-// questAcceptableFor reports whether the player may start quest `code` now: it
-// is not already active or completed (a failed/abandoned one is re-acceptable)
-// and all its prerequisites are completed.
-//
-// Caller MUST hold s.mu.
-func (s *GameServer) questAcceptableFor(player *PlayerState, code string) bool {
-	if _, ok := s.questDefs[code]; !ok {
-		return false
-	}
-	if qp, ok := s.playerQuest(player, code); ok && (qp.Status == "active" || qp.Status == "completed") {
-		return false
-	}
-	return s.prerequisitesMet(player, code)
-}
-
-// resolveAcceptableQuest returns the first acceptable quest bound to the action's
-// cell, or "" when none can be started right now.
-//
-// Caller MUST hold s.mu.
-func (s *GameServer) resolveAcceptableQuest(player *PlayerState, action *CyberiaAction) string {
-	for _, code := range s.questsByCell[actionCell(action)] {
-		if s.questAcceptableFor(player, code) {
-			return code
-		}
-	}
-	return ""
-}
-
-func protoToAction(a *pb.CyberiaActionMessage) *CyberiaAction {
-	ca := &CyberiaAction{
-		Code:          a.GetCode(),
-		Label:         a.GetLabel(),
-		SourceMapCode: a.GetSourceMapCode(),
-		SourceCellX:   int(a.GetSourceCellX()),
-		SourceCellY:   int(a.GetSourceCellY()),
-		DialogCode:    a.GetDialogCode(),
-	}
-	for _, qd := range a.GetQuestDialogueCodes() {
-		ca.QuestDialogueCodes = append(ca.QuestDialogueCodes, ActionQuestDialogue{
-			QuestCode: qd.GetQuestCode(), DialogCode: qd.GetDialogCode(),
-		})
-	}
-	return ca
+// botSpawnCell returns the cell key for a bot's spawn centre (its binding cell,
+// stable as it wanders). Quests bind to entities by this cell, independently of
+// any cyberia-action: a bot standing on a quest's source cell offers that quest
+// even when it carries no action.
+func botSpawnCell(b *BotState) cellKey {
+	return cellKey{b.MapCode, int(b.SpawnCenter.X), int(b.SpawnCenter.Y)}
 }
 
 func protoToQuest(q *pb.CyberiaQuestMessage) *CyberiaQuest {
@@ -290,66 +135,128 @@ func protoToQuest(q *pb.CyberiaQuestMessage) *CyberiaQuest {
 	return cq
 }
 
-// logActionProviders prints every entity bound to an action — map, action
-// code, entity id, initial cell (the centre of its movement radius), and
-// action type. Called after the instance graph so operators can confirm the
-// mission NPCs were instantiated and bound.
-func (s *GameServer) logActionProviders() {
-	if len(s.actionCache) == 0 {
-		log.Printf("[ActionProviders] none bound (no actions delivered via gRPC, or none match an entity cell)")
+// bindQuests caches the CyberiaQuest definitions the engine delivered with the
+// world over gRPC and indexes them by source cell, so a bot standing on a
+// quest's cell offers it. Quests whose source map is not part of this instance
+// are dropped (defensive — the engine already scopes by instance maps). Codes
+// are sorted per cell for deterministic per-player resolution. Independent of
+// cyberia-action.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) bindQuests(mapCodes []string, quests []*pb.CyberiaQuestMessage) {
+	s.questDefs = make(map[string]*CyberiaQuest)
+	s.questsByCell = make(map[cellKey][]string)
+
+	mapSet := make(map[string]bool, len(mapCodes))
+	for _, c := range mapCodes {
+		mapSet[c] = true
+	}
+
+	bound := 0
+	for _, q := range quests {
+		cq := protoToQuest(q)
+		if cq.SourceMapCode == "" || !mapSet[cq.SourceMapCode] {
+			continue
+		}
+		s.questDefs[cq.Code] = cq
+		k := cellKey{cq.SourceMapCode, cq.SourceCellX, cq.SourceCellY}
+		s.questsByCell[k] = append(s.questsByCell[k], cq.Code)
+		bound++
+	}
+	for k := range s.questsByCell {
+		sort.Strings(s.questsByCell[k])
+	}
+	log.Printf("[QuestContent] gRPC delivered %d quests; bound %d to this instance", len(quests), bound)
+}
+
+// logQuestProviders prints every quest the instance can offer — its source cell,
+// title, prerequisites, and per-objective summary — plus the skins of the
+// entities standing on that cell that surface it. A quest needs an entity at its
+// source cell to be accepted in-game; one with none is flagged. cyberia-quest and
+// cyberia-action are independent: collect/kill objectives need no action, while a
+// talk objective needs an interactable NPC (skin dialogue) at the talk target.
+func (s *GameServer) logQuestProviders() {
+	if len(s.questDefs) == 0 {
+		log.Printf("[QuestProviders] none (no quests delivered via gRPC)")
 		return
 	}
-	log.Printf("[ActionProviders] %d action-provider entities:", len(s.actionCache))
-	for _, ms := range s.maps {
-		for _, bot := range ms.bots {
-			if bot.ActionCode == "" {
-				continue
+	codes := make([]string, 0, len(s.questDefs))
+	for code := range s.questDefs {
+		codes = append(codes, code)
+	}
+	sort.Strings(codes)
+	log.Printf("[QuestProviders] %d quests:", len(codes))
+	for _, code := range codes {
+		q := s.questDefs[code]
+		cell := cellKey{q.SourceMapCode, q.SourceCellX, q.SourceCellY}
+		providers := s.providerSkinsAtCell(cell)
+		var objs []string
+		hasTalk := false
+		for _, st := range q.Steps {
+			for _, o := range st.Objectives {
+				objs = append(objs, fmt.Sprintf("%s:%s x%d", o.Type, o.ItemID, o.Quantity))
+				if o.Type == "talk" {
+					hasTalk = true
+				}
 			}
-			a := s.actionCache[bot.ID]
-			label := ""
-			var quests []string
-			if a != nil {
-				label = a.Label
-				quests = s.questsByCell[actionCell(a)]
-			}
-			log.Printf("[ActionProviders]   map=%s action=%s label=%q quests=%v entity=%s initPos=(%d,%d)",
-				bot.MapCode, bot.ActionCode, label, quests, bot.ID,
-				int(bot.Pos.X), int(bot.Pos.Y))
+		}
+		log.Printf("[QuestProviders]   quest=%s title=%q cell=%s(%d,%d) prereqs=%v objectives=%v providers=%v",
+			q.Code, q.Title, q.SourceMapCode, q.SourceCellX, q.SourceCellY,
+			q.PrerequisiteCodes, objs, providers)
+		if len(providers) == 0 {
+			log.Printf("[QuestProviders]   WARNING quest=%s has NO entity on its source cell — it cannot be accepted in-game", q.Code)
+		} else if hasTalk {
+			log.Printf("[QuestProviders]   note quest=%s has talk objective(s) — needs an interactable NPC (skin dialogue) at the talk target", q.Code)
 		}
 	}
 }
 
-// ── Dialogue handlers (phaseInput) ──────────────────────────────────────────
-
-// handleDlgStart binds the dialogue context and freezes the player. The
-// freeze grants modal protection (immunity); it is released on
-// dlg_complete / dlg_cancel.
+// providerSkinsAtCell returns the active skins of the entities whose spawn cell
+// is `cell` — the NPCs that surface the quests bound to that cell.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleDlgStart(player *PlayerState, cmd *InputCommand) {
-	if player.IsGhost() {
-		return
+func (s *GameServer) providerSkinsAtCell(cell cellKey) []string {
+	var out []string
+	for _, ms := range s.maps {
+		for _, bot := range ms.bots {
+			if botSpawnCell(bot) == cell {
+				skin := s.botActiveSkinOf(bot)
+				if skin == "" {
+					skin = bot.ID
+				}
+				out = append(out, skin)
+			}
+		}
 	}
-	// Snapshot the provider's interaction context now, while the bot is in range.
-	// dlg_complete validates against this frozen snapshot, not a live re-lookup,
-	// so the talk objective still resolves if the bot later dies or leaves AOI.
-	player.ActiveDialogueEntityID = cmd.EntityID
-	player.ActiveDialogueAction = s.actionCache[cmd.EntityID]
-	player.ActiveDialogueSkin = s.botActiveSkin(cmd.EntityID)
-	FreezePlayer(player, "dialogue")
+	return out
 }
 
-// handleDlgCancel releases the dialogue freeze without recording progress.
+// questAcceptableFor reports whether the player may start quest `code` now: it
+// is not already active or completed (a failed/abandoned one is re-acceptable)
+// and all its prerequisites are completed.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleDlgCancel(player *PlayerState, cmd *InputCommand) {
-	if player.ActiveDialogueEntityID == "" || player.ActiveDialogueEntityID != cmd.EntityID {
-		return
+func (s *GameServer) questAcceptableFor(player *PlayerState, code string) bool {
+	if _, ok := s.questDefs[code]; !ok {
+		return false
 	}
-	player.ActiveDialogueEntityID = ""
-	player.ActiveDialogueAction = nil
-	player.ActiveDialogueSkin = ""
-	ThawPlayer(player, "dialogue")
+	if qp, ok := s.playerQuest(player, code); ok && (qp.Status == "active" || qp.Status == "completed") {
+		return false
+	}
+	return s.prerequisitesMet(player, code)
+}
+
+// resolveAcceptableQuestAtCell returns the first acceptable quest bound to a
+// cell, or "" when none can be started right now.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) resolveAcceptableQuestAtCell(player *PlayerState, cell cellKey) string {
+	for _, code := range s.questsByCell[cell] {
+		if s.questAcceptableFor(player, code) {
+			return code
+		}
+	}
+	return ""
 }
 
 // handleQuestAbandon drops an active quest, moving it to the failed section.
@@ -369,63 +276,30 @@ func (s *GameServer) handleQuestAbandon(player *PlayerState, cmd *InputCommand) 
 	log.Printf("[Quest] player %s abandoned quest %q", player.ID, qp.QuestCode)
 }
 
-// handleDlgComplete is the authoritative completion path. It validates the
-// dialogue context, branches on the resolved action type, advances talk
-// objectives for quest-talk, and notifies the client via dlg_ack.
-//
-// Caller MUST hold s.mu.
-func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {
-	// Validate: drop unless this matches the dialogue the player opened.
-	if player.ActiveDialogueEntityID == "" || player.ActiveDialogueEntityID != cmd.EntityID {
-		return
-	}
-	// Resolve against the snapshot frozen at dlg_start, not a live re-lookup, so
-	// completion is independent of the bot's current alive/AOI state.
-	action := player.ActiveDialogueAction
-	talkedSkin := player.ActiveDialogueSkin
-	player.ActiveDialogueEntityID = ""
-	player.ActiveDialogueAction = nil
-	player.ActiveDialogueSkin = ""
-	ThawPlayer(player, "dialogue")
-
-	if action == nil {
-		return
-	}
-
-	// dlg_complete NEVER grants a quest — acceptance is explicit (quest_accept,
-	// the Take Quest button). Reading the dialogue only advances `talk` objectives
-	// that target the NPC the player spoke with.
-	var affected []QuestSnapshotEntry
-	objectivesDone := s.advanceTalkObjectives(player, talkedSkin, &affected)
-	if s.advanceCollectObjectives(player, &affected) {
-		objectivesDone = true
-	}
-
-	s.sendDlgAck(player, "", objectivesDone, affected)
-}
-
 // handleQuestAccept grants the quest the interacted NPC offers — the only path
-// to start a mission. Validates that the entity provides an action with a grant
-// code, the prerequisites are met, and the quest is not already active or
-// completed (a failed/abandoned quest may be re-accepted). Quests are never
-// granted implicitly by reading dialogue.
+// to start a mission. Validates that the quest is bound to the entity's cell,
+// its prerequisites are met, and it is not already active or completed (a
+// failed/abandoned quest may be re-accepted). Quests are never granted
+// implicitly by reading dialogue.
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) handleQuestAccept(player *PlayerState, cmd *InputCommand) {
-	action := s.actionCache[cmd.EntityID]
-	if action == nil {
+	bot := s.findBot(cmd.EntityID)
+	if bot == nil {
 		return
 	}
 	// The client names which mission to accept (an NPC can offer several). It
 	// must be a quest bound to this NPC's cell and acceptable right now; when the
-	// client sends no code, fall back to the first acceptable one.
+	// client sends no code, fall back to the first acceptable one. Acceptance is
+	// cell-based and independent of any cyberia-action on the entity.
+	cell := botSpawnCell(bot)
 	code := cmd.ItemID
 	if code != "" {
-		if !containsStr(s.questsByCell[actionCell(action)], code) || !s.questAcceptableFor(player, code) {
+		if !containsStr(s.questsByCell[cell], code) || !s.questAcceptableFor(player, code) {
 			return
 		}
 	} else {
-		code = s.resolveAcceptableQuest(player, action)
+		code = s.resolveAcceptableQuestAtCell(player, cell)
 	}
 	if code == "" {
 		return
@@ -456,32 +330,6 @@ func questSnapshotContains(entries []QuestSnapshotEntry, code string) bool {
 	return false
 }
 
-// botActiveSkin returns the active skin item ID of the bot with this entity ID
-// (searched across maps), or "" if not found. The bot's own active skin — not
-// any action field — is what 'talk' objectives match against.
-func (s *GameServer) botActiveSkin(entityID string) string {
-	for _, ms := range s.maps {
-		bot := ms.bots[entityID]
-		if bot == nil {
-			continue
-		}
-		// When the NPC is dead its active layers hold the ghost skin; the live
-		// skin is preserved in PreRespawnObjectLayers. Read from there so a talk
-		// objective still validates against a quest-giver that just died — the
-		// interaction context is independent of the entity's alive/AOI state.
-		layers := bot.ObjectLayers
-		if bot.IsGhost() && len(bot.PreRespawnObjectLayers) > 0 {
-			layers = bot.PreRespawnObjectLayers
-		}
-		for _, ol := range layers {
-			if ol.Active && s.itemType(ol.ItemID) == "skin" {
-				return ol.ItemID
-			}
-		}
-	}
-	return ""
-}
-
 // ── Quest helpers ───────────────────────────────────────────────────────────
 
 func (s *GameServer) ensurePlayerQuests(player *PlayerState) {
@@ -505,37 +353,57 @@ func (s *GameServer) questCompleted(player *PlayerState, code string) bool {
 	return ok && qp.Status == "completed"
 }
 
-// playerHasActionInteraction reports whether `player` currently has a real
-// interaction with the action NPC `bot`: an acceptable offer (a grantable quest
-// not yet active/completed with prerequisites met), or an active quest whose
-// current step needs a talk with this NPC's skin. Drives the per-player Action
-// Provider status so the quest-talk icon is shown only when actionable.
+// botQuestCodes returns, authoritatively, every quest code this NPC surfaces to
+// `player`: quests bound to its cell that are acceptable, active, or completed
+// (completed stay so the player gets feedback on return — the client renders
+// them as done, not re-acceptable), plus any active quest whose current step
+// needs a talk with this NPC's skin (a report-back NPC away from the source
+// cell). Locked quests (prerequisites unmet) are withheld. Cell-based, so a bot
+// offers quests independently of any cyberia-action; the client fetches metadata
+// by code only when uncached. The non-empty result also drives the quest bit.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) playerHasActionInteraction(player *PlayerState, action *CyberiaAction, bot *BotState) bool {
-	if s.resolveAcceptableQuest(player, action) != "" {
-		return true
-	}
-	skin := s.botActiveSkin(bot.ID)
-	if skin == "" {
-		return false
-	}
-	for _, qp := range player.Quests {
-		if qp.Status != "active" {
-			continue
+func (s *GameServer) botQuestCodes(player *PlayerState, bot *BotState) []string {
+	seen := map[string]bool{}
+	var codes []string
+	add := func(code string) {
+		if !seen[code] {
+			seen[code] = true
+			codes = append(codes, code)
 		}
-		stepIdx := firstIncompleteStepIndex(qp)
-		if stepIdx < 0 {
-			continue
+	}
+	for _, code := range s.questsByCell[botSpawnCell(bot)] {
+		switch {
+		case s.questCompleted(player, code), s.playerQuestActive(player, code), s.questAcceptableFor(player, code):
+			add(code)
 		}
-		for i := range qp.Steps[stepIdx].Objectives {
-			op := &qp.Steps[stepIdx].Objectives[i]
-			if op.Type == "talk" && op.ItemID == skin && op.Current < op.Required {
-				return true
+	}
+	skin := s.botActiveSkinOf(bot)
+	if skin != "" {
+		for _, qp := range player.Quests {
+			if qp.Status != "active" {
+				continue
+			}
+			stepIdx := firstIncompleteStepIndex(qp)
+			if stepIdx < 0 {
+				continue
+			}
+			for i := range qp.Steps[stepIdx].Objectives {
+				op := &qp.Steps[stepIdx].Objectives[i]
+				if op.Type == "talk" && op.ItemID == skin && op.Current < op.Required {
+					add(qp.QuestCode)
+					break
+				}
 			}
 		}
 	}
-	return false
+	return codes
+}
+
+// playerQuestActive reports whether the player has this quest in the active state.
+func (s *GameServer) playerQuestActive(player *PlayerState, code string) bool {
+	qp, ok := s.playerQuest(player, code)
+	return ok && qp.Status == "active"
 }
 
 // prerequisitesMet reports whether every prerequisite quest of `code` is
