@@ -20,19 +20,29 @@ import (
 	"github.com/joho/godotenv"
 )
 
+func underpostConfigSet(key, value string) {
+	cmd := exec.Command("underpost", "config", "set", key, value)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("[status] underpost config set %s %s: %v\n%s", key, value, err, out)
+	}
+}
+
+// runUnderpostStatus publishes a lifecycle transition.
+//   - container-status is the dynamic runtime-status, set on every transition
+//     (success or error) so the deploy monitor can detect failure.
+//   - start-container-status is the insulated readiness marker, set only once the
+//     server is running, so a later fault can never clear pod readiness.
 func runUnderpostStatus(containerID, status string) {
 	if containerID == "" {
 		return
 	}
-	var value string
-	if status == "error" {
-		value = "error"
-	} else {
+	value := "error"
+	if status != "error" {
 		value = containerID + "-" + status
 	}
-	cmd := exec.Command("underpost", "config", "set", "container-status", value)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("[status] underpost config set container-status %s: %v\n%s", value, err, out)
+	underpostConfigSet("container-status", value)
+	if status == "running-deployment" {
+		underpostConfigSet("start-container-status", value)
 	}
 }
 
