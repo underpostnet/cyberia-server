@@ -127,8 +127,8 @@ func (s *GameServer) RebuildWorld(
 
 	log.Printf("[InstanceLoader] RebuildWorld complete: %d maps.", len(s.maps))
 	for code, ms := range s.maps {
-		log.Printf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots, %d resources, %d players",
-			code, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots), len(ms.resources), len(ms.players))
+		log.Printf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots, %d resources, %d statics, %d players",
+			code, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots), len(ms.resources), len(ms.statics), len(ms.players))
 	}
 	printInstanceGraph(instance, s.maps)
 }
@@ -174,6 +174,7 @@ func (s *GameServer) buildMapsFromInstance(
 			pathfinder:  NewPathfinder(gridW, gridH),
 			bots:        make(map[string]*BotState),
 			resources:   make(map[string]*ResourceState),
+			statics:     make(map[string]*StaticState),
 		}
 
 		for _, ent := range mapMsg.GetEntities() {
@@ -184,6 +185,8 @@ func (s *GameServer) buildMapsFromInstance(
 				s.buildBot(ms, mapCode, ent)
 			case "resource":
 				s.buildResource(ms, mapCode, ent)
+			case "static":
+				s.buildStatic(ms, mapCode, ent)
 			case "obstacle":
 				s.buildObstacle(ms, ent)
 			case "foreground":
@@ -499,6 +502,32 @@ func (s *GameServer) buildForeground(ms *MapState, ent *pb.EntityMessage) {
 		Type: "foreground",
 	}
 	ms.foregrounds[fg.ID] = fg
+}
+
+func (s *GameServer) buildStatic(ms *MapState, mapCode string, ent *pb.EntityMessage) {
+	var objectLayers []ObjectLayerState
+	for _, itemID := range ent.GetObjectLayerItemIds() {
+		objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+	}
+	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
+		if d, ok := s.entityDefaults["static"]; ok && len(d.LiveItemIDs) > 0 {
+			for _, itemID := range d.LiveItemIDs {
+				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+			}
+		}
+	}
+
+	st := &StaticState{
+		EntityBase: EntityBase{
+			ID:           uuid.New().String(),
+			Pos:          Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
+			Dims:         Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
+			ObjectLayers: objectLayers,
+		},
+		MapCode: mapCode,
+	}
+	// Statics are passable: no pathfinder cells are blocked.
+	ms.statics[st.ID] = st
 }
 
 func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalState {

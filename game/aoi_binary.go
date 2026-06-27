@@ -22,7 +22,7 @@
 //
 //	Per-entity block (variable length):
 //	  [0]       u8   flags
-//	                  bits 0-2: type (0=player, 1=bot, 2=floor, 3=obstacle, 4=portal, 5=foreground)
+//	                  bits 0-2: type (0=player, 1=bot, 2=floor, 3=obstacle, 4=portal, 5=foreground, 6=resource, 7=static)
 //	                  bit 3:    removed (entity left AOI — only type+ID follows)
 //	                  bit 4:    has life data
 //	                  bit 5:    has respawn timer
@@ -112,6 +112,7 @@ const (
 	EntityTypePortal     byte = 4
 	EntityTypeForeground byte = 5
 	EntityTypeResource   byte = 6
+	EntityTypeStatic     byte = 7
 
 	FlagRemoved     byte = 0x08 // bit 3
 	FlagHasLife     byte = 0x10 // bit 4
@@ -342,6 +343,14 @@ func (e *BinaryAOIEncoder) WriteForeground(fg ObjectState) {
 	e.writeItemIDs(fg.ObjectLayers)
 }
 
+// WriteStatic writes a static decorator block: entity base + active item IDs.
+// No life, respawn, behavior, or status icon — statics are inert decorations
+// the client depth-sorts with entities but never collides with.
+func (e *BinaryAOIEncoder) WriteStatic(st *StaticState) {
+	e.writeEntityBase(EntityTypeStatic, st.ID, st.Pos, st.Dims, NONE, IDLE)
+	e.writeItemIDs(st.ObjectLayers)
+}
+
 func (e *BinaryAOIEncoder) WriteResource(r *ResourceState, respawnIn *float64) {
 	flags := EntityTypeResource | FlagHasLife
 	if respawnIn != nil {
@@ -565,6 +574,15 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 		}
 		enc.WriteResource(r, respawnIn)
 		entityCount++
+	}
+
+	// Statics — non-moving, passable decorators (depth-sorted with bots by client)
+	for _, st := range mapState.statics {
+		stRect := Rectangle{MinX: st.Pos.X, MinY: st.Pos.Y, MaxX: st.Pos.X + st.Dims.Width, MaxY: st.Pos.Y + st.Dims.Height}
+		if rectsOverlap(player.AOI, stRect) {
+			enc.WriteStatic(st)
+			entityCount++
+		}
 	}
 
 	// Bots

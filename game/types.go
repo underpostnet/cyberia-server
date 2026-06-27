@@ -204,6 +204,16 @@ type ResourceState struct {
 	MapCode string `json:"MapCode"`
 }
 
+// StaticState represents a non-moving, passable decorator entity (rocks,
+// bushes, signage, etc.). It has a position, dimensions, and object layers,
+// but no life, no AI, and no collision: it never blocks movement and is never
+// exploitable. The client depth-sorts it with bots/players (Y-axis ordering)
+// so the player can pass behind or in front of it.
+type StaticState struct {
+	EntityBase
+	MapCode string `json:"MapCode"`
+}
+
 type PortalState struct {
 	EntityBase
 	Type         string        `json:"Type"`
@@ -222,6 +232,7 @@ type MapState struct {
 	players      map[string]*PlayerState
 	bots         map[string]*BotState
 	resources    map[string]*ResourceState
+	statics      map[string]*StaticState
 	gridW, gridH int
 }
 
