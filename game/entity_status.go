@@ -37,13 +37,15 @@ const (
 // icons alongside the presence icon. The IDs are the client presentation-table
 // keys (STATUS_ICONS / STATUS_ICONS_PRESENTATION) the client resolves to an icon.
 const (
-	StatusActionProvider uint8 = 8 // bot exposes a usable cyberia-action (talk/shop/craft/storage)
+	StatusActionProvider uint8 = 8 // bot has a pending action-talk-quest for the viewing player
 	StatusQuestProvider  uint8 = 9 // bot offers/advances a cyberia-quest for the viewing player
 )
 
-// Interaction capability bits — an entity may carry several at once. Each set
-// bit enables its own interact-modal tab and overlay status icon. Bit positions
-// pair with the capability icon IDs above (bit i ↔ icon 8+i).
+// Interaction capability bits — an entity may carry several at once. Bit
+// positions pair with the capability icon IDs above (bit i ↔ icon 8+i). The
+// quest bit also enables the interact-modal Quest tab; the action bit drives the
+// overlay icon and the quest-framed dialogue (it has no tab — the player advances
+// the talk-quest by tapping the modal dialogue).
 const (
 	InteractionFlagAction uint8 = 1 << 0 // ↔ StatusActionProvider
 	InteractionFlagQuest  uint8 = 1 << 1 // ↔ StatusQuestProvider

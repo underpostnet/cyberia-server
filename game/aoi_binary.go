@@ -294,7 +294,7 @@ func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64, effec
 	e.putU8(PlayerStatusIcon(p))
 }
 
-func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLevel int, actionCode string, statusIcon uint8, interactionFlags uint8, questCodes []string) {
+func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLevel int, actionCode string, statusIcon uint8, interactionFlags uint8, questCodes []string, actionDialogCode string) {
 	flags := EntityTypeBot | FlagHasLife | FlagHasBehavior
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
@@ -320,6 +320,10 @@ func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLe
 	// Authoritative quest codes this NPC provides to the viewing player; the
 	// client fetches quest metadata by code only when not already cached.
 	e.putStringList(questCodes)
+	// Pending action-talk-quest dialogue code, "" when none. Non-empty means the
+	// player has an active talk step this NPC's action maps to a dialogue; the
+	// client shows that dialogue (quest-framed) in place of the default greeting.
+	e.putString(actionDialogCode)
 }
 
 func (e *BinaryAOIEncoder) WriteFloor(f *FloorState) {
@@ -608,8 +612,9 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 		// PLAYER and per cell — independent of any cyberia-action — so the quest
 		// bit/codes appear whenever this NPC offers or advances a quest right now.
 		questCodes := s.botQuestCodes(player, b)
-		interactionFlags := s.botInteractionFlags(b, len(questCodes) > 0)
-		enc.WriteBot(b, respawnIn, s.effLevel(b, mapState), actionCode, statusIcon, interactionFlags, questCodes)
+		actionDialog := s.pendingActionTalkDialog(player, b)
+		interactionFlags := s.botInteractionFlags(len(questCodes) > 0, actionDialog != "")
+		enc.WriteBot(b, respawnIn, s.effLevel(b, mapState), actionCode, statusIcon, interactionFlags, questCodes, actionDialog)
 		entityCount++
 	}
 

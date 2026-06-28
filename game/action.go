@@ -175,20 +175,58 @@ func (s *GameServer) botActiveSkinOf(bot *BotState) string {
 	return ""
 }
 
-// botInteractionFlags builds the per-player interaction capability bitmask for
-// NPC `bot`: the action bit when it exposes a bound cyberia-action (always
-// interactable), and the quest bit when it surfaces any quest to the player
-// (`hasQuests`, from botQuestCodes — including completed feedback). The two
-// capabilities are independent — a bot may carry either, both, or neither.
-func (s *GameServer) botInteractionFlags(bot *BotState, hasQuests bool) uint8 {
+// botInteractionFlags builds the per-player interaction capability bitmask: the
+// action bit only when there is a pending action-talk-quest the player can
+// advance at this NPC right now (`hasPendingActionTalk`, from
+// pendingActionTalkDialog — NOT merely a bound action), and the quest bit when
+// the NPC surfaces any quest to the player (`hasQuests`, from botQuestCodes —
+// including completed feedback). The two capabilities are independent — a bot may
+// carry either, both, or neither.
+func (s *GameServer) botInteractionFlags(hasQuests, hasPendingActionTalk bool) uint8 {
 	var flags uint8
-	if bot.ActionCode != "" {
+	if hasPendingActionTalk {
 		flags |= InteractionFlagAction
 	}
 	if hasQuests {
 		flags |= InteractionFlagQuest
 	}
 	return flags
+}
+
+// pendingActionTalkDialog returns the dialogue code this NPC's action maps for an
+// active talk-quest the player can advance here: the player has an active quest
+// whose current step has an incomplete `talk` objective matching this bot's skin,
+// and the action maps that quest to a dialogue (questDialogueCodes). "" when there
+// is no pending action-talk-quest. This single condition sets the action
+// capability bit and replaces the default greeting with the quest's talk dialogue
+// on the client (only questDialogueCodes is implemented; shop/craft/storage are
+// reference-only).
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) pendingActionTalkDialog(player *PlayerState, bot *BotState) string {
+	action := s.actionCache[bot.ID]
+	if action == nil || len(action.QuestDialogueCodes) == 0 {
+		return ""
+	}
+	skin := s.botActiveSkinOf(bot)
+	if skin == "" {
+		return ""
+	}
+	for _, qp := range player.Quests {
+		if qp.Status != "active" {
+			continue
+		}
+		stepIdx := firstIncompleteStepIndex(qp)
+		if stepIdx < 0 || !stepHasIncompleteTalk(&qp.Steps[stepIdx], skin) {
+			continue
+		}
+		for _, qd := range action.QuestDialogueCodes {
+			if qd.QuestCode == qp.QuestCode && qd.DialogCode != "" {
+				return qd.DialogCode
+			}
+		}
+	}
+	return ""
 }
 
 // ── Dialogue handlers (phaseInput) ──────────────────────────────────────────
@@ -201,11 +239,10 @@ func (s *GameServer) handleDlgStart(player *PlayerState, cmd *InputCommand) {
 	if player.IsGhost() {
 		return
 	}
-	// Snapshot the provider's interaction context now, while the bot is in range.
-	// dlg_complete validates against this frozen snapshot, not a live re-lookup,
-	// so the talk objective still resolves if the bot later dies or leaves AOI.
+	// Snapshot the provider's NPC skin now, while the bot is in range. dlg_complete
+	// validates the talk objective against this frozen skin, not a live re-lookup,
+	// so it still resolves if the bot later dies or leaves AOI.
 	player.ActiveDialogueEntityID = cmd.EntityID
-	player.ActiveDialogueAction = s.actionCache[cmd.EntityID]
 	player.ActiveDialogueSkin = s.botActiveSkin(cmd.EntityID)
 	FreezePlayer(player, "dialogue")
 }
@@ -218,7 +255,6 @@ func (s *GameServer) handleDlgCancel(player *PlayerState, cmd *InputCommand) {
 		return
 	}
 	player.ActiveDialogueEntityID = ""
-	player.ActiveDialogueAction = nil
 	player.ActiveDialogueSkin = ""
 	ThawPlayer(player, "dialogue")
 }
@@ -233,18 +269,16 @@ func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {
 	if player.ActiveDialogueEntityID == "" || player.ActiveDialogueEntityID != cmd.EntityID {
 		return
 	}
-	// Resolve against the snapshot frozen at dlg_start, not a live re-lookup, so
-	// completion is independent of the bot's current alive/AOI state.
-	action := player.ActiveDialogueAction
+	// Resolve against the skin frozen at dlg_start, not a live re-lookup, so
+	// completion is independent of the bot's current alive/AOI state. Talk
+	// validation is by NPC skin alone and does NOT depend on the NPC carrying a
+	// cyberia-action — any finished dialogue advances a matching talk step, so a
+	// pure quest-giver (no bound action) validates as consistently as an
+	// action-provider does.
 	talkedSkin := player.ActiveDialogueSkin
 	player.ActiveDialogueEntityID = ""
-	player.ActiveDialogueAction = nil
 	player.ActiveDialogueSkin = ""
 	ThawPlayer(player, "dialogue")
-
-	if action == nil {
-		return
-	}
 
 	// dlg_complete NEVER grants a quest — acceptance is explicit (quest_accept,
 	// the Take Quest button). Reading the dialogue only advances `talk` objectives

@@ -388,16 +388,25 @@ func (s *GameServer) botQuestCodes(player *PlayerState, bot *BotState) []string 
 			if stepIdx < 0 {
 				continue
 			}
-			for i := range qp.Steps[stepIdx].Objectives {
-				op := &qp.Steps[stepIdx].Objectives[i]
-				if op.Type == "talk" && op.ItemID == skin && op.Current < op.Required {
-					add(qp.QuestCode)
-					break
-				}
+			if stepHasIncompleteTalk(&qp.Steps[stepIdx], skin) {
+				add(qp.QuestCode)
 			}
 		}
 	}
 	return codes
+}
+
+// stepHasIncompleteTalk reports whether a step has an unmet `talk` objective
+// targeting `skin` — the shared predicate for "this NPC advances an active
+// talk-quest right now" (drives both the quest bit and the action-talk dialogue).
+func stepHasIncompleteTalk(sp *QuestStepProgress, skin string) bool {
+	for i := range sp.Objectives {
+		op := &sp.Objectives[i]
+		if op.Type == "talk" && op.ItemID == skin && op.Current < op.Required {
+			return true
+		}
+	}
+	return false
 }
 
 // playerQuestActive reports whether the player has this quest in the active state.
