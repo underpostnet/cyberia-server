@@ -338,7 +338,24 @@ func (e *BinaryAOIEncoder) WriteObstacle(o ObjectState) {
 
 func (e *BinaryAOIEncoder) WritePortal(p *PortalState) {
 	e.writeEntityBase(EntityTypePortal, p.ID, p.Pos, p.Dims, NONE, IDLE)
-	e.putString(p.Label)
+	// Destination for the client nameplate. A negative target cell marks a random
+	// portal (inter/intra-random): it carries the 'portal-random' presence icon
+	// and the client omits the cell from the nameplate (the target is random).
+	destMapCode := ""
+	destCellX, destCellY := 0, 0
+	if p.PortalConfig != nil {
+		destMapCode = p.PortalConfig.DestMapCode
+		destCellX = int(p.PortalConfig.DestCellX)
+		destCellY = int(p.PortalConfig.DestCellY)
+	}
+	statusIcon := StatusPortal
+	if destCellX < 0 || destCellY < 0 {
+		statusIcon = StatusPortalRandom
+	}
+	e.putU8(statusIcon)
+	e.putString(destMapCode)
+	e.putI16(int16(destCellX))
+	e.putI16(int16(destCellY))
 	e.writeItemIDs(p.ObjectLayers)
 }
 

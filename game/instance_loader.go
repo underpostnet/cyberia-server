@@ -237,7 +237,6 @@ func (s *GameServer) buildMapsFromInstance(
 		}
 
 		srcPortal := findPortalByCell(allPortals[srcMapCode], int(edge.GetSourceCellX()), int(edge.GetSourceCellY()))
-		dstPortal := findPortalByCell(allPortals[dstMapCode], int(edge.GetTargetCellX()), int(edge.GetTargetCellY()))
 
 		if srcPortal == nil {
 			log.Printf("[InstanceLoader] WARNING: no portal entity at (%d,%d) on map %q",
@@ -256,14 +255,6 @@ func (s *GameServer) buildMapsFromInstance(
 			PortalMode:  portalMode,
 			DestCellX:   float64(edge.GetTargetCellX()),
 			DestCellY:   float64(edge.GetTargetCellY()),
-		}
-
-		modeTag := fmt.Sprintf("[%s]", portalMode)
-		if dstPortal != nil {
-			srcPortal.Label = fmt.Sprintf("%s %s, Pos: (%d, %d)",
-				modeTag, dstMapCode, int(dstPortal.Pos.X), int(dstPortal.Pos.Y))
-		} else {
-			srcPortal.Label = fmt.Sprintf("%s %s", modeTag, dstMapCode)
 		}
 	}
 }

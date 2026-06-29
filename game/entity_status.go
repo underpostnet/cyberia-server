@@ -41,6 +41,18 @@ const (
 	StatusQuestProvider  uint8 = 9 // bot offers/advances a cyberia-quest for the viewing player
 )
 
+// Presence status for portal entities. Portal entities always — and only — carry
+// one of these presence icons, stamped into the AOI statusIcon u8 like the
+// lifecycle states above:
+//
+//	StatusPortal       — fixed target: client shows 'transport' + "<map> <x>,<y>".
+//	StatusPortalRandom — random target (inter/intra-random, targetCell -1,-1):
+//	                     client shows 'transport-random' + "<map>" (no cell).
+const (
+	StatusPortal       uint8 = 10
+	StatusPortalRandom uint8 = 11
+)
+
 // Interaction capability bits — an entity may carry several at once. Bit
 // positions pair with the capability icon IDs above (bit i ↔ icon 8+i). The
 // quest bit also enables the interact-modal Quest tab; the action bit drives the

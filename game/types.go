@@ -218,7 +218,6 @@ type PortalState struct {
 	Type         string        `json:"Type"`
 	Subtype      string        `json:"Subtype"` // inter-portal | inter-random | intra-random | intra-portal
 	PortalConfig *PortalConfig `json:"-"`
-	Label        string        `json:"PortalLabel"`
 }
 
 type MapState struct {
