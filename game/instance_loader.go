@@ -27,6 +27,21 @@ type portalEntry struct {
 
 // BuildWorldFromInstance reconstructs the entire game world from gRPC
 // GetFullInstance response data. This is called by WorldBuilder.
+// playerSpawnFromInstance decodes the authoritative initial spawn from the
+// instance message, defaulting to a zero (random-fallback) config when unset.
+func playerSpawnFromInstance(instance *pb.InstanceMessage) PlayerSpawnConfig {
+	ps := instance.GetPlayerSpawn()
+	if ps == nil {
+		return PlayerSpawnConfig{}
+	}
+	return PlayerSpawnConfig{
+		MapCode: ps.GetSourceMapCode(),
+		CellX:   int(ps.GetSourceCellX()),
+		CellY:   int(ps.GetSourceCellY()),
+		Random:  ps.GetRandom(),
+	}
+}
+
 func (s *GameServer) BuildWorldFromInstance(
 	instance *pb.InstanceMessage,
 	mapMsgs []*pb.MapDataMessage,
@@ -41,7 +56,7 @@ func (s *GameServer) BuildWorldFromInstance(
 		instance.GetCode(), len(mapMsgs), len(olMsgs))
 
 	s.buildMapsFromInstance(instance, mapMsgs)
-	s.mapCodeOrder = instance.GetMapCodes()
+	s.playerSpawn = playerSpawnFromInstance(instance)
 
 	// Bind the CyberiaAction / CyberiaQuest content the engine delivered with
 	// the world to the freshly built entities. No separate fetch.
@@ -105,7 +120,7 @@ func (s *GameServer) RebuildWorld(
 
 	// Rebuild via the same path as initial load.
 	s.buildMapsFromInstance(instance, mapMsgs)
-	s.mapCodeOrder = instance.GetMapCodes()
+	s.playerSpawn = playerSpawnFromInstance(instance)
 	s.bindQuests(instance.GetMapCodes(), quests)
 	s.bindActions(instance.GetMapCodes(), actions)
 

@@ -246,8 +246,8 @@ type Client struct {
 type GameServer struct {
 	mu             sync.Mutex
 	maps           map[string]*MapState
-	mapCodeOrder   []string // instance map codes in declared order (spawn order)
-	instanceCode   string   // INSTANCE_CODE — "TEST" forces first-map spawn
+	instanceCode   string               // INSTANCE_CODE — selects which instance to load
+	playerSpawn    PlayerSpawnConfig    // authoritative initial spawn for new players
 	questsByCell   map[cellKey][]string // quest codes bound to each action cell
 	clients        map[string]*Client
 	register       chan *Client
@@ -355,6 +355,16 @@ type GameServer struct {
 
 	// Lock-free observability counters. See metrics_counters.go.
 	counters runtimeCounters
+}
+
+// PlayerSpawnConfig — authoritative initial spawn for new players. When Random
+// is false and MapCode names a loaded map, players spawn at (CellX, CellY) on it;
+// otherwise spawn is a random walkable cell on a random map.
+type PlayerSpawnConfig struct {
+	MapCode string
+	CellX   int
+	CellY   int
+	Random  bool
 }
 
 // EntityTypeDefaultConfig — gameplay defaults for one entity type.

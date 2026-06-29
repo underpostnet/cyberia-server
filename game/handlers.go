@@ -80,28 +80,41 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	playerID := uuid.New().String()
 	playerDims := Dimensions{Width: s.defaultPlayerWidth, Height: s.defaultPlayerHeight}
 
-	// Pick the starting map. INSTANCE_CODE=TEST always spawns on the first
-	// declared map (deterministic); otherwise pick a random map.
-	mapCodes := make([]string, 0, len(s.maps))
-	for code := range s.maps {
-		mapCodes = append(mapCodes, code)
-	}
-	startMapCode := mapCodes[rand.Intn(len(mapCodes))]
-	if s.instanceCode == "TEST" {
-		for _, code := range s.mapCodeOrder {
-			if _, ok := s.maps[code]; ok {
-				startMapCode = code
-				break
+	// Resolve the starting map + cell from the instance's PlayerSpawn config. A
+	// fixed spawn (Random=false) on a loaded map with a walkable cell is honoured
+	// verbatim; anything else falls back to a random walkable cell on a random map.
+	startMapCode := ""
+	fixedPos := PointI{}
+	hasFixedPos := false
+	if !s.playerSpawn.Random && s.playerSpawn.MapCode != "" {
+		if ms, ok := s.maps[s.playerSpawn.MapCode]; ok {
+			cell := PointI{X: s.playerSpawn.CellX, Y: s.playerSpawn.CellY}
+			if ms.pathfinder.isWalkable(cell.X, cell.Y, playerDims) {
+				startMapCode = s.playerSpawn.MapCode
+				fixedPos = cell
+				hasFixedPos = true
 			}
 		}
 	}
+	if startMapCode == "" {
+		mapCodes := make([]string, 0, len(s.maps))
+		for code := range s.maps {
+			mapCodes = append(mapCodes, code)
+		}
+		startMapCode = mapCodes[rand.Intn(len(mapCodes))]
+	}
 	startMapState := s.maps[startMapCode]
-	startPosI, err := startMapState.pathfinder.findRandomWalkablePoint(playerDims)
-	if err != nil {
-		log.Printf("Could not place new player: %v", err)
-		conn.Close()
-		s.mu.Unlock()
-		return
+
+	startPosI := fixedPos
+	if !hasFixedPos {
+		p, err := startMapState.pathfinder.findRandomWalkablePoint(playerDims)
+		if err != nil {
+			log.Printf("Could not place new player: %v", err)
+			conn.Close()
+			s.mu.Unlock()
+			return
+		}
+		startPosI = p
 	}
 	lifeRegen := s.playerBaseLifeRegenMin + rand.Float64()*(s.playerBaseLifeRegenMax-s.playerBaseLifeRegenMin)
 

@@ -131,6 +131,16 @@ message PortalEdge {
   string portal_mode     = 7;
 }
 
+// Authoritative initial spawn for new players. When random is false and
+// source_map_code names a loaded map, players spawn at (source_cell_x,
+// source_cell_y) on it; otherwise spawn is a random walkable cell on a random map.
+message PlayerSpawn {
+  string source_map_code = 1;
+  int32  source_cell_x   = 2;
+  int32  source_cell_y   = 3;
+  bool   random          = 4;
+}
+
 message InstanceMessage {
   string              mongo_id       = 1;
   string              code           = 2;
@@ -141,6 +151,7 @@ message InstanceMessage {
   repeated PortalEdge portals        = 7; // edge set
   string              topology_mode  = 8;
   string              seed           = 9;
+  PlayerSpawn         player_spawn   = 10;
 }
 
 // ── Action / quest content (mission system) ──────────────────────────
