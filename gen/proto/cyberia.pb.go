@@ -2210,7 +2210,11 @@ type EntityTypeDefault struct {
 	DefaultObjectLayers []*DefaultObjectLayerState `protobuf:"bytes,5,rep,name=default_object_layers,json=defaultObjectLayers,proto3" json:"default_object_layers,omitempty"`
 	// Resource-only inventory/drop item IDs granted to the extractor when the
 	// resource is depleted. These are not auto-activated on the entity itself.
-	DropItemIds   []string `protobuf:"bytes,6,rep,name=drop_item_ids,json=dropItemIds,proto3" json:"drop_item_ids,omitempty"`
+	DropItemIds []string `protobuf:"bytes,6,rep,name=drop_item_ids,json=dropItemIds,proto3" json:"drop_item_ids,omitempty"`
+	// Canonical entity behavior bound to entities matched by live_item_ids. Empty
+	// lets the runtime derive it (armed → hostile, else passive). See
+	// SharedDefaultsCyberia.ENTITY_BEHAVIORS / game/behavior.go.
+	Behavior      string `protobuf:"bytes,7,opt,name=behavior,proto3" json:"behavior,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2278,6 +2282,13 @@ func (x *EntityTypeDefault) GetDropItemIds() []string {
 		return x.DropItemIds
 	}
 	return nil
+}
+
+func (x *EntityTypeDefault) GetBehavior() string {
+	if x != nil {
+		return x.Behavior
+	}
+	return ""
 }
 
 type EntityMessage struct {
@@ -3050,14 +3061,15 @@ const file_cyberia_proto_rawDesc = "" +
 	"\ttick_rate\x18A \x01(\x05R\btickRate\x12#\n" +
 	"\rsnapshot_rate\x18B \x01(\x05R\fsnapshotRateJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
 	"J\x04\b\n" +
-	"\x10\vJ\x04\b\v\x10\fJ\x04\b\x1b\x10\x1cJ\x04\b \x10!J\x04\b5\x106J\x04\b6\x107J\x04\b7\x108J\x04\b8\x109J\x04\b9\x10:J\x04\b:\x10;J\x04\b;\x10<J\x04\b<\x10=J\x04\b=\x10>J\x04\b#\x10$J\x04\b$\x10%J\x04\b%\x10&J\x04\b&\x10'J\x04\b'\x10(J\x04\b(\x10)J\x04\b)\x10*J\x04\b*\x10+J\x04\b+\x10,J\x04\b.\x10/J\x04\b\x1d\x10\x1eJ\x04\b\x1f\x10 J\x04\b,\x10-J\x04\b0\x101J\x04\b1\x102J\x04\b2\x103J\x04\b3\x104J\x04\b@\x10AJ\x04\bC\x10DR\tcell_sizeR\x03fpsR\x10interpolation_msR\x11default_obj_widthR\x12default_obj_heightR\x10camera_smoothingR\vcamera_zoomR\x1bdefault_width_screen_factorR\x1cdefault_height_screen_factorR\x06dev_uiR\x06colorsR\x1cdefault_player_object_layersR\x13bullet_spawn_chanceR\x12bullet_lifetime_msR\fbullet_widthR\rbullet_heightR\x17bullet_speed_multiplierR\x19doppelganger_spawn_chanceR\x18doppelganger_lifetime_msR\x19doppelganger_spawn_radiusR\"doppelganger_initial_life_fractionR\x14default_player_colorR\rghost_item_idR\fcoin_item_idR\x15default_floor_item_idR\x13bot_default_item_idR\x14user_default_item_idR\x16weapon_default_item_idR\x16bullet_default_item_idR\fstatus_iconsR\fclient_hints\"\x87\x02\n" +
+	"\x10\vJ\x04\b\v\x10\fJ\x04\b\x1b\x10\x1cJ\x04\b \x10!J\x04\b5\x106J\x04\b6\x107J\x04\b7\x108J\x04\b8\x109J\x04\b9\x10:J\x04\b:\x10;J\x04\b;\x10<J\x04\b<\x10=J\x04\b=\x10>J\x04\b#\x10$J\x04\b$\x10%J\x04\b%\x10&J\x04\b&\x10'J\x04\b'\x10(J\x04\b(\x10)J\x04\b)\x10*J\x04\b*\x10+J\x04\b+\x10,J\x04\b.\x10/J\x04\b\x1d\x10\x1eJ\x04\b\x1f\x10 J\x04\b,\x10-J\x04\b0\x101J\x04\b1\x102J\x04\b2\x103J\x04\b3\x104J\x04\b@\x10AJ\x04\bC\x10DR\tcell_sizeR\x03fpsR\x10interpolation_msR\x11default_obj_widthR\x12default_obj_heightR\x10camera_smoothingR\vcamera_zoomR\x1bdefault_width_screen_factorR\x1cdefault_height_screen_factorR\x06dev_uiR\x06colorsR\x1cdefault_player_object_layersR\x13bullet_spawn_chanceR\x12bullet_lifetime_msR\fbullet_widthR\rbullet_heightR\x17bullet_speed_multiplierR\x19doppelganger_spawn_chanceR\x18doppelganger_lifetime_msR\x19doppelganger_spawn_radiusR\"doppelganger_initial_life_fractionR\x14default_player_colorR\rghost_item_idR\fcoin_item_idR\x15default_floor_item_idR\x13bot_default_item_idR\x14user_default_item_idR\x16weapon_default_item_idR\x16bullet_default_item_idR\fstatus_iconsR\fclient_hints\"\xa3\x02\n" +
 	"\x11EntityTypeDefault\x12\x1f\n" +
 	"\ventity_type\x18\x01 \x01(\tR\n" +
 	"entityType\x12\"\n" +
 	"\rlive_item_ids\x18\x02 \x03(\tR\vliveItemIds\x12\"\n" +
 	"\rdead_item_ids\x18\x03 \x03(\tR\vdeadItemIds\x12T\n" +
 	"\x15default_object_layers\x18\x05 \x03(\v2 .cyberia.DefaultObjectLayerStateR\x13defaultObjectLayers\x12\"\n" +
-	"\rdrop_item_ids\x18\x06 \x03(\tR\vdropItemIdsJ\x04\b\x04\x10\x05R\tcolor_key\"\xec\x03\n" +
+	"\rdrop_item_ids\x18\x06 \x03(\tR\vdropItemIds\x12\x1a\n" +
+	"\bbehavior\x18\a \x01(\tR\bbehaviorJ\x04\b\x04\x10\x05R\tcolor_key\"\xec\x03\n" +
 	"\rEntityMessage\x12\x1f\n" +
 	"\ventity_type\x18\x01 \x01(\tR\n" +
 	"entityType\x12\x1e\n" +

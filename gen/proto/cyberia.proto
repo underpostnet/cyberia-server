@@ -464,6 +464,10 @@ message EntityTypeDefault {
   // Resource-only inventory/drop item IDs granted to the extractor when the
   // resource is depleted. These are not auto-activated on the entity itself.
   repeated string drop_item_ids = 6;
+  // Canonical entity behavior bound to entities matched by live_item_ids. Empty
+  // lets the runtime derive it (armed → hostile, else passive). See
+  // SharedDefaultsCyberia.ENTITY_BEHAVIORS / game/behavior.go.
+  string behavior = 7;
 }
 
 // Status-icon visual config has moved off the gRPC contract.  The numeric
