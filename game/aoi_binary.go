@@ -77,6 +77,7 @@ import (
 	"encoding/binary"
 	"math"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -126,12 +127,44 @@ const (
 
 // BinaryAOIEncoder builds compact binary AOI messages.
 type BinaryAOIEncoder struct {
-	buf []byte
-	pos int
+	buf    []byte
+	pos    int
+	bufPtr *[]byte // non-nil when buf came from aoiBufPool; returned on release
 }
 
+// aoiBufPool recycles the maxBinaryBufSize scratch buffers used to encode AOI
+// snapshots. Without it every player×snapshot-tick allocated and discarded a
+// fresh 64 KiB buffer (at snapshotRate Hz × N players this dominated GC
+// pressure and drove the heap-size spikes). Pointers to slices are pooled to
+// avoid boxing the slice header on every Get/Put.
+var aoiBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, maxBinaryBufSize)
+		return &b
+	},
+}
+
+// NewBinaryAOIEncoder returns an encoder backed by a freshly allocated buffer.
+// Prefer acquireEncoder for the per-snapshot hot path; this constructor is for
+// callers that keep an encoder around.
 func NewBinaryAOIEncoder() *BinaryAOIEncoder {
 	return &BinaryAOIEncoder{buf: make([]byte, maxBinaryBufSize)}
+}
+
+// acquireEncoder borrows a pooled scratch buffer. The caller MUST call
+// release() (typically deferred) once the encoded bytes have been copied out.
+func acquireEncoder() *BinaryAOIEncoder {
+	bp := aoiBufPool.Get().(*[]byte)
+	return &BinaryAOIEncoder{buf: *bp, pos: 0, bufPtr: bp}
+}
+
+// release returns a pooled buffer. Idempotent; safe to defer.
+func (e *BinaryAOIEncoder) release() {
+	if e.bufPtr != nil {
+		aoiBufPool.Put(e.bufPtr)
+		e.bufPtr = nil
+		e.buf = nil
+	}
 }
 
 func (e *BinaryAOIEncoder) putU8(v byte) {
@@ -489,7 +522,8 @@ func (s *GameServer) effLevel(entity interface{}, mapState *MapState) int {
 // ═══════════════════════════════════════════════════════════════════
 
 func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []byte {
-	enc := NewBinaryAOIEncoder()
+	enc := acquireEncoder()
+	defer enc.release()
 
 	headerPos := enc.pos
 	// AOI v2 header — tick + lastAckedSequence carried in every snapshot.

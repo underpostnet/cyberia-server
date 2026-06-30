@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"time"
 
 	api "cyberia-server/api"
@@ -15,6 +16,7 @@ import (
 	"cyberia-server/grpcclient"
 	"cyberia-server/httpserver"
 	"cyberia-server/httpserver/problem"
+	"cyberia-server/logx"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/joho/godotenv"
@@ -52,6 +54,16 @@ func main() {
 	if err := godotenv.Load("../../.env"); err != nil {
 		log.Println("No .env file; relying on environment variables.")
 	}
+
+	// Centralized leveled JSON logging — resolves LOG_LEVEL / APP_ENV. Must run
+	// before any goroutine logs so the level is in effect everywhere.
+	logx.Init()
+
+	// The Go runtime parses GOMEMLIMIT from the environment at startup; set it
+	// in the K8s manifest to ~90% of the pod memory limit so the GC runs
+	// aggressively before the cgroup OOM-kills the pod. SetMemoryLimit(-1) reads
+	// the active soft limit without changing it, for ops visibility.
+	logx.Infof("GC soft memory limit (GOMEMLIMIT) = %d bytes (math.MaxInt64 ⇒ unset)", debug.SetMemoryLimit(-1))
 
 	// All environment configuration is resolved here, once.
 	cfg, err := config.Load()

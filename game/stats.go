@@ -1,6 +1,8 @@
 package game
 
-import "time"
+import (
+	"time"
+)
 
 // defaultStatsCacheTTL is the fallback TTL for cached stats entries.
 // Even if StatsDirty is false, entries older than this are recalculated
@@ -13,6 +15,11 @@ type statsCacheEntry struct {
 	stats    ComputedStats
 	cachedAt time.Time
 }
+
+// statsCacheCleanupInterval is how often the cleanup goroutine purges
+// stale entries from the stats cache. Set to 10x the default TTL so
+// entries have several TTL windows to be reaped.
+const statsCacheCleanupInterval = 10 * time.Second
 
 // -----------------------------------------------------------------------------------------
 // Description of passive stats mechanics:

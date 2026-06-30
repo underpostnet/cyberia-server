@@ -1,6 +1,6 @@
 package game
 
-import "log"
+import "cyberia-server/logx"
 
 // SkillContext carries all information needed by a skill handler.
 // It unifies player and bot execution into a single call signature.
@@ -54,7 +54,7 @@ func (s *GameServer) InitSkills() {
 func (s *GameServer) DispatchSkill(logicID string, ctx SkillContext) {
 	handler, ok := skillRegistry[logicID]
 	if !ok {
-		log.Printf("Unknown logicEventID '%s' for item '%s'", logicID, ctx.TriggerItemID)
+		logx.Debugf("Unknown logicEventID '%s' for item '%s'", logicID, ctx.TriggerItemID)
 		return
 	}
 	handler(s, ctx)

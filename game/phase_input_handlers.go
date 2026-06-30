@@ -22,9 +22,10 @@ package game
 
 import (
 	"encoding/json"
-	"log"
 	"math"
 	"time"
+
+	"cyberia-server/logx"
 )
 
 // handlePlayerActionInput applies a TAP from the client: movement intent
@@ -125,7 +126,7 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 		}
 	}
 	if targetItemIndex == -1 {
-		log.Printf("Player %s tried to activate non-existent item '%s'.", player.ID, itemID)
+		logx.Debugf("Player %s tried to activate non-existent item '%s'.", player.ID, itemID)
 		return
 	}
 
@@ -136,7 +137,7 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 	if active && len(s.equipmentRules.ActiveItemTypes) > 0 {
 		reqType := s.itemType(itemID)
 		if reqType != "" && !s.equipmentRules.ActiveItemTypes[reqType] {
-			log.Printf("Player %s tried to activate '%s' (type=%q) — not in activeItemTypes; rejecting.",
+			logx.Debugf("Player %s tried to activate '%s' (type=%q) — not in activeItemTypes; rejecting.",
 				player.ID, itemID, reqType)
 			player.ObjectLayers[targetItemIndex].Active = originalState
 			return
@@ -201,7 +202,7 @@ func (s *GameServer) queuePreRespawnActivation(player *PlayerState, itemID strin
 			continue
 		}
 		player.PreRespawnObjectLayers[i].Active = true
-		log.Printf("Player %s is dead — queued activation of '%s' on revive.", player.ID, itemID)
+		logx.Debugf("Player %s is dead — queued activation of '%s' on revive.", player.ID, itemID)
 		if s.equipmentRules.OnePerType {
 			reqType := s.itemType(itemID)
 			if reqType != "" {

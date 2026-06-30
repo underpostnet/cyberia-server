@@ -47,8 +47,9 @@ package game
 
 import (
 	"encoding/binary"
-	"log"
 	"math"
+
+	"cyberia-server/logx"
 )
 
 // ── Wire message helpers ──────────────────────────────────────────────────
@@ -250,7 +251,7 @@ func (s *GameServer) ExecuteKillTransfer(caster interface{}, victim interface{})
 		victimPos = v.Pos
 		victimIsBot = true
 	default:
-		log.Printf("[ECONOMY] ExecuteKillTransfer: unknown victim type %T", victim)
+		logx.Errorf("[ECONOMY] ExecuteKillTransfer: unknown victim type %T", victim)
 		return
 	}
 
@@ -301,7 +302,7 @@ func (s *GameServer) ExecuteKillTransfer(caster interface{}, victim interface{})
 		casterPlayer = cp
 	}
 
-	log.Printf("[ECONOMY] Kill transfer: %s looted %d coins from %s "+
+	logx.Debugf("[ECONOMY] Kill transfer: %s looted %d coins from %s "+
 		"(effectiveBal=%d, rate=%.0f%%, min=%d, victimIsBot=%v)",
 		econEntityID(caster), transfer, victimID,
 		effectiveBalance, rate*100, s.coinKillMinAmount, victimIsBot)
@@ -331,7 +332,7 @@ func (s *GameServer) SinkRespawnCost(player *PlayerState) {
 	s.addCoins(player, -burn)
 	s.InvalidateStats(player)
 	sendFCT(player, FCTTypeCoinLoss, player.Pos.X, player.Pos.Y, burn)
-	log.Printf("[ECONOMY] Respawn sink: %s burned %d coins (%.0f%%)",
+	logx.Debugf("[ECONOMY] Respawn sink: %s burned %d coins (%.0f%%)",
 		player.ID, burn, s.respawnCostPercent*100)
 }
 

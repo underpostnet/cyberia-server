@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"time"
 
+	"cyberia-server/logx"
+
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
@@ -44,6 +46,7 @@ func (s *GameServer) buildSkillMap() map[string][]SkillMapEntry {
 func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
 	s.olMu.RLock()
 	defer s.olMu.RUnlock()
+	// Pre-allocated capacity per type hint; typical cache has ~400 items.
 	out := make(map[string]*OLMeta, len(s.objectLayerDataCache))
 	for itemID, ol := range s.objectLayerDataCache {
 		out[itemID] = &OLMeta{
@@ -68,7 +71,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
-	log.Printf("[HandleConnections] s.mu acquired, building player")
+	logx.Debugf("[HandleConnections] s.mu acquired, building player")
 
 	if len(s.maps) == 0 {
 		log.Println("[HandleConnections] No maps loaded — rejecting connection. Ensure INSTANCE_CODE is set and Engine gRPC is reachable.")
@@ -188,7 +191,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	select {
 	case client.send <- initMsg:
 	default:
-		log.Printf("Client %s init channel full.", client.playerID)
+		logx.Debugf("Client %s init channel full.", client.playerID)
 	}
 
 	// Send metadata message with ObjectLayer data for client-side caching.
@@ -201,7 +204,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	select {
 	case client.send <- metaMsg:
 	default:
-		log.Printf("Client %s metadata channel full.", client.playerID)
+		logx.Debugf("Client %s metadata channel full.", client.playerID)
 	}
 
 	s.mu.Unlock()
@@ -230,7 +233,7 @@ func (c *Client) readPump(server *GameServer) {
 		if r := recover(); r != nil {
 			log.Printf("[readPump] PANIC player=%s: %v", c.playerID, r)
 		}
-		log.Printf("[readPump] closing player=%s", c.playerID)
+		logx.Debugf("[readPump] closing player=%s", c.playerID)
 		server.recordWsDisconnect()
 		server.unregister <- c
 		c.conn.Close()
@@ -246,7 +249,7 @@ func (c *Client) readPump(server *GameServer) {
 		if err != nil {
 			server.recordWsReadError()
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("[readPump] player=%s read error: %v", c.playerID, err)
+				logx.Debugf("[readPump] player=%s read error: %v", c.playerID, err)
 			}
 			break
 		}
@@ -446,7 +449,7 @@ func (c *Client) handleBinaryUplink(message []byte, server *GameServer) {
 		}
 		c.dispatchInputCommand(server, cmd)
 	default:
-		log.Printf("[WARN] Unknown binary uplink type: 0x%02x from player %s", message[0], c.playerID)
+		logx.Debugf("Unknown binary uplink type: 0x%02x from player %s", message[0], c.playerID)
 	}
 }
 
@@ -482,7 +485,7 @@ func (c *Client) dispatchInputCommand(server *GameServer, cmd InputCommand) {
 func (c *Client) handleJSONUplink(message []byte, server *GameServer) {
 	var msg map[string]interface{}
 	if err := json.Unmarshal(message, &msg); err != nil {
-		log.Printf("Error unmarshaling JSON uplink: %v", err)
+		logx.Debugf("Error unmarshaling JSON uplink: %v", err)
 		return
 	}
 	typeStr, _ := msg["type"].(string)
@@ -578,7 +581,7 @@ func (c *Client) writePump(server *GameServer) {
 		}
 		ticker.Stop()
 		c.conn.Close()
-		log.Printf("[writePump] closed player=%s", c.playerID)
+		logx.Debugf("[writePump] closed player=%s", c.playerID)
 	}()
 	for {
 		select {

@@ -59,10 +59,14 @@ type InputCommand struct {
 // EnqueueInput pushes a command onto the player's InputQueue. Called from
 // the WS read goroutine; phaseInput drains under the world mutex on the
 // next tick. Bounded length keeps a buggy client from causing unbounded
-// growth — overflow drops the oldest entry, preserving recency.
+// growth — overflow drops the oldest entry, preserving recency. The
+// evicted slot is zeroed to release string references for GC.
 func EnqueueInput(p *PlayerState, cmd InputCommand) {
 	const maxQueue = 64
 	if len(p.InputQueue) >= maxQueue {
+		// Zero the evicted slot so string fields (ItemID, ChatText, etc.)
+		// are released for GC rather than retained by the backing array.
+		p.InputQueue[0] = InputCommand{}
 		copy(p.InputQueue, p.InputQueue[1:])
 		p.InputQueue = p.InputQueue[:len(p.InputQueue)-1]
 	}

@@ -61,6 +61,14 @@ type QuestReward struct {
 
 // ── Per-player progress (session authority) ─────────────────────────────────
 
+// engineHTTPClient is a shared, persistent HTTP client used for best-effort
+// REST persistence calls to engine-cyberia. Reused across all persist calls
+// to avoid creating a new client per goroutine (which leaks goroutines under
+// sustained quest advancement).
+var engineHTTPClient = &http.Client{
+	Timeout: 8 * time.Second,
+}
+
 // QuestProgress is the runtime, computed-completeness progress record.
 // Step/quest completion is always derived from Current >= Required, never
 // stored as a flag (mirrors CyberiaQuestProgress semantics).
@@ -858,9 +866,12 @@ func (s *GameServer) sendQuestUpdate(player *PlayerState, affected []QuestSnapsh
 }
 
 // persistQuestProgress best-effort mirrors a progress record to engine REST.
-// Fire-and-forget in a goroutine so the simulation tick never blocks on the
-// network; failure is logged and ignored (in-memory state is the session
-// authority). The snapshot is copied so the goroutine never races the world.
+// In-memory state is the session authority; the HTTP call is fire-and-forget
+// using the shared engineHTTPClient so no goroutine leak occurs.  The engine
+// API call is still async from the simulation perspective but does NOT spawn
+// a new goroutine — the HTTP client's own transport handles connections.
+//
+// When the engine base URL is unset the call is a no-op (e.g. for tests).
 func (s *GameServer) persistQuestProgress(player *PlayerState, qp *QuestProgress) {
 	if s.engineApiBaseUrl == "" {
 		return
@@ -870,18 +881,19 @@ func (s *GameServer) persistQuestProgress(player *PlayerState, qp *QuestProgress
 		"questCode": qp.QuestCode,
 		"status":    qp.Status,
 	}
-	go s.enginePostJSON("/api/cyberia-quest-progress", body)
+	s.enginePostJSON("/api/cyberia-quest-progress", body)
 }
 
-// enginePostJSON performs a best-effort POST; errors are logged only.
+// enginePostJSON performs a best-effort POST using the shared HTTP client;
+// errors are logged only. The caller's goroutine is reused — no new goroutine
+// is spawned for the HTTP call itself.
 func (s *GameServer) enginePostJSON(path string, body interface{}) {
 	url := strings.TrimRight(s.engineApiBaseUrl, "/") + path
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return
 	}
-	client := &http.Client{Timeout: 8 * time.Second}
-	resp, err := client.Post(url, "application/json", strings.NewReader(string(buf)))
+	resp, err := engineHTTPClient.Post(url, "application/json", strings.NewReader(string(buf)))
 	if err != nil {
 		log.Printf("[Quest] persist POST %s failed: %v", path, err)
 		return

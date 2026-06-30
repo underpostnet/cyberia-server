@@ -7,6 +7,7 @@ import (
 	"time"
 
 	pb "cyberia-server/gen/proto"
+	"cyberia-server/logx"
 )
 
 // NewGameServer creates an empty game server with no hardcoded defaults.
@@ -251,6 +252,7 @@ func (s *GameServer) SetEngineApiBaseUrl(url string) {
 func (s *GameServer) Run() {
 	go s.listenForClients()
 	go s.gameLoop()
+	go s.statsCacheCleanupLoop()
 }
 
 func (s *GameServer) listenForClients() {
@@ -267,7 +269,7 @@ func (s *GameServer) listenForClients() {
 			s.mu.Lock()
 			s.clients[client.playerID] = client
 			s.mu.Unlock()
-			log.Printf("[listenForClients] registered player=%s", client.playerID)
+			logx.Debugf("[listenForClients] registered player=%s", client.playerID)
 		case client := <-s.unregister:
 			s.mu.Lock()
 			if _, ok := s.clients[client.playerID]; ok {
@@ -289,7 +291,7 @@ func (s *GameServer) listenForClients() {
 				}()
 			}
 			s.mu.Unlock()
-			log.Printf("[listenForClients] unregistered player=%s", client.playerID)
+			logx.Debugf("[listenForClients] unregistered player=%s", client.playerID)
 		}
 	}
 }
@@ -544,7 +546,29 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 	select {
 	case player.Client.send <- message:
 	default:
-		log.Printf("Client %s message channel is full.", player.ID)
+		logx.Debugf("Client %s message channel is full.", player.ID)
+	}
+}
+
+// statsCacheCleanupLoop periodically purges stale entries from the stats
+// cache to prevent unbounded growth when entities are deleted or
+// disconnected. Runs until the process exits.
+func (s *GameServer) statsCacheCleanupLoop() {
+	ticker := time.NewTicker(statsCacheCleanupInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		s.mu.Lock()
+		now := time.Now()
+		ttl := s.statsCacheTTL
+		if ttl == 0 {
+			ttl = defaultStatsCacheTTL
+		}
+		for id, entry := range s.statsCache {
+			if now.Sub(entry.cachedAt) > ttl*10 {
+				delete(s.statsCache, id)
+			}
+		}
+		s.mu.Unlock()
 	}
 }
 
