@@ -23,7 +23,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 	projectilesToDelete := []string{}
 
 	for projectileID, projectile := range mapState.bots {
-		if projectile.Behavior != "skill" {
+		if projectile.Behavior != BehaviorSkill {
 			continue
 		}
 
@@ -73,8 +73,12 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 
 		// Check collision with other bots
 		for otherBotID, otherBot := range mapState.bots {
-			if projectileID == otherBotID || otherBot.Behavior == "skill" || otherBot.IsGhost() {
+			if projectileID == otherBotID || otherBot.Behavior == BehaviorSkill || otherBot.IsGhost() {
 				continue // Don't collide with self, other projectiles, or dead bots.
+			}
+			// Provider NPCs are immortal — projectiles pass through without damage.
+			if behaviorIsImmortal(otherBot.Behavior) {
+				continue
 			}
 			// Projectiles should not damage their caster.
 			if otherBotID == projectile.CasterID {
@@ -88,7 +92,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 					// layers — quest `kill` objectives match on it.
 					killedSkin := s.botActiveSkin(otherBot.ID)
 					s.HandleOnKillSkills(projectile, otherBot, mapState)
-					s.handleBotDeath(otherBot)
+					s.handleBotDeath(otherBot, projectile, mapState)
 					if killer, ok := mapState.players[projectile.CasterID]; ok {
 						s.advancePlayerQuestsOnKill(killer, killedSkin)
 					}
@@ -143,139 +147,37 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 	}
 }
 
-// handlePlayerDeath sets a player to a dead/ghost state.
-func (s *GameServer) handlePlayerDeath(player *PlayerState) {
-	// Economy: apply respawn-cost sink before saving layers (disabled by default, rate = 0).
-	s.SinkRespawnCost(player)
-
-	// Make a definitive copy of the object layers *after* on-kill effects (like coin transfer) have been applied.
-	// This state will be restored on respawn.
-	layersToSave := make([]ObjectLayerState, len(player.ObjectLayers))
-	copy(layersToSave, player.ObjectLayers)
-	player.PreRespawnObjectLayers = layersToSave
-
-	// Deactivate all existing object layers
-	for i := range player.ObjectLayers {
-		player.ObjectLayers[i].Active = false
+// applyDeadItems deactivates every layer and (re)activates the configured dead
+// item IDs, appending any that are missing. Shared by every entity death path so
+// the dead/ghost visual swap is identical for players, bots, and resources.
+func applyDeadItems(layers []ObjectLayerState, deadItemIDs []string) []ObjectLayerState {
+	for i := range layers {
+		layers[i].Active = false
 	}
-
-	// Activate all dead item IDs from entity defaults
-	if d, ok := s.entityDefaults["player"]; ok {
-		for _, deadID := range d.DeadItemIDs {
-			found := false
-			for i := range player.ObjectLayers {
-				if player.ObjectLayers[i].ItemID == deadID {
-					player.ObjectLayers[i].Active = true
-					player.ObjectLayers[i].Quantity = 1
-					found = true
-					break
-				}
-			}
-			if !found {
-				player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: deadID, Active: true, Quantity: 1})
-			}
+	for _, deadID := range deadItemIDs {
+		if deadID == "" {
+			continue
 		}
-	}
-
-	player.RespawnTime = time.Now().Add(s.respawnDuration)
-	// Recalculate stats for the ghost state to ensure consistency.
-	// This will primarily affect MaxLife.
-	s.InvalidateStats(player)
-	s.ApplyResistanceStat(player, s.maps[player.MapCode]) // This assumes player.MapCode is correct and map exists.
-	player.Mode = IDLE                                    // Stop movement
-}
-
-// handleBotDeath sets a bot to a dead state.
-func (s *GameServer) handleBotDeath(bot *BotState) {
-	// Make a definitive copy of the object layers *after* on-kill effects have been applied.
-	layersToSave := make([]ObjectLayerState, len(bot.ObjectLayers))
-	copy(layersToSave, bot.ObjectLayers)
-	bot.PreRespawnObjectLayers = layersToSave
-
-	// Deactivate all existing object layers
-	for i := range bot.ObjectLayers {
-		bot.ObjectLayers[i].Active = false
-	}
-
-	// Activate all dead item IDs from entity defaults
-	if d, ok := s.entityDefaults["bot"]; ok {
-		for _, deadID := range d.DeadItemIDs {
-			found := false
-			for i := range bot.ObjectLayers {
-				if bot.ObjectLayers[i].ItemID == deadID {
-					bot.ObjectLayers[i].Active = true
-					bot.ObjectLayers[i].Quantity = 1
-					found = true
-					break
-				}
-			}
-			if !found {
-				bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: deadID, Active: true, Quantity: 1})
-			}
-		}
-	}
-
-	bot.RespawnTime = time.Now().Add(s.respawnDuration)
-	// Recalculate stats for the ghost state to ensure consistency.
-	// This will primarily affect MaxLife.
-	s.InvalidateStats(bot)
-	s.ApplyResistanceStat(bot, s.maps[bot.MapCode])
-	bot.Mode = IDLE // Stop movement
-}
-
-// handleResourceDeath sets a resource to a destroyed state, transfers its
-// configured drop items to the extractor, and activates the dead/extracted
-// resource visuals until respawn.
-func (s *GameServer) handleResourceDeath(res *ResourceState, killerProjectile *BotState, mapState *MapState) {
-	// Save the pre-destruction object layers for restoration on respawn.
-	layersToSave := make([]ObjectLayerState, len(res.ObjectLayers))
-	copy(layersToSave, res.ObjectLayers)
-	res.PreRespawnObjectLayers = layersToSave
-	resourceDefaults, _ := s.resolveEntityDefaultBuild("resource", activeObjectLayerItemIDs(layersToSave))
-
-	// Transfer configured resource drop items to the caster (player or bot).
-	if killerProjectile.CasterID != "" {
-		if casterPlayer, ok := mapState.players[killerProjectile.CasterID]; ok {
-			s.transferResourceDropItemsToPlayer(res, casterPlayer, resourceDefaults)
-			s.advancePlayerQuestsOnGain(casterPlayer)
-		} else if casterBot, ok := mapState.bots[killerProjectile.CasterID]; ok {
-			s.transferResourceDropItemsToBot(res, casterBot, resourceDefaults)
-		}
-	}
-
-	// Deactivate all existing object layers.
-	for i := range res.ObjectLayers {
-		res.ObjectLayers[i].Active = false
-	}
-
-	// Activate dead/extracted item IDs from the matched resource build.
-	for _, deadID := range resourceDefaults.DeadItemIDs {
 		found := false
-		for i := range res.ObjectLayers {
-			if res.ObjectLayers[i].ItemID == deadID {
-				res.ObjectLayers[i].Active = true
-				res.ObjectLayers[i].Quantity = 1
+		for i := range layers {
+			if layers[i].ItemID == deadID {
+				layers[i].Active = true
+				layers[i].Quantity = 1
 				found = true
 				break
 			}
 		}
 		if !found {
-			res.ObjectLayers = append(res.ObjectLayers, ObjectLayerState{ItemID: deadID, Active: true, Quantity: 1})
+			layers = append(layers, ObjectLayerState{ItemID: deadID, Active: true, Quantity: 1})
 		}
 	}
-
-	res.RespawnTime = time.Now().Add(s.respawnDuration)
-	s.InvalidateStats(res)
+	return layers
 }
 
-// transferResourceDropItemsToPlayer grants the matched resource build's drop items
-// of a destroyed resource to a player. Each configured item is added with
-// quantity 1 (incremented if already owned, otherwise appended). FCT events are sent.
-func (s *GameServer) transferResourceDropItemsToPlayer(res *ResourceState, player *PlayerState, resourceDefaults EntityTypeDefaultConfig) {
-	if len(resourceDefaults.DropItemIDs) == 0 {
-		return
-	}
-	for _, itemID := range resourceDefaults.DropItemIDs {
+// grantDropItemsToPlayer adds drop items to a player's inventory (quantity +1,
+// appended inactive if new) and emits an item-gain FCT at (cx, cy).
+func (s *GameServer) grantDropItemsToPlayer(player *PlayerState, dropItemIDs []string, cx, cy float64) {
+	for _, itemID := range dropItemIDs {
 		if itemID == "" {
 			continue
 		}
@@ -288,28 +190,17 @@ func (s *GameServer) transferResourceDropItemsToPlayer(res *ResourceState, playe
 			}
 		}
 		if !found {
-			player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{
-				ItemID:   itemID,
-				Active:   false, // added to inventory, not auto-equipped
-				Quantity: 1,
-			})
+			player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: itemID, Active: false, Quantity: 1})
 		}
-		// FCT: show item gain
-		sendItemFCT(player, FCTTypeItemGain,
-			res.Pos.X+res.Dims.Width*0.5,
-			res.Pos.Y+res.Dims.Height*0.5,
-			1, itemID)
+		sendItemFCT(player, FCTTypeItemGain, cx, cy, 1, itemID)
 	}
 	s.InvalidateStats(player)
 }
 
-// transferResourceDropItemsToBot grants the matched resource build's drop items
-// of a destroyed resource to a bot (for bot-triggered resource destruction).
-func (s *GameServer) transferResourceDropItemsToBot(res *ResourceState, bot *BotState, resourceDefaults EntityTypeDefaultConfig) {
-	if len(resourceDefaults.DropItemIDs) == 0 {
-		return
-	}
-	for _, itemID := range resourceDefaults.DropItemIDs {
+// grantDropItemsToBot adds drop items to a bot's inventory (no FCT — bots have no
+// HUD).
+func (s *GameServer) grantDropItemsToBot(bot *BotState, dropItemIDs []string) {
+	for _, itemID := range dropItemIDs {
 		if itemID == "" {
 			continue
 		}
@@ -322,14 +213,90 @@ func (s *GameServer) transferResourceDropItemsToBot(res *ResourceState, bot *Bot
 			}
 		}
 		if !found {
-			bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{
-				ItemID:   itemID,
-				Active:   false,
-				Quantity: 1,
-			})
+			bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: itemID, Active: false, Quantity: 1})
 		}
 	}
 	s.InvalidateStats(bot)
+}
+
+// grantDropItemsToCaster transfers a dying entity's drop items to whoever fired
+// the killing projectile: a player (inventory + item FCT at (cx, cy) + collect
+// quest gain) or a bot (inventory only). No-op without drops or a caster.
+func (s *GameServer) grantDropItemsToCaster(mapState *MapState, casterID string, dropItemIDs []string, cx, cy float64) {
+	if len(dropItemIDs) == 0 || casterID == "" {
+		return
+	}
+	if player, ok := mapState.players[casterID]; ok {
+		s.grantDropItemsToPlayer(player, dropItemIDs, cx, cy)
+		s.advancePlayerQuestsOnGain(player)
+		return
+	}
+	if bot, ok := mapState.bots[casterID]; ok {
+		s.grantDropItemsToBot(bot, dropItemIDs)
+	}
+}
+
+// handlePlayerDeath sets a player to a dead/ghost state using the dead items of
+// the entity-type default resolved from its pre-death active items.
+func (s *GameServer) handlePlayerDeath(player *PlayerState) {
+	// Economy: apply respawn-cost sink before saving layers (disabled by default, rate = 0).
+	s.SinkRespawnCost(player)
+
+	// Snapshot the pre-death layers (restored on respawn) and resolve the build
+	// from them, before the death swap deactivates the live items.
+	layersToSave := make([]ObjectLayerState, len(player.ObjectLayers))
+	copy(layersToSave, player.ObjectLayers)
+	player.PreRespawnObjectLayers = layersToSave
+	build, _ := s.resolveEntityDefaultBuild("player", activeObjectLayerItemIDs(layersToSave))
+
+	player.ObjectLayers = applyDeadItems(player.ObjectLayers, build.DeadItemIDs)
+
+	player.RespawnTime = time.Now().Add(s.respawnDuration)
+	// Recalculate stats for the ghost state to ensure consistency (mainly MaxLife).
+	s.InvalidateStats(player)
+	s.ApplyResistanceStat(player, s.maps[player.MapCode])
+	player.Mode = IDLE // Stop movement
+}
+
+// handleBotDeath sets a bot to its dead state and transfers its drop items to the
+// killer. Both the dead visuals and the drops come from the entity-type default
+// resolved by the bot's pre-death active items (most-specific subset match), so a
+// skin can carry different dead/drop sets depending on its full active set.
+func (s *GameServer) handleBotDeath(bot *BotState, killerProjectile *BotState, mapState *MapState) {
+	layersToSave := make([]ObjectLayerState, len(bot.ObjectLayers))
+	copy(layersToSave, bot.ObjectLayers)
+	bot.PreRespawnObjectLayers = layersToSave
+	build, _ := s.resolveEntityDefaultBuild("bot", activeObjectLayerItemIDs(layersToSave))
+
+	if killerProjectile != nil {
+		s.grantDropItemsToCaster(mapState, killerProjectile.CasterID, build.DropItemIDs,
+			bot.Pos.X+bot.Dims.Width*0.5, bot.Pos.Y+bot.Dims.Height*0.5)
+	}
+
+	bot.ObjectLayers = applyDeadItems(bot.ObjectLayers, build.DeadItemIDs)
+
+	bot.RespawnTime = time.Now().Add(s.respawnDuration)
+	// Recalculate stats for the ghost state to ensure consistency (mainly MaxLife).
+	s.InvalidateStats(bot)
+	s.ApplyResistanceStat(bot, s.maps[bot.MapCode])
+	bot.Mode = IDLE // Stop movement
+}
+
+// handleResourceDeath sets a resource to a destroyed state, transfers its drop
+// items to the extractor, and activates the dead/extracted visuals until respawn.
+func (s *GameServer) handleResourceDeath(res *ResourceState, killerProjectile *BotState, mapState *MapState) {
+	layersToSave := make([]ObjectLayerState, len(res.ObjectLayers))
+	copy(layersToSave, res.ObjectLayers)
+	res.PreRespawnObjectLayers = layersToSave
+	build, _ := s.resolveEntityDefaultBuild("resource", activeObjectLayerItemIDs(layersToSave))
+
+	s.grantDropItemsToCaster(mapState, killerProjectile.CasterID, build.DropItemIDs,
+		res.Pos.X+res.Dims.Width*0.5, res.Pos.Y+res.Dims.Height*0.5)
+
+	res.ObjectLayers = applyDeadItems(res.ObjectLayers, build.DeadItemIDs)
+
+	res.RespawnTime = time.Now().Add(s.respawnDuration)
+	s.InvalidateStats(res)
 }
 
 // handleRespawns checks and respawns dead players and bots.
