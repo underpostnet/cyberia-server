@@ -91,7 +91,7 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 			Life:    s.entityBaseMaxLife * s.doppelgangerInitialLifeFraction,
 		},
 		MapCode:     mapCode,
-		Behavior:    "passive",
+		Behavior:    BehaviorPassive,
 		SpawnCenter: casterPos,
 		SpawnRadius: s.doppelgangerSpawnRadius,
 		ExpiresAt:   time.Now().Add(botLifetime),

@@ -99,7 +99,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 			Life:    projectileBaseLife,
 		},
 		MapCode:   mapCode,
-		Behavior:  "skill",
+		Behavior:  BehaviorSkill,
 		Direction: projectileDirection,
 		ExpiresAt: time.Now().Add(projectileLifetime),
 		CasterID:  casterID,

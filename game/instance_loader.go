@@ -365,7 +365,7 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 		TargetPos:   PointI{-1, -1},
 		Direction:   NONE,
 		Mode:        IDLE,
-		Behavior:    s.DetermineBotBehavior(objectLayers),
+		Behavior:    s.resolveEntityBehavior("bot", objectLayers),
 		SpawnCenter: startPos,
 		SpawnRadius: spawnRadius,
 		AggroRange:  aggroRange,
@@ -379,16 +379,19 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 	// Fountain: credit the bot's starting coin supply (same path as respawn).
 	s.FountainInitBot(bot)
 
-	// Initial wandering path
-	target := s.randomPointWithinRadius(ms, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
-	if target.X >= 0 {
-		if pth, err := ms.pathfinder.Astar(
-			PointI{X: int(math.Round(bot.Pos.X)), Y: int(math.Round(bot.Pos.Y))},
-			target, bot.Dims,
-		); err == nil && len(pth) > 0 {
-			bot.Path = pth
-			bot.TargetPos = target
-			bot.Mode = WALKING
+	// Initial wandering path — skipped for providers, which stay at their spawn
+	// (provider-static never moves; provider only takes sporadic short steps).
+	if !behaviorIsProvider(bot.Behavior) {
+		target := s.randomPointWithinRadius(ms, bot.SpawnCenter, bot.SpawnRadius, bot.Dims)
+		if target.X >= 0 {
+			if pth, err := ms.pathfinder.Astar(
+				PointI{X: int(math.Round(bot.Pos.X)), Y: int(math.Round(bot.Pos.Y))},
+				target, bot.Dims,
+			); err == nil && len(pth) > 0 {
+				bot.Path = pth
+				bot.TargetPos = target
+				bot.Mode = WALKING
+			}
 		}
 	}
 

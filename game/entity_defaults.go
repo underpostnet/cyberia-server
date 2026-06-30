@@ -6,11 +6,17 @@ func (s *GameServer) buildEntityDefaultsSlice() []EntityTypeDefaultConfig {
 	return result
 }
 
+// resolveEntityDefaultBuild picks the entity-type default for an entity from its
+// active item IDs. A default matches only when ALL of its liveItemIds are present
+// on the entity (subset containment), and the MOST SPECIFIC match wins — the one
+// requiring the largest item set. This lets the same skin carry different
+// defaults by its full active set, e.g. {purple, atlas_pistol_mk2} → hostile but
+// {purple} → passive. With no containing match it falls back to the first build
+// of the type, then the per-type lookup.
 func (s *GameServer) resolveEntityDefaultBuild(entityType string, itemIDs []string) (EntityTypeDefaultConfig, bool) {
 	var firstTypeBuild *EntityTypeDefaultConfig
 	bestIndex := -1
-	bestOverlap := 0
-	bestLiveItemCount := 0
+	bestSize := 0
 
 	itemSet := make(map[string]struct{}, len(itemIDs))
 	for _, itemID := range itemIDs {
@@ -32,19 +38,21 @@ func (s *GameServer) resolveEntityDefaultBuild(entityType string, itemIDs []stri
 			continue
 		}
 
-		overlap := 0
+		contained := true
 		for _, itemID := range build.LiveItemIDs {
-			if _, ok := itemSet[itemID]; ok {
-				overlap++
+			if _, ok := itemSet[itemID]; !ok {
+				contained = false
+				break
 			}
 		}
-		if overlap == 0 {
+		if !contained {
 			continue
 		}
-		if bestIndex == -1 || overlap > bestOverlap || (overlap == bestOverlap && len(build.LiveItemIDs) < bestLiveItemCount) {
+		// Most specific wins: the largest fully-contained liveItemIds set. Ties
+		// keep the earlier build (deterministic by config order).
+		if len(build.LiveItemIDs) > bestSize {
 			bestIndex = i
-			bestOverlap = overlap
-			bestLiveItemCount = len(build.LiveItemIDs)
+			bestSize = len(build.LiveItemIDs)
 		}
 	}
 

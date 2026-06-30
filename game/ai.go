@@ -6,20 +6,12 @@ import (
 	"time"
 )
 
-// DetermineBotBehavior derives a bot's behavior from its object layers.
-// If ANY active layer has a weapon-type item → "hostile", otherwise "passive".
-// Runtime-spawned entities (projectiles, doppelgangers) set behavior directly
-// and do not call this method.
-func (s *GameServer) DetermineBotBehavior(layers []ObjectLayerState) string {
-	for _, ol := range layers {
-		if data, ok := s.GetObjectLayerData(ol.ItemID); ok {
-			if data.Data.Item.Type == "weapon" {
-				return "hostile"
-			}
-		}
-	}
-	return "passive"
-}
+// Provider NPCs barely move: when idle they take an occasional short step
+// within a tight radius of their spawn (provider-static never moves at all).
+const (
+	providerWanderRadius        = 1.0
+	providerWanderChancePerTick = 0.004
+)
 
 // randomPointWithinRadius returns a random walkable PointI within radius from center (or {-1,-1} on failure).
 func (s *GameServer) randomPointWithinRadius(ms *MapState, center Point, radius float64, dims Dimensions) PointI {
@@ -62,7 +54,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 		// --- SKILL PROJECTILE BEHAVIOR ---
 		// Skill projectile bots move in a straight line and are removed if they go out of bounds.
-		if bot.Behavior == "skill" {
+		if bot.Behavior == BehaviorSkill {
 			// dt-based integration. entityBaseSpeed is cells/second; one tick
 			// is s.tickDuration. (The old code used `... / s.fps` which is a
 			// frame-count integration that silently misbehaves when the loop
@@ -88,8 +80,29 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		}
 		// --- END SKILL PROJECTILE BEHAVIOR ---
 
+		// --- PROVIDER BEHAVIOR (mission/action givers) ---
+		// Immortal and near-stationary: never aggroes or casts. provider-static
+		// stays put; provider takes an occasional short step near its spawn.
+		if behaviorIsProvider(bot.Behavior) {
+			if !behaviorIsStationary(bot.Behavior) {
+				if (bot.Mode != WALKING || len(bot.Path) == 0) && rand.Float64() < providerWanderChancePerTick {
+					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, providerWanderRadius, bot.Dims)
+					if target.X >= 0 {
+						if pth, err := mapState.pathfinder.Astar(PointI{X: int(math.Round(bot.Pos.X)), Y: int(math.Round(bot.Pos.Y))}, target, bot.Dims); err == nil && len(pth) > 0 {
+							bot.Path = pth
+							bot.TargetPos = target
+							bot.Mode = WALKING
+						}
+					}
+				}
+				s.updateBotPosition(bot, mapState, botStats)
+			}
+			continue
+		}
+		// --- END PROVIDER BEHAVIOR ---
+
 		// Hostile logic: check for nearest player in aggro range
-		if bot.Behavior == "hostile" {
+		if bot.Behavior == BehaviorHostile {
 			nearestID := ""
 			nearestDist := math.MaxFloat64
 			var nearestPlayer *PlayerState

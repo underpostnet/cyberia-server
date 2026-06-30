@@ -156,6 +156,7 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 			DeadItemIDs:         etd.GetDeadItemIds(),
 			DropItemIDs:         etd.GetDropItemIds(),
 			DefaultObjectLayers: dols,
+			Behavior:            etd.GetBehavior(),
 		}
 		s.entityDefaultBuilds = append(s.entityDefaultBuilds, defaultBuild)
 		s.entityDefaults[defaultBuild.EntityType] = defaultBuild

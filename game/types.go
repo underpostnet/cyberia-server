@@ -164,7 +164,7 @@ type BotState struct {
 	TargetPos            PointI          `json:"targetPos"`
 	Direction            Direction       `json:"direction"`
 	Mode                 ObjectLayerMode `json:"mode"`
-	Behavior             string          `json:"behavior"` // "hostile" or "passive"
+	Behavior             string          `json:"behavior"` // canonical entity behavior (see behavior.go)
 	SpawnCenter          Point           `json:"spawnCenter"`
 	SpawnRadius          float64         `json:"spawnRadius"`
 	AggroRange           float64         `json:"aggroRange"`
@@ -373,6 +373,9 @@ type EntityTypeDefaultConfig struct {
 	DeadItemIDs         []string           `json:"deadItemIds"`
 	DropItemIDs         []string           `json:"dropItemIds"`
 	DefaultObjectLayers []ObjectLayerState `json:"defaultObjectLayers,omitempty"`
+	// Canonical entity behavior bound to matched entities (see behavior.go).
+	// Empty = derive from layers (armed → hostile, else passive).
+	Behavior string `json:"behavior,omitempty"`
 }
 
 // EquipmentRulesConfig governs which item types can be simultaneously active
