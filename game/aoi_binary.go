@@ -310,7 +310,7 @@ func (e *BinaryAOIEncoder) writeEntityBase(flags byte, id string, pos Point, dim
 // Entity writers
 // ═══════════════════════════════════════════════════════════════════
 
-func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64, effectiveLevel int) {
+func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64, statsSum int) {
 	flags := EntityTypePlayer | FlagHasLife
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
@@ -322,12 +322,12 @@ func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64, effec
 		e.putF32(*respawnIn)
 	}
 	e.writeItemIDs(p.ObjectLayers)
-	e.putU16(uint16(effectiveLevel))
+	e.putU16(uint16(statsSum))
 	// Entity Status Indicator — u8 overhead icon ID (see entity_status.go).
 	e.putU8(PlayerStatusIcon(p))
 }
 
-func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLevel int, actionCode string, statusIcon uint8, interactionFlags uint8, questCodes []string, actionDialogCode string) {
+func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, statsSum int, actionCode string, statusIcon uint8, interactionFlags uint8, questCodes []string, actionDialogCode string) {
 	flags := EntityTypeBot | FlagHasLife | FlagHasBehavior
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
@@ -341,7 +341,7 @@ func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, effectiveLe
 	e.putString(b.Behavior)
 	e.writeItemIDs(b.ObjectLayers)
 	e.putString(b.CasterID)
-	e.putU16(uint16(effectiveLevel))
+	e.putU16(uint16(statsSum))
 	// Presence status — u8 lifecycle icon ID (entity_status.go).
 	e.putU8(statusIcon)
 	// Interaction capability bitmask — u8, resolved PER VIEWING PLAYER. Each set
@@ -405,7 +405,7 @@ func (e *BinaryAOIEncoder) WriteStatic(st *StaticState) {
 	e.writeItemIDs(st.ObjectLayers)
 }
 
-func (e *BinaryAOIEncoder) WriteResource(r *ResourceState, respawnIn *float64) {
+func (e *BinaryAOIEncoder) WriteResource(r *ResourceState, respawnIn *float64, statsSum int) {
 	flags := EntityTypeResource | FlagHasLife
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
@@ -417,6 +417,9 @@ func (e *BinaryAOIEncoder) WriteResource(r *ResourceState, respawnIn *float64) {
 		e.putF32(*respawnIn)
 	}
 	e.writeItemIDs(r.ObjectLayers)
+	// Stats sum (sum of active-layer stats) — drives the overhead Σ-stats
+	// capability value, same as players and bots.
+	e.putU16(uint16(statsSum))
 	// Entity Status Indicator — u8 overhead icon ID (see entity_status.go).
 	e.putU8(ResourceStatusIcon(r))
 }
@@ -498,23 +501,23 @@ func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, c
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Effective Level helper
+// Stats sum helper
 // ═══════════════════════════════════════════════════════════════════
 
-// effLevel returns the clamped effective level (sum of all stat fields)
-// for any entity (PlayerState or BotState). Players use their own
-// SumStatsLimit; bots use the server-level cap.
-func (s *GameServer) effLevel(entity interface{}, mapState *MapState) int {
+// statsSum returns the clamped sum of all stat fields for any entity
+// (PlayerState, BotState, or ResourceState). Players clamp to their own
+// SumStatsLimit; other entities use the server-level cap.
+func (s *GameServer) statsSum(entity interface{}, mapState *MapState) int {
 	cs := s.CalculateStats(entity, mapState)
-	level := int(cs.Effect + cs.Resistance + cs.Agility + cs.Range + cs.Intelligence + cs.Utility)
-	cap := s.sumStatsLimit
+	sum := int(cs.Effect + cs.Resistance + cs.Agility + cs.Range + cs.Intelligence + cs.Utility)
+	limit := s.sumStatsLimit
 	if p, ok := entity.(*PlayerState); ok {
-		cap = p.SumStatsLimit
+		limit = p.SumStatsLimit
 	}
-	if level > cap {
-		level = cap
+	if sum > limit {
+		sum = limit
 	}
-	return level
+	return sum
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -552,7 +555,7 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 				respawnIn = &r
 			}
 		}
-		enc.WritePlayer(op, respawnIn, s.effLevel(op, mapState))
+		enc.WritePlayer(op, respawnIn, s.statsSum(op, mapState))
 		entityCount++
 	}
 
@@ -627,7 +630,7 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 				respawnIn = &remaining
 			}
 		}
-		enc.WriteResource(r, respawnIn)
+		enc.WriteResource(r, respawnIn, s.statsSum(r, mapState))
 		entityCount++
 	}
 
@@ -665,7 +668,7 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 		questCodes := s.botQuestCodes(player, b)
 		actionDialog := s.pendingActionTalkDialog(player, b)
 		interactionFlags := s.botInteractionFlags(len(questCodes) > 0, actionDialog != "")
-		enc.WriteBot(b, respawnIn, s.effLevel(b, mapState), actionCode, statusIcon, interactionFlags, questCodes, actionDialog)
+		enc.WriteBot(b, respawnIn, s.statsSum(b, mapState), actionCode, statusIcon, interactionFlags, questCodes, actionDialog)
 		entityCount++
 	}
 
