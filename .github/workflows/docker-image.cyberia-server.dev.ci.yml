@@ -1,11 +1,14 @@
-name: CI | Docker Image cyberia-server
+name: CI | Docker Image cyberia-server (dev)
 
-# This workflow is the source-of-truth template that lives in the
-# engine repo. `node bin run instance-build-manifest dd-cyberia,mmo-server,./cyberia-server`
-# copies it into ./cyberia-server/.github/workflows/ so it ships in
-# underpostnet/cyberia-server and can be dispatched by
-# `node bin run docker-image cyberia-server` (which resolves the target
-# repo from conf.instances.json `metadata.repository`).
+# Development variant of docker-image.cyberia-server.ci.yml. Publishes
+# underpost/cyberia-server-dev (note the `-dev` suffix) from the dev Dockerfile
+# (./Dockerfile.dev, synced into this repo from src/runtime/cyberia-server/
+# Dockerfile.dev by `node bin run instance-build-manifest`). Used only by the
+# development docker-compose stack.
+#
+# The dev Dockerfile builds the Go server with debug flags (-gcflags="all=-N -l")
+# and keeps live-inspection tooling in the runtime image. Everything else mirrors
+# the production workflow.
 
 on:
   workflow_dispatch:
@@ -47,15 +50,13 @@ jobs:
         working-directory: engine
         run: npm ci --ignore-scripts
 
-      # Render the SSR dashboard from inside the engine checkout but
-      # write the output back to ../public/ (the cyberia-server repo
-      # root). The --output-path flag overrides the default
-      # ./cyberia-server/public/index.html target.
-      - name: Build cyberia-server SSR dashboard
+      # Render the development SSR dashboard (dev env vars, e.g. localhost API
+      # endpoints) from inside the engine checkout, writing to ../public/.
+      - name: Build cyberia-server SSR dashboard (dev)
         working-directory: engine
         run: |
           node bin/deploy cyberia
-          node bin/cyberia run-workflow build-server-dashboard --output-path ../public/index.html
+          node bin/cyberia run-workflow build-server-dashboard --dev --output-path ../public/index.html
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -70,7 +71,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: underpost/cyberia-server
+          images: underpost/cyberia-server-dev
           tags: |
             type=raw,value=v${{ env.UNDERPOST_VERSION }}
             type=ref,event=branch
@@ -79,12 +80,11 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v7
         with:
-          # Build context is the project repo root. The Dockerfile here
-          # is a project-root variant (COPY . . rather than
-          # COPY cyberia-server/ .) synced from src/runtime/cyberia-server/
-          # in the engine repo by `instance-build-manifest`.
+          # Build context is the project repo root. Dockerfile.dev is the
+          # project-root dev variant synced from src/runtime/cyberia-server/
+          # Dockerfile.dev in the engine repo by `instance-build-manifest`.
           context: .
-          file: ./Dockerfile
+          file: ./Dockerfile.dev
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
