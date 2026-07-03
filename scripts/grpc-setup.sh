@@ -2,20 +2,14 @@
 set -euo pipefail
 
 # ──────────────────────────────────────────────────────────────────
-# grpc-setup.sh — Install gRPC / Protocol Buffers toolchain for the
-# Go Cyberia Server on RHEL / Rocky Linux / AlmaLinux / Fedora.
-#
-# Installs:
-#   1. protobuf-compiler (protoc) + protobuf-devel via dnf
-#   2. grpc system packages (grpc, grpc-devel, grpc-plugins)
-#   3. Go protoc code-gen plugins (protoc-gen-go, protoc-gen-go-grpc)
-#   4. Go module dependencies (google.golang.org/grpc, protobuf)
-#   5. Generates Go stubs from cyberia.proto
+# grpc-setup.sh — DEV ONLY. Install protoc and regenerate the Go
+# gRPC/protobuf stubs after editing gen/proto/cyberia.proto. Not used by the
+# build or the image: `go build` compiles the committed gen/proto/*.pb.go, and
+# gRPC is a pure-Go module. Run go-setup.sh first for the Go code-gen plugins.
 #
 # Usage:
-#   ./cyberia-server/scripts/grpc-setup.sh
-#   ./cyberia-server/scripts/grpc-setup.sh --skip-dnf   # skip system packages
-#   ./cyberia-server/scripts/grpc-setup.sh --proto-only  # only regenerate stubs
+#   ./scripts/grpc-setup.sh
+#   ./scripts/grpc-setup.sh --skip-dnf   # protoc already installed
 # ──────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -23,104 +17,24 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PROTO_DIR="${PROJECT_ROOT}/gen/proto"
 
 SKIP_DNF=0
-PROTO_ONLY=0
+[[ "${1:-}" == "--skip-dnf" ]] && SKIP_DNF=1
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --skip-dnf)
-      SKIP_DNF=1
-      shift
-      ;;
-    --proto-only)
-      PROTO_ONLY=1
-      shift
-      ;;
-    -h|--help)
-      echo "Usage: $0 [--skip-dnf] [--proto-only]"
-      echo "  --skip-dnf    Skip dnf system package installation"
-      echo "  --proto-only  Only regenerate Go stubs from cyberia.proto"
-      exit 0
-      ;;
-    *)
-      echo "Unknown option: $1" >&2
-      exit 1
-      ;;
-  esac
+# ── protoc (compiler only; RHEL/Rocky/Alma/Fedora) ────────────────
+if [[ "$SKIP_DNF" -eq 0 ]]; then
+  echo ">>> Installing protobuf-compiler (protoc)..."
+  sudo dnf install -y protobuf-compiler
+fi
+
+# ── Verify protoc + Go plugins (plugins come from go-setup.sh) ─────
+GOBIN="$(go env GOPATH 2>/dev/null)/bin"
+[[ ":$PATH:" == *":${GOBIN}:"* ]] || export PATH="$PATH:${GOBIN}"
+for bin in protoc protoc-gen-go protoc-gen-go-grpc; do
+  command -v "$bin" &>/dev/null || { echo "ERROR: $bin not found. Run ./scripts/go-setup.sh first." >&2; exit 1; }
 done
-
-# ── 1. Install system packages via dnf ────────────────────────────
-if [[ "$PROTO_ONLY" -eq 0 && "$SKIP_DNF" -eq 0 ]]; then
-  echo ">>> Enabling EPEL repository..."
-  sudo dnf install -y epel-release 2>/dev/null || true
-  sudo dnf install -y dnf-plugins-core 2>/dev/null || true
-
-  # Enable CRB/PowerTools for devel headers
-  if grep -qi 'Red Hat Enterprise' /etc/os-release 2>/dev/null; then
-    sudo dnf config-manager --set-enabled \
-      "codeready-builder-for-rhel-$(rpm -E %rhel)-$(uname -m)-rpms" 2>/dev/null || true
-  elif grep -qi 'Rocky\|AlmaLinux' /etc/os-release 2>/dev/null; then
-    sudo dnf config-manager --set-enabled crb 2>/dev/null || \
-      sudo dnf config-manager --set-enabled powertools 2>/dev/null || true
-  fi
-
-  echo ">>> Installing protobuf-compiler, grpc, grpc-devel, grpc-plugins..."
-  sudo dnf install -y \
-    protobuf-compiler \
-    protobuf-devel \
-    grpc \
-    grpc-devel \
-    grpc-plugins
-fi
-
-# ── 2. Verify Go is available ─────────────────────────────────────
-if ! command -v go &>/dev/null; then
-  echo "ERROR: Go is not installed. Install Go >= 1.23 first." >&2
-  exit 1
-fi
-echo ">>> Go version: $(go version)"
-
-# ── 3. Install Go protoc plugins ─────────────────────────────────
-if [[ "$PROTO_ONLY" -eq 0 ]]; then
-  echo ">>> Installing protoc-gen-go and protoc-gen-go-grpc..."
-  go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-  go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-fi
-
-# Ensure GOPATH/bin is in PATH for this session
-GOBIN="$(go env GOPATH)/bin"
-if [[ ":$PATH:" != *":${GOBIN}:"* ]]; then
-  export PATH="$PATH:${GOBIN}"
-fi
-
-# ── 4. Verify protoc + plugins ───────────────────────────────────
-if ! command -v protoc &>/dev/null; then
-  echo "ERROR: protoc not found in PATH." >&2
-  exit 1
-fi
 echo ">>> protoc: $(protoc --version)"
 
-if ! command -v protoc-gen-go &>/dev/null; then
-  echo "ERROR: protoc-gen-go not found. Check \$GOPATH/bin is in PATH." >&2
-  exit 1
-fi
-
-if ! command -v protoc-gen-go-grpc &>/dev/null; then
-  echo "ERROR: protoc-gen-go-grpc not found. Check \$GOPATH/bin is in PATH." >&2
-  exit 1
-fi
-
-# ── 5. Install Go module dependencies ────────────────────────────
-if [[ "$PROTO_ONLY" -eq 0 ]]; then
-  echo ">>> Running go mod tidy in ${PROJECT_ROOT}..."
-  cd "${PROJECT_ROOT}"
-  go mod tidy
-fi
-
-# ── 6. Generate Go stubs from cyberia.proto ──────────────────────
-if [[ ! -f "${PROTO_DIR}/cyberia.proto" ]]; then
-  echo "ERROR: ${PROTO_DIR}/cyberia.proto not found." >&2
-  exit 1
-fi
+# ── Generate Go stubs from cyberia.proto ──────────────────────────
+[[ -f "${PROTO_DIR}/cyberia.proto" ]] || { echo "ERROR: ${PROTO_DIR}/cyberia.proto not found." >&2; exit 1; }
 
 echo ">>> Generating Go protobuf + gRPC stubs..."
 protoc \
@@ -129,8 +43,4 @@ protoc \
   --go-grpc_out="${PROJECT_ROOT}" --go-grpc_opt=module=cyberia-server \
   "${PROTO_DIR}/cyberia.proto"
 
-echo ">>> Generated:"
-echo "      ${PROTO_DIR}/cyberia.pb.go"
-echo "      ${PROTO_DIR}/cyberia_grpc.pb.go"
-
-echo ">>> gRPC setup complete for cyberia-server."
+echo ">>> Generated ${PROTO_DIR}/cyberia.pb.go + cyberia_grpc.pb.go — commit them."
