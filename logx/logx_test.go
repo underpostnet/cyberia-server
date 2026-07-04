@@ -19,9 +19,12 @@ func TestResolveLevel(t *testing.T) {
 		{"production fallback", "", "production", slog.LevelInfo},
 		{"prod alias", "", "prod", slog.LevelInfo},
 		{"staging fallback", "", "staging", slog.LevelInfo},
-		{"dev default", "", "development", slog.LevelDebug},
-		{"both empty defaults debug", "", "", slog.LevelDebug},
+		{"development opts into debug", "", "development", slog.LevelDebug},
+		{"dev alias", "", "dev", slog.LevelDebug},
+		{"both empty fail-safe to info", "", "", slog.LevelInfo},
+		{"unknown env fail-safe to info", "", "whatever", slog.LevelInfo},
 		{"unknown log level falls through to env", "verbose", "production", slog.LevelInfo},
+		{"explicit debug still wins in prod", "debug", "", slog.LevelDebug},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

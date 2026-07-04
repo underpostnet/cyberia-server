@@ -5,7 +5,12 @@
 // startup from the environment:
 //
 //	LOG_LEVEL  — explicit: debug | info | warn | error (wins when set)
-//	APP_ENV    — fallback: production/prod ⇒ info, anything else ⇒ debug
+//	APP_ENV    — fallback: development/dev/local/test ⇒ debug, everything
+//	             else (including unset) ⇒ info
+//
+// The fallback is deliberately fail-safe toward info: a forgotten env var
+// yields production-quiet logging, never debug spam. Development opts INTO
+// debug via APP_ENV=development or LOG_LEVEL=debug.
 //
 // Hot-path, per-event chatter (per-kill economy transfers, per-input
 // rejections, per-connection registration) MUST log at Debug so production
@@ -59,10 +64,12 @@ func resolveLevel(logLevel, appEnv string) slog.Level {
 		return slog.LevelError
 	}
 	switch strings.ToLower(strings.TrimSpace(appEnv)) {
-	case "production", "prod", "staging":
-		return slog.LevelInfo
-	default:
+	case "development", "dev", "local", "test":
 		return slog.LevelDebug
+	default:
+		// Unset or any production-like value ⇒ info. Fail-safe: never spam
+		// debug when the environment is not explicitly a dev environment.
+		return slog.LevelInfo
 	}
 }
 
