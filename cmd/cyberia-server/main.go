@@ -75,8 +75,12 @@ func main() {
 	// Core game server
 	s := game.NewGameServer()
 	if cfg.EngineAPIBaseURL != "" {
-		// Forwarded to clients for binary blob fetches.
+		// Internal engine origin for server-to-server content calls.
 		s.SetEngineApiBaseUrl(cfg.EngineAPIBaseURL)
+	}
+	if cfg.EnginePublicURL != "" {
+		// Client-visible Content Authority origin, forwarded to clients.
+		s.SetEnginePublicURL(cfg.EnginePublicURL)
 	}
 
 	// ── Data loading: gRPC ──────────

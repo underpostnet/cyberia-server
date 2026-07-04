@@ -197,7 +197,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// Send metadata message with ObjectLayer data for client-side caching.
 	metaPayload := map[string]interface{}{
 		"objectLayers":   s.buildOLMetadataMap(),
-		"apiBaseUrl":     s.engineApiBaseUrl,
+		"apiBaseUrl":     s.enginePublicURL,
 		"equipmentRules": s.equipmentRules,
 	}
 	metaMsg, _ := json.Marshal(map[string]interface{}{"type": "metadata", "payload": metaPayload})

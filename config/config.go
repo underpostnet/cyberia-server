@@ -30,9 +30,15 @@ type Config struct {
 	// ENGINE_GRPC_ADDRESS, default "localhost:50051".
 	EngineGRPCAddress string
 
-	// EngineAPIBaseURL is forwarded to clients for binary blob fetches.
-	// ENGINE_API_BASE_URL, optional (empty = unset).
+	// EngineAPIBaseURL is the internal engine-cyberia origin for
+	// server-to-server calls (cyberia-server -> engine-cyberia). Infrastructure
+	// only; never forwarded to clients. ENGINE_API_BASE_URL, optional.
 	EngineAPIBaseURL string
+
+	// EnginePublicURL is the client-visible engine-cyberia (Content Authority)
+	// origin forwarded to clients for every content/asset/metadata request.
+	// Distinct from EngineAPIBaseURL. ENGINE_PUBLIC_URL, optional (empty = unset).
+	EnginePublicURL string
 
 	// GRPCReloadInterval enables Engine hot-reload polling.
 	// ENGINE_GRPC_RELOAD_INTERVAL_SEC, 0 = disabled.
@@ -75,6 +81,7 @@ func Load() (Config, error) {
 		InstanceCode:       os.Getenv("INSTANCE_CODE"),
 		EngineGRPCAddress:  getEnv("ENGINE_GRPC_ADDRESS", "localhost:50051"),
 		EngineAPIBaseURL:   os.Getenv("ENGINE_API_BASE_URL"),
+		EnginePublicURL:    os.Getenv("ENGINE_PUBLIC_URL"),
 		ProblemBaseURI:     os.Getenv("CYBERIA_PROBLEM_BASE_URI"),
 		ContainerDeployID:  os.Getenv("CONTAINER_DEPLOY_ID"),
 		CORSAllowedOrigins: parseCSV(os.Getenv("CYBERIA_CORS_ALLOWED_ORIGINS"), defaultCORSOrigins),
