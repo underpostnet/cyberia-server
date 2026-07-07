@@ -11,7 +11,17 @@ const (
 	BehaviorProviderStatic = "provider-static"
 	BehaviorSkill          = "skill"
 	BehaviorCoin           = "coin"
+	// BehaviorDrop marks a transient collectible token scattered on the grid by
+	// a bot death (see loot.go). Drops never move, never aggro, deal no damage,
+	// and are removed on collection or lifetime expiry. Runtime-assigned only.
+	BehaviorDrop = "drop"
 )
+
+// behaviorIsInert reports whether entities with behavior b run no AI: they hold
+// position until removed. Covers scattered loot drops.
+func behaviorIsInert(b string) bool {
+	return b == BehaviorDrop
+}
 
 // behaviorIsProvider reports whether b is a mission/action giver — immortal and
 // near-stationary, whether it takes occasional short steps or is fully static.

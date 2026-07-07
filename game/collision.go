@@ -76,6 +76,10 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 			if projectileID == otherBotID || otherBot.Behavior == BehaviorSkill || otherBot.IsGhost() {
 				continue // Don't collide with self, other projectiles, or dead bots.
 			}
+			// Inert loot tokens are non-combat: projectiles pass through them.
+			if behaviorIsInert(otherBot.Behavior) {
+				continue
+			}
 			// Provider NPCs are immortal — projectiles pass through without damage.
 			if behaviorIsImmortal(otherBot.Behavior) {
 				continue
@@ -86,6 +90,8 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 			}
 			if checkAABBCollision(projectile.Pos, projectile.Dims, otherBot.Pos, otherBot.Dims) {
 				otherBot.Life -= projectileStats.Effect
+				// Attribute damage to the firing player for loot priority.
+				recordDamage(&otherBot.DamageLedger, mapState, projectile.CasterID, projectileStats.Effect)
 				if otherBot.Life <= 0 {
 					otherBot.Life = 0
 					// Capture the victim's skin before death deactivates its
@@ -115,6 +121,8 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 			}
 			if checkAABBCollision(projectile.Pos, projectile.Dims, res.Pos, res.Dims) {
 				res.Life -= projectileStats.Effect
+				// Attribute extraction damage to the firing player for loot priority.
+				recordDamage(&res.DamageLedger, mapState, projectile.CasterID, projectileStats.Effect)
 				if res.Life <= 0 {
 					res.Life = 0
 					s.handleResourceDeath(res, projectile, mapState)
@@ -197,45 +205,6 @@ func (s *GameServer) grantDropItemsToPlayer(player *PlayerState, dropItemIDs []s
 	s.InvalidateStats(player)
 }
 
-// grantDropItemsToBot adds drop items to a bot's inventory (no FCT — bots have no
-// HUD).
-func (s *GameServer) grantDropItemsToBot(bot *BotState, dropItemIDs []string) {
-	for _, itemID := range dropItemIDs {
-		if itemID == "" {
-			continue
-		}
-		found := false
-		for i := range bot.ObjectLayers {
-			if bot.ObjectLayers[i].ItemID == itemID {
-				bot.ObjectLayers[i].Quantity += 1
-				found = true
-				break
-			}
-		}
-		if !found {
-			bot.ObjectLayers = append(bot.ObjectLayers, ObjectLayerState{ItemID: itemID, Active: false, Quantity: 1})
-		}
-	}
-	s.InvalidateStats(bot)
-}
-
-// grantDropItemsToCaster transfers a dying entity's drop items to whoever fired
-// the killing projectile: a player (inventory + item FCT at (cx, cy) + collect
-// quest gain) or a bot (inventory only). No-op without drops or a caster.
-func (s *GameServer) grantDropItemsToCaster(mapState *MapState, casterID string, dropItemIDs []string, cx, cy float64) {
-	if len(dropItemIDs) == 0 || casterID == "" {
-		return
-	}
-	if player, ok := mapState.players[casterID]; ok {
-		s.grantDropItemsToPlayer(player, dropItemIDs, cx, cy)
-		s.advancePlayerQuestsOnGain(player)
-		return
-	}
-	if bot, ok := mapState.bots[casterID]; ok {
-		s.grantDropItemsToBot(bot, dropItemIDs)
-	}
-}
-
 // handlePlayerDeath sets a player to a dead/ghost state using the dead items of
 // the entity-type default resolved from its pre-death active items.
 func (s *GameServer) handlePlayerDeath(player *PlayerState) {
@@ -268,10 +237,12 @@ func (s *GameServer) handleBotDeath(bot *BotState, killerProjectile *BotState, m
 	bot.PreRespawnObjectLayers = layersToSave
 	build, _ := s.resolveEntityDefaultBuild("bot", activeObjectLayerItemIDs(layersToSave))
 
-	if killerProjectile != nil {
-		s.grantDropItemsToCaster(mapState, killerProjectile.CasterID, build.DropItemIDs,
-			bot.Pos.X+bot.Dims.Width*0.5, bot.Pos.Y+bot.Dims.Height*0.5)
-	}
+	// Loot is no longer injected into the killer's inventory. Instead, scatter
+	// each drop as a transient collectible token onto adjacent grid cells and
+	// grant the top damage contributor a short pickup-priority window.
+	botCenter := Point{X: bot.Pos.X + bot.Dims.Width*0.5, Y: bot.Pos.Y + bot.Dims.Height*0.5}
+	s.spawnDrops(mapState, bot.MapCode, botCenter, build.DropItemIDs, bot.DamageLedger)
+	bot.DamageLedger = nil
 
 	bot.ObjectLayers = applyDeadItems(bot.ObjectLayers, build.DeadItemIDs)
 
@@ -282,16 +253,18 @@ func (s *GameServer) handleBotDeath(bot *BotState, killerProjectile *BotState, m
 	bot.Mode = IDLE // Stop movement
 }
 
-// handleResourceDeath sets a resource to a destroyed state, transfers its drop
-// items to the extractor, and activates the dead/extracted visuals until respawn.
+// handleResourceDeath sets a resource to a destroyed state, scatters its drop
+// items as collectible tokens (top extraction contributor gets loot priority),
+// and activates the dead/extracted visuals until respawn.
 func (s *GameServer) handleResourceDeath(res *ResourceState, killerProjectile *BotState, mapState *MapState) {
 	layersToSave := make([]ObjectLayerState, len(res.ObjectLayers))
 	copy(layersToSave, res.ObjectLayers)
 	res.PreRespawnObjectLayers = layersToSave
 	build, _ := s.resolveEntityDefaultBuild("resource", activeObjectLayerItemIDs(layersToSave))
 
-	s.grantDropItemsToCaster(mapState, killerProjectile.CasterID, build.DropItemIDs,
-		res.Pos.X+res.Dims.Width*0.5, res.Pos.Y+res.Dims.Height*0.5)
+	resCenter := Point{X: res.Pos.X + res.Dims.Width*0.5, Y: res.Pos.Y + res.Dims.Height*0.5}
+	s.spawnDrops(mapState, res.MapCode, resCenter, build.DropItemIDs, res.DamageLedger)
+	res.DamageLedger = nil
 
 	res.ObjectLayers = applyDeadItems(res.ObjectLayers, build.DeadItemIDs)
 

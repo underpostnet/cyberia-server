@@ -50,6 +50,12 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			continue
 		}
 
+		// Inert tokens (scattered loot drops) hold position: no wander, aggro,
+		// or skills. Collection and lifetime are handled elsewhere (loot.go).
+		if behaviorIsInert(bot.Behavior) {
+			continue
+		}
+
 		botStats := s.CalculateStats(bot, mapState)
 
 		// --- SKILL PROJECTILE BEHAVIOR ---

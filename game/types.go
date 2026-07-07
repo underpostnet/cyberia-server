@@ -182,6 +182,29 @@ type BotState struct {
 	// ActionCode binds this entity to a cached CyberiaAction (see actionCache).
 	// Non-empty marks the bot as an action-provider (ESI 8 overhead icon).
 	ActionCode string `json:"-"`
+
+	// DamageLedger is the per-victim threat/contribution ledger:
+	// attacking player ID → cumulative damage dealt to this bot. Populated by
+	// the skill-collision path (players only; bot-vs-bot damage is not tracked
+	// for loot). Read once on death to resolve the top contributor, then reset.
+	// Allocated lazily on first hit. Never sent on the wire.
+	DamageLedger map[string]float64 `json:"-"`
+
+	// ── Transient world-item drop fields (BehaviorDrop bots only) ────────────
+	// A drop is a collectible token scattered on the grid when a bot dies. It
+	// carries exactly one item and is picked up by walking over it.
+	// DropItemID is the item this token grants on collection.
+	DropItemID string `json:"-"`
+	// LootContributors is the set of player IDs that dealt damage to the entity
+	// this token dropped from. Once the token settles, collection is a race: any
+	// contributor that collides may pick it up. Empty = no player dealt damage,
+	// so anyone may collect.
+	LootContributors map[string]struct{} `json:"-"`
+	// CollectableAt is the instant the spawn-launch settle window ends. Until
+	// then the token is mid-flight from the corpse to its cell and registers no
+	// collision — collection is disabled regardless of loot priority. Matches
+	// the client launch-animation duration sent in MsgTypeDropSpawn.
+	CollectableAt time.Time `json:"-"`
 }
 
 type PortalConfig struct {
@@ -201,6 +224,10 @@ type ResourceState struct {
 	EntityBase
 	Mortal
 	MapCode string `json:"MapCode"`
+	// DamageLedger is the per-resource extraction ledger: attacking player ID →
+	// cumulative damage dealt. Mirrors BotState.DamageLedger — read once on
+	// death to grant the top contributor loot priority, then reset. Never wired.
+	DamageLedger map[string]float64 `json:"-"`
 }
 
 // StaticState represents a non-moving, passable decorator entity (rocks,

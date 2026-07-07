@@ -97,6 +97,14 @@ const (
 	// MsgTypeItemFCT — Item quantity Floating Combat Text event (≥15 bytes).
 	// See economy.go buildItemFCTMsg for wire format.
 	MsgTypeItemFCT byte = 0x05
+	// MsgTypeDropCollect — a scattered loot token was collected by a player.
+	// Drives the client parabolic pickup animation. See loot.go
+	// buildDropCollectMsg for the wire format.
+	MsgTypeDropCollect byte = 0x06
+	// MsgTypeDropSpawn — a scattered loot token was launched from a corpse.
+	// Carries the launch origin, landing cell, and settle duration so the client
+	// plays the bot→ground parabolic launch. See loot.go buildDropSpawnMsg.
+	MsgTypeDropSpawn byte = 0x07
 
 	// FCT event sub-types — MUST stay in sync with C constants in
 	// floating_combat_text.h and binary_aoi_decoder.h.

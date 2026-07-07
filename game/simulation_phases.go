@@ -12,7 +12,8 @@
 //	3. phaseSkills      skill projectile collisions
 //	4. phaseAI          bot behaviour decisions (path planning)
 //	5. phaseMovement    integrate positions using s.tickDuration
-//	6. phasePortals     portal entry / teleport
+//	6. phaseLoot        player↔drop-token collection + priority validation
+//	7. phasePortals     portal entry / teleport
 //
 // Replication (phaseReplication) runs on its own ticker at snapshotRate and
 // is invoked from server.go directly.

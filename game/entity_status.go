@@ -87,7 +87,7 @@ func PlayerStatusIcon(p *PlayerState) uint8 {
 //  3. Hostile         → StatusHostile
 //  4. Default         → StatusPassive
 func BotStatusIcon(b *BotState) uint8 {
-	if b.Behavior == BehaviorSkill || b.Behavior == BehaviorCoin {
+	if b.Behavior == BehaviorSkill || b.Behavior == BehaviorCoin || b.Behavior == BehaviorDrop {
 		return StatusNone
 	}
 	if b.IsGhost() {

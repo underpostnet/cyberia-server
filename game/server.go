@@ -325,6 +325,7 @@ func (s *GameServer) listenForClients() {
 //	phaseSkills     skill projectile collisions
 //	phaseAI         bot behaviour decisions
 //	phaseMovement   integrate positions using s.tickDuration (NOT 1/fps)
+//	phaseLoot       player↔drop-token collection + priority validation
 //	phasePortals    portal entry / teleport
 //
 // Neither phase reads PresentationHints. Replication runs on its own
@@ -364,6 +365,7 @@ func (s *GameServer) gameLoop() {
 					s.phaseSkills(tick, mapState)
 					s.phaseAI(tick, mapState)
 					s.phaseMovement(tick, mapState)
+					s.phaseLoot(tick, mapState)
 					s.phasePortals(tick, mapState)
 				}
 				s.currentTick++
