@@ -444,6 +444,15 @@ func (s *GameServer) updatePlayerDirection(player *PlayerState, dirX, dirY float
 
 // ---------- Portals ----------
 func (s *GameServer) checkPortal(player *PlayerState, mapState *MapState) {
+	// Teleport is only possible while alive. A dead player standing on a portal
+	// neither accrues hold progress nor teleports; entering ghost state cancels
+	// any in-progress hold.
+	if player.IsGhost() {
+		player.OnPortal = false
+		player.ActivePortalID = ""
+		return
+	}
+
 	onPortal := false
 	var activePortal *PortalState
 	for _, portal := range mapState.portals {

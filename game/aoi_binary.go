@@ -71,6 +71,7 @@
 //	    u8   frozen (0=normal, 1=frozen — FrozenInteractionState)
 //	    u8   statusIcon
 //	    f32  moveSpeed (cells/second — fed to client prediction integrator)
+//	    f32  portalHoldProgress (0..1 — authoritative teleport charge, local player)
 package game
 
 import (
@@ -429,7 +430,7 @@ func (e *BinaryAOIEncoder) WriteResource(r *ResourceState, respawnIn *float64, s
 // grid-units per second; the C/WASM client feeds this directly into its
 // prediction integrator so the byte-identical step formula matches
 // phaseMovement on every Agility / buff / debuff change.
-func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, coinBalance uint32, moveSpeed float64) {
+func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, coinBalance uint32, moveSpeed float64, portalHoldProgress float64) {
 	flags := EntityTypePlayer | FlagHasLife
 	var respawnIn *float64
 	if p.IsGhost() {
@@ -498,6 +499,11 @@ func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, c
 	// integrator so client-side step = moveSpeed * tickDuration matches the
 	// server byte-for-byte.
 	e.putF32(moveSpeed)
+
+	// Portal hold progress (0..1) — authoritative teleport charge for the local
+	// player only. Non-zero exclusively while alive and standing on a portal;
+	// the client renders it as a hold bar and never derives it locally.
+	e.putF32(portalHoldProgress)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -677,8 +683,20 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 	activeStatsSum := int(playerStats.Effect + playerStats.Resistance + playerStats.Agility +
 		playerStats.Range + playerStats.Intelligence + playerStats.Utility)
 	moveSpeed := s.CalculateMovementSpeed(playerStats)
+	// Portal hold progress — fraction of portalHoldTime elapsed while the player
+	// stands on a portal. checkPortal already clears OnPortal when the player is a
+	// ghost, so this is non-zero only for a live player charging a teleport.
+	portalHoldProgress := 0.0
+	if player.OnPortal && s.portalHoldTime > 0 {
+		portalHoldProgress = time.Since(player.TimeOnPortal).Seconds() / s.portalHoldTime.Seconds()
+		if portalHoldProgress > 1.0 {
+			portalHoldProgress = 1.0
+		} else if portalHoldProgress < 0.0 {
+			portalHoldProgress = 0.0
+		}
+	}
 	// player.Coins is the canonical flat balance — read directly (O(1), no OL traversal).
-	enc.WriteSelfPlayer(player, activeStatsSum, player.Coins, moveSpeed)
+	enc.WriteSelfPlayer(player, activeStatsSum, player.Coins, moveSpeed, portalHoldProgress)
 
 	// Patch entity count in header.
 	// v2 header layout: msgType(1) + tick(4) + lastAckedSequence(4) + entityCount(2)
