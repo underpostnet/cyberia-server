@@ -236,84 +236,66 @@ func (s *GameServer) FountainInitBot(bot *BotState) {
 // Bots receive an infinite-mint guarantee: effectiveBalance ≥ botSpawnCoins.
 func (s *GameServer) ExecuteKillTransfer(caster interface{}, victim interface{}) {
 	// ── 1. Resolve victim ──────────────────────────────────────────────
-	var victimID string
-	var victimPos Point
-	var victimIsBot bool
-	var victimPlayer *PlayerState
-
-	switch v := victim.(type) {
-	case *PlayerState:
-		victimID = v.ID
-		victimPos = v.Pos
-		victimPlayer = v
-	case *BotState:
-		victimID = v.ID
-		victimPos = v.Pos
-		victimIsBot = true
-	default:
-		logx.Errorf("[ECONOMY] ExecuteKillTransfer: unknown victim type %T", victim)
+	// Only player victims transfer coins directly (PvP). Bot coins scatter as a
+	// grid drop instead (see botCoinDropAmount / spawnDrops).
+	victimPlayer, ok := victim.(*PlayerState)
+	if !ok {
 		return
 	}
 
-	// ── 2. Effective balance ───────────────────────────────────────────
-	// Players: only what they actually carry (no mint).
-	// Bots:    guaranteed ≥ botSpawnCoins regardless of current balance.
-	effectiveBalance := int(coinQuantity(victim))
-	if victimIsBot && effectiveBalance < s.botSpawnCoins {
-		effectiveBalance = s.botSpawnCoins
-	}
+	// ── 2. Effective balance — players carry only what they hold (no mint).
+	effectiveBalance := int(coinQuantity(victimPlayer))
 	if effectiveBalance <= 0 {
-		return // victim has no coins — nothing to transfer
+		return
 	}
 
-	// ── 3. Select rate ─────────────────────────────────────────────────
-	rate := s.coinKillPercentVsBot
-	if !victimIsBot {
-		rate = s.coinKillPercentVsPlayer
-	}
-
-	// ── 4. Compute transfer ────────────────────────────────────────────
-	transfer := int(math.Floor(float64(effectiveBalance) * rate))
+	// ── 3. Compute transfer (PvP rate, floored, min, capped at balance). ──
+	transfer := int(math.Floor(float64(effectiveBalance) * s.coinKillPercentVsPlayer))
 	if s.coinKillMinAmount > 0 && transfer < s.coinKillMinAmount {
 		transfer = s.coinKillMinAmount
 	}
-	// Cap transfer at what the victim actually holds (bots may have 0 on early death).
-	actualVictimBalance := effectiveBalance
-	if !victimIsBot {
-		actualVictimBalance = int(coinQuantity(victim))
-	}
-	if transfer > actualVictimBalance {
-		transfer = actualVictimBalance
+	if transfer > effectiveBalance {
+		transfer = effectiveBalance
 	}
 	if transfer <= 0 {
 		return
 	}
 
-	// ── 5. Deduct from victim ──────────────────────────────────────────
-	s.addCoins(victim, -transfer)
-	s.InvalidateStats(victim)
-
-	// ── 6. Credit caster ──────────────────────────────────────────────
+	// ── 4. Deduct from victim, credit caster. ──────────────────────────
+	s.addCoins(victimPlayer, -transfer)
+	s.InvalidateStats(victimPlayer)
 	s.addCoins(caster, transfer)
 	s.InvalidateStats(caster)
 
-	var casterPlayer *PlayerState
-	if cp, ok := caster.(*PlayerState); ok {
-		casterPlayer = cp
-	}
+	logx.Debugf("[ECONOMY] PvP kill transfer: %s looted %d coins from player %s (rate=%.0f%%, min=%d)",
+		econEntityID(caster), transfer, victimPlayer.ID, s.coinKillPercentVsPlayer*100, s.coinKillMinAmount)
 
-	logx.Debugf("[ECONOMY] Kill transfer: %s looted %d coins from %s "+
-		"(effectiveBal=%d, rate=%.0f%%, min=%d, victimIsBot=%v)",
-		econEntityID(caster), transfer, victimID,
-		effectiveBalance, rate*100, s.coinKillMinAmount, victimIsBot)
+	// ── 5. FCT events (cosmetic, non-blocking). ─────────────────────────
+	if casterPlayer, ok := caster.(*PlayerState); ok {
+		sendFCT(casterPlayer, FCTTypeCoinGain, victimPlayer.Pos.X, victimPlayer.Pos.Y, transfer)
+	}
+	sendFCT(victimPlayer, FCTTypeCoinLoss, victimPlayer.Pos.X, victimPlayer.Pos.Y, transfer)
+}
 
-	// ── 7. FCT events (cosmetic, non-blocking) ──────────────────────────
-	if casterPlayer != nil {
-		sendFCT(casterPlayer, FCTTypeCoinGain, victimPos.X, victimPos.Y, transfer)
+// botCoinDropAmount computes how many coins a dead bot scatters, mirroring the
+// PvE kill-transfer formula: the bot's balance (minted up to botSpawnCoins) at
+// the vs-bot rate, floored, with the configured minimum. Caller holds s.mu.
+func (s *GameServer) botCoinDropAmount(bot *BotState) int {
+	effectiveBalance := int(coinQuantity(bot))
+	if effectiveBalance < s.botSpawnCoins {
+		effectiveBalance = s.botSpawnCoins
 	}
-	if victimPlayer != nil {
-		sendFCT(victimPlayer, FCTTypeCoinLoss, victimPos.X, victimPos.Y, transfer)
+	if effectiveBalance <= 0 {
+		return 0
 	}
+	amount := int(math.Floor(float64(effectiveBalance) * s.coinKillPercentVsBot))
+	if s.coinKillMinAmount > 0 && amount < s.coinKillMinAmount {
+		amount = s.coinKillMinAmount
+	}
+	if amount > effectiveBalance {
+		amount = effectiveBalance
+	}
+	return amount
 }
 
 // ── Sink helpers ──────────────────────────────────────────────────────────

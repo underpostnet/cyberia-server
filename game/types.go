@@ -195,6 +195,11 @@ type BotState struct {
 	// carries exactly one item and is picked up by walking over it.
 	// DropItemID is the item this token grants on collection.
 	DropItemID string `json:"-"`
+	// DropQuantity is how many units this token grants on collection. 1 for a
+	// scattered inventory item; the coin amount for a coin drop (DropItemID ==
+	// coinItemID). Mirrored into the token's active ObjectLayer.Quantity so the
+	// client can render the on-grid counter.
+	DropQuantity int `json:"-"`
 	// LootContributors is the set of player IDs that dealt damage to the entity
 	// this token dropped from. Once the token settles, collection is a race: any
 	// contributor that collides may pick it up. Empty = no player dealt damage,

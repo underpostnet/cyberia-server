@@ -16,9 +16,9 @@ package game
 // │                                                                         │
 // │  3. Collection   — phaseLoot runs each tick after movement. Once a token │
 // │     settles, collection is a race: the first contributor to overlap it  │
-// │     wins (anyone may, if no player dealt damage). Collection grants the  │
-// │     item, fires the pickup animation event (MsgTypeDropCollect) to every │
-// │     viewer, and removes the token.                                      │
+// │     wins. Collection grants the item, fires the pickup animation event   │
+// │     (MsgTypeDropCollect) to every viewer, and removes the token. A kill  │
+// │     with no player contributor drops nothing at all.                    │
 // │                                                                         │
 // │  4. Expiry       — uncollected tokens despawn via ExpiresAt (updateBots)│
 // └─────────────────────────────────────────────────────────────────────────┘
@@ -51,6 +51,9 @@ const (
 	// lootTokenSize is the token's square side in grid cells — the size of the
 	// dropped object layer resting on the grid.
 	lootTokenSize = 1.6
+	// coinTokenSize is the smaller square side used for coin tokens, so currency
+	// reads as more minor loot than item drops.
+	coinTokenSize = 1.0
 )
 
 // ── Contribution ledger ──────────────────────────────────────────────────
@@ -74,7 +77,7 @@ func recordDamage(ledger *map[string]float64, mapState *MapState, casterID strin
 
 // contributorSet copies the ledger's player IDs into a membership set — the
 // eligibility list a drop carries for its collection race. Returns nil when no
-// player dealt damage (anyone may then collect).
+// player dealt damage, which suppresses the drop entirely (see spawnDrops).
 func contributorSet(ledger map[string]float64) map[string]struct{} {
 	if len(ledger) == 0 {
 		return nil
@@ -88,76 +91,96 @@ func contributorSet(ledger map[string]float64) map[string]struct{} {
 
 // ── Death scatter ──────────────────────────────────────────────────────────
 
-// spawnDrops scatters each drop item as a transient BehaviorDrop token onto a
-// walkable cell a random distance from `center`, along an independent direction
-// vector. Every player in `ledger` may race to collect the tokens once they
-// settle. Shared by every dying content-authority entity (bots, resources).
-// No-op without drops. Caller holds s.mu.
-func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point, dropItemIDs []string, ledger map[string]float64) {
-	if len(dropItemIDs) == 0 {
+// spawnDrops scatters each configured drop item (quantity 1) as a BehaviorDrop
+// token around `center`, and — when the dying entity carried coins — one coin
+// token whose quantity is the looted amount. Every player in `ledger` may race
+// to collect the tokens once they settle. Shared by every dying
+// content-authority entity (bots, resources). Caller holds s.mu.
+func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point, dropItemIDs []string, coinAmount int, ledger map[string]float64) {
+	contributors := contributorSet(ledger)
+	// At least one player must have dealt damage for loot to drop. Bot-only
+	// kills (e.g. bot-vs-bot) leave nothing behind.
+	if len(contributors) == 0 {
 		return
 	}
-
-	now := time.Now()
-	contributors := contributorSet(ledger)
-	collectableAt := now.Add(lootLandingWindow)
-
-	tokenDims := Dimensions{Width: lootTokenSize, Height: lootTokenSize}
 
 	for _, itemID := range dropItemIDs {
 		if itemID == "" {
 			continue
 		}
-
-		angle := rand.Float64() * 2 * math.Pi
-		// Squared roll biases toward the near end with a long tail to the far
-		// edge, so drops feel randomly flung rather than evenly ringed.
-		roll := rand.Float64()
-		dist := lootScatterMinCells + roll*roll*(lootScatterMaxCells-lootScatterMinCells)
-		targetCell := PointI{
-			X: int(math.Round(center.X + math.Cos(angle)*dist)),
-			Y: int(math.Round(center.Y + math.Sin(angle)*dist)),
-		}
-
-		cell := s.clampDropCell(mapState, targetCell, tokenDims)
-		// Center the token on the resolved cell.
-		pos := Point{
-			X: float64(cell.X) - tokenDims.Width*0.5,
-			Y: float64(cell.Y) - tokenDims.Height*0.5,
-		}
-
-		drop := &BotState{
-			EntityBase: EntityBase{
-				ID:   uuid.New().String(),
-				Pos:  pos,
-				Dims: tokenDims,
-				ObjectLayers: []ObjectLayerState{
-					{ItemID: itemID, Active: true, Quantity: 1},
-				},
-			},
-			Mortal: Mortal{
-				MaxLife: s.entityBaseMaxLife,
-				Life:    s.entityBaseMaxLife,
-			},
-			MapCode:       mapCode,
-			Behavior:      BehaviorDrop,
-			Direction:     NONE,
-			Mode:          IDLE,
-			DropItemID:       itemID,
-			LootContributors: contributors,
-			CollectableAt:    collectableAt,
-			ExpiresAt:        now.Add(lootLifetime),
-		}
-		mapState.bots[drop.ID] = drop
-
-		// Announce the launch so viewers play the corpse→cell parabola. The
-		// landing point is the token center.
-		landing := Point{X: pos.X + tokenDims.Width*0.5, Y: pos.Y + tokenDims.Height*0.5}
-		s.broadcastDropSpawn(mapState, drop, center, landing)
+		s.spawnDropToken(mapState, mapCode, center, itemID, 1, contributors)
 	}
 
-	logx.Debugf("[LOOT] scattered %d drop(s) at (%.1f,%.1f) on %s (contributors=%d)",
-		len(dropItemIDs), center.X, center.Y, mapCode, len(contributors))
+	// Coins scatter as a single quantity-bearing token rather than crediting the
+	// killer directly (see economy.go).
+	if coinAmount > 0 && s.coinItemID != "" {
+		s.spawnDropToken(mapState, mapCode, center, s.coinItemID, coinAmount, contributors)
+	}
+
+	logx.Debugf("[LOOT] scattered %d item drop(s) + %d coins at (%.1f,%.1f) on %s (contributors=%d)",
+		len(dropItemIDs), coinAmount, center.X, center.Y, mapCode, len(contributors))
+}
+
+// spawnDropToken creates one BehaviorDrop token carrying (itemID × quantity),
+// flings it to a walkable cell a random distance from `center` along a random
+// direction, mirrors the quantity into its active ObjectLayer (for the on-grid
+// counter), and announces the launch. Caller holds s.mu.
+func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center Point, itemID string, quantity int, contributors map[string]struct{}) {
+	if itemID == "" || quantity <= 0 {
+		return
+	}
+	now := time.Now()
+	size := lootTokenSize
+	if itemID == s.coinItemID {
+		size = coinTokenSize
+	}
+	tokenDims := Dimensions{Width: size, Height: size}
+
+	angle := rand.Float64() * 2 * math.Pi
+	// Squared roll biases toward the near end with a long tail to the far edge,
+	// so drops feel randomly flung rather than evenly ringed.
+	roll := rand.Float64()
+	dist := lootScatterMinCells + roll*roll*(lootScatterMaxCells-lootScatterMinCells)
+	targetCell := PointI{
+		X: int(math.Round(center.X + math.Cos(angle)*dist)),
+		Y: int(math.Round(center.Y + math.Sin(angle)*dist)),
+	}
+
+	cell := s.clampDropCell(mapState, targetCell, tokenDims)
+	pos := Point{
+		X: float64(cell.X) - tokenDims.Width*0.5,
+		Y: float64(cell.Y) - tokenDims.Height*0.5,
+	}
+
+	drop := &BotState{
+		EntityBase: EntityBase{
+			ID:   uuid.New().String(),
+			Pos:  pos,
+			Dims: tokenDims,
+			ObjectLayers: []ObjectLayerState{
+				{ItemID: itemID, Active: true, Quantity: quantity},
+			},
+		},
+		Mortal: Mortal{
+			MaxLife: s.entityBaseMaxLife,
+			Life:    s.entityBaseMaxLife,
+		},
+		MapCode:          mapCode,
+		Behavior:         BehaviorDrop,
+		Direction:        NONE,
+		Mode:             IDLE,
+		DropItemID:       itemID,
+		DropQuantity:     quantity,
+		LootContributors: contributors,
+		CollectableAt:    now.Add(lootLandingWindow),
+		ExpiresAt:        now.Add(lootLifetime),
+	}
+	mapState.bots[drop.ID] = drop
+
+	// Announce the launch so viewers play the corpse→cell parabola. The landing
+	// point is the token center.
+	landing := Point{X: pos.X + tokenDims.Width*0.5, Y: pos.Y + tokenDims.Height*0.5}
+	s.broadcastDropSpawn(mapState, drop, center, landing)
 }
 
 // clampDropCell keeps a scatter target inside the grid and on a walkable cell,
@@ -187,10 +210,11 @@ func (s *GameServer) clampDropCell(mapState *MapState, cell PointI, dims Dimensi
 
 // ── Authoritative collection ─────────────────────────────────────────────
 
-// phaseLoot resolves player↔drop-token collisions for one tick. A live player
-// overlapping a token collects it when the priority lock has expired or the
-// player is the lock owner. Collection grants the item, broadcasts the pickup
-// animation event to every viewer, and removes the token. Caller holds s.mu.
+// phaseLoot resolves player↔drop-token collisions for one tick. Once a token has
+// settled, the first eligible overlapping player (the contribution race, see
+// resolveDropCollector) collects it: coins credit the wallet, items enter the
+// inventory — both by the token's quantity. The pickup animation event is
+// broadcast to every viewer and the token removed. Caller holds s.mu.
 func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 	_ = tick
 	now := time.Now()
@@ -212,8 +236,14 @@ func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 		cx := drop.Pos.X + drop.Dims.Width*0.5
 		cy := drop.Pos.Y + drop.Dims.Height*0.5
 
-		s.grantDropItemsToPlayer(collector, []string{drop.DropItemID}, cx, cy)
-		s.advancePlayerQuestsOnGain(collector)
+		if drop.DropItemID == s.coinItemID {
+			s.addCoins(collector, drop.DropQuantity)
+			s.InvalidateStats(collector)
+			sendFCT(collector, FCTTypeCoinGain, cx, cy, drop.DropQuantity)
+		} else {
+			s.grantItemToPlayer(collector, drop.DropItemID, drop.DropQuantity, cx, cy)
+			s.advancePlayerQuestsOnGain(collector)
+		}
 		s.broadcastDropCollect(mapState, drop, collector, cx, cy)
 
 		delete(mapState.bots, dropID)
@@ -222,9 +252,9 @@ func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 
 // resolveDropCollector returns the first live, non-frozen player overlapping the
 // token that is eligible to collect it, or nil when none is. Eligibility is the
-// collection race: any damage contributor may grab the drop; when no player
-// contributed (empty set) it is free for anyone. Go's random map iteration
-// order fairly breaks ties between simultaneous colliders.
+// collection race: only a damage contributor may grab the drop (a token always
+// has ≥1 contributor — see spawnDrops). Go's random map iteration order fairly
+// breaks ties between simultaneous colliders.
 func (s *GameServer) resolveDropCollector(mapState *MapState, drop *BotState) *PlayerState {
 	for _, player := range mapState.players {
 		if player.IsGhost() || player.Frozen {
@@ -232,9 +262,6 @@ func (s *GameServer) resolveDropCollector(mapState *MapState, drop *BotState) *P
 		}
 		if !checkAABBCollision(drop.Pos, drop.Dims, player.Pos, player.Dims) {
 			continue
-		}
-		if len(drop.LootContributors) == 0 {
-			return player // no player dealt damage — free for all
 		}
 		if _, ok := drop.LootContributors[player.ID]; ok {
 			return player

@@ -182,26 +182,24 @@ func applyDeadItems(layers []ObjectLayerState, deadItemIDs []string) []ObjectLay
 	return layers
 }
 
-// grantDropItemsToPlayer adds drop items to a player's inventory (quantity +1,
-// appended inactive if new) and emits an item-gain FCT at (cx, cy).
-func (s *GameServer) grantDropItemsToPlayer(player *PlayerState, dropItemIDs []string, cx, cy float64) {
-	for _, itemID := range dropItemIDs {
-		if itemID == "" {
-			continue
-		}
-		found := false
-		for i := range player.ObjectLayers {
-			if player.ObjectLayers[i].ItemID == itemID {
-				player.ObjectLayers[i].Quantity += 1
-				found = true
-				break
-			}
-		}
-		if !found {
-			player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: itemID, Active: false, Quantity: 1})
-		}
-		sendItemFCT(player, FCTTypeItemGain, cx, cy, 1, itemID)
+// grantItemToPlayer adds `qty` of a non-coin item to a player's inventory
+// (appended inactive if new) and emits an item-gain FCT at (cx, cy).
+func (s *GameServer) grantItemToPlayer(player *PlayerState, itemID string, qty int, cx, cy float64) {
+	if itemID == "" || qty <= 0 {
+		return
 	}
+	found := false
+	for i := range player.ObjectLayers {
+		if player.ObjectLayers[i].ItemID == itemID {
+			player.ObjectLayers[i].Quantity += qty
+			found = true
+			break
+		}
+	}
+	if !found {
+		player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: itemID, Active: false, Quantity: qty})
+	}
+	sendItemFCT(player, FCTTypeItemGain, cx, cy, qty, itemID)
 	s.InvalidateStats(player)
 }
 
@@ -237,11 +235,10 @@ func (s *GameServer) handleBotDeath(bot *BotState, killerProjectile *BotState, m
 	bot.PreRespawnObjectLayers = layersToSave
 	build, _ := s.resolveEntityDefaultBuild("bot", activeObjectLayerItemIDs(layersToSave))
 
-	// Loot is no longer injected into the killer's inventory. Instead, scatter
-	// each drop as a transient collectible token onto adjacent grid cells and
-	// grant the top damage contributor a short pickup-priority window.
+	// Loot and coins are no longer injected into the killer — both scatter as
+	// collectible tokens the damage contributors race to collect.
 	botCenter := Point{X: bot.Pos.X + bot.Dims.Width*0.5, Y: bot.Pos.Y + bot.Dims.Height*0.5}
-	s.spawnDrops(mapState, bot.MapCode, botCenter, build.DropItemIDs, bot.DamageLedger)
+	s.spawnDrops(mapState, bot.MapCode, botCenter, build.DropItemIDs, s.botCoinDropAmount(bot), bot.DamageLedger)
 	bot.DamageLedger = nil
 
 	bot.ObjectLayers = applyDeadItems(bot.ObjectLayers, build.DeadItemIDs)
@@ -263,7 +260,8 @@ func (s *GameServer) handleResourceDeath(res *ResourceState, killerProjectile *B
 	build, _ := s.resolveEntityDefaultBuild("resource", activeObjectLayerItemIDs(layersToSave))
 
 	resCenter := Point{X: res.Pos.X + res.Dims.Width*0.5, Y: res.Pos.Y + res.Dims.Height*0.5}
-	s.spawnDrops(mapState, res.MapCode, resCenter, build.DropItemIDs, res.DamageLedger)
+	// Resources carry no coins — item drops only.
+	s.spawnDrops(mapState, res.MapCode, resCenter, build.DropItemIDs, 0, res.DamageLedger)
 	res.DamageLedger = nil
 
 	res.ObjectLayers = applyDeadItems(res.ObjectLayers, build.DeadItemIDs)
