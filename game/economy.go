@@ -41,8 +41,8 @@ package game
 // │  • craftingFeePercent  — fraction of item value burned on crafting      │
 // │                                                                         │
 // │  FCT EVENTS                                                             │
-// │  Coin ops → MsgTypeFCT (14-byte, fixed) via sendFCT().                 │
-// │  Item qty  → MsgTypeItemFCT (variable) via sendItemFCT().              │
+// │  Coin/loss ops → MsgTypeFCT (14-byte, fixed) via sendFCT(). Gains no     │
+// │  longer emit FCT — that feedback lives in the loot grid.                 │
 // └─────────────────────────────────────────────────────────────────────────┘
 
 import (
@@ -80,46 +80,6 @@ func sendFCT(player *PlayerState, fctType byte, worldX, worldY float64, value in
 		return
 	}
 	msg := buildFCTMsg(fctType, worldX, worldY, value)
-	select {
-	case player.Client.send <- msg:
-	default:
-	}
-}
-
-// buildItemFCTMsg encodes a variable-length Item FCT message.
-//
-// Wire format (little-endian):
-//
-// [0]      u8   MsgTypeItemFCT (0x05)
-// [1]      u8   fctType — FCTTypeItemGain or FCTTypeItemLoss
-// [2..5]   f32  worldX
-// [6..9]   f32  worldY
-// [10..13] u32  quantity (always positive)
-// [14]     u8   itemId length (0–63)
-// [15..]   str  itemId bytes
-func buildItemFCTMsg(fctType byte, worldX, worldY float64, quantity int, itemID string) []byte {
-	idLen := len(itemID)
-	if idLen > 63 {
-		idLen = 63
-	}
-	buf := make([]byte, 15+idLen)
-	buf[0] = MsgTypeItemFCT
-	buf[1] = fctType
-	binary.LittleEndian.PutUint32(buf[2:], math.Float32bits(float32(worldX)))
-	binary.LittleEndian.PutUint32(buf[6:], math.Float32bits(float32(worldY)))
-	binary.LittleEndian.PutUint32(buf[10:], uint32(quantity))
-	buf[14] = byte(idLen)
-	copy(buf[15:], itemID[:idLen])
-	return buf
-}
-
-// sendItemFCT delivers an Item FCT message to a player's WebSocket channel.
-// Use for non-coin item quantity changes (wood, stone, potions, etc.).
-func sendItemFCT(player *PlayerState, fctType byte, worldX, worldY float64, quantity int, itemID string) {
-	if player == nil || player.Client == nil || quantity <= 0 {
-		return
-	}
-	msg := buildItemFCTMsg(fctType, worldX, worldY, quantity, itemID)
 	select {
 	case player.Client.send <- msg:
 	default:
@@ -270,10 +230,8 @@ func (s *GameServer) ExecuteKillTransfer(caster interface{}, victim interface{})
 	logx.Debugf("[ECONOMY] PvP kill transfer: %s looted %d coins from player %s (rate=%.0f%%, min=%d)",
 		econEntityID(caster), transfer, victimPlayer.ID, s.coinKillPercentVsPlayer*100, s.coinKillMinAmount)
 
-	// ── 5. FCT events (cosmetic, non-blocking). ─────────────────────────
-	if casterPlayer, ok := caster.(*PlayerState); ok {
-		sendFCT(casterPlayer, FCTTypeCoinGain, victimPlayer.Pos.X, victimPlayer.Pos.Y, transfer)
-	}
+	// ── 5. FCT event — the victim sees the coins leave (loss only; the gain
+	// side surfaces in the killer's loot grid, not as a popup). ──────────
 	sendFCT(victimPlayer, FCTTypeCoinLoss, victimPlayer.Pos.X, victimPlayer.Pos.Y, transfer)
 }
 

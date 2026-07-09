@@ -758,23 +758,20 @@ func (s *GameServer) completeQuest(player *PlayerState, qp *QuestProgress, affec
 	// one from its grantor NPC. Quests are never assigned automatically.
 }
 
-// deliverQuestRewards grants each reward item to the player's inventory and
-// emits an item-gain FCT. Reuses the inventory-grant convention from the
-// resource-drop path. Coins route through the flat coin balance.
+// deliverQuestRewards grants each reward item to the player's inventory. Coins
+// route through the flat coin balance. No gain FCT — reward feedback surfaces in
+// the reward notification modal and the loot grid.
 func (s *GameServer) deliverQuestRewards(player *PlayerState, code string) {
 	def, ok := s.questDefs[code]
 	if !ok {
 		return
 	}
-	cx := player.Pos.X + player.Dims.Width*0.5
-	cy := player.Pos.Y + player.Dims.Height*0.5
 	for _, r := range def.Rewards {
 		if r.ItemID == "" || r.Quantity <= 0 {
 			continue
 		}
 		if r.ItemID == s.coinItemID {
 			s.addCoins(player, r.Quantity)
-			sendFCT(player, FCTTypeCoinGain, cx, cy, r.Quantity)
 			continue
 		}
 		found := false
@@ -792,7 +789,6 @@ func (s *GameServer) deliverQuestRewards(player *PlayerState, code string) {
 				Quantity: r.Quantity,
 			})
 		}
-		sendItemFCT(player, FCTTypeItemGain, cx, cy, r.Quantity, r.ItemID)
 	}
 	s.InvalidateStats(player)
 }

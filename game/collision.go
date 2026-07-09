@@ -92,6 +92,15 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				otherBot.Life -= projectileStats.Effect
 				// Attribute damage to the firing player for loot priority.
 				recordDamage(&otherBot.DamageLedger, mapState, projectile.CasterID, projectileStats.Effect)
+				// FCT: show the hit as a red flying number over the bot to the
+				// firing player — always, including the killing (one-shot) blow.
+				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
+					if p, ok := mapState.players[projectile.CasterID]; ok {
+						sendFCT(p, FCTTypeDamage,
+							otherBot.Pos.X+otherBot.Dims.Width*0.5,
+							otherBot.Pos.Y+otherBot.Dims.Height*0.5, dmg)
+					}
+				}
 				if otherBot.Life <= 0 {
 					otherBot.Life = 0
 					// Capture the victim's skin before death deactivates its
@@ -183,8 +192,8 @@ func applyDeadItems(layers []ObjectLayerState, deadItemIDs []string) []ObjectLay
 }
 
 // grantItemToPlayer adds `qty` of a non-coin item to a player's inventory
-// (appended inactive if new) and emits an item-gain FCT at (cx, cy).
-func (s *GameServer) grantItemToPlayer(player *PlayerState, itemID string, qty int, cx, cy float64) {
+// (appended inactive if new). No gain FCT — the pickup shows in the loot grid.
+func (s *GameServer) grantItemToPlayer(player *PlayerState, itemID string, qty int) {
 	if itemID == "" || qty <= 0 {
 		return
 	}
@@ -199,7 +208,6 @@ func (s *GameServer) grantItemToPlayer(player *PlayerState, itemID string, qty i
 	if !found {
 		player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: itemID, Active: false, Quantity: qty})
 	}
-	sendItemFCT(player, FCTTypeItemGain, cx, cy, qty, itemID)
 	s.InvalidateStats(player)
 }
 

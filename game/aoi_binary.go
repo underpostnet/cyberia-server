@@ -94,8 +94,8 @@ const (
 	//   [6..9]   f32  worldY
 	//   [10..13] u32  value (always positive; sign implied by type)
 	MsgTypeFCT byte = 0x04
-	// MsgTypeItemFCT — Item quantity Floating Combat Text event (≥15 bytes).
-	// See economy.go buildItemFCTMsg for wire format.
+	// MsgTypeItemFCT — reserved item-quantity FCT wire slot. No longer emitted:
+	// item pickups surface in the loot grid, not as floating text.
 	MsgTypeItemFCT byte = 0x05
 	// MsgTypeDropCollect — a scattered loot token was collected by a player.
 	// Drives the client parabolic pickup animation. See loot.go
@@ -108,12 +108,11 @@ const (
 
 	// FCT event sub-types — MUST stay in sync with C constants in
 	// floating_combat_text.h and binary_aoi_decoder.h.
-	FCTTypeDamage   byte = 0x00 // life loss            — red    "-N"
-	FCTTypeRegen    byte = 0x01 // life gain / regen    — green  "+N"
-	FCTTypeCoinGain byte = 0x02 // coins received       — yellow "+N"
+	FCTTypeDamage byte = 0x00 // life loss            — red    "-N"
+	FCTTypeRegen  byte = 0x01 // life gain / regen    — green  "+N"
+	// Gain sub-types (0x02 CoinGain, 0x04 ItemGain) are retired: gains show in
+	// the loot grid, not as floating text. Loss/damage/regen still emit.
 	FCTTypeCoinLoss byte = 0x03 // coins lost / sink    — yellow "-N"
-	FCTTypeItemGain byte = 0x04 // generic item gain    — cyan   "+N ItemID"
-	FCTTypeItemLoss byte = 0x05 // generic item loss    — purple "-N ItemID"
 
 	EntityTypePlayer     byte = 0
 	EntityTypeBot        byte = 1
