@@ -678,11 +678,13 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 		actionCode := b.ActionCode
 		statusIcon := BotStatusIcon(b)
 		// Interaction capabilities + provided quests are resolved PER VIEWING
-		// PLAYER and per cell — independent of any cyberia-action — so the quest
-		// bit/codes appear whenever this NPC offers or advances a quest right now.
+		// PLAYER and per cell — independent of any cyberia-action. questCodes
+		// carries every surfaced quest (including completed feedback) for the
+		// interact modal; the capability bits light only for actionable content
+		// so the attention icons mean "something new or useful here".
 		questCodes := s.botQuestCodes(player, b)
 		actionDialog := s.pendingActionTalkDialog(player, b)
-		interactionFlags := s.botInteractionFlags(len(questCodes) > 0, actionDialog != "")
+		interactionFlags := s.botInteractionFlags(s.botHasActionableQuest(player, b), actionDialog != "")
 		// Loot eligibility is personal to the viewing player: only damage
 		// contributors may collect a drop token, and the client renders the
 		// token's particles gold (eligible) or gray (another player's loot).

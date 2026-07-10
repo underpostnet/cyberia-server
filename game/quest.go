@@ -404,6 +404,35 @@ func (s *GameServer) botQuestCodes(player *PlayerState, bot *BotState) []string 
 	return codes
 }
 
+// botHasActionableQuest reports whether this NPC currently offers the player
+// something NEW: a quest acceptable right now, or an active quest whose current
+// step this NPC's skin advances. Completed quests and active-elsewhere quests
+// keep their botQuestCodes presence (journal/tab feedback) but are not
+// actionable — they light no attention icon.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) botHasActionableQuest(player *PlayerState, bot *BotState) bool {
+	for _, code := range s.questsByCell[botSpawnCell(bot)] {
+		if s.questAcceptableFor(player, code) {
+			return true
+		}
+	}
+	skin := s.botActiveSkinOf(bot)
+	if skin == "" {
+		return false
+	}
+	for _, qp := range player.Quests {
+		if qp.Status != "active" {
+			continue
+		}
+		stepIdx := firstIncompleteStepIndex(qp)
+		if stepIdx >= 0 && stepHasIncompleteTalk(&qp.Steps[stepIdx], skin) {
+			return true
+		}
+	}
+	return false
+}
+
 // stepHasIncompleteTalk reports whether a step has an unmet `talk` objective
 // targeting `skin` — the shared predicate for "this NPC advances an active
 // talk-quest right now" (drives both the quest bit and the action-talk dialogue).

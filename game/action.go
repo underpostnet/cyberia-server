@@ -175,19 +175,22 @@ func (s *GameServer) botActiveSkinOf(bot *BotState) string {
 	return ""
 }
 
-// botInteractionFlags builds the per-player interaction capability bitmask: the
-// action bit only when there is a pending action-talk-quest the player can
-// advance at this NPC right now (`hasPendingActionTalk`, from
-// pendingActionTalkDialog — NOT merely a bound action), and the quest bit when
-// the NPC surfaces any quest to the player (`hasQuests`, from botQuestCodes —
-// including completed feedback). The two capabilities are independent — a bot may
-// carry either, both, or neither.
-func (s *GameServer) botInteractionFlags(hasQuests, hasPendingActionTalk bool) uint8 {
+// botInteractionFlags builds the per-player interaction capability bitmask.
+// Both bits mean "something actionable for this player right now" — they drive
+// the overhead attention icons, so neither may light for mere presence of
+// interactions: the action bit only when a pending action-talk-quest can be
+// advanced here (`hasPendingActionTalk`, from pendingActionTalkDialog — NOT
+// merely a bound action), the quest bit only for an actionable quest
+// (`hasActionableQuest`, from botHasActionableQuest — acceptable or advanceable,
+// never completed feedback). The full quest list still travels separately in
+// the bot block (botQuestCodes), so the interact modal keeps its Quest tab and
+// completed feedback without any icon.
+func (s *GameServer) botInteractionFlags(hasActionableQuest, hasPendingActionTalk bool) uint8 {
 	var flags uint8
 	if hasPendingActionTalk {
 		flags |= InteractionFlagAction
 	}
-	if hasQuests {
+	if hasActionableQuest {
 		flags |= InteractionFlagQuest
 	}
 	return flags

@@ -38,7 +38,7 @@ const (
 // keys (STATUS_ICONS / STATUS_ICONS_PRESENTATION) the client resolves to an icon.
 const (
 	StatusActionProvider uint8 = 8 // bot has a pending action-talk-quest for the viewing player
-	StatusQuestProvider  uint8 = 9 // bot offers/advances a cyberia-quest for the viewing player
+	StatusQuestProvider  uint8 = 9 // bot has an ACTIONABLE quest for the viewing player (acceptable or advanceable — never completed feedback)
 )
 
 // Presence status for portal entities. Portal entities always — and only — carry
