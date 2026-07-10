@@ -44,8 +44,9 @@ func (s *GameServer) InitSkills() {
 		s.executeDoppelgangerSkill(ctx)
 	})
 	registerSkill("coin_drop_or_transaction", func(s *GameServer, ctx SkillContext) {
-		// Economy mechanic: coin transfer is triggered automatically on kill
-		// via HandleOnKillSkills → ExecuteKillTransfer. No manual action needed.
+		// Economy mechanic: every kill scatters the victim's coin stake as a
+		// grid drop (handleBotDeath / handlePlayerDeath → spawnDrops). No
+		// manual action needed.
 	})
 }
 

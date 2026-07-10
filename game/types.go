@@ -110,6 +110,11 @@ type PlayerState struct {
 	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
 	// visualization only and is always Active: false.
 	Coins uint32 `json:"-"`
+	// DamageLedger mirrors BotState.DamageLedger for PvP: attacking player ID →
+	// cumulative damage dealt to this player. Read once on death to build the
+	// coin-drop contributor set (the PvP loot race), then reset. Never sent on
+	// the wire.
+	DamageLedger map[string]float64 `json:"-"`
 	// FrozenInteractionState — general-purpose modal protection.
 	// While Frozen, the player cannot deal or receive damage, send or
 	// receive events, or move.  The rest of the world continues.

@@ -31,32 +31,6 @@ func (s *GameServer) handleBotSkills(bot *BotState, mapState *MapState, target P
 	s.dispatchSkillsForEntity(bot, mapState, target, true)
 }
 
-// HandleOnKillSkills checks for skills that trigger when an entity is killed by a bot
-
-func (s *GameServer) HandleOnKillSkills(killerBot *BotState, victim interface{}, mapState *MapState) { // The killer is a skill projectile bot. The actual killer is the caster.
-	// The killer is a skill projectile bot. The actual killer is the caster.
-	if killerBot.CasterID == "" {
-		return
-	}
-
-	var caster interface{}
-
-	// Find the caster, which can be a player or a bot.
-	if p, ok := mapState.players[killerBot.CasterID]; ok {
-		caster = p
-	} else if b, ok := mapState.bots[killerBot.CasterID]; ok {
-		caster = b
-	} else {
-		return // Caster not found in the map.
-	}
-
-	// --- Core Mechanic: on Kill Events ---
-	// Fountain & Sink kill transfer: victor loots the vanquished.
-	// Also sends FCT (Floating Combat Text) economy event to both parties.
-	s.ExecuteKillTransfer(caster, victim)
-
-}
-
 // GetAssociatedSkillItemIDs returns the unique list of logicEventIDs associated with a trigger item.
 func (s *GameServer) GetAssociatedSkillItemIDs(itemID string) []string {
 	associatedIDs := make(map[string]struct{})

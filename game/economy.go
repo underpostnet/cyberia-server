@@ -27,13 +27,14 @@ package game
 // │  • playerSpawnCoins — starting wallet for every guest session.          │
 // │                       Currently in-memory only (no DB persistence).     │
 // │                                                                         │
-// │  KILL TRANSFER  (zero-sum redistribution between wallets)               │
-// │  Kill scenario    │ rate field               │ purpose                  │
-// │  Player → Bot     │ coinKillPercentVsBot     │ reward farming           │
-// │  Player → Player  │ coinKillPercentVsPlayer  │ reward PvP (gentler)    │
-// │  Bot    → Bot     │ coinKillPercentVsBot     │ bots loot each other    │
-// │  Bot    → Player  │ coinKillPercentVsPlayer  │ risk / punishment       │
-// │  Floor: transfer < coinKillMinAmount → use minimum instead.            │
+// │  KILL LOOT  (zero-sum redistribution via grid drops)                    │
+// │  Every kill scatters the victim's coin stake as a grid token that only  │
+// │  damage contributors may race to collect (loot.go). One model for PvE   │
+// │  and PvP; a kill with no player contributor drops nothing.              │
+// │  Victim │ rate field               │ amount source                      │
+// │  Bot    │ coinKillPercentVsBot     │ botCoinDropAmount                  │
+// │  Player │ coinKillPercentVsPlayer  │ pvpCoinDropAmount                  │
+// │  Floor: amount < coinKillMinAmount → use minimum instead.              │
 // │                                                                         │
 // │  SINKS  (coin removal; all 0 = disabled by default)                    │
 // │  • respawnCostPercent  — fraction burned on player death                │
@@ -41,7 +42,8 @@ package game
 // │  • craftingFeePercent  — fraction of item value burned on crafting      │
 // │                                                                         │
 // │  FCT EVENTS                                                             │
-// │  Coin/loss ops → MsgTypeFCT (14-byte, fixed) via sendFCT(). Gains no     │
+// │  Combat only (damage/regen, broadcast to AOI). Coin changes emit no     │
+// │  FCT — the inventory-bar quantity FX shows them. Gains no               │
 // │  longer emit FCT — that feedback lives in the loot grid.                 │
 // └─────────────────────────────────────────────────────────────────────────┘
 
@@ -73,16 +75,20 @@ func buildFCTMsg(fctType byte, worldX, worldY float64, value int) []byte {
 	return buf
 }
 
-// sendFCT delivers a Floating Combat Text message to a player's WebSocket.
-// Non-blocking: drops silently when the channel is full (cosmetic only).
-func sendFCT(player *PlayerState, fctType byte, worldX, worldY float64, value int) {
-	if player == nil || player.Client == nil {
-		return
-	}
+// broadcastFCT delivers the same FCT event to every player whose AOI covers
+// the event point — identical feedback for every viewer, so per-recipient
+// amounts can never leak. Non-blocking (cosmetic).
+func broadcastFCT(mapState *MapState, fctType byte, worldX, worldY float64, value int) {
 	msg := buildFCTMsg(fctType, worldX, worldY, value)
-	select {
-	case player.Client.send <- msg:
-	default:
+	pt := Rectangle{MinX: worldX, MinY: worldY, MaxX: worldX, MaxY: worldY}
+	for _, player := range mapState.players {
+		if player.Client == nil || !rectsOverlap(player.AOI, pt) {
+			continue
+		}
+		select {
+		case player.Client.send <- msg:
+		default:
+		}
 	}
 }
 
@@ -181,58 +187,25 @@ func (s *GameServer) FountainInitBot(bot *BotState) {
 	s.setCoinQuantity(bot, uint32(s.botSpawnCoins))
 }
 
-// ── Kill Transfer ─────────────────────────────────────────────────────────
+// ── Kill loot amounts ─────────────────────────────────────────────────────
 
-// ExecuteKillTransfer applies kill-economy rules when any entity dies.
-//
-// All four scenarios are handled:
-//
-// Player → Bot     coinKillPercentVsBot    (PvE reward)
-// Player → Player  coinKillPercentVsPlayer (PvP reward)
-// Bot    → Bot     coinKillPercentVsBot    (bot loot chain)
-// Bot    → Player  coinKillPercentVsPlayer (risk / punishment)
-//
-// Balances are read via entity.Coins (flat field, O(1)).
-// Bots receive an infinite-mint guarantee: effectiveBalance ≥ botSpawnCoins.
-func (s *GameServer) ExecuteKillTransfer(caster interface{}, victim interface{}) {
-	// ── 1. Resolve victim ──────────────────────────────────────────────
-	// Only player victims transfer coins directly (PvP). Bot coins scatter as a
-	// grid drop instead (see botCoinDropAmount / spawnDrops).
-	victimPlayer, ok := victim.(*PlayerState)
-	if !ok {
-		return
-	}
-
-	// ── 2. Effective balance — players carry only what they hold (no mint).
-	effectiveBalance := int(coinQuantity(victimPlayer))
+// pvpCoinDropAmount computes how many coins a dead player scatters as a grid
+// drop, mirroring botCoinDropAmount at the vs-player rate: the victim's
+// balance, floored, with the configured minimum, capped at the balance.
+// Players carry only what they hold (no mint). Caller holds s.mu.
+func (s *GameServer) pvpCoinDropAmount(player *PlayerState) int {
+	effectiveBalance := int(coinQuantity(player))
 	if effectiveBalance <= 0 {
-		return
+		return 0
 	}
-
-	// ── 3. Compute transfer (PvP rate, floored, min, capped at balance). ──
-	transfer := int(math.Floor(float64(effectiveBalance) * s.coinKillPercentVsPlayer))
-	if s.coinKillMinAmount > 0 && transfer < s.coinKillMinAmount {
-		transfer = s.coinKillMinAmount
+	amount := int(math.Floor(float64(effectiveBalance) * s.coinKillPercentVsPlayer))
+	if s.coinKillMinAmount > 0 && amount < s.coinKillMinAmount {
+		amount = s.coinKillMinAmount
 	}
-	if transfer > effectiveBalance {
-		transfer = effectiveBalance
+	if amount > effectiveBalance {
+		amount = effectiveBalance
 	}
-	if transfer <= 0 {
-		return
-	}
-
-	// ── 4. Deduct from victim, credit caster. ──────────────────────────
-	s.addCoins(victimPlayer, -transfer)
-	s.InvalidateStats(victimPlayer)
-	s.addCoins(caster, transfer)
-	s.InvalidateStats(caster)
-
-	logx.Debugf("[ECONOMY] PvP kill transfer: %s looted %d coins from player %s (rate=%.0f%%, min=%d)",
-		econEntityID(caster), transfer, victimPlayer.ID, s.coinKillPercentVsPlayer*100, s.coinKillMinAmount)
-
-	// ── 5. FCT event — the victim sees the coins leave (loss only; the gain
-	// side surfaces in the killer's loot grid, not as a popup). ──────────
-	sendFCT(victimPlayer, FCTTypeCoinLoss, victimPlayer.Pos.X, victimPlayer.Pos.Y, transfer)
+	return amount
 }
 
 // botCoinDropAmount computes how many coins a dead bot scatters, mirroring the
@@ -269,22 +242,10 @@ func (s *GameServer) SinkRespawnCost(player *PlayerState) {
 	if burn <= 0 {
 		return
 	}
+	// No coin FCT — balance changes surface in the inventory-bar quantity FX.
 	s.addCoins(player, -burn)
 	s.InvalidateStats(player)
-	sendFCT(player, FCTTypeCoinLoss, player.Pos.X, player.Pos.Y, burn)
 	logx.Debugf("[ECONOMY] Respawn sink: %s burned %d coins (%.0f%%)",
 		player.ID, burn, s.respawnCostPercent*100)
 }
 
-// ── Internal helpers ──────────────────────────────────────────────────────
-
-// econEntityID extracts a loggable ID from any entity interface.
-func econEntityID(entity interface{}) string {
-	switch e := entity.(type) {
-	case *PlayerState:
-		return "player:" + e.ID
-	case *BotState:
-		return "bot:" + e.ID
-	}
-	return "unknown"
-}

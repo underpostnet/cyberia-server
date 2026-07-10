@@ -49,14 +49,17 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 			}
 			if checkAABBCollision(projectile.Pos, projectile.Dims, player.Pos, player.Dims) {
 				player.Life -= projectileStats.Effect
+				// Attribute damage for the PvP loot race (player casters only —
+				// recordDamage filters; bot damage grants no claim). Recorded
+				// before the death handler consumes the ledger.
+				recordDamage(&player.DamageLedger, mapState, projectile.CasterID, projectileStats.Effect)
 				if player.Life <= 0 {
 					player.Life = 0
-					s.HandleOnKillSkills(projectile, player, mapState)
-					s.handlePlayerDeath(player)
+					s.handlePlayerDeath(player, mapState)
 				}
-				// FCT: show the hit as a red flying number at the collision point.
+				// FCT: the same red "-N" for every AOI viewer.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
-					sendFCT(player, FCTTypeDamage,
+					broadcastFCT(mapState, FCTTypeDamage,
 						projectile.Pos.X+projectile.Dims.Width*0.5,
 						projectile.Pos.Y+projectile.Dims.Height*0.5, dmg)
 				}
@@ -92,21 +95,18 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				otherBot.Life -= projectileStats.Effect
 				// Attribute damage to the firing player for loot priority.
 				recordDamage(&otherBot.DamageLedger, mapState, projectile.CasterID, projectileStats.Effect)
-				// FCT: show the hit as a red flying number over the bot to the
-				// firing player — always, including the killing (one-shot) blow.
+				// FCT: bot amounts are public — the same red "-N" for every AOI
+				// viewer, including the killing (one-shot) blow.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
-					if p, ok := mapState.players[projectile.CasterID]; ok {
-						sendFCT(p, FCTTypeDamage,
-							otherBot.Pos.X+otherBot.Dims.Width*0.5,
-							otherBot.Pos.Y+otherBot.Dims.Height*0.5, dmg)
-					}
+					broadcastFCT(mapState, FCTTypeDamage,
+						otherBot.Pos.X+otherBot.Dims.Width*0.5,
+						otherBot.Pos.Y+otherBot.Dims.Height*0.5, dmg)
 				}
 				if otherBot.Life <= 0 {
 					otherBot.Life = 0
 					// Capture the victim's skin before death deactivates its
 					// layers — quest `kill` objectives match on it.
 					killedSkin := s.botActiveSkin(otherBot.ID)
-					s.HandleOnKillSkills(projectile, otherBot, mapState)
 					s.handleBotDeath(otherBot, projectile, mapState)
 					if killer, ok := mapState.players[projectile.CasterID]; ok {
 						s.advancePlayerQuestsOnKill(killer, killedSkin)
@@ -136,14 +136,12 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 					res.Life = 0
 					s.handleResourceDeath(res, projectile, mapState)
 				}
-				// FCT: show the hit as a red flying number at the collision point.
+				// FCT: resource amounts are public — the same red "-N" for
+				// every AOI viewer.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
-					// Send FCT to the caster if they are a player.
-					if p, ok := mapState.players[projectile.CasterID]; ok {
-						sendFCT(p, FCTTypeDamage,
-							res.Pos.X+res.Dims.Width*0.5,
-							res.Pos.Y+res.Dims.Height*0.5, dmg)
-					}
+					broadcastFCT(mapState, FCTTypeDamage,
+						res.Pos.X+res.Dims.Width*0.5,
+						res.Pos.Y+res.Dims.Height*0.5, dmg)
 				}
 				isColliding = true
 			}
@@ -212,8 +210,11 @@ func (s *GameServer) grantItemToPlayer(player *PlayerState, itemID string, qty i
 }
 
 // handlePlayerDeath sets a player to a dead/ghost state using the dead items of
-// the entity-type default resolved from its pre-death active items.
-func (s *GameServer) handlePlayerDeath(player *PlayerState) {
+// the entity-type default resolved from its pre-death active items, and scatters
+// the PvP loot: the victim's coin stake (and any configured drop items) become
+// grid tokens only damage contributors may race to collect — the same model as
+// handleBotDeath. A death with no player contributor drops nothing.
+func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) {
 	// Economy: apply respawn-cost sink before saving layers (disabled by default, rate = 0).
 	s.SinkRespawnCost(player)
 
@@ -223,6 +224,18 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState) {
 	copy(layersToSave, player.ObjectLayers)
 	player.PreRespawnObjectLayers = layersToSave
 	build, _ := s.resolveEntityDefaultBuild("player", activeObjectLayerItemIDs(layersToSave))
+
+	// No coin FCT — balance changes surface in the inventory-bar quantity FX.
+	coinDrop := 0
+	if len(contributorSet(player.DamageLedger)) > 0 {
+		coinDrop = s.pvpCoinDropAmount(player)
+		if coinDrop > 0 {
+			s.addCoins(player, -coinDrop)
+		}
+	}
+	playerCenter := Point{X: player.Pos.X + player.Dims.Width*0.5, Y: player.Pos.Y + player.Dims.Height*0.5}
+	s.spawnDrops(mapState, player.MapCode, playerCenter, build.DropItemIDs, coinDrop, player.DamageLedger)
+	player.DamageLedger = nil
 
 	player.ObjectLayers = applyDeadItems(player.ObjectLayers, build.DeadItemIDs)
 
