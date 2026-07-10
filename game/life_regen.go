@@ -27,9 +27,9 @@ func (s *GameServer) handleProbabilisticRegen(entity interface{}, mapState *MapS
 			if e.Life > e.MaxLife {
 				e.Life = e.MaxLife
 			}
-			// FCT: show the regen as a green floating number at the player's position.
+			// FCT: the same green "+N" for every AOI viewer.
 			if regenInt := int(regenAmount + 0.5); regenInt > 0 {
-				sendFCT(e, FCTTypeRegen, e.Pos.X, e.Pos.Y, regenInt)
+				broadcastFCT(mapState, FCTTypeRegen, e.Pos.X, e.Pos.Y, regenInt)
 			}
 		}
 	case *BotState:
@@ -39,6 +39,12 @@ func (s *GameServer) handleProbabilisticRegen(entity interface{}, mapState *MapS
 			e.Life = e.Life + regenAmount
 			if e.Life > e.MaxLife {
 				e.Life = e.MaxLife
+			}
+			// FCT: bot amounts are public — the same green "+N" for every AOI
+			// viewer, so bot regeneration is visible feedback rather than a
+			// silently refilling HP bar.
+			if regenInt := int(regenAmount + 0.5); regenInt > 0 {
+				broadcastFCT(mapState, FCTTypeRegen, e.Pos.X, e.Pos.Y, regenInt)
 			}
 		}
 	}

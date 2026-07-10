@@ -108,11 +108,13 @@ const (
 
 	// FCT event sub-types — MUST stay in sync with C constants in
 	// floating_combat_text.h and binary_aoi_decoder.h.
+	// Both types are broadcast to every AOI viewer with the exact amount —
+	// every player sees the same combat feedback.
 	FCTTypeDamage byte = 0x00 // life loss            — red    "-N"
 	FCTTypeRegen  byte = 0x01 // life gain / regen    — green  "+N"
-	// Gain sub-types (0x02 CoinGain, 0x04 ItemGain) are retired: gains show in
-	// the loot grid, not as floating text. Loss/damage/regen still emit.
-	FCTTypeCoinLoss byte = 0x03 // coins lost / sink    — yellow "-N"
+	// Coin/item sub-types (0x02 CoinGain, 0x03 CoinLoss, 0x04 ItemGain) are
+	// retired: gains show in the loot grid, and balance changes surface in the
+	// inventory-bar quantity FX.
 
 	EntityTypePlayer     byte = 0
 	EntityTypeBot        byte = 1
@@ -681,6 +683,14 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 		questCodes := s.botQuestCodes(player, b)
 		actionDialog := s.pendingActionTalkDialog(player, b)
 		interactionFlags := s.botInteractionFlags(len(questCodes) > 0, actionDialog != "")
+		// Loot eligibility is personal to the viewing player: only damage
+		// contributors may collect a drop token, and the client renders the
+		// token's particles gold (eligible) or gray (another player's loot).
+		if b.Behavior == BehaviorDrop {
+			if _, ok := b.LootContributors[player.ID]; ok {
+				interactionFlags |= InteractionFlagLootEligible
+			}
+		}
 		enc.WriteBot(b, respawnIn, s.statsSum(b, mapState), actionCode, statusIcon, interactionFlags, questCodes, actionDialog)
 		entityCount++
 	}
