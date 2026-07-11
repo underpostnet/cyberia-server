@@ -169,6 +169,11 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	s.ApplyResistanceStat(playerState, startMapState)
 	playerState.Life = playerState.MaxLife * s.initialLifeFraction // Set life based on config fraction
 
+	// Loading protection: every join spawns frozen under "loading" — no
+	// movement, no combat, no damage, no interactions — until the client
+	// confirms the player pressed Tap-to-Start (freeze_end "loading").
+	FreezePlayer(playerState, "loading")
+
 	// InitPayload is strictly simulation/protocol. Zero presentation: no
 	// palette, no camera, no devUi, no status-icon visuals, no screen
 	// factors, no interpolation window, no cell-pixel sizing, no default
