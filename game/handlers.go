@@ -204,6 +204,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	metaPayload := map[string]interface{}{
 		"objectLayers":   s.buildOLMetadataMap(),
 		"apiBaseUrl":     s.enginePublicURL,
+		"instanceCode":   s.instanceCode,
 		"equipmentRules": s.equipmentRules,
 	}
 	metaMsg, _ := json.Marshal(map[string]interface{}{"type": "metadata", "payload": metaPayload})
