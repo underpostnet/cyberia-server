@@ -239,10 +239,13 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) 
 
 	// The Fragmented State reuses the loadout from the player's last death;
 	// first death (or an emptied loadout) falls back to the build's dead items.
+	// Normalized so a multi-skin deadItemIds config activates only its leading
+	// id per type — the rest stay inventory the player can switch to.
 	deadLoadout := player.DeadLoadoutItemIDs
 	if len(deadLoadout) == 0 {
 		deadLoadout = s.resolveDeadItemIDs(build)
 	}
+	deadLoadout = s.normalizeDeadLoadout(deadLoadout)
 	player.ObjectLayers = applyDeadItems(player.ObjectLayers, deadLoadout)
 	player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(player.ObjectLayers)
 

@@ -27,6 +27,35 @@ func (s *GameServer) visibleInventory(layers []ObjectLayerState) []ObjectLayerSt
 	return out
 }
 
+// normalizeDeadLoadout applies the equipment rules to a dead loadout in id
+// order: one active per type (first wins, so the configured default leads)
+// and the maxActiveLayers cap. Unknown types pass through, matching the live
+// normalization.
+func (s *GameServer) normalizeDeadLoadout(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	seenID := make(map[string]bool)
+	seenType := make(map[string]bool)
+	for _, id := range ids {
+		if id == "" || seenID[id] {
+			continue
+		}
+		seenID[id] = true
+		if s.equipmentRules.OnePerType {
+			if t := s.itemType(id); t != "" {
+				if seenType[t] {
+					continue
+				}
+				seenType[t] = true
+			}
+		}
+		out = append(out, id)
+		if s.maxActiveLayers > 0 && len(out) >= s.maxActiveLayers {
+			break
+		}
+	}
+	return out
+}
+
 // activateOrAppendLayer activates the layer holding itemID, appending a new
 // row when the inventory has none — same append semantics as applyDeadItems.
 func activateOrAppendLayer(layers *[]ObjectLayerState, itemID string) {
