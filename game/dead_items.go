@@ -9,14 +9,17 @@ func (s *GameServer) resolveDeadItemIDs(build EntityTypeDefaultConfig) []string 
 	return build.DeadItemIDs
 }
 
-// visibleInventory filters all dead-state items out of an inventory view.
-// Other dead-state ids stay visible as Fragmentation items — equippable only
-// while the player is dead (handleItemActivationInput gates by state).
-// The dead-item set comes exclusively from s.deadItemIDs (gRPC boot).
+// visibleInventory filters only the single default ghost item out of an
+// inventory view.  Other configured dead-state ids stay visible as
+// Fragmentation items — equippable only while the player is dead
+// (handleItemActivationInput gates by state).  The default ghost item is
+// the first deadItemID declared for the "player" entity type in the gRPC
+// config; it is the auto-applied visual when no other dead items are
+// equipped and must not clutter the inventory.
 func (s *GameServer) visibleInventory(layers []ObjectLayerState) []ObjectLayerState {
 	out := make([]ObjectLayerState, 0, len(layers))
 	for _, l := range layers {
-		if _, ok := s.deadItemIDs[l.ItemID]; ok {
+		if l.ItemID == s.ghostItemID {
 			continue
 		}
 		out = append(out, l)

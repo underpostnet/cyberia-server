@@ -237,7 +237,14 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) 
 	s.spawnDrops(mapState, player.MapCode, playerCenter, build.DropItemIDs, coinDrop, player.DamageLedger)
 	player.DamageLedger = nil
 
-	player.ObjectLayers = applyDeadItems(player.ObjectLayers, build.DeadItemIDs)
+	// The Fragmented State reuses the loadout from the player's last death;
+	// first death (or an emptied loadout) falls back to the build's dead items.
+	deadLoadout := player.DeadLoadoutItemIDs
+	if len(deadLoadout) == 0 {
+		deadLoadout = s.resolveDeadItemIDs(build)
+	}
+	player.ObjectLayers = applyDeadItems(player.ObjectLayers, deadLoadout)
+	player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(player.ObjectLayers)
 
 	player.RespawnTime = time.Now().Add(s.respawnDuration)
 	// Recalculate stats for the ghost state to ensure consistency (mainly MaxLife).
@@ -262,7 +269,7 @@ func (s *GameServer) handleBotDeath(bot *BotState, killerProjectile *BotState, m
 	s.spawnDrops(mapState, bot.MapCode, botCenter, build.DropItemIDs, s.botCoinDropAmount(bot), bot.DamageLedger)
 	bot.DamageLedger = nil
 
-	bot.ObjectLayers = applyDeadItems(bot.ObjectLayers, build.DeadItemIDs)
+	bot.ObjectLayers = applyDeadItems(bot.ObjectLayers, s.resolveDeadItemIDs(build))
 
 	bot.RespawnTime = time.Now().Add(s.respawnDuration)
 	// Recalculate stats for the ghost state to ensure consistency (mainly MaxLife).
@@ -285,7 +292,7 @@ func (s *GameServer) handleResourceDeath(res *ResourceState, killerProjectile *B
 	s.spawnDrops(mapState, res.MapCode, resCenter, build.DropItemIDs, 0, res.DamageLedger)
 	res.DamageLedger = nil
 
-	res.ObjectLayers = applyDeadItems(res.ObjectLayers, build.DeadItemIDs)
+	res.ObjectLayers = applyDeadItems(res.ObjectLayers, s.resolveDeadItemIDs(build))
 
 	res.RespawnTime = time.Now().Add(s.respawnDuration)
 	s.InvalidateStats(res)

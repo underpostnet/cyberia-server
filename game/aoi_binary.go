@@ -439,7 +439,7 @@ func (e *BinaryAOIEncoder) WriteResource(r *ResourceState, respawnIn *float64, s
 // grid-units per second; the C/WASM client feeds this directly into its
 // prediction integrator so the byte-identical step formula matches
 // phaseMovement on every Agility / buff / debuff change.
-func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, coinBalance uint32, moveSpeed float64, portalHoldProgress float64) {
+func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, inventory []ObjectLayerState, activeStatsSum int, coinBalance uint32, moveSpeed float64, portalHoldProgress float64) {
 	flags := EntityTypePlayer | FlagHasLife
 	var respawnIn *float64
 	if p.IsGhost() {
@@ -486,9 +486,10 @@ func (e *BinaryAOIEncoder) WriteSelfPlayer(p *PlayerState, activeStatsSum int, c
 	// Coin balance — u32, always present (0 when no coins).
 	e.putU32(coinBalance)
 
-	// Full inventory — ALL ObjectLayers (active + inactive) with quantities.
-	// Powers the client-side inventory bottom bar.
-	e.writeFullInventory(p.ObjectLayers)
+	// Full inventory — every visible ObjectLayer (active + inactive) with
+	// quantities. Powers the client-side inventory bottom bar. Dead-state
+	// items are filtered out by the caller (visibleInventory).
+	e.writeFullInventory(inventory)
 
 	// FrozenInteractionState — u8 (0 = normal, 1 = frozen).
 	// Client uses this as the authoritative frozen flag for visual feedback
@@ -715,7 +716,7 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 		}
 	}
 	// player.Coins is the canonical flat balance — read directly (O(1), no OL traversal).
-	enc.WriteSelfPlayer(player, activeStatsSum, player.Coins, moveSpeed, portalHoldProgress)
+	enc.WriteSelfPlayer(player, s.visibleInventory(player.ObjectLayers), activeStatsSum, player.Coins, moveSpeed, portalHoldProgress)
 
 	// Patch entity count in header.
 	// v2 header layout: msgType(1) + tick(4) + lastAckedSequence(4) + entityCount(2)

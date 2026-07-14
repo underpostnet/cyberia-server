@@ -187,9 +187,10 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		SnapshotRate:   s.snapshotRate,
 		AoiRadius:      s.aoiRadius,
 		SumStatsLimit:  playerState.SumStatsLimit,
-		ObjectLayers:   playerState.ObjectLayers,
+		ObjectLayers:   s.visibleInventory(playerState.ObjectLayers),
 		SkillMap:       s.buildSkillMap(),
 		EntityDefaults: s.buildEntityDefaultsSlice(),
+		DeadItemIds:    s.deadItemIDList(),
 		Quests:         s.buildQuestSnapshot(playerState),
 	}
 	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})

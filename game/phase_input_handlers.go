@@ -112,9 +112,21 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 	itemID := cmd.ItemID
 	active := cmd.Active
 
-	// Dead players get pending activations queued onto PreRespawnObjectLayers.
-	if (player.IsGhost() || player.Life <= 0) && active {
-		s.queuePreRespawnActivation(player, itemID)
+	isDead := player.IsGhost() || player.Life <= 0
+	isDeadItem := s.deadItemIDs[itemID]
+
+	// Dead-state items are the Fragmented State's aesthetic loadout — they
+	// equip only while dead, under the same equipment rules as live items.
+	if !isDead && isDeadItem {
+		logx.Debugf("Player %s tried to equip dead-state item '%s' while alive; rejecting.", player.ID, itemID)
+		return
+	}
+
+	// Live-item activations while dead queue onto PreRespawnObjectLayers.
+	if isDead && !isDeadItem {
+		if active {
+			s.queuePreRespawnActivation(player, itemID)
+		}
 		return
 	}
 
@@ -144,7 +156,11 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 		}
 	}
 
-	// OnePerType — deactivate any other active item with the same type.
+	// Rules operate within the current state's item set: dead items during
+	// the Fragmented State, live items otherwise.
+	inState := func(id string) bool { return s.deadItemIDs[id] == isDead }
+
+	// OnePerType — deactivate any other active in-state item with the same type.
 	if active && s.equipmentRules.OnePerType {
 		requested := s.itemType(itemID)
 		if requested != "" {
@@ -152,7 +168,7 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 				if i == targetItemIndex {
 					continue
 				}
-				if !player.ObjectLayers[i].Active {
+				if !player.ObjectLayers[i].Active || !inState(player.ObjectLayers[i].ItemID) {
 					continue
 				}
 				if s.itemType(player.ObjectLayers[i].ItemID) == requested {
@@ -162,10 +178,10 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 		}
 	}
 
-	// RequireSkin / maxActiveLayers corrections.
+	// RequireSkin / maxActiveLayers corrections, scoped to in-state items.
 	activeLayerCount, activeSkinCount, hasAnySkin, firstSkinIndex := 0, 0, false, -1
 	for i, layer := range player.ObjectLayers {
-		isSkin := s.itemType(layer.ItemID) == "skin"
+		isSkin := inState(layer.ItemID) && s.itemType(layer.ItemID) == "skin"
 		if isSkin {
 			hasAnySkin = true
 			if firstSkinIndex == -1 {
@@ -179,11 +195,22 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 			activeLayerCount++
 		}
 	}
-	if s.equipmentRules.RequireSkin && hasAnySkin && activeSkinCount == 0 && firstSkinIndex != -1 {
-		player.ObjectLayers[firstSkinIndex].Active = true
+	if s.equipmentRules.RequireSkin && activeSkinCount == 0 {
+		if isDead && s.ghostItemID != "" {
+			// Unequipping the last dead skin is allowed: the ghost item from
+			// gRPC config takes over as the Fragmented State visual.
+			activateOrAppendLayer(&player.ObjectLayers, s.ghostItemID)
+		} else if hasAnySkin && firstSkinIndex != -1 {
+			player.ObjectLayers[firstSkinIndex].Active = true
+		}
 	}
 	if activeLayerCount > s.maxActiveLayers {
 		player.ObjectLayers[targetItemIndex].Active = originalState
+	}
+
+	// The Fragmented State loadout persists across deaths.
+	if isDead {
+		player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(player.ObjectLayers)
 	}
 
 	s.InvalidateStats(player)
