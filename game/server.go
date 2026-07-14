@@ -163,6 +163,16 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	}
 	if d, ok := s.entityDefaults["player"]; ok && len(d.DeadItemIDs) > 0 {
 		s.ghostItemID = d.DeadItemIDs[0]
+	} else {
+		s.ghostItemID = ""
+	}
+	s.deadItemIDs = make(map[string]bool)
+	for _, build := range s.entityDefaultBuilds {
+		for _, id := range build.DeadItemIDs {
+			if id != "" {
+				s.deadItemIDs[id] = true
+			}
+		}
 	}
 	if d, ok := s.entityDefaults["coin"]; ok && len(d.LiveItemIDs) > 0 {
 		s.coinItemID = d.LiveItemIDs[0]

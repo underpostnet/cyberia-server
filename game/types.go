@@ -115,6 +115,10 @@ type PlayerState struct {
 	// coin-drop contributor set (the PvP loot race), then reset. Never sent on
 	// the wire.
 	DamageLedger map[string]float64 `json:"-"`
+	// DeadLoadoutItemIDs remembers the dead-state items active during the
+	// player's last Fragmented State; reapplied on the next death. Never sent
+	// on the wire.
+	DeadLoadoutItemIDs []string `json:"-"`
 	// FrozenInteractionState — general-purpose modal protection.
 	// While Frozen, the player cannot deal or receive damage, send or
 	// receive events, or move.  The rest of the world continues.
@@ -333,6 +337,10 @@ type GameServer struct {
 	respawnDuration   time.Duration
 	ghostItemID       string
 	collisionLifeLoss float64
+	// Every configured dead-item id — excluded from the player inventory wire
+	// and from item activation. Populated exclusively from gRPC
+	// entity_defaults.dead_item_ids (no hardcoded fallback).
+	deadItemIDs map[string]bool
 
 	// Economy — Fountain & Sink model
 	// Fountains (coin injection)
@@ -456,6 +464,9 @@ type InitPayload struct {
 	ObjectLayers   []ObjectLayerState         `json:"objectLayers"`
 	SkillMap       map[string][]SkillMapEntry `json:"skillMap"`
 	EntityDefaults []EntityTypeDefaultConfig  `json:"entityDefaults"`
+	// Resolved dead-state (Fragmentation) ids — the client labels these in
+	// the inventory and disables their equip UI.
+	DeadItemIds []string `json:"deadItemIds"`
 	// Quests is the player's active/completed quest snapshot on connect.
 	// Empty for a fresh guest. The C client seeds its local quest_store from
 	// this and keeps it live via dlg_ack events (see Quest Journal).
