@@ -12,8 +12,8 @@ import (
 
 	api "cyberia-server/api"
 	"cyberia-server/config"
+	"cyberia-server/engine_client"
 	game "cyberia-server/game"
-	"cyberia-server/grpcclient"
 	"cyberia-server/httpserver"
 	"cyberia-server/httpserver/problem"
 	"cyberia-server/logx"
@@ -83,22 +83,24 @@ func main() {
 		s.SetEnginePublicURL(cfg.EnginePublicURL)
 	}
 
-	// ── Data loading: gRPC ──────────
-	// The server exits if the Engine is unreachable — no fallback world is generated.
-	gc, err := grpcclient.New(cfg.EngineGRPCAddress)
+	// ── Data loading: engine_client dispatcher (gRPC primary, REST fallback) ──
+	// Every engine call tries gRPC first and retries over the REST boot
+	// endpoints at ENGINE_API_BASE_URL (same payloads). The server exits when
+	// the load fails on all configured transports — no fallback world is generated.
+	ds, err := engine_client.NewDispatcher(cfg.EngineGRPCAddress, cfg.EngineAPIBaseURL)
 	if err != nil {
 		runUnderpostStatus(cfg.ContainerDeployID, "error")
-		log.Fatalf("Engine gRPC required: dial %s failed: %v", cfg.EngineGRPCAddress, err)
+		log.Fatalf("Engine transport required: %v", err)
 	}
-	defer gc.Close()
+	defer ds.Close()
 
-	wb := grpcclient.NewWorldBuilder(gc, s)
+	wb := engine_client.NewWorldBuilder(ds, s)
 	wb.InstanceCode = cfg.InstanceCode
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	if err := wb.LoadAll(ctx); err != nil {
 		cancel()
 		runUnderpostStatus(cfg.ContainerDeployID, "error")
-		log.Fatalf("Engine gRPC world load failed: %v — Engine must be running before starting cyberia-server.", err)
+		log.Fatalf("Engine world load failed: %v — Engine must be running before starting cyberia-server.", err)
 	}
 	cancel()
 
