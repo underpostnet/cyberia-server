@@ -546,10 +546,19 @@ func questComplete(qp *QuestProgress) bool {
 // independent of the provider's current alive/AOI state, since the skin was
 // captured while the modal was opening.
 //
+// Strict per-quest dialogue matching: when the NPC's action maps a specific
+// quest-talk dialogue for a quest (questDialogueCodes), only completing THAT
+// dialogue advances the quest's talk objective — finishing the default
+// greeting (or another quest's talk line) must not. When the action has no
+// mapping for the quest (a pure quest-giver, or a generic talk NPC), any
+// finished dialogue with this NPC advances it (skin match alone).
+//
 // On step/quest completion it delivers rewards. Returns true if it advanced.
 func (s *GameServer) advanceTalkObjectives(
 	player *PlayerState,
 	talkedSkin string,
+	action *CyberiaAction,
+	completedDialogCode string,
 	affected *[]QuestSnapshotEntry,
 ) bool {
 	if talkedSkin == "" {
@@ -558,6 +567,11 @@ func (s *GameServer) advanceTalkObjectives(
 	advanced := false
 	for _, qp := range player.Quests {
 		if qp.Status != "active" {
+			continue
+		}
+		// Enforce the action's quest→dialogue mapping when one exists.
+		if required := questTalkDialogCode(action, qp.QuestCode); required != "" &&
+			required != completedDialogCode {
 			continue
 		}
 		stepIdx := firstIncompleteStepIndex(qp)
@@ -580,6 +594,20 @@ func (s *GameServer) advanceTalkObjectives(
 		}
 	}
 	return advanced
+}
+
+// questTalkDialogCode returns the dialogue code the action maps for a quest's
+// talk objective, or "" when the action has no mapping for that quest.
+func questTalkDialogCode(action *CyberiaAction, questCode string) string {
+	if action == nil {
+		return ""
+	}
+	for _, qd := range action.QuestDialogueCodes {
+		if qd.QuestCode == questCode && qd.DialogCode != "" {
+			return qd.DialogCode
+		}
+	}
+	return ""
 }
 
 // finalizeQuestProgress records an advanced quest: consuming the collect items

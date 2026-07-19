@@ -274,10 +274,13 @@ func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {
 	}
 	// Resolve against the skin frozen at dlg_start, not a live re-lookup, so
 	// completion is independent of the bot's current alive/AOI state. Talk
-	// validation is by NPC skin alone and does NOT depend on the NPC carrying a
-	// cyberia-action — any finished dialogue advances a matching talk step, so a
-	// pure quest-giver (no bound action) validates as consistently as an
-	// action-provider does.
+	// validation is by NPC skin; when the NPC's action maps a quest→dialogue
+	// (questDialogueCodes), the completed dialogCode must additionally match
+	// that mapping (advanceTalkObjectives enforces it), so finishing the
+	// default greeting cannot satisfy a quest-talk objective. A pure
+	// quest-giver (no bound action) still validates on skin alone.
+	entityID := player.ActiveDialogueEntityID
+	action := s.actionCache[entityID]
 	talkedSkin := player.ActiveDialogueSkin
 	player.ActiveDialogueEntityID = ""
 	player.ActiveDialogueSkin = ""
@@ -287,7 +290,7 @@ func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {
 	// the Take Quest button). Reading the dialogue only advances `talk` objectives
 	// that target the NPC the player spoke with.
 	var affected []QuestSnapshotEntry
-	objectivesDone := s.advanceTalkObjectives(player, talkedSkin, &affected)
+	objectivesDone := s.advanceTalkObjectives(player, talkedSkin, action, cmd.DialogCode, &affected)
 	if s.advanceCollectObjectives(player, &affected) {
 		objectivesDone = true
 	}
