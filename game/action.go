@@ -196,40 +196,40 @@ func (s *GameServer) botInteractionFlags(hasActionableQuest, hasPendingActionTal
 	return flags
 }
 
-// pendingActionTalkDialog returns the dialogue code this NPC's action maps for an
-// active talk-quest the player can advance here: the player has an active quest
-// whose current step has an incomplete `talk` objective matching this bot's skin,
-// and the action maps that quest to a dialogue (questDialogueCodes). "" when there
-// is no pending action-talk-quest. This single condition sets the action
-// capability bit and replaces the default greeting with the quest's talk dialogue
-// on the client (only questDialogueCodes is implemented; shop/craft/storage are
-// reference-only).
+// pendingActionTalkDialogs returns, PARALLEL to questCodes, the dialogue code
+// this NPC's action maps for each quest the player can advance here right now:
+// entry i is non-empty when questCodes[i] is active, its current step has an
+// incomplete `talk` objective matching this bot's skin, and the action maps
+// that quest to a dialogue (questDialogueCodes). Every mapped quest gets its
+// own entry, so the client can surface one quest-talk button per objective.
+//
+// The parallel shape lets the client label each button from the quest metadata
+// it already fetches by code. Only questDialogueCodes is implemented;
+// shop/craft/storage are reference-only.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) pendingActionTalkDialog(player *PlayerState, bot *BotState) string {
+func (s *GameServer) pendingActionTalkDialogs(player *PlayerState, bot *BotState, questCodes []string) []string {
+	dialogs := make([]string, len(questCodes))
 	action := s.actionCache[bot.ID]
 	if action == nil || len(action.QuestDialogueCodes) == 0 {
-		return ""
+		return dialogs
 	}
 	skin := s.botActiveSkinOf(bot)
 	if skin == "" {
-		return ""
+		return dialogs
 	}
-	for _, qp := range player.Quests {
-		if qp.Status != "active" {
+	for i, code := range questCodes {
+		qp, ok := s.playerQuest(player, code)
+		if !ok || qp.Status != "active" {
 			continue
 		}
 		stepIdx := firstIncompleteStepIndex(qp)
 		if stepIdx < 0 || !stepHasIncompleteTalk(&qp.Steps[stepIdx], skin) {
 			continue
 		}
-		for _, qd := range action.QuestDialogueCodes {
-			if qd.QuestCode == qp.QuestCode && qd.DialogCode != "" {
-				return qd.DialogCode
-			}
-		}
+		dialogs[i] = questTalkDialogCode(action, code)
 	}
-	return ""
+	return dialogs
 }
 
 // ── Dialogue handlers (phaseInput) ──────────────────────────────────────────

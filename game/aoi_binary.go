@@ -337,7 +337,7 @@ func (e *BinaryAOIEncoder) WritePlayer(p *PlayerState, respawnIn *float64, stats
 	e.putU8(PlayerStatusIcon(p))
 }
 
-func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, statsSum int, actionCode string, statusIcon uint8, interactionFlags uint8, questCodes []string, actionDialogCode string) {
+func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, statsSum int, actionCode string, statusIcon uint8, interactionFlags uint8, questCodes []string, questTalkDialogCodes []string) {
 	flags := EntityTypeBot | FlagHasLife | FlagHasBehavior
 	if respawnIn != nil {
 		flags |= FlagHasRespawn
@@ -363,10 +363,11 @@ func (e *BinaryAOIEncoder) WriteBot(b *BotState, respawnIn *float64, statsSum in
 	// Authoritative quest codes this NPC provides to the viewing player; the
 	// client fetches quest metadata by code only when not already cached.
 	e.putStringList(questCodes)
-	// Pending action-talk-quest dialogue code, "" when none. Non-empty means the
-	// player has an active talk step this NPC's action maps to a dialogue; the
-	// client shows that dialogue (quest-framed) in place of the default greeting.
-	e.putString(actionDialogCode)
+	// Pending quest-talk dialogue codes, PARALLEL to questCodes: entry i is
+	// non-empty when questCodes[i] has an incomplete talk objective this NPC's
+	// action maps to a dialogue. The client renders one quest-talk button per
+	// non-empty entry, labelled from that quest's metadata.
+	e.putStringList(questTalkDialogCodes)
 }
 
 func (e *BinaryAOIEncoder) WriteFloor(f *FloorState) {
@@ -684,8 +685,15 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 		// interact modal; the capability bits light only for actionable content
 		// so the attention icons mean "something new or useful here".
 		questCodes := s.botQuestCodes(player, b)
-		actionDialog := s.pendingActionTalkDialog(player, b)
-		interactionFlags := s.botInteractionFlags(s.botHasActionableQuest(player, b), actionDialog != "")
+		talkDialogs := s.pendingActionTalkDialogs(player, b, questCodes)
+		hasPendingTalk := false
+		for _, d := range talkDialogs {
+			if d != "" {
+				hasPendingTalk = true
+				break
+			}
+		}
+		interactionFlags := s.botInteractionFlags(s.botHasActionableQuest(player, b), hasPendingTalk)
 		// Loot eligibility is personal to the viewing player: only damage
 		// contributors may collect a drop token, and the client renders the
 		// token's particles gold (eligible) or gray (another player's loot).
@@ -694,7 +702,7 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 				interactionFlags |= InteractionFlagLootEligible
 			}
 		}
-		enc.WriteBot(b, respawnIn, s.statsSum(b, mapState), actionCode, statusIcon, interactionFlags, questCodes, actionDialog)
+		enc.WriteBot(b, respawnIn, s.statsSum(b, mapState), actionCode, statusIcon, interactionFlags, questCodes, talkDialogs)
 		entityCount++
 	}
 
