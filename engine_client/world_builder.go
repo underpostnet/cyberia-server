@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"log"
 	"sync"
-	"time"
 
 	game "cyberia-server/game"
 )
@@ -33,21 +32,14 @@ type WorldBuilder struct {
 	// GetFullInstance.  ReloadWorld compares it to skip full rebuilds
 	// when the instance, its maps, and its config have not changed.
 	lastInstanceVersion string
-
-	// ReloadInterval is the polling interval for hot-reload (0 = disabled).
-	ReloadInterval time.Duration
-
-	stopCh chan struct{}
 }
 
 // NewWorldBuilder creates a WorldBuilder bound to the given data source + server.
 func NewWorldBuilder(client DataSource, server *game.GameServer) *WorldBuilder {
 	return &WorldBuilder{
-		client:         client,
-		server:         server,
-		manifest:       make(map[string]string),
-		ReloadInterval: 0,
-		stopCh:         make(chan struct{}),
+		client:   client,
+		server:   server,
+		manifest: make(map[string]string),
 	}
 }
 
@@ -240,41 +232,4 @@ func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
 
 	log.Println("[WorldBuilder] ReloadWorld complete — maps and entities refreshed.")
 	return nil
-}
-
-// StartReloadLoop runs HotReload on the configured interval in a goroutine.
-// Call Stop() to terminate.
-func (wb *WorldBuilder) StartReloadLoop() {
-	if wb.ReloadInterval <= 0 {
-		log.Println("[WorldBuilder] Hot-reload loop disabled (ReloadInterval <= 0).")
-		return
-	}
-	log.Printf("[WorldBuilder] Starting hot-reload loop every %s", wb.ReloadInterval)
-	go func() {
-		ticker := time.NewTicker(wb.ReloadInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-wb.stopCh:
-				log.Println("[WorldBuilder] Hot-reload loop stopped.")
-				return
-			case <-ticker.C:
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-				if err := wb.HotReload(ctx); err != nil {
-					log.Printf("[WorldBuilder] Hot-reload error: %v", err)
-				}
-				cancel()
-			}
-		}
-	}()
-}
-
-// Stop terminates the hot-reload loop.
-func (wb *WorldBuilder) Stop() {
-	select {
-	case <-wb.stopCh:
-		// already closed
-	default:
-		close(wb.stopCh)
-	}
 }

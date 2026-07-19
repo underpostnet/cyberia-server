@@ -14,6 +14,7 @@ import (
 	"cyberia-server/config"
 	"cyberia-server/engine_client"
 	game "cyberia-server/game"
+	"cyberia-server/hotreload"
 	"cyberia-server/httpserver"
 	"cyberia-server/httpserver/problem"
 	"cyberia-server/logx"
@@ -104,12 +105,20 @@ func main() {
 	}
 	cancel()
 
-	// Start hot-reload loop if configured (0 = disabled).
-	if cfg.GRPCReloadInterval > 0 {
-		wb.ReloadInterval = cfg.GRPCReloadInterval
-		wb.StartReloadLoop()
-		defer wb.Stop()
+	// On-demand hot-reload trigger (engine-cyberia -> this server). Serves a
+	// gRPC control service and a REST fallback; both require
+	// CYBERIA_SERVER_API_KEY, and an unset key disables them.
+	hotReload := hotreload.NewService(wb, cfg.ServerAPIKey, cfg.InstanceCode)
+	if hrGRPC, err := hotreload.ListenGRPC(hotReload, cfg.HotReloadGRPCAddress); err != nil {
+		log.Printf("[HotReload] gRPC control service unavailable: %v (REST fallback still served)", err)
+	} else if hrGRPC != nil {
+		defer hrGRPC.Stop()
 	}
+
+	// Passive reload polling (ENGINE_GRPC_RELOAD_INTERVAL_SEC, 0 = disabled).
+	// Shares the trigger's single-flight core, so a scheduled reload can never
+	// race one triggered from engine-cyberia.
+	defer hotreload.StartLoop(hotReload, cfg.GRPCReloadInterval).Stop()
 
 	go s.Run()
 
@@ -136,6 +145,7 @@ func main() {
 		GameServer:     s,
 		InstanceCode:   cfg.InstanceCode,
 		AllowedOrigins: cfg.CORSAllowedOrigins,
+		HotReload:      hotReload,
 	})
 	// Keep websocket endpoint
 	r.HandleFunc("/ws", s.HandleConnections)

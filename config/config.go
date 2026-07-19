@@ -55,6 +55,16 @@ type Config struct {
 	// ContainerDeployID labels underpost container-status reports.
 	// CONTAINER_DEPLOY_ID, optional (empty = status reporting disabled).
 	ContainerDeployID string
+
+	// ServerAPIKey is the INTERNAL shared secret engine-cyberia presents to
+	// trigger a hot reload (gRPC control service or REST fallback). Never
+	// exposed to game clients. CYBERIA_SERVER_API_KEY; unset disables the
+	// trigger entirely (fail closed).
+	ServerAPIKey string
+
+	// HotReloadGRPCAddress is the listen address of the hot-reload control
+	// gRPC service. CYBERIA_HOT_RELOAD_GRPC_ADDRESS, default ":50052".
+	HotReloadGRPCAddress string
 }
 
 // defaultCORSOrigins is the dev-friendly allow-list used when
@@ -76,15 +86,17 @@ func DefaultCORSOrigins() []string {
 // callers can still report deploy status before exiting.
 func Load() (Config, error) {
 	c := Config{
-		ServerPort:         getEnv("SERVER_PORT", "8081"),
-		StaticDir:          getEnv("STATIC_DIR", "public"),
-		InstanceCode:       os.Getenv("INSTANCE_CODE"),
-		EngineGRPCAddress:  getEnv("ENGINE_GRPC_ADDRESS", "localhost:50051"),
-		EngineAPIBaseURL:   os.Getenv("ENGINE_API_BASE_URL"),
-		EnginePublicURL:    os.Getenv("ENGINE_PUBLIC_URL"),
-		ProblemBaseURI:     os.Getenv("CYBERIA_PROBLEM_BASE_URI"),
-		ContainerDeployID:  os.Getenv("CONTAINER_DEPLOY_ID"),
-		CORSAllowedOrigins: parseCSV(os.Getenv("CYBERIA_CORS_ALLOWED_ORIGINS"), defaultCORSOrigins),
+		ServerPort:           getEnv("SERVER_PORT", "8081"),
+		StaticDir:            getEnv("STATIC_DIR", "public"),
+		InstanceCode:         os.Getenv("INSTANCE_CODE"),
+		EngineGRPCAddress:    getEnv("ENGINE_GRPC_ADDRESS", "localhost:50051"),
+		EngineAPIBaseURL:     os.Getenv("ENGINE_API_BASE_URL"),
+		EnginePublicURL:      os.Getenv("ENGINE_PUBLIC_URL"),
+		ProblemBaseURI:       os.Getenv("CYBERIA_PROBLEM_BASE_URI"),
+		ContainerDeployID:    os.Getenv("CONTAINER_DEPLOY_ID"),
+		ServerAPIKey:         os.Getenv("CYBERIA_SERVER_API_KEY"),
+		HotReloadGRPCAddress: getEnv("CYBERIA_HOT_RELOAD_GRPC_ADDRESS", ":50052"),
+		CORSAllowedOrigins:   parseCSV(os.Getenv("CYBERIA_CORS_ALLOWED_ORIGINS"), defaultCORSOrigins),
 	}
 
 	if c.InstanceCode == "" {

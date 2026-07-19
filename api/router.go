@@ -6,6 +6,7 @@ import (
 
 	"cyberia-server/config"
 	game "cyberia-server/game"
+	"cyberia-server/hotreload"
 	"cyberia-server/httpserver"
 	"cyberia-server/httpserver/problem"
 
@@ -19,8 +20,10 @@ import (
 // pass an InstanceCode and an explicit AllowedOrigins list (typically
 // from CYBERIA_CORS_ALLOWED_ORIGINS).
 type RouterOptions struct {
-	GameServer     *game.GameServer
-	InstanceCode   string
+	GameServer   *game.GameServer
+	InstanceCode string
+	// HotReload mounts the internal reload trigger when non-nil.
+	HotReload      *hotreload.Service
 	AllowedOrigins []string
 	RequestTimeout time.Duration
 }
@@ -51,6 +54,11 @@ func NewAPIRouter(opts RouterOptions) chi.Router {
 
 		mh.Routes(sub)
 		dh.Routes(sub)
+		// Internal hot-reload trigger (REST fallback for the gRPC control
+		// service). Guarded by CYBERIA_SERVER_API_KEY, not by CORS.
+		if opts.HotReload != nil {
+			opts.HotReload.Routes(sub)
+		}
 	})
 
 	return r
