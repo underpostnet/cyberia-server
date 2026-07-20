@@ -1,0 +1,108 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dd-cyberia-mmo-server-forest-production-blue
+  namespace: default
+  labels:
+    app: dd-cyberia-mmo-server-forest-production-blue
+    deploy-id: dd-cyberia-mmo-server-forest-production
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dd-cyberia-mmo-server-forest-production-blue
+  template:
+    metadata:
+      labels:
+        app: dd-cyberia-mmo-server-forest-production-blue
+        deploy-id: dd-cyberia-mmo-server-forest-production
+    spec:
+      containers:
+        - name: dd-cyberia-mmo-server-forest-production-blue
+          image: underpost/cyberia-server:v3.2.70
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                name: underpost-config
+          ports:
+            - containerPort: 8081
+
+          command:
+            - /bin/sh
+            - -c
+            - >
+              set -a && . /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server-forest/env/production.env && set +a && export ENGINE_GRPC_ADDRESS=dd-cyberia-grpc-service-production-blue.default.svc.cluster.local:50051 && exec /home/dd/engine/cyberia-server/server
+          readinessProbe:
+            {
+              "tcpSocket": {
+                "port": 8081
+              },
+              "initialDelaySeconds": 3,
+              "periodSeconds": 5,
+              "timeoutSeconds": 3,
+              "failureThreshold": 6
+            }
+          livenessProbe:
+            {
+              "tcpSocket": {
+                "port": 8081
+              },
+              "initialDelaySeconds": 30,
+              "periodSeconds": 20,
+              "timeoutSeconds": 5,
+              "failureThreshold": 3
+            }
+          lifecycle:
+            {
+              "postStart": {
+                "exec": {
+                  "command": [
+                    "sh",
+                    "-c",
+                    "underpost config set container-status dd-cyberia-mmo-server-forest-production-initializing-deployment || true"
+                  ]
+                }
+              },
+              "preStop": {
+                "exec": {
+                  "command": [
+                    "sh",
+                    "-c",
+                    "underpost config set container-status dd-cyberia-mmo-server-forest-production-stopping-deployment || true"
+                  ]
+                }
+              }
+            }
+
+
+    
+          volumeMounts:
+            - name: instance-cyberia-server-dd-cyberia-mmo-server-forest-production-blue
+              mountPath: /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server-forest/env
+    
+      volumes:
+        - name: instance-cyberia-server-dd-cyberia-mmo-server-forest-production-blue
+          persistentVolumeClaim:
+            claimName: instance-cyberia-server-dd-cyberia-mmo-server-forest-production-blue
+    
+      
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dd-cyberia-mmo-server-forest-production-blue-service
+  namespace: default
+spec:
+  selector:
+    app: dd-cyberia-mmo-server-forest-production-blue
+  ports:
+    - name: 'tcp-8081'
+      protocol: TCP
+      port: 8081
+      targetPort: 8081
+    - name: 'udp-8081'
+      protocol: UDP
+      port: 8081
+      targetPort: 8081
+  type: LoadBalancer
