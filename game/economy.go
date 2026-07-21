@@ -29,8 +29,8 @@ package game
 // │                                                                         │
 // │  KILL LOOT  (zero-sum redistribution via grid drops)                    │
 // │  Every kill scatters the victim's coin stake as a grid token that only  │
-// │  damage contributors may race to collect (loot.go). One model for PvE   │
-// │  and PvP; a kill with no player contributor drops nothing.              │
+// │  damage contributors — players and bots — may race to collect (loot.go).│
+// │  One model for every victim; a kill with no contributor drops nothing.  │
 // │  Victim │ rate field               │ amount source                      │
 // │  Bot    │ coinKillPercentVsBot     │ botCoinDropAmount                  │
 // │  Player │ coinKillPercentVsPlayer  │ pvpCoinDropAmount                  │
@@ -248,4 +248,3 @@ func (s *GameServer) SinkRespawnCost(player *PlayerState) {
 	logx.Debugf("[ECONOMY] Respawn sink: %s burned %d coins (%.0f%%)",
 		player.ID, burn, s.respawnCostPercent*100)
 }
-

@@ -193,9 +193,9 @@ type BotState struct {
 	ActionCode string `json:"-"`
 
 	// DamageLedger is the per-victim threat/contribution ledger:
-	// attacking player ID → cumulative damage dealt to this bot. Populated by
-	// the skill-collision path (players only; bot-vs-bot damage is not tracked
-	// for loot). Read once on death to resolve the top contributor, then reset.
+	// attacking player or bot ID → cumulative damage dealt to this entity.
+	// Populated by the skill-collision path for every attacker (players and bots
+	// alike). Consumed on death to build the loot contributor set, then reset.
 	// Allocated lazily on first hit. Never sent on the wire.
 	DamageLedger map[string]float64 `json:"-"`
 
@@ -209,10 +209,12 @@ type BotState struct {
 	// coinItemID). Mirrored into the token's active ObjectLayer.Quantity so the
 	// client can render the on-grid counter.
 	DropQuantity int `json:"-"`
-	// LootContributors is the set of player IDs that dealt damage to the entity
-	// this token dropped from. Once the token settles, collection is a race: any
-	// contributor that collides may pick it up. Empty = no player dealt damage,
-	// so anyone may collect.
+	// LootContributors is the set of IDs — players and bots — that dealt damage to
+	// the entity this token dropped from, tracked uniformly for every victim type
+	// (player, bot, resource). Once the token settles, collection is a race among
+	// contributors: a contributing player collects on collision, and a contributing
+	// bot has the loot transferred to it on collision. A token always has ≥1
+	// contributor (a contributor-less death drops nothing — see spawnDrops).
 	LootContributors map[string]struct{} `json:"-"`
 	// CollectableAt is the instant the spawn-launch settle window ends. Until
 	// then the token is mid-flight from the corpse to its cell and registers no

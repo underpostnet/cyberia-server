@@ -18,7 +18,7 @@ package game
 // │     settles, collection is a race: the first contributor to overlap it  │
 // │     wins. Collection grants the item, fires the pickup animation event   │
 // │     (MsgTypeDropCollect) to every viewer, and removes the token. A kill  │
-// │     with no player contributor drops nothing at all.                    │
+// │     with no contributor drops nothing at all.                           │
 // │                                                                         │
 // │  4. Expiry       — uncollected tokens despawn via ExpiresAt (updateBots)│
 // └─────────────────────────────────────────────────────────────────────────┘
@@ -58,16 +58,20 @@ const (
 
 // ── Contribution ledger ──────────────────────────────────────────────────
 
-// recordDamage records that a player dealt damage to a mortal entity, so every
-// contributor can race for its drops on death. Only player casters are tracked:
-// bot-cast damage grants no claim. The ledger is allocated lazily via the
-// pointer. Caller holds s.mu.
+// recordDamage records that a player or bot dealt damage to a mortal entity, so
+// every contributor can race for its drops on death — uniformly, regardless of
+// the victim's entity type (player, bot, or resource). Players collect on
+// collision; contributing bots have the loot transferred to them on collision
+// (see phaseLoot). Unknown casters (e.g. an already-expired projectile) grant no
+// claim. The ledger is allocated lazily via the pointer. Caller holds s.mu.
 func recordDamage(ledger *map[string]float64, mapState *MapState, casterID string, amount float64) {
 	if ledger == nil || casterID == "" || amount <= 0 {
 		return
 	}
-	if _, ok := mapState.players[casterID]; !ok {
-		return // caster is not a player (e.g. bot-cast projectile) — no claim
+	_, isPlayer := mapState.players[casterID]
+	_, isBot := mapState.bots[casterID]
+	if !isPlayer && !isBot {
+		return // unknown caster — no claim
 	}
 	if *ledger == nil {
 		*ledger = make(map[string]float64, 4)
@@ -75,9 +79,9 @@ func recordDamage(ledger *map[string]float64, mapState *MapState, casterID strin
 	(*ledger)[casterID] += amount
 }
 
-// contributorSet copies the ledger's player IDs into a membership set — the
+// contributorSet copies the ledger's contributor IDs into a membership set — the
 // eligibility list a drop carries for its collection race. Returns nil when no
-// player dealt damage, which suppresses the drop entirely (see spawnDrops).
+// one dealt damage, which suppresses the drop entirely (see spawnDrops).
 func contributorSet(ledger map[string]float64) map[string]struct{} {
 	if len(ledger) == 0 {
 		return nil
@@ -98,8 +102,8 @@ func contributorSet(ledger map[string]float64) map[string]struct{} {
 // content-authority entity (bots, resources). Caller holds s.mu.
 func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point, dropItemIDs []string, coinAmount int, ledger map[string]float64) {
 	contributors := contributorSet(ledger)
-	// At least one player must have dealt damage for loot to drop. Bot-only
-	// kills (e.g. bot-vs-bot) leave nothing behind.
+	// At least one contributor (player or bot) must have dealt damage for loot to
+	// drop. A death nobody contributed to leaves nothing behind.
 	if len(contributors) == 0 {
 		return
 	}
@@ -228,25 +232,35 @@ func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 			continue
 		}
 
-		collector := s.resolveDropCollector(mapState, drop)
-		if collector == nil {
-			continue
-		}
-
 		cx := drop.Pos.X + drop.Dims.Width*0.5
 		cy := drop.Pos.Y + drop.Dims.Height*0.5
 
-		if drop.DropItemID == s.coinItemID {
-			// No coin-gain FCT — the amount is shown on the grid loot counter.
-			s.addCoins(collector, drop.DropQuantity)
-			s.InvalidateStats(collector)
-		} else {
-			s.grantItemToPlayer(collector, drop.DropItemID, drop.DropQuantity)
-			s.advancePlayerQuestsOnGain(collector)
+		// Contributing players race to collect; a non-contributor can never grab
+		// it. When none is on the token, a contributing bot that collides takes it.
+		if collector := s.resolveDropCollector(mapState, drop); collector != nil {
+			if drop.DropItemID == s.coinItemID {
+				// No coin-gain FCT — the amount is shown on the grid loot counter.
+				s.addCoins(collector, drop.DropQuantity)
+				s.InvalidateStats(collector)
+			} else {
+				s.grantItemToPlayer(collector, drop.DropItemID, drop.DropQuantity)
+				s.advancePlayerQuestsOnGain(collector)
+			}
+			s.broadcastDropCollect(mapState, drop, collector.ID, cx, cy)
+			delete(mapState.bots, dropID)
+			continue
 		}
-		s.broadcastDropCollect(mapState, drop, collector, cx, cy)
 
-		delete(mapState.bots, dropID)
+		if bot := s.resolveBotDropCollector(mapState, drop); bot != nil {
+			if drop.DropItemID == s.coinItemID {
+				s.addCoins(bot, drop.DropQuantity)
+			} else {
+				s.grantItemToBot(bot, drop.DropItemID, drop.DropQuantity)
+			}
+			s.InvalidateStats(bot)
+			s.broadcastDropCollect(mapState, drop, bot.ID, cx, cy)
+			delete(mapState.bots, dropID)
+		}
 	}
 }
 
@@ -265,6 +279,25 @@ func (s *GameServer) resolveDropCollector(mapState *MapState, drop *BotState) *P
 		}
 		if _, ok := drop.LootContributors[player.ID]; ok {
 			return player
+		}
+	}
+	return nil
+}
+
+// resolveBotDropCollector returns the first live combat bot that contributed to
+// the kill and now overlaps the token — the loot transfers to it. Contributor IDs
+// are casters (never projectiles/drops), so the membership test already excludes
+// non-combat bots; the guards keep dead bots and the token itself out.
+func (s *GameServer) resolveBotDropCollector(mapState *MapState, drop *BotState) *BotState {
+	for id, bot := range mapState.bots {
+		if id == drop.ID || bot.IsGhost() || behaviorIsInert(bot.Behavior) {
+			continue
+		}
+		if _, ok := drop.LootContributors[id]; !ok {
+			continue
+		}
+		if checkAABBCollision(drop.Pos, drop.Dims, bot.Pos, bot.Dims) {
+			return bot
 		}
 	}
 	return nil
@@ -369,10 +402,10 @@ func (s *GameServer) broadcastDropSpawn(mapState *MapState, drop *BotState, orig
 }
 
 // broadcastDropCollect delivers the pickup animation event to every player whose
-// AOI covers the token, so all viewers see the token fly to the collector. The
-// send is non-blocking (cosmetic).
-func (s *GameServer) broadcastDropCollect(mapState *MapState, drop *BotState, collector *PlayerState, cx, cy float64) {
-	msg := buildDropCollectMsg(drop.ID, collector.ID, cx, cy, drop.DropItemID)
+// AOI covers the token, so all viewers see the token fly to the collector (a
+// player or a bot). The send is non-blocking (cosmetic).
+func (s *GameServer) broadcastDropCollect(mapState *MapState, drop *BotState, collectorID string, cx, cy float64) {
+	msg := buildDropCollectMsg(drop.ID, collectorID, cx, cy, drop.DropItemID)
 	dropRect := Rectangle{
 		MinX: drop.Pos.X, MinY: drop.Pos.Y,
 		MaxX: drop.Pos.X + drop.Dims.Width, MaxY: drop.Pos.Y + drop.Dims.Height,
@@ -381,7 +414,7 @@ func (s *GameServer) broadcastDropCollect(mapState *MapState, drop *BotState, co
 		if player.Client == nil {
 			continue
 		}
-		if player.ID != collector.ID && !rectsOverlap(player.AOI, dropRect) {
+		if player.ID != collectorID && !rectsOverlap(player.AOI, dropRect) {
 			continue
 		}
 		select {

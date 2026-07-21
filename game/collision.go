@@ -49,9 +49,10 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 			}
 			if checkAABBCollision(projectile.Pos, projectile.Dims, player.Pos, player.Dims) {
 				player.Life -= projectileStats.Effect
-				// Attribute damage for the PvP loot race (player casters only —
-				// recordDamage filters; bot damage grants no claim). Recorded
-				// before the death handler consumes the ledger.
+				// Attribute damage for the loot race — player and bot casters both
+				// count, so a bot-only kill still drops the victim's coins and the
+				// contributing bots can collect. Recorded before the death handler
+				// consumes the ledger.
 				recordDamage(&player.DamageLedger, mapState, projectile.CasterID, projectileStats.Effect)
 				if player.Life <= 0 {
 					player.Life = 0
@@ -93,7 +94,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 			}
 			if checkAABBCollision(projectile.Pos, projectile.Dims, otherBot.Pos, otherBot.Dims) {
 				otherBot.Life -= projectileStats.Effect
-				// Attribute damage to the firing player for loot priority.
+				// Attribute damage to the firing player or bot for the loot race.
 				recordDamage(&otherBot.DamageLedger, mapState, projectile.CasterID, projectileStats.Effect)
 				// FCT: bot amounts are public — the same red "-N" for every AOI
 				// viewer, including the killing (one-shot) blow.
@@ -130,7 +131,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 			}
 			if checkAABBCollision(projectile.Pos, projectile.Dims, res.Pos, res.Dims) {
 				res.Life -= projectileStats.Effect
-				// Attribute extraction damage to the firing player for loot priority.
+				// Attribute extraction damage to the firing player or bot for the loot race.
 				recordDamage(&res.DamageLedger, mapState, projectile.CasterID, projectileStats.Effect)
 				if res.Life <= 0 {
 					res.Life = 0
@@ -209,11 +210,23 @@ func (s *GameServer) grantItemToPlayer(player *PlayerState, itemID string, qty i
 	s.InvalidateStats(player)
 }
 
+// grantItemToBot transfers `qty` of a non-coin item into a contributing bot's
+// inventory when it collects a scattered drop (appended inactive if new).
+func (s *GameServer) grantItemToBot(bot *BotState, itemID string, qty int) {
+	if itemID == "" || qty <= 0 {
+		return
+	}
+	ol := getOrCreateItemOL(&bot.ObjectLayers, itemID)
+	ol.Quantity += qty
+}
+
 // handlePlayerDeath sets a player to a dead/ghost state using the dead items of
 // the entity-type default resolved from its pre-death active items, and scatters
-// the PvP loot: the victim's coin stake (and any configured drop items) become
-// grid tokens only damage contributors may race to collect — the same model as
-// handleBotDeath. A death with no player contributor drops nothing.
+// the loot: the victim's coin stake (and any configured drop items) become grid
+// tokens the damage contributors may collect. The contributor set includes the
+// bots that dealt damage, so a bot-only kill still drops the victim's coins per
+// the instance economy rules; contributing bots collect on collision. A death
+// nobody contributed to drops nothing.
 func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) {
 	// Economy: apply respawn-cost sink before saving layers (disabled by default, rate = 0).
 	s.SinkRespawnCost(player)
@@ -308,6 +321,11 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 		if !player.RespawnTime.IsZero() && time.Now().After(player.RespawnTime) {
 			player.ObjectLayers = player.PreRespawnObjectLayers
 			player.PreRespawnObjectLayers = nil
+			// The restored loadout was snapshotted before the death coin drop, so
+			// its coin slot is stale. Re-sync the display-only slot to the flat
+			// balance (the source of truth) — otherwise the client sees a bogus
+			// +N as the coin quantity jumps back up on respawn.
+			s.syncCoinOL(&player.ObjectLayers, player.Coins)
 			s.InvalidateStats(player)
 			s.ApplyResistanceStat(player, mapState) // Recalculate stats with restored items.
 			player.Life = player.MaxLife
