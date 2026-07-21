@@ -78,11 +78,11 @@ spec:
 
     
           volumeMounts:
-            - name: instance-cyberia-server-dd-cyberia-mmo-server-forest-production-blue
+            - name: instance-cyberia-server-dd-cyberia-mmo-server-forest-p-e07dd49a
               mountPath: /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server-forest/env
     
       volumes:
-        - name: instance-cyberia-server-dd-cyberia-mmo-server-forest-production-blue
+        - name: instance-cyberia-server-dd-cyberia-mmo-server-forest-p-e07dd49a
           persistentVolumeClaim:
             claimName: instance-cyberia-server-dd-cyberia-mmo-server-forest-production-blue
     

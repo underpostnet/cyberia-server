@@ -10,32 +10,6 @@ spec:
     fqdn: server.cyberiaonline.com
   routes:
     - conditions:
-        - prefix: /FOREST
-      pathRewritePolicy:
-          replacePrefix:
-          - prefix: /FOREST
-            replacement: /
-            
-      enableWebsockets: true
-      services:
-        - name: dd-cyberia-mmo-server-forest-development-blue-service
-          port: 8083
-          weight: 100
-    
-    - conditions:
-        - prefix: /TEST
-      pathRewritePolicy:
-          replacePrefix:
-          - prefix: /TEST
-            replacement: /
-            
-      enableWebsockets: true
-      services:
-        - name: dd-cyberia-mmo-server-test-development-blue-service
-          port: 8083
-          weight: 100
-    
-    - conditions:
         - prefix: /
       
       enableWebsockets: true

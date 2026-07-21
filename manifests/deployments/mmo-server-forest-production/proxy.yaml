@@ -24,25 +24,3 @@ spec:
           port: 8081
           weight: 100
     
-    - conditions:
-        - prefix: /TEST
-      pathRewritePolicy:
-          replacePrefix:
-          - prefix: /TEST
-            replacement: /
-            
-      enableWebsockets: true
-      services:
-        - name: dd-cyberia-mmo-server-test-production-blue-service
-          port: 8081
-          weight: 100
-    
-    - conditions:
-        - prefix: /
-      
-      enableWebsockets: true
-      services:
-        - name: dd-cyberia-mmo-server-production-blue-service
-          port: 8081
-          weight: 100
-    

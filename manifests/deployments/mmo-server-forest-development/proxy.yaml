@@ -22,25 +22,3 @@ spec:
           port: 8083
           weight: 100
     
-    - conditions:
-        - prefix: /TEST
-      pathRewritePolicy:
-          replacePrefix:
-          - prefix: /TEST
-            replacement: /
-            
-      enableWebsockets: true
-      services:
-        - name: dd-cyberia-mmo-server-test-development-blue-service
-          port: 8083
-          weight: 100
-    
-    - conditions:
-        - prefix: /
-      
-      enableWebsockets: true
-      services:
-        - name: dd-cyberia-mmo-server-development-blue-service
-          port: 8083
-          weight: 100
-    
