@@ -20,5 +20,5 @@ go.work.sum
 /cyberia-server
 /server
 /bin
-/public/index.html
+/public/*.html
 /docs
