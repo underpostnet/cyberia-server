@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: dd-cyberia-mmo-server-production-blue
-          image: underpost/cyberia-server:v3.2.70
+          image: underpost/cyberia-server:v3.2.80
           imagePullPolicy: Always
           envFrom:
             - secretRef:
