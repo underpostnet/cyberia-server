@@ -6,19 +6,28 @@ package httpserver
 import (
 	"bytes"
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"cyberia-server/logx"
 )
+
+// unavailable answers every request with 503 — used when dir itself can't be served.
+func unavailable(reason string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "static assets unavailable: "+reason, http.StatusServiceUnavailable)
+	})
+}
 
 // StaticFileServer serves static assets from dir.
 //
 // Invariants:
 //
 //   - Resolves every request path under dir; rejects `../` traversal.
-//   - Refuses to start if dir is missing or holds no fallback file.
+//   - dir or its fallback file missing → logs a warning and serves 503 instead
+//     of the dashboard; other httpserver routes keep working.
 //   - An unmatched path serves 404.html with a 404 status when present (so
 //     /FOREST/<bad> lands on this instance's 404, addressable at /404);
 //     otherwise it falls back to fallbackPath (SPA) for GET/HEAD. 405 otherwise.
@@ -30,16 +39,20 @@ import (
 func StaticFileServer(dir string, fallbackPath string) http.Handler {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
-		log.Fatalf("StaticFileServer: cannot resolve %q: %v", dir, err)
+		logx.Errorf("StaticFileServer: cannot resolve %q: %v", dir, err)
+		return unavailable("bad static dir")
 	}
 	info, err := os.Stat(absDir)
 	if err != nil || !info.IsDir() {
-		log.Fatalf("StaticFileServer: %s is not a directory: %v", absDir, err)
+		logx.Errorf("StaticFileServer: %s is not a directory: %v", absDir, err)
+		return unavailable("static dir missing")
 	}
 	indexFS := filepath.Join(absDir, filepath.FromSlash(fallbackPath))
+	hasIndex := true
 	if _, err := os.Stat(indexFS); err != nil {
-		log.Fatalf("StaticFileServer: fallback %s missing: %v — "+
+		logx.Errorf("StaticFileServer: fallback %s missing: %v — "+
 			"run `npm run cyberia:dashboard` to regenerate the dashboard.", indexFS, err)
+		hasIndex = false
 	}
 
 	// Optional per-instance 404 page (built by `cyberia run-workflow
@@ -95,6 +108,10 @@ func StaticFileServer(dir string, fallbackPath string) http.Handler {
 
 		urlPath := r.URL.Path
 		if urlPath == "" || urlPath == "/" {
+			if !hasIndex {
+				http.Error(w, "dashboard not built", http.StatusServiceUnavailable)
+				return
+			}
 			serveHTML(w, indexFS, http.StatusOK)
 			return
 		}
@@ -130,6 +147,10 @@ func StaticFileServer(dir string, fallbackPath string) http.Handler {
 		// 404.html shipped.
 		if hasNotFound {
 			serveHTML(w, notFoundFS, http.StatusNotFound)
+			return
+		}
+		if !hasIndex {
+			http.Error(w, "dashboard not built", http.StatusServiceUnavailable)
 			return
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")

@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
-	"path/filepath"
 	"runtime/debug"
 	"time"
 
@@ -124,14 +123,10 @@ func main() {
 
 	r := chi.NewRouter()
 
-	// Resolve static dir relative to the binary at cmd/cyberia-server/.
-	// StaticFileServer fatals if the dir or its index.html is missing.
-	staticDir := cfg.StaticDir
-	if !filepath.IsAbs(staticDir) {
-		staticDir = filepath.Clean(filepath.Join("..", "..", staticDir))
-	}
-	log.Printf("Serving static assets from %s", staticDir)
-	r.Handle("/*", httpserver.StaticFileServer(staticDir, "/index.html"))
+	// Static dir is relative to the project root (cwd). Missing dir/index.html
+	// degrades to 503 for dashboard routes instead of blocking startup.
+	log.Printf("Serving static assets from %s", cfg.StaticDir)
+	r.Handle("/*", httpserver.StaticFileServer(cfg.StaticDir, "/index.html"))
 
 	// Override the RFC 9457 problem.type base URI when set; otherwise the
 	// package keeps its dev default.
