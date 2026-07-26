@@ -28,13 +28,11 @@ func unavailable(reason string) http.Handler {
 //   - Resolves every request path under dir; rejects `../` traversal.
 //   - dir or its fallback file missing → logs a warning and serves 503 instead
 //     of the dashboard; other httpserver routes keep working.
-//   - An unmatched path serves 404.html with a 404 status when present (so
-//     /FOREST/<bad> lands on this instance's 404, addressable at /404);
-//     otherwise it falls back to fallbackPath (SPA) for GET/HEAD. 405 otherwise.
-//   - HTML responses (index.html, 404.html) carry window.CYBERIA_BASE_PATH,
-//     injected from the CYBERIA_BASE_PATH env, so the instance-aware dashboard
-//     and 404 know their sub-path — the reverse proxy strips that prefix before
-//     the request reaches this server.
+//   - Unmatched GET/HEAD paths fall back to fallbackPath (SPA). Envoy owns
+//     externally visible custom status responses and serves them before a
+//     request can reach this application.
+//   - HTML responses carry window.CYBERIA_BASE_PATH, injected from the
+//     CYBERIA_BASE_PATH env so the dashboard knows its sub-path.
 //   - Asset files get nosniff + a short cache TTL; HTML is served no-store.
 func StaticFileServer(dir string, fallbackPath string) http.Handler {
 	absDir, err := filepath.Abs(dir)
@@ -55,24 +53,18 @@ func StaticFileServer(dir string, fallbackPath string) http.Handler {
 		hasIndex = false
 	}
 
-	// Optional per-instance 404 page (built by `cyberia run-workflow
-	// build-cyberia-404`). Absent → unknown paths fall back to the SPA shell.
-	notFoundFS := filepath.Join(absDir, "404.html")
-	_, notFoundErr := os.Stat(notFoundFS)
-	hasNotFound := notFoundErr == nil
-
 	// This instance's URL sub-path ("/FOREST", "/TEST", "" default), pre-encoded
 	// once as a JS string literal for injection into HTML responses.
 	basePathJSON, _ := json.Marshal(os.Getenv("CYBERIA_BASE_PATH"))
 
 	fs := http.FileServer(http.Dir(absDir))
 
-	// serveHTML writes an HTML file at status, splicing window.CYBERIA_BASE_PATH
+	// serveHTML writes an HTML file, splicing window.CYBERIA_BASE_PATH
 	// in before </head> (prepended if there is no head).
-	serveHTML := func(w http.ResponseWriter, path string, status int) {
+	serveHTML := func(w http.ResponseWriter, path string) {
 		body, err := os.ReadFile(path)
 		if err != nil {
-			http.Error(w, "not found", http.StatusNotFound)
+			http.Error(w, "static asset unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		script := []byte("<script>window.CYBERIA_BASE_PATH=" + string(basePathJSON) + ";</script>")
@@ -84,7 +76,7 @@ func StaticFileServer(dir string, fallbackPath string) http.Handler {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(status)
+		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(body)
 	}
 
@@ -112,7 +104,7 @@ func StaticFileServer(dir string, fallbackPath string) http.Handler {
 				http.Error(w, "dashboard not built", http.StatusServiceUnavailable)
 				return
 			}
-			serveHTML(w, indexFS, http.StatusOK)
+			serveHTML(w, indexFS)
 			return
 		}
 
@@ -125,16 +117,10 @@ func StaticFileServer(dir string, fallbackPath string) http.Handler {
 			return
 		}
 
-		// The instance's 404 page, addressable directly at /404.
-		if (urlPath == "/404" || urlPath == "/404/") && hasNotFound {
-			serveHTML(w, notFoundFS, http.StatusNotFound)
-			return
-		}
-
 		// Real file? HTML gets base-path injection; other assets served verbatim.
 		if info, err := os.Stat(resolved); err == nil && !info.IsDir() {
 			if strings.HasSuffix(resolved, ".html") {
-				serveHTML(w, resolved, http.StatusOK)
+				serveHTML(w, resolved)
 				return
 			}
 			w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -143,12 +129,7 @@ func StaticFileServer(dir string, fallbackPath string) http.Handler {
 			return
 		}
 
-		// Unknown path → this instance's 404 page (404), or the SPA shell when no
-		// 404.html shipped.
-		if hasNotFound {
-			serveHTML(w, notFoundFS, http.StatusNotFound)
-			return
-		}
+		// Unknown path → SPA shell. Custom status pages are an Envoy concern.
 		if !hasIndex {
 			http.Error(w, "dashboard not built", http.StatusServiceUnavailable)
 			return

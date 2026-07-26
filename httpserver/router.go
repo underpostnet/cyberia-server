@@ -22,8 +22,9 @@ type RouterOptions struct {
 
 // NewRouter returns a chi.Router pre-wired with the transport middleware
 // stack (request-id, real-ip, structured logging, panic→problem+json,
-// timeout), CORS, and RFC 9457 404/405 handlers. Callers mount their
-// domain routes onto the returned router.
+// timeout), CORS, and a RFC 9457 405 handler. Callers mount their domain
+// routes onto the returned router. Unmatched-route presentation is owned by
+// Envoy, not by the application.
 func NewRouter(opts RouterOptions) chi.Router {
 	if opts.RequestTimeout <= 0 {
 		opts.RequestTimeout = 30 * time.Second
@@ -48,17 +49,11 @@ func NewRouter(opts RouterOptions) chi.Router {
 		MaxAge:           300,
 	}))
 
-	// Global 404 / 405 speak problem+json so clients see a consistent
-	// error shape regardless of which layer rejected them.
-	r.NotFound(notFoundHandler)
+	// Do not install an application-level 404 handler. Envoy is responsible for
+	// custom status pages and catches unmatched public routes at the edge.
 	r.MethodNotAllowed(methodNotAllowedHandler)
 
 	return r
-}
-
-// notFoundHandler emits the RFC 9457 envelope for unmatched routes.
-func notFoundHandler(w http.ResponseWriter, r *http.Request) {
-	problem.Write(w, r, problem.NotFound("no route matches "+r.Method+" "+r.URL.Path))
 }
 
 // methodNotAllowedHandler forwards chi's computed Allow header in an RFC
