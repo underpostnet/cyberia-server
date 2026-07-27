@@ -129,13 +129,7 @@ func StaticFileServer(dir string, fallbackPath string) http.Handler {
 			return
 		}
 
-		// Unknown path → SPA shell. Custom status pages are an Envoy concern.
-		if !hasIndex {
-			http.Error(w, "dashboard not built", http.StatusServiceUnavailable)
-			return
-		}
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Cache-Control", "no-store")
-		http.ServeFile(w, r, indexFS)
+		// Unknown path → 404. Custom status pages are an Envoy concern.
+		http.NotFound(w, r)
 	})
 }

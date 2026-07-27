@@ -87,7 +87,7 @@ func DefaultCORSOrigins() []string {
 func Load() (Config, error) {
 	c := Config{
 		ServerPort:           getEnv("SERVER_PORT", "8081"),
-		StaticDir:            getEnv("STATIC_DIR", "public"),
+		StaticDir:            getEnv("STATIC_DIR", "../../public"),
 		InstanceCode:         os.Getenv("INSTANCE_CODE"),
 		EngineGRPCAddress:    getEnv("ENGINE_GRPC_ADDRESS", "localhost:50051"),
 		EngineAPIBaseURL:     os.Getenv("ENGINE_API_BASE_URL"),
