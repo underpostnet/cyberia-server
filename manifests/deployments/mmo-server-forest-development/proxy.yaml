@@ -11,11 +11,7 @@ spec:
   routes:
     - conditions:
         - prefix: /FOREST
-      pathRewritePolicy:
-          replacePrefix:
-          - prefix: /FOREST
-            replacement: /
-            
+      
       enableWebsockets: true
       services:
         - name: dd-cyberia-mmo-server-forest-development-traffic-service

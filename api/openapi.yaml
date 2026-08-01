@@ -8,8 +8,9 @@ info:
     Cyberia Online MMORPG.
 
     This API is intended for **operations and observability**, not for
-    gameplay. Gameplay traffic flows exclusively over the `/ws` WebSocket
-    on the same host:port; the REST surface is read-only.
+    gameplay. Gameplay traffic flows exclusively over the WebSocket at
+    `{CYBERIA_BASE_PATH}/ws` (root defaults to `/ws`) on the same host:port;
+    the REST surface is read-only.
 
     All errors conform to **RFC 9457 — Problem Details for HTTP APIs**
     and use the media type `application/problem+json`.

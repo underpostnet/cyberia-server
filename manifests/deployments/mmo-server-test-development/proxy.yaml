@@ -11,11 +11,7 @@ spec:
   routes:
     - conditions:
         - prefix: /TEST
-      pathRewritePolicy:
-          replacePrefix:
-          - prefix: /TEST
-            replacement: /
-            
+      
       enableWebsockets: true
       services:
         - name: dd-cyberia-mmo-server-test-development-traffic-service
