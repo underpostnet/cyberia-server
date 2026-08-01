@@ -7,6 +7,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,11 @@ type Config struct {
 	// StaticDir is the static asset directory served at "/".
 	// STATIC_DIR, default "public".
 	StaticDir string
+
+	// BasePath is the public path this instance consumes. The complete HTTP,
+	// REST, static, and WebSocket router is mounted here. CYBERIA_BASE_PATH,
+	// default "/".
+	BasePath string
 
 	// InstanceCode selects the Engine instance to load. INSTANCE_CODE, required.
 	InstanceCode string
@@ -85,9 +91,11 @@ func DefaultCORSOrigins() []string {
 // returned Config is populated even on error (notably ContainerDeployID) so
 // callers can still report deploy status before exiting.
 func Load() (Config, error) {
+	basePath, err := normalizeBasePath(os.Getenv("CYBERIA_BASE_PATH"))
 	c := Config{
 		ServerPort:           getEnv("SERVER_PORT", "8081"),
 		StaticDir:            getEnv("STATIC_DIR", "../../public"),
+		BasePath:             basePath,
 		InstanceCode:         os.Getenv("INSTANCE_CODE"),
 		EngineGRPCAddress:    getEnv("ENGINE_GRPC_ADDRESS", "localhost:50051"),
 		EngineAPIBaseURL:     os.Getenv("ENGINE_API_BASE_URL"),
@@ -97,6 +105,9 @@ func Load() (Config, error) {
 		ServerAPIKey:         os.Getenv("CYBERIA_SERVER_API_KEY"),
 		HotReloadGRPCAddress: getEnv("CYBERIA_HOT_RELOAD_GRPC_ADDRESS", ":50052"),
 		CORSAllowedOrigins:   parseCSV(os.Getenv("CYBERIA_CORS_ALLOWED_ORIGINS"), defaultCORSOrigins),
+	}
+	if err != nil {
+		return c, err
 	}
 
 	if c.InstanceCode == "" {
@@ -110,6 +121,25 @@ func Load() (Config, error) {
 	c.GRPCReloadInterval = reload
 
 	return c, nil
+}
+
+var basePathPattern = regexp.MustCompile(`^/[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// normalizeBasePath accepts the same single-segment paths as multiInstance.
+// Empty and root select the ordinary root router; a trailing slash is ignored.
+func normalizeBasePath(raw string) (string, error) {
+	path := strings.TrimSpace(raw)
+	if path == "" || path == "/" {
+		return "/", nil
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	path = strings.TrimRight(path, "/")
+	if !basePathPattern.MatchString(path) {
+		return path, fmt.Errorf("invalid CYBERIA_BASE_PATH %q: expected / or one URL path segment", raw)
+	}
+	return path, nil
 }
 
 // getEnv returns the value of key, or def when key is unset or empty.
