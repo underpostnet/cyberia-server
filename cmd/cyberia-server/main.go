@@ -48,6 +48,22 @@ func runUnderpostStatus(containerID, status string) {
 	}
 }
 
+// mountAtBasePath preserves the public variant path all the way to the runtime.
+// chi strips the mount prefix before dispatching, so the application router can
+// keep canonical internal routes such as /ws and /api while directly consuming
+// public endpoints such as /FOREST/ws and /FOREST/api. The root mount on a
+// non-root instance is a rollout compatibility alias: a new pod can first serve
+// traffic from a legacy prefix-stripping proxy, then keep serving when that
+// rewrite is removed. The public router still selects this pod by its base path.
+func mountAtBasePath(root chi.Router, basePath string, handler http.Handler) {
+	if basePath == "/" {
+		root.Mount("/", handler)
+		return
+	}
+	root.Mount(basePath, handler)
+	root.Mount("/", handler)
+}
+
 func main() {
 	// Load .env from CWD (project root) if present. Does not override
 	// already-set env vars. Absence is fine — env vars may be set directly.
@@ -121,12 +137,12 @@ func main() {
 
 	go s.Run()
 
-	r := chi.NewRouter()
+	app := chi.NewRouter()
 
 	// Static dir is relative to the project root (cwd). Missing dir/index.html
 	// degrades to 503 for dashboard routes instead of blocking startup.
 	log.Printf("Serving static assets from %s", cfg.StaticDir)
-	r.Handle("/*", httpserver.StaticFileServer(cfg.StaticDir, "/index.html"))
+	app.Handle("/*", httpserver.StaticFileServer(cfg.StaticDir, "/index.html"))
 
 	// Override the RFC 9457 problem.type base URI when set; otherwise the
 	// package keeps its dev default.
@@ -136,21 +152,24 @@ func main() {
 
 	// Mount REST API under /api. Options drive CORS allow-list, instance
 	// labelling in metric responses, and request timeout.
-	api.Mount(r, api.RouterOptions{
+	api.Mount(app, api.RouterOptions{
 		GameServer:     s,
 		InstanceCode:   cfg.InstanceCode,
 		AllowedOrigins: cfg.CORSAllowedOrigins,
 		HotReload:      hotReload,
 	})
 	// Keep websocket endpoint
-	r.HandleFunc("/ws", s.HandleConnections)
+	app.HandleFunc("/ws", s.HandleConnections)
+
+	r := chi.NewRouter()
+	mountAtBasePath(r, cfg.BasePath, app)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.ServerPort,
 		Handler: r,
 	}
 
-	log.Printf("Server started on :%s", cfg.ServerPort)
+	log.Printf("Server started on :%s%s", cfg.ServerPort, cfg.BasePath)
 
 	// Bind the TCP port first so we can signal "running" before entering
 	// the accept loop. A failed bind immediately signals "error" and exits.
