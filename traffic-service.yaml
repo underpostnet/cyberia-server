@@ -1,0 +1,22 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dd-cyberia-mmo-server-production-traffic-service
+  namespace: default
+  labels:
+    underpost.net/traffic-service: "true"
+    underpost.net/deploy-id: dd-cyberia-mmo-server-production
+spec:
+  type: ClusterIP
+  selector:
+    app: dd-cyberia-mmo-server-production-blue
+  ports:
+    - name: 'tcp-8081'
+      protocol: TCP
+      port: 8081
+      targetPort: 8081
+    - name: 'udp-8081'
+      protocol: UDP
+      port: 8081
+      targetPort: 8081
