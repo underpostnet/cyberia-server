@@ -31,10 +31,10 @@ func unavailable(reason string) http.Handler {
 //   - Unmatched GET/HEAD paths fall back to fallbackPath (SPA). Envoy owns
 //     externally visible custom status responses and serves them before a
 //     request can reach this application.
-//   - HTML responses carry window.CYBERIA_BASE_PATH, injected from the
-//     CYBERIA_BASE_PATH env so the dashboard knows its sub-path.
+//   - HTML responses carry window.CYBERIA_BASE_PATH so the dashboard knows
+//     its public sub-path.
 //   - Asset files get nosniff + a short cache TTL; HTML is served no-store.
-func StaticFileServer(dir string, fallbackPath string) http.Handler {
+func StaticFileServer(dir string, fallbackPath string, basePath string) http.Handler {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		logx.Errorf("StaticFileServer: cannot resolve %q: %v", dir, err)
@@ -55,7 +55,7 @@ func StaticFileServer(dir string, fallbackPath string) http.Handler {
 
 	// This instance's URL sub-path ("/FOREST", "/TEST", "" default), pre-encoded
 	// once as a JS string literal for injection into HTML responses.
-	basePathJSON, _ := json.Marshal(os.Getenv("CYBERIA_BASE_PATH"))
+	basePathJSON, _ := json.Marshal(basePath)
 
 	fs := http.FileServer(http.Dir(absDir))
 
@@ -98,7 +98,10 @@ func StaticFileServer(dir string, fallbackPath string) http.Handler {
 			return
 		}
 
-		urlPath := r.URL.Path
+		// chi's Mount strips basePath for route matching but intentionally keeps
+		// r.URL.Path unchanged. Static file resolution must remove the public
+		// prefix explicitly; otherwise /TEST/ looks for <dir>/TEST and 404s.
+		urlPath := staticPathWithinBase(r.URL.Path, basePath)
 		if urlPath == "" || urlPath == "/" {
 			if !hasIndex {
 				http.Error(w, "dashboard not built", http.StatusServiceUnavailable)
@@ -125,11 +128,33 @@ func StaticFileServer(dir string, fallbackPath string) http.Handler {
 			}
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("Cache-Control", "public, max-age=300")
-			fs.ServeHTTP(w, r)
+			staticRequest := r.Clone(r.Context())
+			staticURL := *r.URL
+			staticURL.Path = urlPath
+			staticURL.RawPath = ""
+			staticRequest.URL = &staticURL
+			fs.ServeHTTP(w, staticRequest)
 			return
 		}
 
 		// Unknown path → 404. Custom status pages are an Envoy concern.
 		http.NotFound(w, r)
 	})
+}
+
+// staticPathWithinBase maps a public variant path onto the shared static
+// directory while retaining the root compatibility mount. Segment-bounded
+// matching ensures /TEST does not strip an unrelated /TESTING path.
+func staticPathWithinBase(urlPath string, basePath string) string {
+	basePath = strings.TrimSuffix(basePath, "/")
+	if basePath == "" || basePath == "/" {
+		return urlPath
+	}
+	if urlPath == basePath {
+		return "/"
+	}
+	if strings.HasPrefix(urlPath, basePath+"/") {
+		return strings.TrimPrefix(urlPath, basePath)
+	}
+	return urlPath
 }

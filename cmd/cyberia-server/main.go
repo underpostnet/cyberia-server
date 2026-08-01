@@ -142,7 +142,7 @@ func main() {
 	// Static dir is relative to the project root (cwd). Missing dir/index.html
 	// degrades to 503 for dashboard routes instead of blocking startup.
 	log.Printf("Serving static assets from %s", cfg.StaticDir)
-	app.Handle("/*", httpserver.StaticFileServer(cfg.StaticDir, "/index.html"))
+	app.Handle("/*", httpserver.StaticFileServer(cfg.StaticDir, "/index.html", cfg.BasePath))
 
 	// Override the RFC 9457 problem.type base URI when set; otherwise the
 	// package keeps its dev default.
