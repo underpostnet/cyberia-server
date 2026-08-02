@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"net"
 	"net/http"
@@ -65,6 +66,11 @@ func mountAtBasePath(root chi.Router, basePath string, handler http.Handler) {
 }
 
 func main() {
+	// serve-static gates the dashboard: httpserver's static file server only
+	// mounts when true, so a missing/broken dashboard build never blocks startup.
+	serveStatic := flag.Bool("serve-static", true, "serve the static dashboard via httpserver")
+	flag.Parse()
+
 	// Load .env from CWD (project root) if present. Does not override
 	// already-set env vars. Absence is fine — env vars may be set directly.
 	if err := godotenv.Load("../../.env"); err != nil {
@@ -141,8 +147,12 @@ func main() {
 
 	// Static dir is relative to the project root (cwd). Missing dir/index.html
 	// degrades to 503 for dashboard routes instead of blocking startup.
-	log.Printf("Serving static assets from %s", cfg.StaticDir)
-	app.Handle("/*", httpserver.StaticFileServer(cfg.StaticDir, "/index.html", cfg.BasePath))
+	if *serveStatic {
+		log.Printf("Serving static assets from %s", cfg.StaticDir)
+		app.Handle("/*", httpserver.StaticFileServer(cfg.StaticDir, "/index.html", cfg.BasePath))
+	} else {
+		log.Println("Static dashboard disabled (-serve-static=false)")
+	}
 
 	// Override the RFC 9457 problem.type base URI when set; otherwise the
 	// package keeps its dev default.

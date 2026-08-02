@@ -14,20 +14,13 @@ import (
 	"cyberia-server/logx"
 )
 
-// unavailable answers every request with 503 — used when dir itself can't be served.
-func unavailable(reason string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "static assets unavailable: "+reason, http.StatusServiceUnavailable)
-	})
-}
-
-// StaticFileServer serves static assets from dir.
+// StaticFileServer serves static assets from dir. Callers only mount this
+// when they intend the dashboard files to exist (see -serve-static); a
+// missing file at request time still 503s instead of panicking.
 //
 // Invariants:
 //
 //   - Resolves every request path under dir; rejects `../` traversal.
-//   - dir or its fallback file missing → logs a warning and serves 503 instead
-//     of the dashboard; other httpserver routes keep working.
 //   - Unmatched GET/HEAD paths fall back to fallbackPath (SPA). Envoy owns
 //     externally visible custom status responses and serves them before a
 //     request can reach this application.
@@ -35,23 +28,8 @@ func unavailable(reason string) http.Handler {
 //     its public sub-path.
 //   - Asset files get nosniff + a short cache TTL; HTML is served no-store.
 func StaticFileServer(dir string, fallbackPath string, basePath string) http.Handler {
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		logx.Errorf("StaticFileServer: cannot resolve %q: %v", dir, err)
-		return unavailable("bad static dir")
-	}
-	info, err := os.Stat(absDir)
-	if err != nil || !info.IsDir() {
-		logx.Errorf("StaticFileServer: %s is not a directory: %v", absDir, err)
-		return unavailable("static dir missing")
-	}
+	absDir, _ := filepath.Abs(dir)
 	indexFS := filepath.Join(absDir, filepath.FromSlash(fallbackPath))
-	hasIndex := true
-	if _, err := os.Stat(indexFS); err != nil {
-		logx.Errorf("StaticFileServer: fallback %s missing: %v — "+
-			"run `npm run cyberia:dashboard` to regenerate the dashboard.", indexFS, err)
-		hasIndex = false
-	}
 
 	// This instance's URL sub-path ("/FOREST", "/TEST", "" default), pre-encoded
 	// once as a JS string literal for injection into HTML responses.
@@ -64,6 +42,7 @@ func StaticFileServer(dir string, fallbackPath string, basePath string) http.Han
 	serveHTML := func(w http.ResponseWriter, path string) {
 		body, err := os.ReadFile(path)
 		if err != nil {
+			logx.Errorf("StaticFileServer: %s: %v", path, err)
 			http.Error(w, "static asset unavailable", http.StatusServiceUnavailable)
 			return
 		}
@@ -103,10 +82,6 @@ func StaticFileServer(dir string, fallbackPath string, basePath string) http.Han
 		// prefix explicitly; otherwise /TEST/ looks for <dir>/TEST and 404s.
 		urlPath := staticPathWithinBase(r.URL.Path, basePath)
 		if urlPath == "" || urlPath == "/" {
-			if !hasIndex {
-				http.Error(w, "dashboard not built", http.StatusServiceUnavailable)
-				return
-			}
 			serveHTML(w, indexFS)
 			return
 		}
