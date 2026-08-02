@@ -82,8 +82,6 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 		ThawPlayer(player, reason)
 	case InputKindChat:
 		s.handleChatInput(player, mapState, cmd)
-	case InputKindGetItemsIDs:
-		s.handleGetItemsIDsInput(player, cmd)
 	case InputKindDlgStart:
 		s.handleDlgStart(player, cmd)
 	case InputKindDlgComplete:

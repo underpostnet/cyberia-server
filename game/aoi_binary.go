@@ -7,9 +7,9 @@
 //
 // Wire format (little-endian).
 //
-// Header (v2 — used by 0x01 aoi_update and 0x03 full_aoi):
+// Header (v2 — used by 0x03 full_aoi):
 //
-//	[0]        u8   msgType  (0x01 = aoi_update, 0x02 = init_data, 0x03 = full_aoi)
+//	[0]        u8   msgType  (0x03 = full_aoi)
 //	[1..4]     u32  tick                 — simulation tick when the snapshot was produced
 //	[5..8]     u32  lastAckedSequence    — highest InputCommand.Sequence applied for the
 //	                                       receiving player; the client drops InputCommand
@@ -17,8 +17,8 @@
 //	                                       buffer.
 //	[9..10]    u16  entityCount (number of entity blocks that follow)
 //
-// 0x02 (init_data) and 0x04/0x05 (FCT) keep their pre-v2 layouts — they are
-// not part of the per-tick replication stream and have no tick semantics.
+// 0x04 (FCT) keeps its pre-v2 layout — it is not part of the per-tick
+// replication stream and has no tick semantics.
 //
 //	Per-entity block (variable length):
 //	  [0]       u8   flags
@@ -83,9 +83,8 @@ import (
 )
 
 const (
-	MsgTypeAOIUpdate byte = 0x01
-	MsgTypeInitData  byte = 0x02
-	MsgTypeFullAOI   byte = 0x03
+	// 0x01 (aoi_update) and 0x02 (init_data) are retired wire slots.
+	MsgTypeFullAOI byte = 0x03
 	// MsgTypeFCT — Floating Combat Text event (14 bytes, little-endian).
 	// Wire format:
 	//   [0]      u8   0x04
@@ -94,9 +93,8 @@ const (
 	//   [6..9]   f32  worldY
 	//   [10..13] u32  value (always positive; sign implied by type)
 	MsgTypeFCT byte = 0x04
-	// MsgTypeItemFCT — reserved item-quantity FCT wire slot. No longer emitted:
-	// item pickups surface in the loot grid, not as floating text.
-	MsgTypeItemFCT byte = 0x05
+	// 0x05 (item FCT) is a retired wire slot: item pickups surface in the
+	// loot grid, not as floating text.
 	// MsgTypeDropCollect — a scattered loot token was collected by a player.
 	// Drives the client parabolic pickup animation. See loot.go
 	// buildDropCollectMsg for the wire format.

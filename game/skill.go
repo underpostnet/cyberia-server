@@ -30,24 +30,3 @@ func (s *GameServer) HandlePlayerTapAction(player *PlayerState, mapState *MapSta
 func (s *GameServer) handleBotSkills(bot *BotState, mapState *MapState, target Point) {
 	s.dispatchSkillsForEntity(bot, mapState, target, true)
 }
-
-// GetAssociatedSkillItemIDs returns the unique list of logicEventIDs associated with a trigger item.
-func (s *GameServer) GetAssociatedSkillItemIDs(itemID string) []string {
-	associatedIDs := make(map[string]struct{})
-
-	if skillDefs, ok := s.skillConfig[itemID]; ok {
-		for _, skillDef := range skillDefs {
-			if skillDef.LogicEventID != "" {
-				associatedIDs[skillDef.LogicEventID] = struct{}{}
-			}
-		}
-	}
-
-	// Convert map keys to a slice.
-	result := make([]string, 0, len(associatedIDs))
-	for id := range associatedIDs {
-		result = append(result, id)
-	}
-
-	return result
-}

@@ -5,7 +5,7 @@
 // the correct tick, (b) acknowledge it back to the client for prediction
 // reconciliation, and (c) gate stale or replayed inputs.
 //
-// Wire layout (binary, uplink opcodes 0x10–0x16):
+// Wire layout (binary, uplink opcodes 0x10–0x1B):
 //
 //	[u8 kind][payload-by-kind][u32 clientTick][u32 sequence]
 //
@@ -32,8 +32,8 @@ const (
 	InputKindFreezeStart    InputKind = 0x13
 	InputKindFreezeEnd      InputKind = 0x14
 	InputKindChat           InputKind = 0x15
-	InputKindGetItemsIDs    InputKind = 0x16
-	InputKindDlgStart       InputKind = 0x17 // dialogue opened — freeze + bind context
+	// 0x16 retired (was GetItemsIDs).
+	InputKindDlgStart InputKind = 0x17 // dialogue opened — freeze + bind context
 	InputKindDlgComplete    InputKind = 0x18 // all lines read — advance talk/quest, unfreeze
 	InputKindDlgCancel      InputKind = 0x19 // dismissed early — unfreeze, no progress
 	InputKindQuestAbandon   InputKind = 0x1A // drop an active quest — moves it to failed
@@ -48,7 +48,7 @@ type InputCommand struct {
 	// Payload fields — only the ones relevant to Kind are populated.
 	TargetX    float64 // PlayerAction
 	TargetY    float64 // PlayerAction
-	ItemID     string  // ItemActivation, GetItemsIDs, Chat target
+	ItemID     string  // ItemActivation, Chat target
 	Active     bool    // ItemActivation
 	Reason     string  // FreezeStart, FreezeEnd
 	ChatText   string  // Chat

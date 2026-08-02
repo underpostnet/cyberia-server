@@ -8,7 +8,6 @@
 //   - Movement / skill dispatch for PLAYER_ACTION taps.
 //   - Inventory mutation for ITEM_ACTIVATION (with equipment-rule validation).
 //   - Chat relay.
-//   - Skill→item lookup response (get_items_ids).
 //
 // What does NOT live here
 //   - JSON parsing of any kind. Inputs arrive pre-decoded as typed
@@ -289,25 +288,3 @@ func (s *GameServer) handleChatInput(sender *PlayerState, mapState *MapState, cm
 	}
 }
 
-// handleGetItemsIDsInput answers a synchronous skill-item-id query. The
-// response goes back to the requesting player's WS write channel.
-func (s *GameServer) handleGetItemsIDsInput(player *PlayerState, cmd *InputCommand) {
-	if cmd.ItemID == "" || player.Client == nil {
-		return
-	}
-	associated := s.GetAssociatedSkillItemIDs(cmd.ItemID)
-	response, err := json.Marshal(map[string]interface{}{
-		"type": "skill_item_ids",
-		"payload": map[string]interface{}{
-			"requestedItemId":   cmd.ItemID,
-			"associatedItemIds": associated,
-		},
-	})
-	if err != nil {
-		return
-	}
-	select {
-	case player.Client.send <- response:
-	default:
-	}
-}

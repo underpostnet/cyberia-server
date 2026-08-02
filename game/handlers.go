@@ -16,7 +16,7 @@ import (
 )
 
 // OLMeta is the JSON shape sent to the client for each ObjectLayer.
-// Matches the client's parse_object_layer_json expectations.
+// Matches the client's populate_object_layer_from_json expectations.
 type OLMeta struct {
 	Sha256 string          `json:"sha256"`
 	Data   ObjectLayerData `json:"data"`
@@ -264,11 +264,7 @@ func (c *Client) readPump(server *GameServer) {
 			continue
 		}
 		server.recordWsRead(len(message))
-		if message[0] <= 0x1F {
-			c.handleBinaryUplink(message, server)
-		} else {
-			c.handleJSONUplink(message, server)
-		}
+		c.handleBinaryUplink(message, server)
 	}
 }
 
@@ -387,18 +383,6 @@ func (c *Client) handleBinaryUplink(message []byte, server *GameServer) {
 			ChatText:   text,
 		}
 		c.dispatchInputCommand(server, cmd)
-	case InputKindGetItemsIDs:
-		itemID, ok := r.str()
-		if !ok || itemID == "" {
-			return
-		}
-		cmd := InputCommand{
-			Kind:       kind,
-			ClientTick: readOptionalU32(r),
-			Sequence:   readOptionalU32(r),
-			ItemID:     itemID,
-		}
-		c.dispatchInputCommand(server, cmd)
 	case InputKindDlgStart, InputKindDlgCancel:
 		entityID, okE := r.str()
 		itemID, okI := r.str()
@@ -483,100 +467,6 @@ func (c *Client) dispatchInputCommand(server *GameServer, cmd InputCommand) {
 		}
 	}
 	server.mu.Unlock()
-}
-
-// handleJSONUplink is a thin JSON→InputCommand adapter for text-framed
-// uplink messages. Decodes the message into a typed InputCommand and
-// enqueues it via dispatchInputCommand. phaseInput is the authoritative
-// consumer; no synchronous dispatch occurs here.
-func (c *Client) handleJSONUplink(message []byte, server *GameServer) {
-	var msg map[string]interface{}
-	if err := json.Unmarshal(message, &msg); err != nil {
-		logx.Debugf("Error unmarshaling JSON uplink: %v", err)
-		return
-	}
-	typeStr, _ := msg["type"].(string)
-	payload, _ := msg["payload"].(map[string]interface{})
-	cmd := jsonUplinkToInputCommand(typeStr, payload)
-	if cmd.Kind != InputKindUnknown {
-		c.dispatchInputCommand(server, cmd)
-	}
-}
-
-// jsonUplinkToInputCommand translates a JSON uplink envelope into a
-// typed InputCommand. Recognises the type strings the server accepts
-// plus the dialogue_* aliases for FREEZE.
-func jsonUplinkToInputCommand(typeStr string, payload map[string]interface{}) InputCommand {
-	cmd := InputCommand{Kind: InputKindUnknown}
-	switch typeStr {
-	case "player_action":
-		x, _ := payload["targetX"].(float64)
-		y, _ := payload["targetY"].(float64)
-		cmd.Kind = InputKindPlayerAction
-		cmd.TargetX = x
-		cmd.TargetY = y
-	case "item_activation":
-		id, _ := payload["itemId"].(string)
-		active, _ := payload["active"].(bool)
-		cmd.Kind = InputKindItemActivation
-		cmd.ItemID = id
-		cmd.Active = active
-	case "freeze_start", "dialogue_start":
-		reason, _ := payload["reason"].(string)
-		if reason == "" {
-			reason = "dialogue"
-		}
-		cmd.Kind = InputKindFreezeStart
-		cmd.Reason = reason
-	case "freeze_end", "dialogue_end":
-		reason, _ := payload["reason"].(string)
-		if reason == "" {
-			reason = "dialogue"
-		}
-		cmd.Kind = InputKindFreezeEnd
-		cmd.Reason = reason
-	case "chat":
-		to, _ := payload["to"].(string)
-		text, _ := payload["text"].(string)
-		cmd.Kind = InputKindChat
-		cmd.ItemID = to
-		cmd.ChatText = text
-	case "get_items_ids":
-		id, _ := payload["itemId"].(string)
-		cmd.Kind = InputKindGetItemsIDs
-		cmd.ItemID = id
-	case "dlg_start":
-		entityID, _ := payload["entityId"].(string)
-		itemID, _ := payload["itemId"].(string)
-		cmd.Kind = InputKindDlgStart
-		cmd.EntityID = entityID
-		cmd.ItemID = itemID
-	case "dlg_complete":
-		entityID, _ := payload["entityId"].(string)
-		itemID, _ := payload["itemId"].(string)
-		dialogCode, _ := payload["dialogCode"].(string)
-		cmd.Kind = InputKindDlgComplete
-		cmd.EntityID = entityID
-		cmd.ItemID = itemID
-		cmd.DialogCode = dialogCode
-	case "dlg_cancel":
-		entityID, _ := payload["entityId"].(string)
-		itemID, _ := payload["itemId"].(string)
-		cmd.Kind = InputKindDlgCancel
-		cmd.EntityID = entityID
-		cmd.ItemID = itemID
-	case "quest_abandon":
-		questCode, _ := payload["questCode"].(string)
-		cmd.Kind = InputKindQuestAbandon
-		cmd.ItemID = questCode
-	case "quest_accept":
-		entityID, _ := payload["entityId"].(string)
-		questCode, _ := payload["questCode"].(string)
-		cmd.Kind = InputKindQuestAccept
-		cmd.EntityID = entityID
-		cmd.ItemID = questCode
-	}
-	return cmd
 }
 
 // writePump writes messages to the WebSocket connection.
