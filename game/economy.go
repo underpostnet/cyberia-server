@@ -166,6 +166,24 @@ func getOrCreateItemOL(layers *[]ObjectLayerState, itemID string) *ObjectLayerSt
 	return &(*layers)[len(*layers)-1]
 }
 
+// addPlayerItem credits qty of itemID to the player's inventory — the single
+// grant path for quest rewards, shop purchases, and any future item fountain.
+// Coins route through the flat balance so the display slot stays in sync;
+// everything else lands on its ObjectLayer stack, inactive. The counterpart of
+// removePlayerItem (quest.go).
+func (s *GameServer) addPlayerItem(player *PlayerState, itemID string, qty int) {
+	if itemID == "" || qty <= 0 {
+		return
+	}
+	if itemID == s.coinItemID {
+		s.addCoins(player, qty)
+	} else {
+		getOrCreateItemOL(&player.ObjectLayers, itemID).Quantity += qty
+	}
+	// Either branch can append a slot, so the cached stat block is stale.
+	s.InvalidateStats(player)
+}
+
 // ── Fountain helpers ──────────────────────────────────────────────────────
 
 // FountainInitPlayer credits the player's starting wallet on first connect.

@@ -650,11 +650,9 @@ func (s *GameServer) removePlayerItem(player *PlayerState, itemID string, qty in
 		return
 	}
 	if itemID == s.coinItemID {
-		if int(player.Coins) <= qty {
-			player.Coins = 0
-		} else {
-			player.Coins -= uint32(qty)
-		}
+		// Through the economy helper so the display-only coin ObjectLayer slot
+		// stays equal to the flat balance (economy.go invariant).
+		s.addCoins(player, -qty)
 		return
 	}
 	remaining := qty
@@ -824,30 +822,8 @@ func (s *GameServer) deliverQuestRewards(player *PlayerState, code string) {
 		return
 	}
 	for _, r := range def.Rewards {
-		if r.ItemID == "" || r.Quantity <= 0 {
-			continue
-		}
-		if r.ItemID == s.coinItemID {
-			s.addCoins(player, r.Quantity)
-			continue
-		}
-		found := false
-		for i := range player.ObjectLayers {
-			if player.ObjectLayers[i].ItemID == r.ItemID {
-				player.ObjectLayers[i].Quantity += r.Quantity
-				found = true
-				break
-			}
-		}
-		if !found {
-			player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{
-				ItemID:   r.ItemID,
-				Active:   false,
-				Quantity: r.Quantity,
-			})
-		}
+		s.addPlayerItem(player, r.ItemID, r.Quantity)
 	}
-	s.InvalidateStats(player)
 }
 
 // questSnapshot projects a progress record into the client-facing entry.
