@@ -33,11 +33,12 @@ const (
 	InputKindFreezeEnd      InputKind = 0x14
 	InputKindChat           InputKind = 0x15
 	// 0x16 retired (was GetItemsIDs).
-	InputKindDlgStart InputKind = 0x17 // dialogue opened — freeze + bind context
-	InputKindDlgComplete    InputKind = 0x18 // all lines read — advance talk/quest, unfreeze
-	InputKindDlgCancel      InputKind = 0x19 // dismissed early — unfreeze, no progress
-	InputKindQuestAbandon   InputKind = 0x1A // drop an active quest — moves it to failed
-	InputKindQuestAccept    InputKind = 0x1B // explicitly accept the NPC's offered quest
+	InputKindDlgStart     InputKind = 0x17 // dialogue opened — freeze + bind context
+	InputKindDlgComplete  InputKind = 0x18 // all lines read — advance talk/quest, unfreeze
+	InputKindDlgCancel    InputKind = 0x19 // dismissed early — unfreeze, no progress
+	InputKindQuestAbandon InputKind = 0x1A // drop an active quest — moves it to failed
+	InputKindQuestAccept  InputKind = 0x1B // explicitly accept the NPC's offered quest
+	InputKindShopBuy      InputKind = 0x1C // buy one catalog item from a vendor action
 )
 
 // InputCommand is the unit of client→server input.
@@ -48,12 +49,13 @@ type InputCommand struct {
 	// Payload fields — only the ones relevant to Kind are populated.
 	TargetX    float64 // PlayerAction
 	TargetY    float64 // PlayerAction
-	ItemID     string  // ItemActivation, Chat target
+	ItemID     string  // ItemActivation, Chat target, ShopBuy
 	Active     bool    // ItemActivation
 	Reason     string  // FreezeStart, FreezeEnd
 	ChatText   string  // Chat
-	EntityID   string  // DlgStart, DlgComplete, DlgCancel — the NPC entity
+	EntityID   string  // DlgStart, DlgComplete, DlgCancel, ShopBuy — the NPC entity
 	DialogCode string  // DlgComplete — the dialogue group the player just read
+	Quantity   int     // ShopBuy — units requested (clamped server-side)
 }
 
 // EnqueueInput pushes a command onto the player's InputQueue. Called from

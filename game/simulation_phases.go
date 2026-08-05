@@ -92,6 +92,8 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 		s.handleQuestAbandon(player, cmd)
 	case InputKindQuestAccept:
 		s.handleQuestAccept(player, cmd)
+	case InputKindShopBuy:
+		s.handleShopBuy(player, cmd)
 	case InputKindHandshake, InputKindUnknown:
 		// no-op
 	}

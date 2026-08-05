@@ -439,6 +439,22 @@ func (c *Client) handleBinaryUplink(message []byte, server *GameServer) {
 			ItemID:     questCode,
 		}
 		c.dispatchInputCommand(server, cmd)
+	case InputKindShopBuy:
+		entityID, okE := r.str()
+		itemID, okI := r.str()
+		quantity, okQ := r.u8()
+		if !okE || !okI || !okQ || entityID == "" || itemID == "" {
+			return
+		}
+		cmd := InputCommand{
+			Kind:       kind,
+			ClientTick: readOptionalU32(r),
+			Sequence:   readOptionalU32(r),
+			EntityID:   entityID,
+			ItemID:     itemID,
+			Quantity:   int(quantity),
+		}
+		c.dispatchInputCommand(server, cmd)
 	default:
 		logx.Debugf("Unknown binary uplink type: 0x%02x from player %s", message[0], c.playerID)
 	}

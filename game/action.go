@@ -34,6 +34,13 @@ type ActionQuestDialogue struct {
 	DialogCode string `json:"dialogCode"`
 }
 
+// ActionShopItem is one vendor catalog row: an item on sale and what it costs.
+type ActionShopItem struct {
+	ItemID      string `json:"itemId"`
+	PriceItemID string `json:"priceItemId"`
+	PriceQty    int    `json:"priceQty"`
+}
+
 type CyberiaAction struct {
 	Code               string                `json:"code"`
 	Label              string                `json:"label"`
@@ -42,6 +49,7 @@ type CyberiaAction struct {
 	SourceCellY        int                   `json:"sourceCellY"`
 	DialogCode         string                `json:"dialogCode"`
 	QuestDialogueCodes []ActionQuestDialogue `json:"questDialogueCodes"`
+	ShopItems          []ActionShopItem      `json:"shopItems"`
 }
 
 // actionCell returns the cell key for an action's source cell.
@@ -61,6 +69,11 @@ func protoToAction(a *pb.CyberiaActionMessage) *CyberiaAction {
 	for _, qd := range a.GetQuestDialogueCodes() {
 		ca.QuestDialogueCodes = append(ca.QuestDialogueCodes, ActionQuestDialogue{
 			QuestCode: qd.GetQuestCode(), DialogCode: qd.GetDialogCode(),
+		})
+	}
+	for _, si := range a.GetShopItems() {
+		ca.ShopItems = append(ca.ShopItems, ActionShopItem{
+			ItemID: si.GetItemId(), PriceItemID: si.GetPriceItemId(), PriceQty: int(si.GetPriceQty()),
 		})
 	}
 	return ca
@@ -178,16 +191,17 @@ func (s *GameServer) botActiveSkinOf(bot *BotState) string {
 // botInteractionFlags builds the per-player interaction capability bitmask.
 // Both bits mean "something actionable for this player right now" — they drive
 // the overhead attention icons, so neither may light for mere presence of
-// interactions: the action bit only when a pending action-talk-quest can be
-// advanced here (`hasPendingActionTalk`, from pendingActionTalkDialog — NOT
-// merely a bound action), the quest bit only for an actionable quest
+// interactions: the action bit when a pending action-talk-quest can be advanced
+// here (`hasPendingActionTalk`, from pendingActionTalkDialog — NOT merely a
+// bound action) or the entity is a live vendor (`hasShop`, a capability any
+// player can use on sight), the quest bit only for an actionable quest
 // (`hasActionableQuest`, from botHasActionableQuest — acceptable or advanceable,
 // never completed feedback). The full quest list still travels separately in
 // the bot block (botQuestCodes), so the interact modal keeps its Quest tab and
 // completed feedback without any icon.
-func (s *GameServer) botInteractionFlags(hasActionableQuest, hasPendingActionTalk bool) uint8 {
+func (s *GameServer) botInteractionFlags(hasActionableQuest, hasPendingActionTalk, hasShop bool) uint8 {
 	var flags uint8
-	if hasPendingActionTalk {
+	if hasPendingActionTalk || hasShop {
 		flags |= InteractionFlagAction
 	}
 	if hasActionableQuest {
@@ -204,8 +218,8 @@ func (s *GameServer) botInteractionFlags(hasActionableQuest, hasPendingActionTal
 // own entry, so the client can surface one quest-talk button per objective.
 //
 // The parallel shape lets the client label each button from the quest metadata
-// it already fetches by code. Only questDialogueCodes is implemented;
-// shop/craft/storage are reference-only.
+// it already fetches by code. craft/storage are reference-only; the shop
+// capability lives in shop.go.
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) pendingActionTalkDialogs(player *PlayerState, bot *BotState, questCodes []string) []string {
@@ -230,6 +244,26 @@ func (s *GameServer) pendingActionTalkDialogs(player *PlayerState, bot *BotState
 		dialogs[i] = questTalkDialogCode(action, code)
 	}
 	return dialogs
+}
+
+// holdProviderFreeze keeps a player protected for the rest of an interaction
+// with an action-bound entity. A dialogue is only one step of a provider
+// session: the interact modal stays open afterwards with its shop and quest
+// tabs live, so lifting the freeze on dlg_complete/dlg_cancel would leave the
+// player killable mid-session. Re-bridging to "interact" makes the protection
+// the server's own guarantee instead of trusting the client to re-assert it.
+// The client releases it with freeze_end "interact" when the modal closes, and
+// its freeze watchdog covers a client that never does.
+//
+// Returns true when the freeze was held rather than released.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) holdProviderFreeze(player *PlayerState, entityID string) bool {
+	if s.actionCache[entityID] == nil {
+		return false
+	}
+	FreezePlayer(player, "interact")
+	return true
 }
 
 // ── Dialogue handlers (phaseInput) ──────────────────────────────────────────
@@ -257,9 +291,12 @@ func (s *GameServer) handleDlgCancel(player *PlayerState, cmd *InputCommand) {
 	if player.ActiveDialogueEntityID == "" || player.ActiveDialogueEntityID != cmd.EntityID {
 		return
 	}
+	entityID := player.ActiveDialogueEntityID
 	player.ActiveDialogueEntityID = ""
 	player.ActiveDialogueSkin = ""
-	ThawPlayer(player, "dialogue")
+	if !s.holdProviderFreeze(player, entityID) {
+		ThawPlayer(player, "dialogue")
+	}
 }
 
 // handleDlgComplete is the authoritative dialogue-completion path. It validates
@@ -284,7 +321,9 @@ func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {
 	talkedSkin := player.ActiveDialogueSkin
 	player.ActiveDialogueEntityID = ""
 	player.ActiveDialogueSkin = ""
-	ThawPlayer(player, "dialogue")
+	if !s.holdProviderFreeze(player, entityID) {
+		ThawPlayer(player, "dialogue")
+	}
 
 	// dlg_complete NEVER grants a quest — acceptance is explicit (quest_accept,
 	// the Take Quest button). Reading the dialogue only advances `talk` objectives

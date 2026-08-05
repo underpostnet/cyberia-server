@@ -691,7 +691,8 @@ func (s *GameServer) EncodeBinaryAOI(player *PlayerState, mapState *MapState) []
 				break
 			}
 		}
-		interactionFlags := s.botInteractionFlags(s.botHasActionableQuest(player, b), hasPendingTalk)
+		interactionFlags := s.botInteractionFlags(s.botHasActionableQuest(player, b), hasPendingTalk,
+			s.botHasShop(b))
 		// Loot eligibility is personal to the viewing player: only damage
 		// contributors may collect a drop token, and the client renders the
 		// token's particles gold (eligible) or gray (another player's loot).
