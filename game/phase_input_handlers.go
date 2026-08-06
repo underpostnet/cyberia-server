@@ -20,7 +20,6 @@
 package game
 
 import (
-	"encoding/json"
 	"math"
 	"time"
 
@@ -267,24 +266,12 @@ func (s *GameServer) handleChatInput(sender *PlayerState, mapState *MapState, cm
 	if len(text) > 256 {
 		text = text[:256]
 	}
-	relay, err := json.Marshal(map[string]interface{}{
-		"type": "chat",
-		"payload": map[string]interface{}{
-			"from": sender.ID,
-			"text": text,
-		},
-	})
-	if err != nil {
-		return
-	}
 	target, ok := mapState.players[toID]
-	if !ok || target.Client == nil {
+	if !ok {
 		return
 	}
-	select {
-	case target.Client.send <- relay:
-	default:
-		// Receiver channel full — drop. Chat is not durable.
-	}
+	sendMessage(target, "chat", map[string]interface{}{
+		"from": sender.ID,
+		"text": text,
+	})
 }
-

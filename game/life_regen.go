@@ -29,7 +29,7 @@ func (s *GameServer) handleProbabilisticRegen(entity interface{}, mapState *MapS
 			}
 			// FCT: the same green "+N" for every AOI viewer.
 			if regenInt := int(regenAmount + 0.5); regenInt > 0 {
-				broadcastFCT(mapState, FCTTypeRegen, e.Pos.X, e.Pos.Y, regenInt)
+				broadcastFCT(mapState, FCTRegen, e.Pos.X, e.Pos.Y, regenInt)
 			}
 		}
 	case *BotState:
@@ -44,7 +44,7 @@ func (s *GameServer) handleProbabilisticRegen(entity interface{}, mapState *MapS
 			// viewer, so bot regeneration is visible feedback rather than a
 			// silently refilling HP bar.
 			if regenInt := int(regenAmount + 0.5); regenInt > 0 {
-				broadcastFCT(mapState, FCTTypeRegen, e.Pos.X, e.Pos.Y, regenInt)
+				broadcastFCT(mapState, FCTRegen, e.Pos.X, e.Pos.Y, regenInt)
 			}
 		}
 	}

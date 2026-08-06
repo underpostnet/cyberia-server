@@ -8,7 +8,7 @@
 //
 // Progress is computed, never stored as done-flags (mirrors CyberiaQuestProgress).
 // The client never declares quest codes or progress — the simulation is the
-// authority; it sends snapshots (dlg_ack) the Quest Journal store consumes.
+// authority; it sends snapshots (dialog_ack) the Quest Journal store consumes.
 //
 // Caller MUST hold s.mu for every mutation helper here (they run inside
 // phaseInput). Binding runs at world (re)build time, also under s.mu.
@@ -95,7 +95,7 @@ type QuestObjectiveProgress struct {
 }
 
 // QuestSnapshotEntry is the client-facing projection used by both init_data
-// and dlg_ack.  It carries ONLY authoritative runtime data that the
+// and dialog_ack.  It carries ONLY authoritative runtime data that the
 // simulation owns: code, status, and progress counters.  All metadata
 // (title, description, steps, rewards) is fetched by the C client from
 // the engine REST endpoint /api/cyberia-quest/:code — the simulation
@@ -861,28 +861,15 @@ func (s *GameServer) buildQuestSnapshot(player *PlayerState) []QuestSnapshotEntr
 // sendDlgAck pushes the notify-only dialogue acknowledgement to the player.
 // affected carries any quest entries the client should upsert into its store.
 func (s *GameServer) sendDlgAck(player *PlayerState, questGranted string, objectivesDone bool, affected []QuestSnapshotEntry) {
-	if player.Client == nil {
-		return
-	}
-	msg, err := json.Marshal(map[string]interface{}{
-		"type": "dlg_ack",
-		"payload": map[string]interface{}{
-			"questGranted":   questGranted,
-			"objectivesDone": objectivesDone,
-			"quests":         affected,
-		},
+	sendMessage(player, "dialog_ack", map[string]interface{}{
+		"questGranted":   questGranted,
+		"objectivesDone": objectivesDone,
+		"quests":         affected,
 	})
-	if err != nil {
-		return
-	}
-	select {
-	case player.Client.send <- msg:
-	default:
-	}
 }
 
 // sendQuestUpdate pushes a live quest-progress update outside the dialogue flow
-// (kill / collect advancement). It reuses the dlg_ack envelope the client
+// (kill / collect advancement). It reuses the dialog_ack envelope the client
 // already consumes: questGranted is empty and objectivesDone marks that real
 // progress landed, so the journal and notification paths fire identically.
 //

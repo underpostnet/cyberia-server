@@ -1,18 +1,17 @@
 package game
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"log"
-	"math"
 	"math/rand"
 	"net/http"
 	"time"
 
 	"cyberia-server/logx"
+	"cyberia-server/serial"
+	"cyberia-server/socket"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 )
 
 // OLMeta is the JSON shape sent to the client for each ObjectLayer.
@@ -59,12 +58,7 @@ func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
 
 // HandleConnections handles WebSocket connections.
 func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
-	upgrader := websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		CheckOrigin:     func(r *http.Request) bool { return true },
-	}
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := socket.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("Upgrade error:", err)
 		return
@@ -152,9 +146,13 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		LifeRegen:     lifeRegen,
 	}
 	client := &Client{
-		conn:        conn,
-		playerID:    playerID,
-		send:        make(chan []byte, 256),
+		playerID: playerID,
+		sock: socket.New(conn, socket.Metrics{
+			Read:       s.recordWsRead,
+			Write:      s.recordWsWrite,
+			ReadError:  s.recordWsReadError,
+			WriteError: s.recordWsWriteError,
+		}),
 		lastAction:  time.Now(),
 		playerState: playerState,
 	}
@@ -193,26 +191,15 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		DeadItemIds:    s.deadItemIDList(),
 		Quests:         s.buildQuestSnapshot(playerState),
 	}
-	initMsg, _ := json.Marshal(map[string]interface{}{"type": "init_data", "payload": initPayload})
-	select {
-	case client.send <- initMsg:
-	default:
-		logx.Debugf("Client %s init channel full.", client.playerID)
-	}
+	sendMessage(playerState, "init_data", initPayload)
 
 	// Send metadata message with ObjectLayer data for client-side caching.
-	metaPayload := map[string]interface{}{
+	sendMessage(playerState, "metadata", map[string]interface{}{
 		"objectLayers":   s.buildOLMetadataMap(),
 		"apiBaseUrl":     s.enginePublicURL,
 		"instanceCode":   s.instanceCode,
 		"equipmentRules": s.equipmentRules,
-	}
-	metaMsg, _ := json.Marshal(map[string]interface{}{"type": "metadata", "payload": metaPayload})
-	select {
-	case client.send <- metaMsg:
-	default:
-		logx.Debugf("Client %s metadata channel full.", client.playerID)
-	}
+	})
 
 	s.mu.Unlock()
 
@@ -224,17 +211,29 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		s.recordWsConnect()
 	case <-time.After(5 * time.Second):
 		log.Printf("[HandleConnections] timeout waiting to register player=%s — listenForClients may be dead", playerID)
-		conn.Close()
+		client.sock.Close()
 		return
 	}
-	go client.writePump(s)
 	go client.readPump(s)
 }
 
-// readPump handles incoming messages from the client.
-// Inbound message size cap is 8 KiB — large enough for any current
-// InputCommand (handshake, chat, item activation, player action) with
-// headroom, small enough to bound per-client memory.
+// sendMessage packs a message and queues it for the player. The send never
+// blocks: a full queue drops the message.
+func sendMessage(player *PlayerState, msgType string, payload any) {
+	if player == nil || player.Client == nil {
+		return
+	}
+	pack, err := serial.Pack(msgType, payload)
+	if err != nil {
+		log.Printf("[sendMessage] pack %q failed: %v", msgType, err)
+		return
+	}
+	if !player.Client.sock.Send(pack) {
+		logx.Debugf("Client %s queue full — dropped %q.", player.ID, msgType)
+	}
+}
+
+// readPump runs the client read loop until the connection fails.
 func (c *Client) readPump(server *GameServer) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -243,233 +242,131 @@ func (c *Client) readPump(server *GameServer) {
 		logx.Debugf("[readPump] closing player=%s", c.playerID)
 		server.recordWsDisconnect()
 		server.unregister <- c
-		c.conn.Close()
+		c.sock.Close()
 	}()
-	c.conn.SetReadLimit(8 * 1024)
-	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-		return nil
-	})
-	for {
-		_, message, err := c.conn.ReadMessage()
-		if err != nil {
-			server.recordWsReadError()
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				logx.Debugf("[readPump] player=%s read error: %v", c.playerID, err)
-			}
-			break
-		}
-		if len(message) == 0 {
-			continue
-		}
-		server.recordWsRead(len(message))
-		c.handleBinaryUplink(message, server)
-	}
+	c.sock.Receive(func(pack []byte) { c.receiveMessage(pack, server) })
 }
 
-// uplinkBuf is a little-endian binary reader for client→server uplink frames.
-type uplinkBuf struct {
-	data []byte
-	pos  int
+// inputKinds maps a wire message type to the internal input kind. The kind
+// enum stays internal; only this table knows the wire words.
+var inputKinds = map[string]InputKind{
+	"handshake":       InputKindHandshake,
+	"player_action":   InputKindPlayerAction,
+	"item_active":     InputKindItemActivation,
+	"freeze_start":    InputKindFreezeStart,
+	"freeze_end":      InputKindFreezeEnd,
+	"chat":            InputKindChat,
+	"dialog_start":    InputKindDlgStart,
+	"dialog_complete": InputKindDlgComplete,
+	"dialog_cancel":   InputKindDlgCancel,
+	"quest_abandon":   InputKindQuestAbandon,
+	"quest_accept":    InputKindQuestAccept,
+	"shop_buy":        InputKindShopBuy,
 }
 
-func (r *uplinkBuf) u8() (byte, bool) {
-	if r.pos >= len(r.data) {
-		return 0, false
-	}
-	v := r.data[r.pos]
-	r.pos++
-	return v, true
+// inputPayload holds every client → server payload field. Each message type
+// fills the subset it needs; the rest stay zero.
+type inputPayload struct {
+	Tick uint32 `json:"tick"`
+	Seq  uint32 `json:"seq"`
+
+	X float64 `json:"x"` // player_action
+	Y float64 `json:"y"`
+
+	ItemID string `json:"itemId"` // item_active, shop_buy
+	Active bool   `json:"active"` // item_active
+
+	Reason string `json:"reason"` // freeze_start, freeze_end
+
+	ToID string `json:"toId"` // chat
+	Text string `json:"text"`
+
+	EntityID   string `json:"entityId"`   // dialog_*, quest_accept, shop_buy
+	DialogCode string `json:"dialogCode"` // dialog_complete
+	QuestCode  string `json:"questCode"`  // quest_*
+
+	Quantity int `json:"quantity"` // shop_buy
 }
 
-func (r *uplinkBuf) f32() (float32, bool) {
-	if r.pos+4 > len(r.data) {
-		return 0, false
-	}
-	bits := binary.LittleEndian.Uint32(r.data[r.pos:])
-	r.pos += 4
-	return math.Float32frombits(bits), true
-}
-
-func (r *uplinkBuf) str() (string, bool) {
-	ln, ok := r.u8()
-	if !ok {
-		return "", false
-	}
-	end := r.pos + int(ln)
-	if end > len(r.data) {
-		return "", false
-	}
-	s := string(r.data[r.pos:end])
-	r.pos = end
-	return s, true
-}
-
-// handleBinaryUplink decodes a binary-framed uplink message into an
-// InputCommand and enqueues it on the player's per-tick input queue.
-// phaseInput drains and applies it exactly once per tick.
-//
-// Frame layout:
-//
-//	[u8 kind][payload-by-kind]
-//	[u8 kind][u32 clientTick][u32 sequence][payload-by-kind]
-//
-// The optional clientTick+sequence suffix is read with readOptionalU32;
-// older clients that omit the suffix produce zero values, which the
-// simulation handles gracefully.
-func (c *Client) handleBinaryUplink(message []byte, server *GameServer) {
-	if len(message) < 1 {
+// receiveMessage is the single client → server dispatch point. It unpacks one
+// message into an InputCommand and enqueues it on the player's per-tick input
+// queue. phaseInput drains and applies it exactly once per tick.
+func (c *Client) receiveMessage(pack []byte, server *GameServer) {
+	msg, err := serial.Unpack(pack)
+	if err != nil {
+		logx.Debugf("Bad message from player %s: %v", c.playerID, err)
 		return
 	}
-	r := &uplinkBuf{data: message[1:]}
-	kind := InputKind(message[0])
+	kind, known := inputKinds[msg.Type]
+	if !known {
+		logx.Debugf("Unknown message type %q from player %s", msg.Type, c.playerID)
+		return
+	}
+	if kind == InputKindHandshake {
+		return // already authenticated upstream; nothing to do
+	}
 
+	var p inputPayload
+	if err := json.Unmarshal(msg.Payload, &p); err != nil {
+		logx.Debugf("Bad %q payload from player %s: %v", msg.Type, c.playerID, err)
+		return
+	}
+
+	cmd := InputCommand{Kind: kind, ClientTick: p.Tick, Sequence: p.Seq}
 	switch kind {
-	case InputKindHandshake:
-		// Already authenticated upstream; nothing to do.
-		return
 	case InputKindPlayerAction:
-		x, okX := r.f32()
-		y, okY := r.f32()
-		if !okX || !okY {
-			return
-		}
-		cmd := InputCommand{
-			Kind:       kind,
-			ClientTick: readOptionalU32(r),
-			Sequence:   readOptionalU32(r),
-			TargetX:    float64(x),
-			TargetY:    float64(y),
-		}
-		c.dispatchInputCommand(server, cmd)
+		cmd.TargetX = p.X
+		cmd.TargetY = p.Y
 	case InputKindItemActivation:
-		itemID, okID := r.str()
-		activeByte, okA := r.u8()
-		if !okID || !okA {
+		if p.ItemID == "" {
 			return
 		}
-		cmd := InputCommand{
-			Kind:       kind,
-			ClientTick: readOptionalU32(r),
-			Sequence:   readOptionalU32(r),
-			ItemID:     itemID,
-			Active:     activeByte != 0,
-		}
-		c.dispatchInputCommand(server, cmd)
+		cmd.ItemID = p.ItemID
+		cmd.Active = p.Active
 	case InputKindFreezeStart, InputKindFreezeEnd:
-		reason, _ := r.str()
-		if reason == "" {
-			reason = "freeze"
+		cmd.Reason = p.Reason
+		if cmd.Reason == "" {
+			cmd.Reason = "freeze"
 		}
-		cmd := InputCommand{
-			Kind:       kind,
-			ClientTick: readOptionalU32(r),
-			Sequence:   readOptionalU32(r),
-			Reason:     reason,
-		}
-		c.dispatchInputCommand(server, cmd)
 	case InputKindChat:
-		toID, okTo := r.str()
-		text, okText := r.str()
-		if !okTo || !okText || toID == "" || text == "" {
+		if p.ToID == "" || p.Text == "" {
 			return
 		}
-		cmd := InputCommand{
-			Kind:       kind,
-			ClientTick: readOptionalU32(r),
-			Sequence:   readOptionalU32(r),
-			ItemID:     toID, // chat target id
-			ChatText:   text,
-		}
-		c.dispatchInputCommand(server, cmd)
+		cmd.ItemID = p.ToID // chat target id
+		cmd.ChatText = p.Text
 	case InputKindDlgStart, InputKindDlgCancel:
-		entityID, okE := r.str()
-		itemID, okI := r.str()
-		if !okE || !okI || entityID == "" {
+		if p.EntityID == "" {
 			return
 		}
-		cmd := InputCommand{
-			Kind:       kind,
-			ClientTick: readOptionalU32(r),
-			Sequence:   readOptionalU32(r),
-			EntityID:   entityID,
-			ItemID:     itemID,
-		}
-		c.dispatchInputCommand(server, cmd)
+		cmd.EntityID = p.EntityID
+		cmd.ItemID = p.ItemID
 	case InputKindDlgComplete:
-		entityID, okE := r.str()
-		itemID, okI := r.str()
-		dialogCode, okD := r.str()
-		if !okE || !okI || !okD || entityID == "" {
+		if p.EntityID == "" {
 			return
 		}
-		cmd := InputCommand{
-			Kind:       kind,
-			ClientTick: readOptionalU32(r),
-			Sequence:   readOptionalU32(r),
-			EntityID:   entityID,
-			ItemID:     itemID,
-			DialogCode: dialogCode,
-		}
-		c.dispatchInputCommand(server, cmd)
+		cmd.EntityID = p.EntityID
+		cmd.ItemID = p.ItemID
+		cmd.DialogCode = p.DialogCode
 	case InputKindQuestAbandon:
-		questCode, ok := r.str()
-		if !ok || questCode == "" {
+		if p.QuestCode == "" {
 			return
 		}
-		cmd := InputCommand{
-			Kind:       kind,
-			ClientTick: readOptionalU32(r),
-			Sequence:   readOptionalU32(r),
-			ItemID:     questCode,
-		}
-		c.dispatchInputCommand(server, cmd)
+		cmd.ItemID = p.QuestCode
 	case InputKindQuestAccept:
-		entityID, okE := r.str()
-		questCode, okQ := r.str()
-		if !okE || !okQ || entityID == "" {
+		if p.EntityID == "" || p.QuestCode == "" {
 			return
 		}
-		cmd := InputCommand{
-			Kind:       kind,
-			ClientTick: readOptionalU32(r),
-			Sequence:   readOptionalU32(r),
-			EntityID:   entityID,
-			ItemID:     questCode,
-		}
-		c.dispatchInputCommand(server, cmd)
+		cmd.EntityID = p.EntityID
+		cmd.ItemID = p.QuestCode
 	case InputKindShopBuy:
-		entityID, okE := r.str()
-		itemID, okI := r.str()
-		quantity, okQ := r.u8()
-		if !okE || !okI || !okQ || entityID == "" || itemID == "" {
+		if p.EntityID == "" || p.ItemID == "" {
 			return
 		}
-		cmd := InputCommand{
-			Kind:       kind,
-			ClientTick: readOptionalU32(r),
-			Sequence:   readOptionalU32(r),
-			EntityID:   entityID,
-			ItemID:     itemID,
-			Quantity:   int(quantity),
-		}
-		c.dispatchInputCommand(server, cmd)
-	default:
-		logx.Debugf("Unknown binary uplink type: 0x%02x from player %s", message[0], c.playerID)
+		cmd.EntityID = p.EntityID
+		cmd.ItemID = p.ItemID
+		cmd.Quantity = p.Quantity
 	}
-}
-
-// readOptionalU32 reads a u32 at the current position, returning 0 if fewer
-// than 4 bytes remain. Used for the optional clientTick/sequence suffix
-// that older clients don't emit.
-func readOptionalU32(r *uplinkBuf) uint32 {
-	if r.pos+4 > len(r.data) {
-		return 0
-	}
-	v := uint32(r.data[r.pos]) | uint32(r.data[r.pos+1])<<8 | uint32(r.data[r.pos+2])<<16 | uint32(r.data[r.pos+3])<<24
-	r.pos += 4
-	return v
+	c.dispatchInputCommand(server, cmd)
 }
 
 // dispatchInputCommand enqueues a typed InputCommand on the player's
@@ -483,58 +380,4 @@ func (c *Client) dispatchInputCommand(server *GameServer, cmd InputCommand) {
 		}
 	}
 	server.mu.Unlock()
-}
-
-// writePump writes messages to the WebSocket connection.
-func (c *Client) writePump(server *GameServer) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("[writePump] PANIC player=%s: %v", c.playerID, r)
-		}
-		ticker.Stop()
-		c.conn.Close()
-		logx.Debugf("[writePump] closed player=%s", c.playerID)
-	}()
-	for {
-		select {
-		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
-			// Frame-type heuristic: binary AOI / typed input commands have
-			// a single-byte type prefix (< 0x20); JSON payloads start with
-			// '{' or '['.
-			msgType := websocket.TextMessage
-			if len(message) > 0 && message[0] != '{' && message[0] != '[' {
-				msgType = websocket.BinaryMessage
-			}
-			w, err := c.conn.NextWriter(msgType)
-			if err != nil {
-				server.recordWsWriteError()
-				log.Printf("[writePump] NextWriter failed player=%s: %v", c.playerID, err)
-				return
-			}
-			if _, err := w.Write(message); err != nil {
-				server.recordWsWriteError()
-				log.Printf("[writePump] write failed player=%s: %v", c.playerID, err)
-				return
-			}
-			if err := w.Close(); err != nil {
-				server.recordWsWriteError()
-				log.Printf("[writePump] flush failed player=%s: %v (size=%d)", c.playerID, err, len(message))
-				return
-			}
-			server.recordWsWrite(len(message))
-		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				server.recordWsWriteError()
-				log.Printf("[writePump] ping failed player=%s: %v", c.playerID, err)
-				return
-			}
-		}
-	}
 }

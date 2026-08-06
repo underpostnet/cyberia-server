@@ -48,7 +48,6 @@ package game
 // └─────────────────────────────────────────────────────────────────────────┘
 
 import (
-	"encoding/binary"
 	"math"
 
 	"cyberia-server/logx"
@@ -56,38 +55,15 @@ import (
 
 // ── Wire message helpers ──────────────────────────────────────────────────
 
-// buildFCTMsg encodes a 14-byte Floating Combat Text message.
-//
-// Wire format (little-endian):
-//
-// [0]      u8   MsgTypeFCT (0x04)
-// [1]      u8   fctType
-// [2..5]   f32  worldX
-// [6..9]   f32  worldY
-// [10..13] u32  value (always positive; sign implied by fctType)
-func buildFCTMsg(fctType byte, worldX, worldY float64, value int) []byte {
-	buf := make([]byte, 14)
-	buf[0] = MsgTypeFCT
-	buf[1] = fctType
-	binary.LittleEndian.PutUint32(buf[2:], math.Float32bits(float32(worldX)))
-	binary.LittleEndian.PutUint32(buf[6:], math.Float32bits(float32(worldY)))
-	binary.LittleEndian.PutUint32(buf[10:], uint32(value))
-	return buf
-}
-
-// broadcastFCT delivers the same FCT event to every player whose AOI covers
-// the event point — identical feedback for every viewer, so per-recipient
-// amounts can never leak. Non-blocking (cosmetic).
-func broadcastFCT(mapState *MapState, fctType byte, worldX, worldY float64, value int) {
-	msg := buildFCTMsg(fctType, worldX, worldY, value)
+// broadcastFCT delivers the same combat-text event to every player whose AOI
+// covers the event point — identical feedback for every viewer, so
+// per-recipient amounts can never leak.
+func broadcastFCT(mapState *MapState, kind string, worldX, worldY float64, value int) {
+	payload := CombatText{Kind: kind, WorldX: worldX, WorldY: worldY, Value: value}
 	pt := Rectangle{MinX: worldX, MinY: worldY, MaxX: worldX, MaxY: worldY}
 	for _, player := range mapState.players {
-		if player.Client == nil || !rectsOverlap(player.AOI, pt) {
-			continue
-		}
-		select {
-		case player.Client.send <- msg:
-		default:
+		if rectsOverlap(player.AOI, pt) {
+			sendMessage(player, "combat_text", payload)
 		}
 	}
 }

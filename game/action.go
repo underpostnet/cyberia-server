@@ -12,7 +12,7 @@
 //	dlg_start    (client→server) — freeze the player, snapshot the interaction
 //	                               context (action + NPC skin) for validation
 //	dlg_complete (client→server) — advance talk objectives for the talked-to NPC,
-//	                               send dlg_ack, thaw
+//	                               send dialog_ack, thaw
 //	dlg_cancel   (client→server) — clear context, thaw, no progress
 //
 // Caller MUST hold s.mu for every handler / mutation helper here (they run inside
@@ -301,7 +301,7 @@ func (s *GameServer) handleDlgCancel(player *PlayerState, cmd *InputCommand) {
 
 // handleDlgComplete is the authoritative dialogue-completion path. It validates
 // the frozen dialogue context, advances the `talk` objectives that target the
-// NPC the player spoke with (quest.go), and notifies the client via dlg_ack.
+// NPC the player spoke with (quest.go), and notifies the client via dialog_ack.
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {

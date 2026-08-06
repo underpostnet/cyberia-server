@@ -5,12 +5,9 @@
 // the correct tick, (b) acknowledge it back to the client for prediction
 // reconciliation, and (c) gate stale or replayed inputs.
 //
-// Wire layout (binary, uplink opcodes 0x10–0x1B):
-//
-//	[u8 kind][payload-by-kind][u32 clientTick][u32 sequence]
-//
-// The clientTick + sequence suffix is read optionally; zero values are
-// accepted and handled by the simulation.
+// The wire carries the JSON envelope {"type", "payload"}; receiveMessage in
+// handlers.go maps the type word to an InputKind. The payload tick + seq
+// fields are optional; zero values are accepted and handled by the simulation.
 //
 // Ownership:
 //   - Built and enqueued by handlers.go (per-WS-goroutine).
@@ -20,25 +17,24 @@
 
 package game
 
-// InputKind enumerates the input categories the server accepts. Numeric
-// values mirror the binary uplink opcodes for trace-ability.
+// InputKind enumerates the input categories the server accepts. It is
+// internal — only receiveMessage knows which wire word maps to which kind.
 type InputKind uint8
 
 const (
-	InputKindUnknown        InputKind = 0x00
-	InputKindHandshake      InputKind = 0x10
-	InputKindPlayerAction   InputKind = 0x11 // tap move + skill trigger
-	InputKindItemActivation InputKind = 0x12
-	InputKindFreezeStart    InputKind = 0x13
-	InputKindFreezeEnd      InputKind = 0x14
-	InputKindChat           InputKind = 0x15
-	// 0x16 retired (was GetItemsIDs).
-	InputKindDlgStart     InputKind = 0x17 // dialogue opened — freeze + bind context
-	InputKindDlgComplete  InputKind = 0x18 // all lines read — advance talk/quest, unfreeze
-	InputKindDlgCancel    InputKind = 0x19 // dismissed early — unfreeze, no progress
-	InputKindQuestAbandon InputKind = 0x1A // drop an active quest — moves it to failed
-	InputKindQuestAccept  InputKind = 0x1B // explicitly accept the NPC's offered quest
-	InputKindShopBuy      InputKind = 0x1C // buy one catalog item from a vendor action
+	InputKindUnknown InputKind = iota
+	InputKindHandshake
+	InputKindPlayerAction // tap move + skill trigger
+	InputKindItemActivation
+	InputKindFreezeStart
+	InputKindFreezeEnd
+	InputKindChat
+	InputKindDlgStart     // dialogue opened — freeze + bind context
+	InputKindDlgComplete  // all lines read — advance talk/quest, unfreeze
+	InputKindDlgCancel    // dismissed early — unfreeze, no progress
+	InputKindQuestAbandon // drop an active quest — moves it to failed
+	InputKindQuestAccept  // explicitly accept the NPC's offered quest
+	InputKindShopBuy      // buy one catalog item from a vendor action
 )
 
 // InputCommand is the unit of client→server input.

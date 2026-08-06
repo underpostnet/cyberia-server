@@ -13,7 +13,7 @@
 //
 // The Go server (relayer) is the single source of truth for this state.
 // The client sends "freeze_start" / "freeze_end" messages with a reason
-// string, and the server broadcasts the frozen flag back via the binary
+// string, and the server broadcasts the frozen flag back in the
 // AOI self-player payload so the client always reflects the authoritative
 // state.
 //

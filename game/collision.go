@@ -60,7 +60,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				}
 				// FCT: the same red "-N" for every AOI viewer.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
-					broadcastFCT(mapState, FCTTypeDamage,
+					broadcastFCT(mapState, FCTDamage,
 						projectile.Pos.X+projectile.Dims.Width*0.5,
 						projectile.Pos.Y+projectile.Dims.Height*0.5, dmg)
 				}
@@ -99,7 +99,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				// FCT: bot amounts are public — the same red "-N" for every AOI
 				// viewer, including the killing (one-shot) blow.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
-					broadcastFCT(mapState, FCTTypeDamage,
+					broadcastFCT(mapState, FCTDamage,
 						otherBot.Pos.X+otherBot.Dims.Width*0.5,
 						otherBot.Pos.Y+otherBot.Dims.Height*0.5, dmg)
 				}
@@ -140,7 +140,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				// FCT: resource amounts are public — the same red "-N" for
 				// every AOI viewer.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
-					broadcastFCT(mapState, FCTTypeDamage,
+					broadcastFCT(mapState, FCTDamage,
 						res.Pos.X+res.Dims.Width*0.5,
 						res.Pos.Y+res.Dims.Height*0.5, dmg)
 				}

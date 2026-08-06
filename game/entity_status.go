@@ -11,7 +11,7 @@
 //
 // ── Protocol ─────────────────────────────────────────────────────────────
 // The status icon is a single u8 appended after `effective_level` in the
-// binary AOI payload for players, bots, resources, and self-player. Values
+// AOI snapshot for players, bots, resources, and self-player. Values
 // 0–7 are defined below; 8–255 are reserved for future states (quest,
 // charmed, feared, trading, AFK, …) — no protocol version bump required.
 //

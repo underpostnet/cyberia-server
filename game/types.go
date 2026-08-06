@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"cyberia-server/socket"
 )
 
 // 1. Data Structures & Interfaces
@@ -15,7 +15,8 @@ type Point struct {
 }
 
 type PointI struct {
-	X, Y int
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 
 // cellKey identifies a map cell. Both cyberia-action and cyberia-quest bind to
@@ -219,7 +220,7 @@ type BotState struct {
 	// CollectableAt is the instant the spawn-launch settle window ends. Until
 	// then the token is mid-flight from the corpse to its cell and registers no
 	// collision — collection is disabled regardless of loot priority. Matches
-	// the client launch-animation duration sent in MsgTypeDropSpawn.
+	// the client launch-animation duration sent in drop_spawn.
 	CollectableAt time.Time `json:"-"`
 }
 
@@ -278,9 +279,8 @@ type MapState struct {
 }
 
 type Client struct {
-	conn        *websocket.Conn
+	sock        *socket.Socket
 	playerID    string
-	send        chan []byte
 	lastAction  time.Time
 	playerState *PlayerState
 }
@@ -471,6 +471,6 @@ type InitPayload struct {
 	DeadItemIds []string `json:"deadItemIds"`
 	// Quests is the player's active/completed quest snapshot on connect.
 	// Empty for a fresh guest. The C client seeds its local quest_store from
-	// this and keeps it live via dlg_ack events (see Quest Journal).
+	// this and keeps it live via dialog_ack events (see Quest Journal).
 	Quests []QuestSnapshotEntry `json:"quests"`
 }

@@ -16,8 +16,6 @@
 package game
 
 import (
-	"encoding/json"
-
 	"cyberia-server/logx"
 )
 
@@ -148,24 +146,11 @@ func (s *GameServer) handleShopBuy(player *PlayerState, cmd *InputCommand) {
 // sendShopAck notifies the buyer of the outcome. An empty reason means the
 // purchase was applied; anything else is a rejection code the client renders.
 func (s *GameServer) sendShopAck(player *PlayerState, entityID, itemID string, quantity int, reason string) {
-	if player.Client == nil {
-		return
-	}
-	msg, err := json.Marshal(map[string]interface{}{
-		"type": "shop_ack",
-		"payload": map[string]interface{}{
-			"entityId": entityID,
-			"itemId":   itemID,
-			"quantity": quantity,
-			"ok":       reason == "",
-			"reason":   reason,
-		},
+	sendMessage(player, "shop_ack", map[string]interface{}{
+		"entityId": entityID,
+		"itemId":   itemID,
+		"quantity": quantity,
+		"ok":       reason == "",
+		"reason":   reason,
 	})
-	if err != nil {
-		return
-	}
-	select {
-	case player.Client.send <- msg:
-	default:
-	}
 }

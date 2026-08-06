@@ -55,8 +55,7 @@ func (s *GameServer) recordWsRead(n int) {
 	s.counters.wsBytesIn.Add(uint64(n))
 }
 
-// recordWsWrite is called from writePump after a successful Close()
-// (which is the flush boundary for gorilla/websocket).
+// recordWsWrite counts the bytes of one written frame.
 func (s *GameServer) recordWsWrite(n int) {
 	s.counters.wsMessagesOut.Add(1)
 	s.counters.wsBytesOut.Add(uint64(n))

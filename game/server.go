@@ -302,14 +302,7 @@ func (s *GameServer) listenForClients() {
 						delete(mapState.players, client.playerID)
 					}
 				}
-				func() {
-					defer func() {
-						if r := recover(); r != nil {
-							log.Printf("[listenForClients] PANIC closing send for player=%s: %v", client.playerID, r)
-						}
-					}()
-					close(client.send)
-				}()
+				client.sock.Close()
 			}
 			s.mu.Unlock()
 			logx.Debugf("[listenForClients] unregistered player=%s", client.playerID)
@@ -564,9 +557,8 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 //     client doesn't see a frame of stale geometry; semantically still part
 //     of the replication contract, just out-of-band w.r.t. the tick.
 //
-// Outside these two call sites, simulation code MUST NOT write directly to
-// player.Client.send — replication is the only path that may produce AOI
-// frames.
+// Outside these two call sites, simulation code MUST NOT send a snapshot —
+// replication is the only path that may produce AOI frames.
 func (s *GameServer) sendAOI(player *PlayerState) {
 	mapState, ok := s.maps[player.MapCode]
 	if !ok {
@@ -574,12 +566,7 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 		return
 	}
 
-	message := s.EncodeBinaryAOI(player, mapState)
-	select {
-	case player.Client.send <- message:
-	default:
-		logx.Debugf("Client %s message channel is full.", player.ID)
-	}
+	sendMessage(player, "snapshot", s.buildSnapshot(player, mapState))
 }
 
 // statsCacheCleanupLoop periodically purges stale entries from the stats
