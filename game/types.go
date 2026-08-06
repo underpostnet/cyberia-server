@@ -142,6 +142,11 @@ type PlayerState struct {
 	// open — independent of whether the bot later dies, wanders off, or leaves the
 	// player's AOI before the dialogue is finished.
 	ActiveDialogueSkin string `json:"-"`
+	// ActiveCraft is the assembly currently running for this player, or nil.
+	// A craft consumes its ingredients up front and pays out only when the
+	// timer elapses, so this record is also the refund receipt a cancel needs.
+	// One at a time: assembling is a modal operation.
+	ActiveCraft *ActiveCraft `json:"-"`
 	// Quests is the player's per-session quest progress, keyed by quest code.
 	// Authoritative for the session; best-effort mirrored to engine-cyberia
 	// quest-progress REST for persistence.

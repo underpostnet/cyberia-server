@@ -262,6 +262,8 @@ var inputKinds = map[string]InputKind{
 	"quest_abandon":   InputKindQuestAbandon,
 	"quest_accept":    InputKindQuestAccept,
 	"shop_buy":        InputKindShopBuy,
+	"craft_item":      InputKindCraftItem,
+	"craft_cancel":    InputKindCraftCancel,
 }
 
 // inputPayload holds every client → server payload field. Each message type
@@ -285,7 +287,8 @@ type inputPayload struct {
 	DialogCode string `json:"dialogCode"` // dialog_complete
 	QuestCode  string `json:"questCode"`  // quest_*
 
-	Quantity int `json:"quantity"` // shop_buy
+	Quantity    int `json:"quantity"`    // shop_buy
+	RecipeIndex int `json:"recipeIndex"` // craft_item
 }
 
 // receiveMessage is the single client → server dispatch point. It unpacks one
@@ -365,6 +368,12 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.ItemID
 		cmd.Quantity = p.Quantity
+	case InputKindCraftItem:
+		if p.EntityID == "" {
+			return
+		}
+		cmd.EntityID = p.EntityID
+		cmd.RecipeIndex = p.RecipeIndex
 	}
 	c.dispatchInputCommand(server, cmd)
 }

@@ -171,6 +171,17 @@ message ActionShopItem {
   int32  price_qty     = 3;
 }
 
+message ActionCraftItem {
+  string item_id = 1;
+  int32  qty     = 2;
+}
+
+message ActionCraftRecipe {
+  repeated ActionCraftItem output_items  = 1;
+  repeated ActionCraftItem ingredients   = 2;
+  int32                    craft_time_ms = 3; // assembly duration
+}
+
 message CyberiaActionMessage {
   string                       code                 = 1;
   reserved 2; // was type — actions are typeless, capability-driven
@@ -183,6 +194,7 @@ message CyberiaActionMessage {
   string                       dialog_code          = 9;
   repeated ActionQuestDialogue quest_dialogue_codes = 10;
   repeated ActionShopItem      shop_items           = 11;
+  repeated ActionCraftRecipe   craft_recipes        = 12;
 }
 
 message QuestObjectiveMessage {

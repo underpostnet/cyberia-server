@@ -45,9 +45,9 @@ func shopItemFor(action *CyberiaAction, itemID string) *ActionShopItem {
 }
 
 // botHasShop reports whether a bot is a live vendor — its bound action carries
-// a non-empty catalog and it is not in its dead/respawn state. Drives the
-// action-provider capability bit, so a shop advertises itself overhead with the
-// same attention icon, particle orbit, and border as a pending action-talk.
+// a non-empty catalog and it is not in its dead/respawn state. Feeds
+// botHasUsableAction, so a shop advertises itself overhead with the same
+// attention icon, particle orbit, and border as a pending action-talk.
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) botHasShop(bot *BotState) bool {
@@ -103,13 +103,7 @@ func (s *GameServer) handleShopBuy(player *PlayerState, cmd *InputCommand) {
 		s.sendShopAck(player, cmd.EntityID, cmd.ItemID, 0, shopRejectNoVendor)
 		return
 	}
-	// A vendor can only be traded with from inside the player's own AOI — the
-	// same visibility window that put the entity on screen.
-	botRect := Rectangle{
-		MinX: bot.Pos.X, MinY: bot.Pos.Y,
-		MaxX: bot.Pos.X + bot.Dims.Width, MaxY: bot.Pos.Y + bot.Dims.Height,
-	}
-	if bot.MapCode != player.MapCode || !rectsOverlap(player.AOI, botRect) {
+	if !botInPlayerRange(player, bot) {
 		s.sendShopAck(player, cmd.EntityID, cmd.ItemID, 0, shopRejectOutOfRange)
 		return
 	}

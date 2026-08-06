@@ -41,6 +41,20 @@ type ActionShopItem struct {
 	PriceQty    int    `json:"priceQty"`
 }
 
+// ActionCraftItem is one side of a recipe line: an item and how many of it.
+type ActionCraftItem struct {
+	ItemID string `json:"itemId"`
+	Qty    int    `json:"qty"`
+}
+
+// ActionCraftRecipe is one assembler recipe: ingredients consumed, outputs
+// produced. Recipes are addressed by their index in the action's list.
+type ActionCraftRecipe struct {
+	OutputItems []ActionCraftItem `json:"outputItems"`
+	Ingredients []ActionCraftItem `json:"ingredients"`
+	CraftTimeMs int               `json:"craftTimeMs"`
+}
+
 type CyberiaAction struct {
 	Code               string                `json:"code"`
 	Label              string                `json:"label"`
@@ -50,6 +64,7 @@ type CyberiaAction struct {
 	DialogCode         string                `json:"dialogCode"`
 	QuestDialogueCodes []ActionQuestDialogue `json:"questDialogueCodes"`
 	ShopItems          []ActionShopItem      `json:"shopItems"`
+	CraftRecipes       []ActionCraftRecipe   `json:"craftRecipes"`
 }
 
 // actionCell returns the cell key for an action's source cell.
@@ -76,7 +91,22 @@ func protoToAction(a *pb.CyberiaActionMessage) *CyberiaAction {
 			ItemID: si.GetItemId(), PriceItemID: si.GetPriceItemId(), PriceQty: int(si.GetPriceQty()),
 		})
 	}
+	for _, r := range a.GetCraftRecipes() {
+		ca.CraftRecipes = append(ca.CraftRecipes, ActionCraftRecipe{
+			OutputItems: protoToCraftItems(r.GetOutputItems()),
+			Ingredients: protoToCraftItems(r.GetIngredients()),
+			CraftTimeMs: int(r.GetCraftTimeMs()),
+		})
+	}
 	return ca
+}
+
+func protoToCraftItems(items []*pb.ActionCraftItem) []ActionCraftItem {
+	out := make([]ActionCraftItem, 0, len(items))
+	for _, i := range items {
+		out = append(out, ActionCraftItem{ItemID: i.GetItemId(), Qty: int(i.GetQty())})
+	}
+	return out
 }
 
 // bindActions caches the CyberiaAction content the engine delivered with the
@@ -199,9 +229,9 @@ func (s *GameServer) botActiveSkinOf(bot *BotState) string {
 // never completed feedback). The full quest list still travels separately in
 // the bot block (botQuestCodes), so the interact modal keeps its Quest tab and
 // completed feedback without any icon.
-func (s *GameServer) botInteractionFlags(hasActionableQuest, hasPendingActionTalk, hasShop bool) uint8 {
+func (s *GameServer) botInteractionFlags(hasActionableQuest, hasPendingActionTalk, hasUsableAction bool) uint8 {
 	var flags uint8
-	if hasPendingActionTalk || hasShop {
+	if hasPendingActionTalk || hasUsableAction {
 		flags |= InteractionFlagAction
 	}
 	if hasActionableQuest {
@@ -244,6 +274,32 @@ func (s *GameServer) pendingActionTalkDialogs(player *PlayerState, bot *BotState
 		dialogs[i] = questTalkDialogCode(action, code)
 	}
 	return dialogs
+}
+
+// botHasUsableAction reports whether a bot exposes an action capability any
+// player can use on sight — a live vendor or assembler today. The single place
+// that decides what lights the action-provider bit, so adding a capability does
+// not grow botInteractionFlags.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) botHasUsableAction(bot *BotState) bool {
+	return s.botHasShop(bot) || s.botHasCraft(bot)
+}
+
+// botInPlayerRange reports whether a provider can be interacted with: same map,
+// and inside the player's own AOI — the visibility window that put the entity on
+// screen in the first place.
+//
+// Caller MUST hold s.mu.
+func botInPlayerRange(player *PlayerState, bot *BotState) bool {
+	if bot.MapCode != player.MapCode {
+		return false
+	}
+	botRect := Rectangle{
+		MinX: bot.Pos.X, MinY: bot.Pos.Y,
+		MaxX: bot.Pos.X + bot.Dims.Width, MaxY: bot.Pos.Y + bot.Dims.Height,
+	}
+	return rectsOverlap(player.AOI, botRect)
 }
 
 // holdProviderFreeze keeps a player protected for the rest of an interaction

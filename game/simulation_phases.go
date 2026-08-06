@@ -94,6 +94,10 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 		s.handleQuestAccept(player, cmd)
 	case InputKindShopBuy:
 		s.handleShopBuy(player, cmd)
+	case InputKindCraftItem:
+		s.handleCraftItem(player, cmd)
+	case InputKindCraftCancel:
+		s.handleCraftCancel(player)
 	case InputKindHandshake, InputKindUnknown:
 		// no-op
 	}
@@ -105,6 +109,7 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 func (s *GameServer) phaseLifecycle(tick uint32, mapState *MapState) {
 	_ = tick
 	s.handleRespawns(mapState)
+	s.completeCrafts(mapState)
 }
 
 // phaseSkills resolves skill projectile collisions for this tick.

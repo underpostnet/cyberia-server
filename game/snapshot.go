@@ -354,7 +354,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 			}
 		}
 		e.InteractionFlags = s.botInteractionFlags(s.botHasActionableQuest(player, b),
-			hasPendingTalk, s.botHasShop(b))
+			hasPendingTalk, s.botHasUsableAction(b))
 		// Loot eligibility is personal: only damage contributors may collect a
 		// drop token, and the client colours the particles by this bit.
 		if b.Behavior == BehaviorDrop {

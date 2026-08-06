@@ -35,6 +35,8 @@ const (
 	InputKindQuestAbandon // drop an active quest — moves it to failed
 	InputKindQuestAccept  // explicitly accept the NPC's offered quest
 	InputKindShopBuy      // buy one catalog item from a vendor action
+	InputKindCraftItem    // assemble one recipe at an assembler action
+	InputKindCraftCancel  // abort the running assembly and refund it
 )
 
 // InputCommand is the unit of client→server input.
@@ -43,15 +45,16 @@ type InputCommand struct {
 	ClientTick uint32 // client-side estimated server tick when emitted
 	Sequence   uint32 // monotonic per-client sequence number
 	// Payload fields — only the ones relevant to Kind are populated.
-	TargetX    float64 // PlayerAction
-	TargetY    float64 // PlayerAction
-	ItemID     string  // ItemActivation, Chat target, ShopBuy
-	Active     bool    // ItemActivation
-	Reason     string  // FreezeStart, FreezeEnd
-	ChatText   string  // Chat
-	EntityID   string  // DlgStart, DlgComplete, DlgCancel, ShopBuy — the NPC entity
-	DialogCode string  // DlgComplete — the dialogue group the player just read
-	Quantity   int     // ShopBuy — units requested (clamped server-side)
+	TargetX     float64 // PlayerAction
+	TargetY     float64 // PlayerAction
+	ItemID      string  // ItemActivation, Chat target, ShopBuy
+	Active      bool    // ItemActivation
+	Reason      string  // FreezeStart, FreezeEnd
+	ChatText    string  // Chat
+	EntityID    string  // DlgStart, DlgComplete, DlgCancel, ShopBuy, CraftItem — the NPC entity
+	DialogCode  string  // DlgComplete — the dialogue group the player just read
+	Quantity    int     // ShopBuy — units requested (clamped server-side)
+	RecipeIndex int     // CraftItem — index into the action's craftRecipes
 }
 
 // EnqueueInput pushes a command onto the player's InputQueue. Called from
