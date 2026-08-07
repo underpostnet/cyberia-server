@@ -65,6 +65,7 @@ type CyberiaAction struct {
 	QuestDialogueCodes []ActionQuestDialogue `json:"questDialogueCodes"`
 	ShopItems          []ActionShopItem      `json:"shopItems"`
 	CraftRecipes       []ActionCraftRecipe   `json:"craftRecipes"`
+	StorageSlots       int                   `json:"storageSlots"`
 }
 
 // actionCell returns the cell key for an action's source cell.
@@ -98,6 +99,7 @@ func protoToAction(a *pb.CyberiaActionMessage) *CyberiaAction {
 			CraftTimeMs: int(r.GetCraftTimeMs()),
 		})
 	}
+	ca.StorageSlots = int(a.GetStorageSlots())
 	return ca
 }
 
@@ -117,6 +119,9 @@ func protoToCraftItems(items []*pb.ActionCraftItem) []ActionCraftItem {
 // Caller MUST hold s.mu.
 func (s *GameServer) bindActions(mapCodes []string, actions []*pb.CyberiaActionMessage) {
 	s.actionCache = make(map[string]*CyberiaAction)
+	if s.storage == nil {
+		s.storage = make(map[storageKey][]StorageSlot)
+	}
 
 	mapSet := make(map[string]bool, len(mapCodes))
 	for _, c := range mapCodes {
@@ -283,7 +288,7 @@ func (s *GameServer) pendingActionTalkDialogs(player *PlayerState, bot *BotState
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) botHasUsableAction(bot *BotState) bool {
-	return s.botHasShop(bot) || s.botHasCraft(bot)
+	return s.botHasShop(bot) || s.botHasCraft(bot) || s.botHasStorage(bot)
 }
 
 // botInPlayerRange reports whether a provider can be interacted with: same map,

@@ -400,7 +400,10 @@ type GameServer struct {
 	//   questDefs    — questCode → CyberiaQuest definition (steps/rewards).
 	// Both are rebuilt on every world (re)build; access is under s.mu.
 	actionCache map[string]*CyberiaAction
-	questDefs   map[string]*CyberiaQuest
+	// storage — per (player, action code) vault contents. Session state
+	// only; the slot shape is the future persistence document.
+	storage   map[storageKey][]StorageSlot
+	questDefs map[string]*CyberiaQuest
 
 	// Stats cache: entityID → cached entry with TTL. Invalidated when StatsDirty is set
 	// or when the TTL (statsCacheTTL) expires.

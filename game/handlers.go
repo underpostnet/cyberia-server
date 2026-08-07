@@ -250,20 +250,24 @@ func (c *Client) readPump(server *GameServer) {
 // inputKinds maps a wire message type to the internal input kind. The kind
 // enum stays internal; only this table knows the wire words.
 var inputKinds = map[string]InputKind{
-	"handshake":       InputKindHandshake,
-	"player_action":   InputKindPlayerAction,
-	"item_active":     InputKindItemActivation,
-	"freeze_start":    InputKindFreezeStart,
-	"freeze_end":      InputKindFreezeEnd,
-	"chat":            InputKindChat,
-	"dialog_start":    InputKindDlgStart,
-	"dialog_complete": InputKindDlgComplete,
-	"dialog_cancel":   InputKindDlgCancel,
-	"quest_abandon":   InputKindQuestAbandon,
-	"quest_accept":    InputKindQuestAccept,
-	"shop_buy":        InputKindShopBuy,
-	"craft_item":      InputKindCraftItem,
-	"craft_cancel":    InputKindCraftCancel,
+	"handshake":        InputKindHandshake,
+	"player_action":    InputKindPlayerAction,
+	"item_active":      InputKindItemActivation,
+	"freeze_start":     InputKindFreezeStart,
+	"freeze_end":       InputKindFreezeEnd,
+	"chat":             InputKindChat,
+	"dialog_start":     InputKindDlgStart,
+	"dialog_complete":  InputKindDlgComplete,
+	"dialog_cancel":    InputKindDlgCancel,
+	"quest_abandon":    InputKindQuestAbandon,
+	"quest_accept":     InputKindQuestAccept,
+	"shop_buy":         InputKindShopBuy,
+	"craft_item":       InputKindCraftItem,
+	"craft_cancel":     InputKindCraftCancel,
+	"storage_open":     InputKindStorageOpen,
+	"storage_move":     InputKindStorageMove,
+	"storage_swap":     InputKindStorageSwap,
+	"storage_transfer": InputKindStorageTransfer,
 }
 
 // inputPayload holds every client → server payload field. Each message type
@@ -289,6 +293,10 @@ type inputPayload struct {
 
 	Quantity    int `json:"quantity"`    // shop_buy
 	RecipeIndex int `json:"recipeIndex"` // craft_item
+
+	FromIndex int  `json:"fromIndex"` // storage_*
+	ToIndex   int  `json:"toIndex"`
+	Deposit   bool `json:"deposit"` // storage_transfer
 }
 
 // receiveMessage is the single client → server dispatch point. It unpacks one
@@ -374,6 +382,16 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 		}
 		cmd.EntityID = p.EntityID
 		cmd.RecipeIndex = p.RecipeIndex
+	case InputKindStorageOpen, InputKindStorageMove, InputKindStorageSwap,
+		InputKindStorageTransfer:
+		if p.EntityID == "" {
+			return
+		}
+		cmd.EntityID = p.EntityID
+		cmd.ItemID = p.ItemID
+		cmd.Quantity = p.Quantity
+		cmd.FromIndex, cmd.ToIndex = p.FromIndex, p.ToIndex
+		cmd.Deposit = p.Deposit
 	}
 	c.dispatchInputCommand(server, cmd)
 }

@@ -1098,6 +1098,7 @@ type CyberiaActionMessage struct {
 	QuestDialogueCodes []*ActionQuestDialogue `protobuf:"bytes,10,rep,name=quest_dialogue_codes,json=questDialogueCodes,proto3" json:"quest_dialogue_codes,omitempty"`
 	ShopItems          []*ActionShopItem      `protobuf:"bytes,11,rep,name=shop_items,json=shopItems,proto3" json:"shop_items,omitempty"`
 	CraftRecipes       []*ActionCraftRecipe   `protobuf:"bytes,12,rep,name=craft_recipes,json=craftRecipes,proto3" json:"craft_recipes,omitempty"`
+	StorageSlots       int32                  `protobuf:"varint,13,opt,name=storage_slots,json=storageSlots,proto3" json:"storage_slots,omitempty"` // personal vault capacity
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -1193,6 +1194,13 @@ func (x *CyberiaActionMessage) GetCraftRecipes() []*ActionCraftRecipe {
 		return x.CraftRecipes
 	}
 	return nil
+}
+
+func (x *CyberiaActionMessage) GetStorageSlots() int32 {
+	if x != nil {
+		return x.StorageSlots
+	}
+	return 0
 }
 
 type QuestObjectiveMessage struct {
@@ -3145,7 +3153,7 @@ const file_cyberia_proto_rawDesc = "" +
 	"\x11ActionCraftRecipe\x12;\n" +
 	"\foutput_items\x18\x01 \x03(\v2\x18.cyberia.ActionCraftItemR\voutputItems\x12:\n" +
 	"\vingredients\x18\x02 \x03(\v2\x18.cyberia.ActionCraftItemR\vingredients\x12\"\n" +
-	"\rcraft_time_ms\x18\x03 \x01(\x05R\vcraftTimeMs\"\xac\x03\n" +
+	"\rcraft_time_ms\x18\x03 \x01(\x05R\vcraftTimeMs\"\xd1\x03\n" +
 	"\x14CyberiaActionMessage\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x14\n" +
 	"\x05label\x18\x03 \x01(\tR\x05label\x12&\n" +
@@ -3158,7 +3166,8 @@ const file_cyberia_proto_rawDesc = "" +
 	" \x03(\v2\x1c.cyberia.ActionQuestDialogueR\x12questDialogueCodes\x126\n" +
 	"\n" +
 	"shop_items\x18\v \x03(\v2\x17.cyberia.ActionShopItemR\tshopItems\x12?\n" +
-	"\rcraft_recipes\x18\f \x03(\v2\x1a.cyberia.ActionCraftRecipeR\fcraftRecipesJ\x04\b\x02\x10\x03J\x04\b\a\x10\bJ\x04\b\b\x10\t\"`\n" +
+	"\rcraft_recipes\x18\f \x03(\v2\x1a.cyberia.ActionCraftRecipeR\fcraftRecipes\x12#\n" +
+	"\rstorage_slots\x18\r \x01(\x05R\fstorageSlotsJ\x04\b\x02\x10\x03J\x04\b\a\x10\bJ\x04\b\b\x10\t\"`\n" +
 	"\x15QuestObjectiveMessage\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x17\n" +
 	"\aitem_id\x18\x02 \x01(\tR\x06itemId\x12\x1a\n" +

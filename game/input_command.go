@@ -29,14 +29,18 @@ const (
 	InputKindFreezeStart
 	InputKindFreezeEnd
 	InputKindChat
-	InputKindDlgStart     // dialogue opened — freeze + bind context
-	InputKindDlgComplete  // all lines read — advance talk/quest, unfreeze
-	InputKindDlgCancel    // dismissed early — unfreeze, no progress
-	InputKindQuestAbandon // drop an active quest — moves it to failed
-	InputKindQuestAccept  // explicitly accept the NPC's offered quest
-	InputKindShopBuy      // buy one catalog item from a vendor action
-	InputKindCraftItem    // assemble one recipe at an assembler action
-	InputKindCraftCancel  // abort the running assembly and refund it
+	InputKindDlgStart        // dialogue opened — freeze + bind context
+	InputKindDlgComplete     // all lines read — advance talk/quest, unfreeze
+	InputKindDlgCancel       // dismissed early — unfreeze, no progress
+	InputKindQuestAbandon    // drop an active quest — moves it to failed
+	InputKindQuestAccept     // explicitly accept the NPC's offered quest
+	InputKindShopBuy         // buy one catalog item from a vendor action
+	InputKindCraftItem       // assemble one recipe at an assembler action
+	InputKindCraftCancel     // abort the running assembly and refund it
+	InputKindStorageOpen     // bind a storage vault and read its grid
+	InputKindStorageMove     // relocate a vault slot onto a free cell
+	InputKindStorageSwap     // exchange two occupied vault cells
+	InputKindStorageTransfer // move a stack across the vault boundary
 )
 
 // InputCommand is the unit of client→server input.
@@ -51,9 +55,12 @@ type InputCommand struct {
 	Active      bool    // ItemActivation
 	Reason      string  // FreezeStart, FreezeEnd
 	ChatText    string  // Chat
-	EntityID    string  // DlgStart, DlgComplete, DlgCancel, ShopBuy, CraftItem — the NPC entity
+	EntityID    string  // DlgStart, DlgComplete, DlgCancel, ShopBuy, CraftItem, Storage* — the NPC entity
 	DialogCode  string  // DlgComplete — the dialogue group the player just read
-	Quantity    int     // ShopBuy — units requested (clamped server-side)
+	Quantity    int     // ShopBuy, StorageTransfer, StorageMove — units (clamped server-side)
+	FromIndex   int     // Storage* — source slot, linear index into the vault
+	ToIndex     int     // Storage* — target slot, linear index into the vault
+	Deposit     bool    // StorageTransfer — into the vault, else out of it
 	RecipeIndex int     // CraftItem — index into the action's craftRecipes
 }
 

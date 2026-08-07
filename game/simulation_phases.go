@@ -98,6 +98,14 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 		s.handleCraftItem(player, cmd)
 	case InputKindCraftCancel:
 		s.handleCraftCancel(player)
+	case InputKindStorageOpen:
+		s.handleStorageOpen(player, cmd)
+	case InputKindStorageMove:
+		s.handleStorageMove(player, cmd)
+	case InputKindStorageSwap:
+		s.handleStorageSwap(player, cmd)
+	case InputKindStorageTransfer:
+		s.handleStorageTransfer(player, cmd)
 	case InputKindHandshake, InputKindUnknown:
 		// no-op
 	}

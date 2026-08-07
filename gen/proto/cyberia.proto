@@ -195,6 +195,7 @@ message CyberiaActionMessage {
   repeated ActionQuestDialogue quest_dialogue_codes = 10;
   repeated ActionShopItem      shop_items           = 11;
   repeated ActionCraftRecipe   craft_recipes        = 12;
+  int32                        storage_slots        = 13; // personal vault capacity
 }
 
 message QuestObjectiveMessage {
