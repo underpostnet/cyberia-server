@@ -15,9 +15,9 @@
 package game
 
 import (
+	"cyberia-server/logx"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -174,7 +174,7 @@ func (s *GameServer) bindQuests(mapCodes []string, quests []*pb.CyberiaQuestMess
 	for k := range s.questsByCell {
 		sort.Strings(s.questsByCell[k])
 	}
-	log.Printf("[QuestContent] gRPC delivered %d quests; bound %d to this instance", len(quests), bound)
+	logx.Infof("[QuestContent] gRPC delivered %d quests; bound %d to this instance", len(quests), bound)
 }
 
 // logQuestProviders prints every quest the instance can offer — its source cell,
@@ -185,7 +185,7 @@ func (s *GameServer) bindQuests(mapCodes []string, quests []*pb.CyberiaQuestMess
 // talk objective needs an interactable NPC (skin dialogue) at the talk target.
 func (s *GameServer) logQuestProviders() {
 	if len(s.questDefs) == 0 {
-		log.Printf("[QuestProviders] none (no quests delivered via gRPC)")
+		logx.Infof("[QuestProviders] none (no quests delivered via gRPC)")
 		return
 	}
 	codes := make([]string, 0, len(s.questDefs))
@@ -193,7 +193,7 @@ func (s *GameServer) logQuestProviders() {
 		codes = append(codes, code)
 	}
 	sort.Strings(codes)
-	log.Printf("[QuestProviders] %d quests:", len(codes))
+	logx.Debugf("[QuestProviders] %d quests:", len(codes))
 	for _, code := range codes {
 		q := s.questDefs[code]
 		cell := cellKey{q.SourceMapCode, q.SourceCellX, q.SourceCellY}
@@ -208,13 +208,13 @@ func (s *GameServer) logQuestProviders() {
 				}
 			}
 		}
-		log.Printf("[QuestProviders]   quest=%s title=%q cell=%s(%d,%d) prereqs=%v objectives=%v providers=%v",
+		logx.Debugf("[QuestProviders]   quest=%s title=%q cell=%s(%d,%d) prereqs=%v objectives=%v providers=%v",
 			q.Code, q.Title, q.SourceMapCode, q.SourceCellX, q.SourceCellY,
 			q.PrerequisiteCodes, objs, providers)
 		if len(providers) == 0 {
-			log.Printf("[QuestProviders]   WARNING quest=%s has NO entity on its source cell — it cannot be accepted in-game", q.Code)
+			logx.Warnf("[QuestProviders]   quest=%s has NO entity on its source cell — it cannot be accepted in-game", q.Code)
 		} else if hasTalk {
-			log.Printf("[QuestProviders]   note quest=%s has talk objective(s) — needs an interactable NPC (skin dialogue) at the talk target", q.Code)
+			logx.Debugf("[QuestProviders]   quest=%s has talk objective(s) — needs an interactable NPC (skin dialogue) at the talk target", q.Code)
 		}
 	}
 }
@@ -281,7 +281,7 @@ func (s *GameServer) handleQuestAbandon(player *PlayerState, cmd *InputCommand) 
 	qp.Status = "failed"
 	s.persistQuestProgress(player, qp)
 	s.sendQuestUpdate(player, []QuestSnapshotEntry{s.questSnapshot(qp)})
-	log.Printf("[Quest] player %s abandoned quest %q", player.ID, qp.QuestCode)
+	logx.Debugf("[Quest] player %s abandoned quest %q", player.ID, qp.QuestCode)
 }
 
 // handleQuestAccept grants the quest the interacted NPC offers — the only path
@@ -476,11 +476,11 @@ func (s *GameServer) prerequisitesMet(player *PlayerState, code string) bool {
 func (s *GameServer) grantQuest(player *PlayerState, code string) *QuestProgress {
 	def, ok := s.questDefs[code]
 	if !ok {
-		log.Printf("[Quest] grant skipped — unknown quest %q", code)
+		logx.Warnf("[Quest] grant skipped — unknown quest %q", code)
 		return nil
 	}
 	if !s.prerequisitesMet(player, code) {
-		log.Printf("[Quest] grant denied — prerequisites unmet for %q", code)
+		logx.Debugf("[Quest] grant denied — prerequisites unmet for %q", code)
 		return nil
 	}
 	s.ensurePlayerQuests(player)
@@ -508,7 +508,7 @@ func (s *GameServer) grantQuest(player *PlayerState, code string) *QuestProgress
 	}
 	player.Quests[code] = qp
 	s.persistQuestProgress(player, qp)
-	log.Printf("[Quest] player %s granted quest %q", player.ID, code)
+	logx.Debugf("[Quest] player %s granted quest %q", player.ID, code)
 	return qp
 }
 
@@ -807,7 +807,7 @@ func (s *GameServer) completeQuest(player *PlayerState, qp *QuestProgress, affec
 	s.deliverQuestRewards(player, qp.QuestCode)
 	s.persistQuestProgress(player, qp)
 	*affected = append(*affected, s.questSnapshot(qp))
-	log.Printf("[Quest] player %s completed quest %q", player.ID, qp.QuestCode)
+	logx.Debugf("[Quest] player %s completed quest %q", player.ID, qp.QuestCode)
 	// Successors are NOT auto-granted. Completing this quest only satisfies the
 	// successors' prerequisites; the player must still explicitly accept each
 	// one from its grantor NPC. Quests are never assigned automatically.
@@ -911,7 +911,7 @@ func (s *GameServer) enginePostJSON(path string, body interface{}) {
 	}
 	resp, err := engineHTTPClient.Post(url, "application/json", strings.NewReader(string(buf)))
 	if err != nil {
-		log.Printf("[Quest] persist POST %s failed: %v", path, err)
+		logx.Errorf("[Quest] persist POST %s failed: %v", path, err)
 		return
 	}
 	resp.Body.Close()

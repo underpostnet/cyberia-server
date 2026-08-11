@@ -21,8 +21,8 @@ package hotreload
 import (
 	"context"
 	"crypto/subtle"
+	"cyberia-server/logx"
 	"errors"
-	"log"
 	"sync"
 	"time"
 )
@@ -79,7 +79,7 @@ type Service struct {
 // disabled — Authorize then rejects every call.
 func NewService(reloader Reloader, apiKey, instanceCode string) *Service {
 	if apiKey == "" {
-		log.Println("[HotReload] CYBERIA_SERVER_API_KEY unset — trigger disabled (fail closed).")
+		logx.Warnf("[HotReload] CYBERIA_SERVER_API_KEY unset — trigger disabled (fail closed).")
 	}
 	return &Service{reloader: reloader, apiKey: apiKey, instanceCode: instanceCode}
 }
@@ -140,7 +140,7 @@ func (s *Service) run(ctx context.Context, mode Mode, source string) (Result, er
 		s.mu.Unlock()
 	}()
 
-	log.Printf("[HotReload] %s accepted (mode=%s instance=%s)", source, mode, s.instanceCode)
+	logx.Infof("[HotReload] %s accepted (mode=%s instance=%s)", source, mode, s.instanceCode)
 	start := time.Now()
 
 	var err error
@@ -152,7 +152,7 @@ func (s *Service) run(ctx context.Context, mode Mode, source string) (Result, er
 	elapsed := time.Since(start)
 
 	if err != nil {
-		log.Printf("[HotReload] %s failed after %s: %v", source, elapsed, err)
+		logx.Errorf("[HotReload] %s failed after %s: %v", source, elapsed, err)
 		return Result{
 			Mode:         string(mode),
 			InstanceCode: s.instanceCode,
@@ -161,7 +161,7 @@ func (s *Service) run(ctx context.Context, mode Mode, source string) (Result, er
 		}, err
 	}
 
-	log.Printf("[HotReload] %s complete in %s (mode=%s)", source, elapsed, mode)
+	logx.Infof("[HotReload] %s complete in %s (mode=%s)", source, elapsed, mode)
 	return Result{
 		OK:           true,
 		Mode:         string(mode),

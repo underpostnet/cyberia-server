@@ -8,8 +8,8 @@ package engine_client
 
 import (
 	"context"
+	"cyberia-server/logx"
 	"fmt"
-	"log"
 	"sync"
 
 	game "cyberia-server/game"
@@ -52,7 +52,7 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 		return fmt.Errorf("INSTANCE_CODE required: set it before LoadAll")
 	}
 
-	log.Printf("[WorldBuilder] Loading full instance %q...", wb.InstanceCode)
+	logx.Infof("[WorldBuilder] Loading full instance %q...", wb.InstanceCode)
 	wb.server.SetInstanceCode(wb.InstanceCode)
 
 	resp, err := wb.client.FetchFullInstance(ctx, wb.InstanceCode)
@@ -67,7 +67,7 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 		return fmt.Errorf("instance %q returned no config", wb.InstanceCode)
 	}
 	wb.server.ApplyInstanceConfig(cfg)
-	log.Println("[WorldBuilder] Applied instance config.")
+	logx.Infof("[WorldBuilder] Applied instance config.")
 
 	// Build object layer cache exclusively from the instance response.
 	// getFullInstance already includes OLs for all map entity items.
@@ -99,7 +99,7 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 	wb.server.BuildWorldFromInstance(resp.GetInstance(), resp.GetMaps(), resp.GetObjectLayers(),
 		resp.GetActions(), resp.GetQuests())
 
-	log.Printf("[WorldBuilder] Full instance load complete: %d ObjectLayers cached.", len(cache))
+	logx.Infof("[WorldBuilder] Full instance load complete: %d ObjectLayers cached.", len(cache))
 	return nil
 }
 
@@ -147,14 +147,14 @@ func (wb *WorldBuilder) HotReload(ctx context.Context) error {
 
 	// 5. Apply OL changes if any were detected.
 	if len(toFetch) > 0 || len(toDelete) > 0 {
-		log.Printf("[WorldBuilder] Hot-reload: %d changed/new, %d deleted.", len(toFetch), len(toDelete))
+		logx.Infof("[WorldBuilder] Hot-reload: %d changed/new, %d deleted.", len(toFetch), len(toDelete))
 
 		updates := make(map[string]*game.ObjectLayer, len(toFetch))
 		fetchErrors := 0
 		for _, itemID := range toFetch {
 			ol, err := wb.client.FetchObjectLayer(ctx, itemID)
 			if err != nil {
-				log.Printf("[WorldBuilder] Warning: failed to fetch ObjectLayer %s: %v", itemID, err)
+				logx.Warnf("[WorldBuilder] failed to fetch ObjectLayer %s: %v", itemID, err)
 				fetchErrors++
 				continue
 			}
@@ -172,7 +172,7 @@ func (wb *WorldBuilder) HotReload(ctx context.Context) error {
 		}
 		wb.mu.Unlock()
 
-		log.Printf("[WorldBuilder] Hot-reload applied: %d updated, %d deleted, %d errors.",
+		logx.Infof("[WorldBuilder] Hot-reload applied: %d updated, %d deleted, %d errors.",
 			len(updates), len(toDelete), fetchErrors)
 	}
 
@@ -180,7 +180,7 @@ func (wb *WorldBuilder) HotReload(ctx context.Context) error {
 	//    MapEngineCyberia or InstanceEngineCyberia) are picked up even when
 	//    no ObjectLayer binary changed.
 	if err := wb.ReloadWorld(ctx); err != nil {
-		log.Printf("[WorldBuilder] Hot-reload: world rebuild failed: %v", err)
+		logx.Errorf("[WorldBuilder] Hot-reload: world rebuild failed: %v", err)
 	}
 
 	return nil
@@ -208,7 +208,7 @@ func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
 		return nil
 	}
 
-	log.Printf("[WorldBuilder] Instance version changed — rebuilding world...")
+	logx.Infof("[WorldBuilder] Instance version changed — rebuilding world...")
 
 	// Re-apply config in case it changed.
 	if cfg := resp.GetConfig(); cfg != nil {
@@ -230,6 +230,6 @@ func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
 	wb.server.RebuildWorld(resp.GetInstance(), resp.GetMaps(), resp.GetObjectLayers(),
 		resp.GetActions(), resp.GetQuests())
 
-	log.Println("[WorldBuilder] ReloadWorld complete — maps and entities refreshed.")
+	logx.Infof("[WorldBuilder] ReloadWorld complete — maps and entities refreshed.")
 	return nil
 }

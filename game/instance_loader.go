@@ -7,6 +7,7 @@
 package game
 
 import (
+	"cyberia-server/logx"
 	"fmt"
 	"log"
 	"math"
@@ -52,7 +53,7 @@ func (s *GameServer) BuildWorldFromInstance(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	log.Printf("[InstanceLoader] Building world for instance %q (%d maps, %d object layers)",
+	logx.Infof("[InstanceLoader] Building world for instance %q (%d maps, %d object layers)",
 		instance.GetCode(), len(mapMsgs), len(olMsgs))
 
 	s.buildMapsFromInstance(instance, mapMsgs)
@@ -63,11 +64,11 @@ func (s *GameServer) BuildWorldFromInstance(
 	s.bindQuests(instance.GetMapCodes(), quests)
 	s.bindActions(instance.GetMapCodes(), actions)
 
-	log.Printf("[InstanceLoader] World built: %d maps loaded.", len(s.maps))
+	logx.Infof("[InstanceLoader] World built: %d maps loaded.", len(s.maps))
 
 	// Log entity counts per map
 	for code, ms := range s.maps {
-		log.Printf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots",
+		logx.Debugf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots",
 			code, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots))
 	}
 
@@ -102,7 +103,7 @@ func (s *GameServer) RebuildWorld(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	log.Printf("[InstanceLoader] RebuildWorld for instance %q (%d maps)", instance.GetCode(), len(mapMsgs))
+	logx.Infof("[InstanceLoader] RebuildWorld for instance %q (%d maps)", instance.GetCode(), len(mapMsgs))
 
 	// Snapshot existing players per map so they survive the rebuild.
 	savedPlayers := make(map[string]map[string]*PlayerState)
@@ -130,7 +131,7 @@ func (s *GameServer) RebuildWorld(
 		if !ok {
 			// Map was removed — players will be orphaned and eventually
 			// time out or reconnect.  Log a warning.
-			log.Printf("[InstanceLoader] WARNING: map %q was removed during rebuild; %d players orphaned", code, len(players))
+			logx.Warnf("[InstanceLoader] map %q was removed during rebuild; %d players orphaned", code, len(players))
 			continue
 		}
 		ms.mu.Lock()
@@ -140,9 +141,9 @@ func (s *GameServer) RebuildWorld(
 		ms.mu.Unlock()
 	}
 
-	log.Printf("[InstanceLoader] RebuildWorld complete: %d maps.", len(s.maps))
+	logx.Infof("[InstanceLoader] RebuildWorld complete: %d maps.", len(s.maps))
 	for code, ms := range s.maps {
-		log.Printf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots, %d resources, %d statics, %d players",
+		logx.Debugf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots, %d resources, %d statics, %d players",
 			code, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots), len(ms.resources), len(ms.statics), len(ms.players))
 	}
 	printInstanceGraph(instance, s.maps)
@@ -165,7 +166,7 @@ func (s *GameServer) buildMapsFromInstance(
 	for _, mapCode := range instance.GetMapCodes() {
 		mapMsg, ok := mapMsgByCode[mapCode]
 		if !ok {
-			log.Printf("[InstanceLoader] WARNING: map code %q in instance but not in gRPC response", mapCode)
+			logx.Warnf("[InstanceLoader] map code %q in instance but not in gRPC response", mapCode)
 			continue
 		}
 
@@ -217,7 +218,7 @@ func (s *GameServer) buildMapsFromInstance(
 					})
 				}
 			default:
-				log.Printf("[InstanceLoader] Unknown entity type %q in map %q", ent.GetEntityType(), mapCode)
+				logx.Warnf("[InstanceLoader] Unknown entity type %q in map %q", ent.GetEntityType(), mapCode)
 			}
 		}
 
@@ -232,14 +233,14 @@ func (s *GameServer) buildMapsFromInstance(
 		_, srcOk := s.maps[srcMapCode]
 		_, dstOk := s.maps[dstMapCode]
 		if !srcOk || !dstOk {
-			log.Printf("[InstanceLoader] WARNING: portal edge references unknown map: %q → %q", srcMapCode, dstMapCode)
+			logx.Warnf("[InstanceLoader] portal edge references unknown map: %q → %q", srcMapCode, dstMapCode)
 			continue
 		}
 
 		srcPortal := findPortalByCell(allPortals[srcMapCode], int(edge.GetSourceCellX()), int(edge.GetSourceCellY()))
 
 		if srcPortal == nil {
-			log.Printf("[InstanceLoader] WARNING: no portal entity at (%d,%d) on map %q",
+			logx.Warnf("[InstanceLoader] no portal entity at (%d,%d) on map %q",
 				edge.GetSourceCellX(), edge.GetSourceCellY(), srcMapCode)
 			continue
 		}
@@ -590,7 +591,7 @@ func printInstanceGraph(instance *pb.InstanceMessage, maps map[string]*MapState)
 	edges := instance.GetPortals()
 
 	if len(mapCodes) == 0 {
-		log.Println("[InstanceGraph] (empty graph — no maps)")
+		logx.Debugf("[InstanceGraph] (empty graph — no maps)")
 		return
 	}
 

@@ -27,7 +27,7 @@
 package game
 
 import (
-	"log"
+	"cyberia-server/logx"
 	"time"
 )
 
@@ -43,7 +43,7 @@ func FreezePlayer(player *PlayerState, reason string) {
 		// stale reason and be rejected by ThawPlayer's reason-match check,
 		// keeping the player frozen throughout the transition — no gap.
 		if player.FreezeReason != reason {
-			log.Printf("[FREEZE] Player %s bridge: %q -> %q",
+			logx.Debugf("[FREEZE] Player %s bridge: %q -> %q",
 				player.ID, player.FreezeReason, reason)
 			player.FreezeReason = reason
 		}
@@ -57,7 +57,7 @@ func FreezePlayer(player *PlayerState, reason string) {
 	player.Path = nil
 	player.Mode = IDLE
 
-	log.Printf("[FREEZE] Player %s frozen (reason=%q)", player.ID, reason)
+	logx.Debugf("[FREEZE] Player %s frozen (reason=%q)", player.ID, reason)
 }
 
 // ThawPlayer exits FrozenInteractionState.  The supplied reason must match
@@ -72,13 +72,13 @@ func ThawPlayer(player *PlayerState, reason string) {
 		return
 	}
 	if reason != "" && player.FreezeReason != reason {
-		log.Printf("[FREEZE] Player %s thaw reason mismatch: active=%q, requested=%q — ignoring",
+		logx.Debugf("[FREEZE] Player %s thaw reason mismatch: active=%q, requested=%q — ignoring",
 			player.ID, player.FreezeReason, reason)
 		return
 	}
 
 	dur := time.Since(player.FreezeStart)
-	log.Printf("[FREEZE] Player %s thawed (reason=%q, duration=%v)", player.ID, player.FreezeReason, dur)
+	logx.Debugf("[FREEZE] Player %s thawed (reason=%q, duration=%v)", player.ID, player.FreezeReason, dur)
 
 	player.Frozen = false
 	player.FreezeReason = ""

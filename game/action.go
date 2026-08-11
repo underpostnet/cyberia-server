@@ -20,7 +20,7 @@
 package game
 
 import (
-	"log"
+	"cyberia-server/logx"
 
 	pb "cyberia-server/gen/proto"
 )
@@ -149,7 +149,7 @@ func (s *GameServer) bindActions(mapCodes []string, actions []*pb.CyberiaActionM
 			bound++
 		}
 	}
-	log.Printf("[ActionContent] gRPC delivered %d actions; bound %d entities", len(actions), bound)
+	logx.Infof("[ActionContent] gRPC delivered %d actions; bound %d entities", len(actions), bound)
 }
 
 // logActionProviders prints every entity bound to a cyberia-action — map, action
@@ -158,10 +158,10 @@ func (s *GameServer) bindActions(mapCodes []string, actions []*pb.CyberiaActionM
 // instantiated and bound.
 func (s *GameServer) logActionProviders() {
 	if len(s.actionCache) == 0 {
-		log.Printf("[ActionProviders] none bound (no actions delivered via gRPC, or none match an entity cell)")
+		logx.Infof("[ActionProviders] none bound (no actions delivered via gRPC, or none match an entity cell)")
 		return
 	}
-	log.Printf("[ActionProviders] %d action-provider entities:", len(s.actionCache))
+	logx.Debugf("[ActionProviders] %d action-provider entities:", len(s.actionCache))
 	for _, ms := range s.maps {
 		for _, bot := range ms.bots {
 			if bot.ActionCode == "" {
@@ -174,7 +174,7 @@ func (s *GameServer) logActionProviders() {
 				label = a.Label
 				quests = s.questsByCell[actionCell(a)]
 			}
-			log.Printf("[ActionProviders]   map=%s action=%s label=%q quests=%v entity=%s initPos=(%d,%d)",
+			logx.Debugf("[ActionProviders]   map=%s action=%s label=%q quests=%v entity=%s initPos=(%d,%d)",
 				bot.MapCode, bot.ActionCode, label, quests, bot.ID,
 				int(bot.Pos.X), int(bot.Pos.Y))
 		}

@@ -8,8 +8,8 @@ package engine_client
 
 import (
 	"context"
+	"cyberia-server/logx"
 	"fmt"
-	"log"
 
 	game "cyberia-server/game"
 	pb "cyberia-server/gen/proto"
@@ -38,7 +38,7 @@ func NewDispatcher(grpcAddress, restBaseURL string) (*Dispatcher, error) {
 	if grpcAddress != "" {
 		gc, err := NewGrpcClient(grpcAddress)
 		if err != nil {
-			log.Printf("[EngineClient] gRPC client init failed: %v", err)
+			logx.Warnf("[EngineClient] gRPC client init failed: %v", err)
 		} else {
 			d.grpc = gc
 		}
@@ -79,7 +79,7 @@ func dispatch[T any](d *Dispatcher, op string, call func(DataSource) (T, error))
 		if d.rest == nil {
 			return zero, grpcErr
 		}
-		log.Printf("[EngineClient] %s via gRPC failed: %v — retrying via REST boot fallback", op, grpcErr)
+		logx.Warnf("[EngineClient] %s via gRPC failed: %v — retrying via REST boot fallback", op, grpcErr)
 	}
 	result, restErr := call(d.rest)
 	if restErr == nil {

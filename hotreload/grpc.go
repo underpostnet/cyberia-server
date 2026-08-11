@@ -2,9 +2,9 @@ package hotreload
 
 import (
 	"context"
+	"cyberia-server/logx"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 
 	"google.golang.org/grpc"
@@ -96,9 +96,9 @@ func ListenGRPC(svc *Service, addr string) (*GRPCServer, error) {
 	s.RegisterService(&serviceDesc, svc)
 
 	go func() {
-		log.Printf("[HotReload] gRPC control service listening on %s", addr)
+		logx.Infof("[HotReload] gRPC control service listening on %s", addr)
 		if err := s.Serve(lis); err != nil {
-			log.Printf("[HotReload] gRPC control service stopped: %v", err)
+			logx.Warnf("[HotReload] gRPC control service stopped: %v", err)
 		}
 	}()
 	return &GRPCServer{server: s, lis: lis}, nil

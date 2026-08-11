@@ -7,8 +7,8 @@ package engine_client
 
 import (
 	"context"
+	"cyberia-server/logx"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -58,7 +58,7 @@ func NewGrpcClient(address string) (*GrpcClient, error) {
 		return nil, fmt.Errorf("engine_client: dial %s: %w", address, err)
 	}
 
-	log.Printf("gRPC client connected to Engine at %s", address)
+	logx.Infof("gRPC client connected to Engine at %s", address)
 	return &GrpcClient{
 		conn: conn,
 		svc:  pb.NewCyberiaDataServiceClient(conn),

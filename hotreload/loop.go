@@ -2,7 +2,7 @@ package hotreload
 
 import (
 	"context"
-	"log"
+	"cyberia-server/logx"
 	"time"
 )
 
@@ -33,18 +33,18 @@ type Loop struct {
 func StartLoop(svc *Service, interval time.Duration) *Loop {
 	l := &Loop{svc: svc, interval: interval, stopCh: make(chan struct{})}
 	if svc == nil || interval <= 0 {
-		log.Println("[HotReload] Passive reload loop disabled (interval <= 0).")
+		logx.Infof("[HotReload] Passive reload loop disabled (interval <= 0).")
 		return l
 	}
 
-	log.Printf("[HotReload] Passive reload loop every %s", interval)
+	logx.Infof("[HotReload] Passive reload loop every %s", interval)
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-l.stopCh:
-				log.Println("[HotReload] Passive reload loop stopped.")
+				logx.Infof("[HotReload] Passive reload loop stopped.")
 				return
 			case <-ticker.C:
 				l.tick()
@@ -61,7 +61,7 @@ func (l *Loop) tick() {
 	// ErrBusy is expected whenever a triggered reload is mid-flight; the next
 	// tick picks the work up, so it is not an error worth surfacing.
 	if _, err := l.svc.run(ctx, ModeIncremental, "poll"); err != nil && err != ErrBusy {
-		log.Printf("[HotReload] Passive reload error: %v", err)
+		logx.Errorf("[HotReload] Passive reload error: %v", err)
 	}
 }
 
