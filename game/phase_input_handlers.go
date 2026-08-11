@@ -53,8 +53,14 @@ func (s *GameServer) handlePlayerActionInput(player *PlayerState, mapState *MapS
 		return
 	}
 
-	startPosI := PointI{X: int(math.Round(player.Pos.X)), Y: int(math.Round(player.Pos.Y))}
-	targetPosI := PointI{X: int(math.Round(cmd.TargetX)), Y: int(math.Round(cmd.TargetY))}
+	// Clamp into the map. An off-grid target would otherwise make Astar expand
+	// the full reachable area and then fail, spending the tick budget.
+	startPosI := clampCellToGrid(
+		PointI{X: int(math.Round(player.Pos.X)), Y: int(math.Round(player.Pos.Y))},
+		mapState.gridW, mapState.gridH)
+	targetPosI := clampCellToGrid(
+		PointI{X: int(math.Round(cmd.TargetX)), Y: int(math.Round(cmd.TargetY))},
+		mapState.gridW, mapState.gridH)
 
 	newPath, err := mapState.pathfinder.Astar(startPosI, targetPosI, player.Dims)
 	usedTarget := targetPosI
