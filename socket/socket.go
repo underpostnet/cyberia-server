@@ -4,6 +4,8 @@ package socket
 
 import (
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -36,11 +38,20 @@ type Metrics struct {
 	WriteError func()
 }
 
+// maxConsecutiveDrops is how many queue-full drops in a row mark a peer as
+// too slow to keep. At the snapshot rate this is a few seconds of a client
+// that reads nothing, which no live connection does.
+const maxConsecutiveDrops = 64
+
 // Socket is the single writer for one connection.
 type Socket struct {
 	conn    *websocket.Conn
 	send    chan []byte
 	metrics Metrics
+
+	closeOnce sync.Once
+	// drops counts consecutive failed sends. A successful send resets it.
+	drops atomic.Uint32
 }
 
 // New starts the write pump for an accepted connection.
@@ -53,11 +64,19 @@ func New(conn *websocket.Conn, metrics Metrics) *Socket {
 
 // Send queues a pack for the write pump. It returns false when the queue is
 // full — the caller decides if the message is worth a retry.
+//
+// The send never blocks, so one slow peer cannot hold up the caller. A peer
+// that stays full for maxConsecutiveDrops sends is closed: its queue will not
+// drain and every later snapshot would be dropped anyway.
 func (s *Socket) Send(pack []byte) bool {
 	select {
 	case s.send <- pack:
+		s.drops.Store(0)
 		return true
 	default:
+		if s.drops.Add(1) >= maxConsecutiveDrops {
+			s.Close()
+		}
 		return false
 	}
 }
@@ -88,10 +107,10 @@ func (s *Socket) Receive(onPack func(pack []byte)) {
 	}
 }
 
-// Close closes the connection. Safe to call more than once. The write pump
-// exits on its next write or ping.
-// ponytail: the send queue stays open so a concurrent Send can never panic.
-func (s *Socket) Close() { s.conn.Close() }
+// Close closes the connection. Safe to call more than once, from any
+// goroutine. The write pump exits on its next write or ping.
+// The send queue stays open so a concurrent Send can never panic.
+func (s *Socket) Close() { s.closeOnce.Do(func() { s.conn.Close() }) }
 
 // writePump is the only goroutine that writes to the connection. It also
 // sends the keep-alive pings.

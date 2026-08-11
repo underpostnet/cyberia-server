@@ -62,6 +62,11 @@ type Config struct {
 	// CONTAINER_DEPLOY_ID, optional (empty = status reporting disabled).
 	ContainerDeployID string
 
+	// WSLimits overrides the WebSocket admission and rate thresholds. Every
+	// field is nil when its variable is unset, which keeps the built-in
+	// default. See WSLimits for the variable names.
+	WSLimits WSLimits
+
 	// ServerAPIKey is the INTERNAL shared secret engine-cyberia presents to
 	// trigger a hot reload (gRPC control service or REST fallback). Never
 	// exposed to game clients. CYBERIA_SERVER_API_KEY; unset disables the
@@ -120,7 +125,78 @@ func Load() (Config, error) {
 	}
 	c.GRPCReloadInterval = reload
 
+	limits, err := loadWSLimits()
+	if err != nil {
+		return c, err
+	}
+	c.WSLimits = limits
+
 	return c, nil
+}
+
+// WSLimits carries the WebSocket admission and rate overrides. A nil field
+// means the variable is unset and the built-in default applies. An explicit 0
+// disables that one limit.
+//
+// DisableAll is the single switch for a load test: it turns every limit off,
+// which is required when many simulated clients share one address.
+type WSLimits struct {
+	// CYBERIA_DISABLE_CONNECTION_LIMITS — "1"/"true" turns every limit off.
+	DisableAll bool
+
+	MaxConnections      *int // CYBERIA_MAX_CONNECTIONS
+	MaxConnectionsPerIP *int // CYBERIA_MAX_CONNECTIONS_PER_IP
+	ConnectRatePerIP    *int // CYBERIA_CONNECT_RATE_PER_IP
+	ConnectBurstPerIP   *int // CYBERIA_CONNECT_BURST_PER_IP
+	MessageRate         *int // CYBERIA_MESSAGE_RATE
+	MessageBurst        *int // CYBERIA_MESSAGE_BURST
+	MaxStrikes          *int // CYBERIA_MAX_STRIKES
+}
+
+func loadWSLimits() (WSLimits, error) {
+	out := WSLimits{DisableAll: parseBool(os.Getenv("CYBERIA_DISABLE_CONNECTION_LIMITS"))}
+	for _, f := range []struct {
+		key  string
+		dest **int
+	}{
+		{"CYBERIA_MAX_CONNECTIONS", &out.MaxConnections},
+		{"CYBERIA_MAX_CONNECTIONS_PER_IP", &out.MaxConnectionsPerIP},
+		{"CYBERIA_CONNECT_RATE_PER_IP", &out.ConnectRatePerIP},
+		{"CYBERIA_CONNECT_BURST_PER_IP", &out.ConnectBurstPerIP},
+		{"CYBERIA_MESSAGE_RATE", &out.MessageRate},
+		{"CYBERIA_MESSAGE_BURST", &out.MessageBurst},
+		{"CYBERIA_MAX_STRIKES", &out.MaxStrikes},
+	} {
+		v, err := getEnvIntPtr(f.key)
+		if err != nil {
+			return out, err
+		}
+		*f.dest = v
+	}
+	return out, nil
+}
+
+// getEnvIntPtr reads an optional non-negative integer. Unset returns nil. A
+// malformed value is an error rather than a silent fallback, so a typo in a
+// limit never ships as a surprise default.
+func getEnvIntPtr(key string) (*int, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return nil, fmt.Errorf("invalid %s %q: expected a non-negative integer", key, raw)
+	}
+	return &n, nil
+}
+
+func parseBool(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 var basePathPattern = regexp.MustCompile(`^/[A-Za-z0-9][A-Za-z0-9._-]*$`)

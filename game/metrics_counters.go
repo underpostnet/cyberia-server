@@ -22,6 +22,9 @@ type runtimeCounters struct {
 	wsWriteErrors      atomic.Uint64
 	wsConnectsTotal    atomic.Uint64
 	wsDisconnectsTotal atomic.Uint64
+	wsRefusedTotal     atomic.Uint64 // rejected by the admission guard
+	wsRateLimitedTotal atomic.Uint64 // inbound messages dropped over budget
+	wsEvictedTotal     atomic.Uint64 // closed for repeated violations
 
 	// Last observed tick + wall time. Snapshotted on every read so a
 	// caller can derive a tick/s rate without holding the world lock.
@@ -46,6 +49,11 @@ type RuntimeMetricsSnapshot struct {
 	WsWriteErrors      uint64  `json:"ws_write_errors_total"`
 	WsConnectsTotal    uint64  `json:"ws_connects_total"`
 	WsDisconnectsTotal uint64  `json:"ws_disconnects_total"`
+	WsRefusedTotal     uint64  `json:"ws_refused_total"`
+	WsRateLimitedTotal uint64  `json:"ws_rate_limited_total"`
+	WsEvictedTotal     uint64  `json:"ws_evicted_total"`
+	WsActiveConns      int     `json:"ws_active_connections"`
+	WsActiveAddresses  int     `json:"ws_active_addresses"`
 }
 
 // recordWsRead is called from readPump whenever a frame is decoded
@@ -61,10 +69,13 @@ func (s *GameServer) recordWsWrite(n int) {
 	s.counters.wsBytesOut.Add(uint64(n))
 }
 
-func (s *GameServer) recordWsReadError()  { s.counters.wsReadErrors.Add(1) }
-func (s *GameServer) recordWsWriteError() { s.counters.wsWriteErrors.Add(1) }
-func (s *GameServer) recordWsConnect()    { s.counters.wsConnectsTotal.Add(1) }
-func (s *GameServer) recordWsDisconnect() { s.counters.wsDisconnectsTotal.Add(1) }
+func (s *GameServer) recordWsReadError()   { s.counters.wsReadErrors.Add(1) }
+func (s *GameServer) recordWsWriteError()  { s.counters.wsWriteErrors.Add(1) }
+func (s *GameServer) recordWsConnect()     { s.counters.wsConnectsTotal.Add(1) }
+func (s *GameServer) recordWsDisconnect()  { s.counters.wsDisconnectsTotal.Add(1) }
+func (s *GameServer) recordWsRefused()     { s.counters.wsRefusedTotal.Add(1) }
+func (s *GameServer) recordWsRateLimited() { s.counters.wsRateLimitedTotal.Add(1) }
+func (s *GameServer) recordWsEvicted()     { s.counters.wsEvictedTotal.Add(1) }
 
 // RuntimeMetrics returns a lock-free snapshot of the simulation cadence
 // counters and per-process throughput. Safe to call from the HTTP API
@@ -84,6 +95,8 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 	s.counters.lastObservedTick.Store(tick)
 	s.counters.lastObservedAt.Store(time.Now().UnixNano())
 
+	activeConns, activeAddrs := s.guard.counts()
+
 	return RuntimeMetricsSnapshot{
 		TickRate:           tickRate,
 		SnapshotRate:       snapRate,
@@ -98,6 +111,11 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 		WsWriteErrors:      s.counters.wsWriteErrors.Load(),
 		WsConnectsTotal:    s.counters.wsConnectsTotal.Load(),
 		WsDisconnectsTotal: s.counters.wsDisconnectsTotal.Load(),
+		WsRefusedTotal:     s.counters.wsRefusedTotal.Load(),
+		WsRateLimitedTotal: s.counters.wsRateLimitedTotal.Load(),
+		WsEvictedTotal:     s.counters.wsEvictedTotal.Load(),
+		WsActiveConns:      activeConns,
+		WsActiveAddresses:  activeAddrs,
 	}
 }
 

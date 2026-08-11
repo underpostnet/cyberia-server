@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime/debug"
 	"time"
@@ -26,7 +26,7 @@ import (
 func underpostConfigSet(key, value string) {
 	cmd := exec.Command("underpost", "config", "set", key, value)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("[status] underpost config set %s %s: %v\n%s", key, value, err, out)
+		logx.Warnf("[status] underpost config set %s %s: %v\n%s", key, value, err, out)
 	}
 }
 
@@ -74,7 +74,7 @@ func main() {
 	// Load .env from CWD (project root) if present. Does not override
 	// already-set env vars. Absence is fine — env vars may be set directly.
 	if err := godotenv.Load("../../.env"); err != nil {
-		log.Println("No .env file; relying on environment variables.")
+		logx.Infof("No .env file; relying on environment variables.")
 	}
 
 	// Centralized leveled JSON logging — resolves LOG_LEVEL / APP_ENV. Must run
@@ -91,11 +91,26 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		runUnderpostStatus(cfg.ContainerDeployID, "error")
-		log.Fatalf("config: %v", err)
+		logx.Errorf("config: %v", err)
+		os.Exit(1)
 	}
 
 	// Core game server
 	s := game.NewGameServer()
+
+	limits := game.ResolveConnectionLimits(game.ConnectionLimitOverrides{
+		DisableAll:          cfg.WSLimits.DisableAll,
+		MaxConnections:      cfg.WSLimits.MaxConnections,
+		MaxConnectionsPerIP: cfg.WSLimits.MaxConnectionsPerIP,
+		ConnectRatePerIP:    cfg.WSLimits.ConnectRatePerIP,
+		ConnectBurstPerIP:   cfg.WSLimits.ConnectBurstPerIP,
+		MessageRate:         cfg.WSLimits.MessageRate,
+		MessageBurst:        cfg.WSLimits.MessageBurst,
+		MaxStrikes:          cfg.WSLimits.MaxStrikes,
+	})
+	s.SetConnectionLimits(limits)
+	logx.Infof("[GameServer] ws limits: %s", limits.Describe())
+
 	if cfg.EngineAPIBaseURL != "" {
 		// Internal engine origin for server-to-server content calls.
 		s.SetEngineApiBaseUrl(cfg.EngineAPIBaseURL)
@@ -112,7 +127,8 @@ func main() {
 	ds, err := engine_client.NewDispatcher(cfg.EngineGRPCAddress, cfg.EngineAPIBaseURL)
 	if err != nil {
 		runUnderpostStatus(cfg.ContainerDeployID, "error")
-		log.Fatalf("Engine transport required: %v", err)
+		logx.Errorf("Engine transport required: %v", err)
+		os.Exit(1)
 	}
 	defer ds.Close()
 
@@ -122,7 +138,8 @@ func main() {
 	if err := wb.LoadAll(ctx); err != nil {
 		cancel()
 		runUnderpostStatus(cfg.ContainerDeployID, "error")
-		log.Fatalf("Engine world load failed: %v — Engine must be running before starting cyberia-server.", err)
+		logx.Errorf("Engine world load failed: %v — Engine must be running before starting cyberia-server.", err)
+		os.Exit(1)
 	}
 	cancel()
 
@@ -131,7 +148,7 @@ func main() {
 	// CYBERIA_SERVER_API_KEY, and an unset key disables them.
 	hotReload := hotreload.NewService(wb, cfg.ServerAPIKey, cfg.InstanceCode)
 	if hrGRPC, err := hotreload.ListenGRPC(hotReload, cfg.HotReloadGRPCAddress); err != nil {
-		log.Printf("[HotReload] gRPC control service unavailable: %v (REST fallback still served)", err)
+		logx.Warnf("[HotReload] gRPC control service unavailable: %v (REST fallback still served)", err)
 	} else if hrGRPC != nil {
 		defer hrGRPC.Stop()
 	}
@@ -148,10 +165,10 @@ func main() {
 	// Static dir is relative to the project root (cwd). Missing dir/index.html
 	// degrades to 503 for dashboard routes instead of blocking startup.
 	if *serveStatic {
-		log.Printf("Serving static assets from %s", cfg.StaticDir)
+		logx.Infof("Serving static assets from %s", cfg.StaticDir)
 		app.Handle("/*", httpserver.StaticFileServer(cfg.StaticDir, "/index.html", cfg.BasePath))
 	} else {
-		log.Println("Static dashboard disabled (-serve-static=false)")
+		logx.Infof("Static dashboard disabled (-serve-static=false)")
 	}
 
 	// Override the RFC 9457 problem.type base URI when set; otherwise the
@@ -179,19 +196,21 @@ func main() {
 		Handler: r,
 	}
 
-	log.Printf("Server started on :%s%s", cfg.ServerPort, cfg.BasePath)
+	logx.Infof("Server started on :%s%s", cfg.ServerPort, cfg.BasePath)
 
 	// Bind the TCP port first so we can signal "running" before entering
 	// the accept loop. A failed bind immediately signals "error" and exits.
 	ln, listenErr := net.Listen("tcp", ":"+cfg.ServerPort)
 	if listenErr != nil {
 		runUnderpostStatus(cfg.ContainerDeployID, "error")
-		log.Fatal("Listen:", listenErr)
+		logx.Errorf("listen: %v", listenErr)
+		os.Exit(1)
 	}
 	runUnderpostStatus(cfg.ContainerDeployID, "running-deployment")
 
 	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		runUnderpostStatus(cfg.ContainerDeployID, "error")
-		log.Fatal("Serve:", err)
+		logx.Errorf("serve: %v", err)
+		os.Exit(1)
 	}
 }

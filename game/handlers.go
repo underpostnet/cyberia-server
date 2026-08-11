@@ -2,7 +2,6 @@ package game
 
 import (
 	"encoding/json"
-	"log"
 	"math/rand"
 	"net/http"
 	"time"
@@ -58,9 +57,29 @@ func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
 
 // HandleConnections handles WebSocket connections.
 func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
+	// Admission runs before the upgrade so a refused client costs one HTTP
+	// response, not a WebSocket session.
+	ip := clientIP(r)
+	if refusal := s.guard.admit(ip); refusal != admitted {
+		s.recordWsRefused()
+		logx.Debugf("[HandleConnections] refused ip=%s: %s", ip, refusal)
+		http.Error(w, string(refusal), http.StatusServiceUnavailable)
+		return
+	}
+	// Admitted from here. Until a Client owns the slot, this closure frees it;
+	// after that the Client's `released` Once does, on whichever path ends it.
+	slotOwned := true
+	releaseSlot := func() {
+		if slotOwned {
+			slotOwned = false
+			s.guard.release(ip)
+		}
+	}
+
 	conn, err := socket.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("Upgrade error:", err)
+		logx.Debugf("Upgrade failed: %v", err)
+		releaseSlot()
 		return
 	}
 
@@ -68,9 +87,10 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	logx.Debugf("[HandleConnections] s.mu acquired, building player")
 
 	if len(s.maps) == 0 {
-		log.Println("[HandleConnections] No maps loaded — rejecting connection. Ensure INSTANCE_CODE is set and Engine gRPC is reachable.")
+		logx.Warnf("[HandleConnections] No maps loaded — rejecting connection. Ensure INSTANCE_CODE is set and Engine gRPC is reachable.")
 		conn.Close()
 		s.mu.Unlock()
+		releaseSlot()
 		return
 	}
 
@@ -106,9 +126,10 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	if !hasFixedPos {
 		p, err := startMapState.pathfinder.findRandomWalkablePoint(playerDims)
 		if err != nil {
-			log.Printf("Could not place new player: %v", err)
+			logx.Warnf("Could not place new player: %v", err)
 			conn.Close()
 			s.mu.Unlock()
+			releaseSlot()
 			return
 		}
 		startPosI = p
@@ -155,7 +176,10 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		}),
 		lastAction:  time.Now(),
 		playerState: playerState,
+		ip:          ip,
+		limiter:     newInputLimiter(s.limits),
 	}
+	slotOwned = false // the Client owns the guard slot from here
 	playerState.Client = client
 
 	startMapState.players[playerID] = playerState
@@ -191,17 +215,20 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		DeadItemIds:    s.deadItemIDList(),
 		Quests:         s.buildQuestSnapshot(playerState),
 	}
-	sendMessage(playerState, "init_data", initPayload)
-
-	// Send metadata message with ObjectLayer data for client-side caching.
-	sendMessage(playerState, "metadata", map[string]interface{}{
-		"objectLayers":   s.buildOLMetadataMap(),
+	metadataPayload := map[string]interface{}{
 		"apiBaseUrl":     s.enginePublicURL,
 		"instanceCode":   s.instanceCode,
 		"equipmentRules": s.equipmentRules,
-	})
+	}
 
 	s.mu.Unlock()
+
+	// The ObjectLayer metadata map and both JSON marshals are the costly part
+	// of a join. They run outside the world lock so a burst of connections
+	// cannot delay the simulation tick.
+	metadataPayload["objectLayers"] = s.buildOLMetadataMap()
+	sendMessage(playerState, "init_data", initPayload)
+	sendMessage(playerState, "metadata", metadataPayload)
 
 	// Register the client with listenForClients.
 	// Use a timeout so we get a clear log if listenForClients is dead rather
@@ -210,11 +237,35 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	case s.register <- client:
 		s.recordWsConnect()
 	case <-time.After(5 * time.Second):
-		log.Printf("[HandleConnections] timeout waiting to register player=%s — listenForClients may be dead", playerID)
-		client.sock.Close()
+		logx.Errorf("[HandleConnections] timeout waiting to register player=%s — listenForClients may be dead", playerID)
+		// The player is already in the world but no readPump will ever run to
+		// unregister it. Remove it here or phaseReplication keeps serving it.
+		s.detachClient(client)
 		return
 	}
 	go client.readPump(s)
+}
+
+// detachClient removes one client from the world and frees every resource it
+// holds: map presence, client registry, guard slot, socket. Safe to call from
+// any disconnect path and safe to call more than once.
+func (s *GameServer) detachClient(client *Client) {
+	if client == nil {
+		return
+	}
+	s.mu.Lock()
+	client.detached = true
+	delete(s.clients, client.playerID)
+	// Sweep every map: a portal can move a player after MapCode was read.
+	for _, mapState := range s.maps {
+		delete(mapState.players, client.playerID)
+	}
+	s.mu.Unlock()
+
+	if client.sock != nil {
+		client.sock.Close()
+	}
+	client.released.Do(func() { s.guard.release(client.ip) })
 }
 
 // sendMessage packs a message and queues it for the player. The send never
@@ -225,7 +276,7 @@ func sendMessage(player *PlayerState, msgType string, payload any) {
 	}
 	pack, err := serial.Pack(msgType, payload)
 	if err != nil {
-		log.Printf("[sendMessage] pack %q failed: %v", msgType, err)
+		logx.Errorf("[sendMessage] pack %q failed: %v", msgType, err)
 		return
 	}
 	if !player.Client.sock.Send(pack) {
@@ -237,12 +288,17 @@ func sendMessage(player *PlayerState, msgType string, payload any) {
 func (c *Client) readPump(server *GameServer) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[readPump] PANIC player=%s: %v", c.playerID, r)
+			logx.Errorf("[readPump] PANIC player=%s: %v", c.playerID, r)
 		}
 		logx.Debugf("[readPump] closing player=%s", c.playerID)
 		server.recordWsDisconnect()
-		server.unregister <- c
-		c.sock.Close()
+		// Never block here. A full unregister queue must not pin this
+		// goroutine, so fall back to tearing the client down directly.
+		select {
+		case server.unregister <- c:
+		default:
+			server.detachClient(c)
+		}
 	}()
 	c.sock.Receive(func(pack []byte) { c.receiveMessage(pack, server) })
 }
@@ -303,14 +359,32 @@ type inputPayload struct {
 // message into an InputCommand and enqueues it on the player's per-tick input
 // queue. phaseInput drains and applies it exactly once per tick.
 func (c *Client) receiveMessage(pack []byte, server *GameServer) {
+	// Rate limit first: an over-budget frame costs no parsing work.
+	if allowed, evict := c.limiter.allow(); !allowed {
+		server.recordWsRateLimited()
+		if evict {
+			c.evict(server, "input rate limit")
+		}
+		return
+	}
+
+	// reject records a protocol violation. A client that keeps sending
+	// malformed input is closed rather than left to repeat it.
+	reject := func(format string, args ...any) {
+		logx.Debugf(format, args...)
+		if c.limiter.strike() {
+			c.evict(server, "repeated protocol violations")
+		}
+	}
+
 	msg, err := serial.Unpack(pack)
 	if err != nil {
-		logx.Debugf("Bad message from player %s: %v", c.playerID, err)
+		reject("Bad message from player %s: %v", c.playerID, err)
 		return
 	}
 	kind, known := inputKinds[msg.Type]
 	if !known {
-		logx.Debugf("Unknown message type %q from player %s", msg.Type, c.playerID)
+		reject("Unknown message type %q from player %s", msg.Type, c.playerID)
 		return
 	}
 	if kind == InputKindHandshake {
@@ -319,81 +393,100 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 
 	var p inputPayload
 	if err := json.Unmarshal(msg.Payload, &p); err != nil {
-		logx.Debugf("Bad %q payload from player %s: %v", msg.Type, c.playerID, err)
+		reject("Bad %q payload from player %s: %v", msg.Type, c.playerID, err)
 		return
 	}
 
 	cmd := InputCommand{Kind: kind, ClientTick: p.Tick, Sequence: p.Seq}
 	switch kind {
 	case InputKindPlayerAction:
+		// A tap target reaches the pathfinder directly. Reject anything that
+		// is not a finite, plausible coordinate before it costs tick time.
+		if !validTapTarget(p.X, p.Y) {
+			reject("Out-of-range tap (%v,%v) from player %s", p.X, p.Y, c.playerID)
+			return
+		}
 		cmd.TargetX = p.X
 		cmd.TargetY = p.Y
 	case InputKindItemActivation:
-		if p.ItemID == "" {
+		if p.ItemID == "" || !validIdentifier(p.ItemID) {
 			return
 		}
 		cmd.ItemID = p.ItemID
 		cmd.Active = p.Active
 	case InputKindFreezeStart, InputKindFreezeEnd:
 		cmd.Reason = p.Reason
-		if cmd.Reason == "" {
+		if cmd.Reason == "" || !validIdentifier(cmd.Reason) {
 			cmd.Reason = "freeze"
 		}
 	case InputKindChat:
-		if p.ToID == "" || p.Text == "" {
+		if p.ToID == "" || p.Text == "" || !validIdentifier(p.ToID) {
 			return
 		}
 		cmd.ItemID = p.ToID // chat target id
-		cmd.ChatText = p.Text
+		cmd.ChatText = truncateRunes(p.Text, maxChatRunes)
 	case InputKindDlgStart, InputKindDlgCancel:
-		if p.EntityID == "" {
+		if p.EntityID == "" || !validIdentifier(p.EntityID) || !validIdentifier(p.ItemID) {
 			return
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.ItemID
 	case InputKindDlgComplete:
-		if p.EntityID == "" {
+		if p.EntityID == "" || !validIdentifier(p.EntityID) || !validIdentifier(p.DialogCode) {
 			return
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.ItemID
 		cmd.DialogCode = p.DialogCode
 	case InputKindQuestAbandon:
-		if p.QuestCode == "" {
+		if p.QuestCode == "" || !validIdentifier(p.QuestCode) {
 			return
 		}
 		cmd.ItemID = p.QuestCode
 	case InputKindQuestAccept:
-		if p.EntityID == "" || p.QuestCode == "" {
+		if p.EntityID == "" || p.QuestCode == "" ||
+			!validIdentifier(p.EntityID) || !validIdentifier(p.QuestCode) {
 			return
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.QuestCode
 	case InputKindShopBuy:
-		if p.EntityID == "" || p.ItemID == "" {
+		if p.EntityID == "" || p.ItemID == "" ||
+			!validIdentifier(p.EntityID) || !validIdentifier(p.ItemID) {
 			return
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.ItemID
-		cmd.Quantity = p.Quantity
+		cmd.Quantity = clampQuantity(p.Quantity)
 	case InputKindCraftItem:
-		if p.EntityID == "" {
+		if p.EntityID == "" || !validIdentifier(p.EntityID) || p.RecipeIndex < 0 {
 			return
 		}
 		cmd.EntityID = p.EntityID
 		cmd.RecipeIndex = p.RecipeIndex
 	case InputKindStorageOpen, InputKindStorageMove, InputKindStorageSwap,
 		InputKindStorageTransfer:
-		if p.EntityID == "" {
+		if p.EntityID == "" || !validIdentifier(p.EntityID) || !validIdentifier(p.ItemID) {
+			return
+		}
+		if kind != InputKindStorageOpen && (!validSlotIndex(p.FromIndex) || !validSlotIndex(p.ToIndex)) {
 			return
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.ItemID
-		cmd.Quantity = p.Quantity
+		cmd.Quantity = clampQuantity(p.Quantity)
 		cmd.FromIndex, cmd.ToIndex = p.FromIndex, p.ToIndex
 		cmd.Deposit = p.Deposit
 	}
 	c.dispatchInputCommand(server, cmd)
+}
+
+// evict closes an abusive connection. The read loop ends on the closed socket
+// and readPump runs the normal teardown.
+func (c *Client) evict(server *GameServer, reason string) {
+	server.recordWsEvicted()
+	logx.Warnf("[evict] player=%s ip=%s: %s", c.playerID, c.ip, reason)
+	c.sock.Close()
 }
 
 // dispatchInputCommand enqueues a typed InputCommand on the player's

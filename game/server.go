@@ -1,7 +1,6 @@
 package game
 
 import (
-	"log"
 	"math"
 	"math/rand"
 	"time"
@@ -25,14 +24,22 @@ func NewGameServer() *GameServer {
 		objectLayerDataCache: make(map[string]*ObjectLayer),
 		skillConfig:          make(map[string][]SkillDefinition),
 	}
+	gs.SetConnectionLimits(DefaultConnectionLimits())
 	return gs
+}
+
+// SetConnectionLimits replaces the admission and rate thresholds. Call it
+// before the server accepts connections.
+func (s *GameServer) SetConnectionLimits(limits ConnectionLimits) {
+	s.limits = limits
+	s.guard = newConnectionGuard(limits)
 }
 
 // ApplyInstanceConfig applies the gRPC InstanceConfig to the game server.
 // This replaces all hardcoded defaults — called during LoadAll and hot-reload.
 func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	if cfg == nil {
-		log.Println("[GameServer] WARNING: ApplyInstanceConfig called with nil config")
+		logx.Warnf("[GameServer] ApplyInstanceConfig called with nil config")
 		return
 	}
 
@@ -206,7 +213,7 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	// Register built-in skill handlers now that skillConfig is populated.
 	s.InitSkills()
 
-	log.Printf("[GameServer] Instance config applied: tickRate=%dHz, snapshotRate=%dHz, tickDuration=%v, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d skills, %d entityDefaultTypes, %d entityDefaultBuilds, floorItem=%q, ghostItem=%q, coinItem=%q",
+	logx.Infof("[GameServer] Instance config applied: tickRate=%dHz, snapshotRate=%dHz, tickDuration=%v, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d skills, %d entityDefaultTypes, %d entityDefaultBuilds, floorItem=%q, ghostItem=%q, coinItem=%q",
 		s.tickRate, s.snapshotRate, s.tickDuration, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.skillConfig), len(s.entityDefaults), len(s.entityDefaultBuilds), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
 }
 
@@ -225,9 +232,9 @@ func (s *GameServer) ReplaceObjectLayerCache(cache map[string]*ObjectLayer) {
 		}
 		typeCounts[itemType]++
 	}
-	log.Printf("Object layer cache replaced with %d items.", len(cache))
+	logx.Infof("Object layer cache replaced with %d items.", len(cache))
 	for itemType, count := range typeCounts {
-		log.Printf("  %-20s %d", itemType, count)
+		logx.Debugf("  %-20s %d", itemType, count)
 	}
 }
 
@@ -258,7 +265,7 @@ func (s *GameServer) SetEngineApiBaseUrl(url string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.engineApiBaseUrl = url
-	log.Printf("Engine internal API base URL set to: %s", url)
+	logx.Infof("Engine internal API base URL set to: %s", url)
 }
 
 // SetEnginePublicURL sets the client-visible Content Authority origin
@@ -267,7 +274,7 @@ func (s *GameServer) SetEnginePublicURL(url string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.enginePublicURL = url
-	log.Printf("Engine public URL set to: %s", url)
+	logx.Infof("Engine public URL set to: %s", url)
 }
 
 func (s *GameServer) Run() {
@@ -279,32 +286,24 @@ func (s *GameServer) Run() {
 func (s *GameServer) listenForClients() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[listenForClients] PANIC: %v — restarting goroutine", r)
+			logx.Errorf("[listenForClients] PANIC: %v — restarting goroutine", r)
 			go s.listenForClients()
 		}
 	}()
-	log.Println("Starting client listener...")
+	logx.Infof("Starting client listener...")
 	for {
 		select {
 		case client := <-s.register:
 			s.mu.Lock()
-			s.clients[client.playerID] = client
+			// A disconnect already handled for this client wins: re-adding it
+			// here would leave an entry nothing will ever remove.
+			if !client.detached {
+				s.clients[client.playerID] = client
+			}
 			s.mu.Unlock()
 			logx.Debugf("[listenForClients] registered player=%s", client.playerID)
 		case client := <-s.unregister:
-			s.mu.Lock()
-			if _, ok := s.clients[client.playerID]; ok {
-				delete(s.clients, client.playerID)
-				playerState := client.playerState
-				if playerState != nil {
-					mapState, ok := s.maps[playerState.MapCode]
-					if ok {
-						delete(mapState.players, client.playerID)
-					}
-				}
-				client.sock.Close()
-			}
-			s.mu.Unlock()
+			s.detachClient(client)
 			logx.Debugf("[listenForClients] unregistered player=%s", client.playerID)
 		}
 	}
@@ -347,7 +346,7 @@ func (s *GameServer) gameLoop() {
 	snapTicker := time.NewTicker(time.Second / time.Duration(s.snapshotRate))
 	defer snapTicker.Stop()
 
-	log.Printf("[GameServer] simulation @ %d Hz (tick %v), replication @ %d Hz",
+	logx.Infof("[GameServer] simulation @ %d Hz (tick %v), replication @ %d Hz",
 		s.tickRate, s.tickDuration, s.snapshotRate)
 
 	for {
@@ -356,7 +355,7 @@ func (s *GameServer) gameLoop() {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						log.Printf("[GameServer] PANIC in simulation tick: %v", r)
+						logx.Errorf("[GameServer] PANIC in simulation tick: %v", r)
 					}
 				}()
 				s.mu.Lock()
@@ -377,7 +376,7 @@ func (s *GameServer) gameLoop() {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						log.Printf("[GameServer] PANIC in snapshot tick: %v", r)
+						logx.Errorf("[GameServer] PANIC in snapshot tick: %v", r)
 					}
 				}()
 				s.mu.Lock()
@@ -492,13 +491,13 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 	// and iterate mapState.players while we were still writing to it.
 
 	if portal.PortalConfig == nil {
-		log.Println("Teleportation failed: Portal config is nil.")
+		logx.Warnf("Teleportation failed: portal config is nil.")
 		return
 	}
 	destMapCode := portal.PortalConfig.DestMapCode
 	destMapState, ok := s.maps[destMapCode]
 	if !ok {
-		log.Printf("Teleportation failed: Destination map %q not found.", destMapCode)
+		logx.Warnf("Teleportation failed: destination map %q not found.", destMapCode)
 		return
 	}
 
@@ -531,7 +530,7 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 
 	destPosI, err := destMapState.pathfinder.findClosestWalkablePoint(PointI{X: int(spawnX), Y: int(spawnY)}, player.Dims)
 	if err != nil {
-		log.Printf("Could not find a walkable spawn point: %v", err)
+		logx.Warnf("Could not find a walkable spawn point: %v", err)
 		return
 	}
 	currentMapState, ok := s.maps[player.MapCode]
@@ -562,7 +561,7 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 func (s *GameServer) sendAOI(player *PlayerState) {
 	mapState, ok := s.maps[player.MapCode]
 	if !ok {
-		log.Printf("Map %q not found for player %s.", player.MapCode, player.ID)
+		logx.Warnf("Map %q not found for player %s.", player.MapCode, player.ID)
 		return
 	}
 

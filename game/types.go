@@ -288,6 +288,19 @@ type Client struct {
 	playerID    string
 	lastAction  time.Time
 	playerState *PlayerState
+
+	// ip is the address the guard counts this connection against.
+	ip string
+	// limiter is the inbound message budget. Only the read goroutine for this
+	// connection touches it.
+	limiter *inputLimiter
+	// released guards the guard slot so every disconnect path frees it once.
+	released sync.Once
+	// detached marks a torn-down client. register and unregister are separate
+	// channels, so a fast disconnect can be handled before the matching
+	// connect; the flag stops that from re-adding a dead client. Read and
+	// written under GameServer.mu.
+	detached bool
 }
 
 type GameServer struct {
@@ -415,6 +428,10 @@ type GameServer struct {
 
 	// Lock-free observability counters. See metrics_counters.go.
 	counters runtimeCounters
+
+	// guard holds the connection admission limits. See connection_guard.go.
+	guard  *connectionGuard
+	limits ConnectionLimits
 }
 
 // PlayerSpawnConfig — authoritative initial spawn for new players. When Random
