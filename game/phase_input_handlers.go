@@ -14,22 +14,30 @@
 //     InputCommand values from handlers.go.
 //   - Lock management. phaseInput holds the world lock for the entire
 //     drain pass.
-//   - Per-WS-goroutine state. Cooldown tracking still uses
-//     Client.lastAction (mutated under s.mu inside this file) for now.
+//   - Pathfinder rate limiting. Movement re-plans at most once per player per
+//     tick because phaseInput calls flushPendingMove once; the handlers only
+//     record intent.
 
 package game
 
 import (
 	"math"
-	"time"
 
 	"cyberia-server/logx"
 )
 
-// handlePlayerActionInput applies a TAP from the client: movement intent
-// + skill trigger. Skills fire on every valid tap (probability-gated);
-// movement re-planning is additionally gated by the per-player action
-// cooldown so spam-tapping doesn't churn the pathfinder.
+// handlePlayerActionInput applies a TAP from the client: skill trigger now,
+// movement intent recorded for the end of the phase.
+//
+// Skills fire on every valid tap, probability-gated by Intelligence. Movement
+// does not re-plan here: taps that arrive inside one tick all describe the same
+// instant, and only the newest of them names where the player wants to go, so
+// the intent is recorded and phaseInput re-plans once per tick from the last
+// one. That coalescing is the whole bound on pathfinder cost — one A* per
+// player per tick whatever the tap rate — and it costs the player nothing,
+// because the tap it drops is one a later tap in the same tick superseded.
+// Nothing else may throttle the re-plan: a walk that cannot turn until some
+// cooldown elapses reads as input lag and sets off in the abandoned direction.
 func (s *GameServer) handlePlayerActionInput(player *PlayerState, mapState *MapState, cmd *InputCommand) {
 	if player.IsGhost() {
 		return
@@ -38,19 +46,39 @@ func (s *GameServer) handlePlayerActionInput(player *PlayerState, mapState *MapS
 		return
 	}
 
-	stats := s.CalculateStats(player, mapState)
-	cooldown := s.CalculateActionCooldown(stats)
-	movementReady := player.Client == nil || time.Since(player.Client.lastAction) >= cooldown
-	if movementReady && player.Client != nil {
-		player.Client.lastAction = time.Now()
-	}
-
 	// Skills + regen run on every accepted tap.
 	target := Point{X: cmd.TargetX, Y: cmd.TargetY}
 	s.HandlePlayerTapAction(player, mapState, target)
 
-	if !movementReady {
+	player.PendingMove = PointI{X: int(math.Round(cmd.TargetX)), Y: int(math.Round(cmd.TargetY))}
+	player.PendingMoveSequence = cmd.Sequence
+	player.HasPendingMove = true
+}
+
+// flushPendingMove re-plans the walk from the newest tap of this tick. Called
+// once per player per tick by phaseInput, after the input queue is drained.
+//
+// Every re-plan stamps LastMovementSequence, which the snapshot echoes as
+// moveAck. Arrival is not acceptance — a superseded tap is acknowledged and
+// never planned — so the client needs moveAck to know which command the route
+// it is being handed was planned for.
+func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
+	if !player.HasPendingMove {
 		return
+	}
+	target := player.PendingMove
+	sequence := player.PendingMoveSequence
+	player.HasPendingMove = false
+
+	// Re-check the refusals the recording handler already applied: a FreezeStart
+	// or a death later in the same queue lands between the record and this
+	// flush, and the tap must not outlive it.
+	if player.IsGhost() || player.Frozen {
+		return
+	}
+
+	if sequence > player.LastMovementSequence {
+		player.LastMovementSequence = sequence
 	}
 
 	// Clamp into the map. An off-grid target would otherwise make Astar expand
@@ -58,9 +86,15 @@ func (s *GameServer) handlePlayerActionInput(player *PlayerState, mapState *MapS
 	startPosI := clampCellToGrid(
 		PointI{X: int(math.Round(player.Pos.X)), Y: int(math.Round(player.Pos.Y))},
 		mapState.gridW, mapState.gridH)
-	targetPosI := clampCellToGrid(
-		PointI{X: int(math.Round(cmd.TargetX)), Y: int(math.Round(cmd.TargetY))},
-		mapState.gridW, mapState.gridH)
+	targetPosI := clampCellToGrid(target, mapState.gridW, mapState.gridH)
+
+	// A repeat of the destination already being walked needs no search. This is
+	// the shape a spam-tapping client takes, and it is also the shape of a held
+	// steering key, so skipping it removes the cheapest attack and the most
+	// common redundant search at once.
+	if player.Mode == WALKING && player.TargetPos == targetPosI && len(player.Path) > 0 {
+		return
+	}
 
 	newPath, err := mapState.pathfinder.Astar(startPosI, targetPosI, player.Dims)
 	usedTarget := targetPosI

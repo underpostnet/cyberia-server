@@ -45,6 +45,9 @@ package game
 //   - Per-player input budget is bounded by the queue capacity in
 //     EnqueueInput (currently 64) so a malicious client cannot starve
 //     other tick work.
+//   - Movement re-plans at most once per player per tick. Handlers record the
+//     intent; flushPendingMove runs the single A*. This is the only bound on
+//     pathfinder cost, so no other path may call it.
 func (s *GameServer) phaseInput(tick uint32, mapState *MapState) {
 	for _, player := range mapState.players {
 		if len(player.InputQueue) == 0 {
@@ -55,6 +58,7 @@ func (s *GameServer) phaseInput(tick uint32, mapState *MapState) {
 		for i := range queue {
 			s.applyInputCommand(player, mapState, &queue[i])
 		}
+		s.flushPendingMove(player, mapState)
 	}
 	_ = tick
 }

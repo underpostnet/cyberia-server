@@ -103,6 +103,12 @@ type SnapshotSelf struct {
 	// MoveSpeed is cells per second. The client prediction integrator uses
 	// it directly, so its step formula matches phaseMovement.
 	MoveSpeed float64 `json:"moveSpeed"`
+	// ActionCooldownMs is the effective action cooldown for this player. It
+	// does not gate movement — that re-plans every tick — but every tap fires
+	// skills, so it is the cadence at which repeating an input is worth
+	// anything. Keyboard steering paces its refresh by it; sending it keeps
+	// the Utility stat reduction in one place.
+	ActionCooldownMs int `json:"actionCooldownMs"`
 	// PortalHoldProgress is the authoritative teleport charge, 0..1.
 	PortalHoldProgress float64 `json:"portalHoldProgress"`
 }
@@ -110,9 +116,16 @@ type SnapshotSelf struct {
 // Snapshot is the `snapshot` message payload.
 type Snapshot struct {
 	Tick uint32 `json:"tick"`
-	// Ack is the highest input sequence applied for this player. The client
+	// Ack is the highest input sequence received for this player. The client
 	// drops acknowledged commands from its prediction buffer.
-	Ack      uint32           `json:"ack"`
+	Ack uint32 `json:"ack"`
+	// MoveAck is the highest PLAYER_ACTION sequence that re-planned movement.
+	// Ack only proves arrival: taps landing in the same tick are all
+	// acknowledged, but only the newest is planned, so self.path and
+	// self.targetPos can still describe an earlier command. The client adopts
+	// the authoritative route only once MoveAck covers its newest command, so a
+	// rapid change of direction can never pull prediction onto a stale route.
+	MoveAck  uint32           `json:"moveAck"`
 	Entities []SnapshotEntity `json:"entities"`
 	Self     SnapshotSelf     `json:"self"`
 }
@@ -214,6 +227,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 	snap := Snapshot{
 		Tick:     player.LastSnapshotTick,
 		Ack:      player.LastAckedInputSequence,
+		MoveAck:  player.LastMovementSequence,
 		Entities: make([]SnapshotEntity, 0, 64),
 	}
 
@@ -407,7 +421,8 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 		CoinBalance:        player.Coins,
 		Inventory:          s.visibleInventory(player.ObjectLayers),
 		Frozen:             player.Frozen,
-		MoveSpeed:          s.CalculateMovementSpeed(stats),
+		MoveSpeed:          s.CalculatePlayerMovementSpeed(stats),
+		ActionCooldownMs:   int(s.CalculateActionCooldown(stats) / time.Millisecond),
 		PortalHoldProgress: portalHold,
 	}
 	self.Life = player.Life

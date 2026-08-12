@@ -174,7 +174,6 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			ReadError:  s.recordWsReadError,
 			WriteError: s.recordWsWriteError,
 		}),
-		lastAction:  time.Now(),
 		playerState: playerState,
 		ip:          ip,
 		limiter:     newInputLimiter(s.limits),

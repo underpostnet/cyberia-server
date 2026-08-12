@@ -158,8 +158,22 @@ type PlayerState struct {
 	// LastAckedInputSequence is the highest InputCommand.Sequence accepted by
 	// the simulation for this player; the snapshot encoder echoes it so the
 	// client can drop acknowledged commands from its prediction buffer.
+	// LastMovementSequence is the highest PLAYER_ACTION sequence that actually
+	// re-planned movement. Arrival is not acceptance: taps that land in the
+	// same tick are all acknowledged, but only the newest of them is planned,
+	// so Path and TargetPos can describe an earlier command. The client needs
+	// the two apart — it predicts on acknowledgement but may only adopt the
+	// authoritative route once movement has been re-planned for its command.
 	LastSnapshotTick       uint32 `json:"-"`
 	LastAckedInputSequence uint32 `json:"-"`
+	LastMovementSequence   uint32 `json:"-"`
+	// PendingMove is the destination of the newest PLAYER_ACTION drained this
+	// tick. phaseInput re-plans from it once, after the whole queue is applied,
+	// so a burst of taps costs one A* instead of one per tap. Cleared by the
+	// flush; never persisted across ticks.
+	PendingMove         PointI `json:"-"`
+	PendingMoveSequence uint32 `json:"-"`
+	HasPendingMove      bool   `json:"-"`
 	// InputQueue holds InputCommand frames received from the client between
 	// simulation ticks. Drained in fixed order by phaseInput. nil-safe: the
 	// queue is allocated lazily when the first command is enqueued.
@@ -286,7 +300,6 @@ type MapState struct {
 type Client struct {
 	sock        *socket.Socket
 	playerID    string
-	lastAction  time.Time
 	playerState *PlayerState
 
 	// ip is the address the guard counts this connection against.
@@ -339,7 +352,10 @@ type GameServer struct {
 	// to clients for every content/asset/metadata request.
 	enginePublicURL string
 
-	entityBaseSpeed             float64
+	entityBaseSpeed float64
+	// playerBaseSpeed applies to the player entity only. 0 means unset, and
+	// CalculatePlayerMovementSpeed then falls back to entityBaseSpeed.
+	playerBaseSpeed             float64
 	entityBaseMaxLife           float64
 	entityBaseActionCooldown    time.Duration
 	entityBaseMinActionCooldown time.Duration
