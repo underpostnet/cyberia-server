@@ -197,6 +197,22 @@ func (s *GameServer) CalculateMovementSpeed(stats ComputedStats) float64 {
 	return s.entityBaseSpeed * speedMultiplier
 }
 
+// CalculatePlayerMovementSpeed is the movement speed for a player. Players walk
+// on playerBaseSpeed so their pace can be tuned without changing bots or
+// projectiles, which stay on entityBaseSpeed. An instance that leaves
+// playerBaseSpeed at 0 keeps the entity speed, so the split is opt-in.
+//
+// Both the movement phase and the self block of the snapshot must call this:
+// the client predicts with the speed the snapshot carries, so any disagreement
+// shows up as a correction on every frame.
+func (s *GameServer) CalculatePlayerMovementSpeed(stats ComputedStats) float64 {
+	base := s.playerBaseSpeed
+	if base <= 0 {
+		base = s.entityBaseSpeed
+	}
+	return base * (1.0 + (stats.Agility / 100.0))
+}
+
 // InvalidateStats marks an entity as needing a stats re-calculation and
 // removes its entry from the cache. Call this whenever an entity's
 // ObjectLayers (active flags, additions, removals) change.

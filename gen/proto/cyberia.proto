@@ -391,6 +391,10 @@ message InstanceConfig {
   double player_base_life_regen_min    = 22;
   double player_base_life_regen_max    = 23;
   int32  sum_stats_limit               = 24;
+  // Movement speed for the player entity only, in grid cells per second. Bots,
+  // projectiles and every other entity keep entity_base_speed. 0 falls back to
+  // entity_base_speed, so an instance that does not set it is unchanged.
+  double player_base_speed             = 68;
   int32  max_active_layers             = 25;
   double initial_life_fraction         = 26;
 

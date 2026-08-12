@@ -71,6 +71,7 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 
 	// Entity base stats
 	s.entityBaseSpeed = cfg.GetEntityBaseSpeed()
+	s.playerBaseSpeed = cfg.GetPlayerBaseSpeed()
 	s.entityBaseMaxLife = cfg.GetEntityBaseMaxLife()
 	s.entityBaseActionCooldown = time.Duration(cfg.GetEntityBaseActionCooldownMs()) * time.Millisecond
 	s.entityBaseMinActionCooldown = time.Duration(cfg.GetEntityBaseMinActionCooldownMs()) * time.Millisecond
@@ -398,7 +399,7 @@ func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapStat
 	}
 
 	playerStats := s.CalculateStats(player, mapState)
-	speed := s.CalculateMovementSpeed(playerStats)
+	speed := s.CalculatePlayerMovementSpeed(playerStats)
 
 	if player.Mode == WALKING && len(player.Path) > 0 {
 		targetNode := player.Path[0]
