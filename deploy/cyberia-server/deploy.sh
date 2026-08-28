@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../lib/logging.sh"
+source "$SCRIPT_DIR/../lib/github-actions-logging.sh"
+source "$SCRIPT_DIR/../lib/host.sh"
 
 ENGINE_ROOT=/home/dd/engine
 TARGET_NODE=hp-envy-iso-ram-rocky9
@@ -11,13 +12,7 @@ INGRESS_NODE=localhost.localdomain
 main() {
     deploy_start "Starting remote deploy"
 
-    deploy_step "Pull repository" \
-        sudo -n -- /bin/bash -lc \
-        "cd $ENGINE_ROOT && node bin run pull"
-
-    deploy_step "Load host config" \
-        sudo -n -- /bin/bash -lc \
-        "cd $ENGINE_ROOT && node bin host load"
+    prepare_host "$ENGINE_ROOT"
 
     deploy_step "Build dd-cyberia configuration" \
         sudo -n -- /bin/bash -lc \
@@ -47,14 +42,6 @@ main() {
           --deploy-id dd-cyberia \
           --instance-id mmo-server"
 
-    # State domain: collect the instance's live execution state, health and metrics off the
-    # cluster and export them to the CD job. RUN_QUIET_CI, exported by the workflow, is what
-    # survives the SSH hop, so this reports as GitHub Actions annotations rather than plain JSON.
-    deploy_step "Export mmo-server runtime state" \
-        sudo -n -- /bin/bash -lc \
-        "cd $ENGINE_ROOT && RUN_QUIET_CI=${RUN_QUIET_CI:-} node bin state publish \
-          --env production \
-          --args deploy-id=dd-cyberia,instance-id=mmo-server"
 }
 
 main "$@"
