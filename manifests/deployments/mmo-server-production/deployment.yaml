@@ -60,7 +60,7 @@ spec:
                   "command": [
                     "sh",
                     "-c",
-                    "underpost config set container-status dd-cyberia-mmo-server-production-initializing-deployment || true"
+                    "underpost state set container-status dd-cyberia-mmo-server-production-initializing-deployment || true"
                   ]
                 }
               },
@@ -69,7 +69,7 @@ spec:
                   "command": [
                     "sh",
                     "-c",
-                    "underpost config set container-status dd-cyberia-mmo-server-production-stopping-deployment || true"
+                    "underpost state set container-status dd-cyberia-mmo-server-production-stopping-deployment || true"
                   ]
                 }
               }

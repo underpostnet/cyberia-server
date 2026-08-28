@@ -23,10 +23,15 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func underpostConfigSet(key, value string) {
-	cmd := exec.Command("underpost", "config", "set", key, value)
+// underpostStateSet writes one key into the `state` domain's container state store.
+//
+// The state store, never the host configuration store: container status is per-container and
+// resets with the container, while host configuration is node-scoped and survives. The deploy
+// monitor reads back from this same store.
+func underpostStateSet(key, value string) {
+	cmd := exec.Command("underpost", "state", "set", key, value)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		logx.Warnf("[status] underpost config set %s %s: %v\n%s", key, value, err, out)
+		logx.Warnf("[status] underpost state set %s %s: %v\n%s", key, value, err, out)
 	}
 }
 
@@ -43,9 +48,9 @@ func runUnderpostStatus(containerID, status string) {
 	if status != "error" {
 		value = containerID + "-" + status
 	}
-	underpostConfigSet("container-status", value)
+	underpostStateSet("container-status", value)
 	if status == "running-deployment" {
-		underpostConfigSet("start-container-status", value)
+		underpostStateSet("start-container-status", value)
 	}
 }
 
