@@ -21,3 +21,5 @@ go.work.sum
 /server
 /bin
 /docs
+# Underpost CLI package staged into this build context by the image pipeline.
+underpost-cli.tgz
