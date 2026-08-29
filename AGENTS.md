@@ -32,3 +32,25 @@ One commit = one logical theme. No bundling unrelated changes.
 - Each commit stages the minimum file set needed for that theme. No drive-by edits, no "while I'm here" cleanups.
 - Themes that touch a shared file (`main.go`, message parser, central state): land the feature commits first, then one final "wire X through main loop" glue commit. Don't merge themes just to avoid the glue commit.
 - Commit subject names ONE concern. If you need "and" or "+" to describe it, it's two commits.
+
+# System Map
+
+Three processes:
+
+| process | role | talks to |
+|---|---|---|
+| **cyberia-client** | game client, game canvas | game server (WebSocket), engine (REST) |
+| **cyberia-server** | authoritative simulation | client (WebSocket), engine (gRPC + REST) |
+| **engine-cyberia** | external content authority (assets, config data, asset data) | serves both |
+
+Two links carry client traffic:
+
+1. **Game link** — one WebSocket, `/ws`, JSON envelope.
+   `cyberia-client/src/network/socket.c` ↔ `cyberia-server/cmd/cyberia-server/main.go`.
+2. **Content link** — HTTPS REST to the engine origin.
+   `cyberia-client/src/network/engine_client.c` (`emscripten_fetch`)
+
+The game server never serves content, and the engine never sees simulation
+
+## Transport Layer
+Goal: Transport only: the socket moves bytes. It never reads or builds a message. Client and Server must mirror 1:1.
