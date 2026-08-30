@@ -45,9 +45,6 @@ func Init() {
 	slog.SetDefault(logger)
 }
 
-// SetLevel overrides the active threshold at runtime.
-func SetLevel(l slog.Level) { levelVar.Set(l) }
-
 // Level returns the active threshold.
 func Level() slog.Level { return levelVar.Level() }
 

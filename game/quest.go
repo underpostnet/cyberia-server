@@ -76,7 +76,6 @@ type QuestProgress struct {
 	QuestCode string              `json:"questCode"`
 	Status    string              `json:"status"` // active | completed
 	Steps     []QuestStepProgress `json:"steps"`
-	StartedAt time.Time           `json:"-"`
 }
 
 type QuestStepProgress struct {
@@ -487,7 +486,6 @@ func (s *GameServer) grantQuest(player *PlayerState, code string) *QuestProgress
 	qp := &QuestProgress{
 		QuestCode: code,
 		Status:    "active",
-		StartedAt: time.Now(),
 		Steps:     make([]QuestStepProgress, 0, len(def.Steps)),
 	}
 	for _, step := range def.Steps {

@@ -396,7 +396,7 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 		return
 	}
 
-	cmd := InputCommand{Kind: kind, ClientTick: p.Tick, Sequence: p.Seq}
+	cmd := InputCommand{Kind: kind, Sequence: p.Seq}
 	switch kind {
 	case InputKindPlayerAction:
 		// A tap target reaches the pathfinder directly. Reject anything that

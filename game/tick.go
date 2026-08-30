@@ -29,11 +29,6 @@ import "time"
 // enough for any conceivable session and small enough to be cheap on wire.
 type Tick uint32
 
-// InputSequence is a client-local monotonic counter attached to every
-// InputCommand. It is echoed back on snapshots as `LastAckedSequence` so
-// clients can drop acknowledged commands from their prediction buffer.
-type InputSequence uint32
-
 // Default simulation/replication rates. Override via InstanceConfig.tick_rate
 // (and InstanceConfig.snapshot_rate where applicable).
 const (

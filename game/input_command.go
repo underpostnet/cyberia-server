@@ -45,9 +45,8 @@ const (
 
 // InputCommand is the unit of client→server input.
 type InputCommand struct {
-	Kind       InputKind
-	ClientTick uint32 // client-side estimated server tick when emitted
-	Sequence   uint32 // monotonic per-client sequence number
+	Kind     InputKind
+	Sequence uint32 // monotonic per-client sequence number
 	// Payload fields — only the ones relevant to Kind are populated.
 	TargetX     float64 // PlayerAction
 	TargetY     float64 // PlayerAction

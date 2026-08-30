@@ -155,42 +155,27 @@ type MetricsHandler struct {
 	mu              sync.RWMutex
 	serverStartTime time.Time
 	wsStatus        WebSocketStatus
-	lastError       string
-	lastErrorTime   *time.Time
 	instanceCode    string
 
-	// Thresholds. Exposed for tests; not user-tunable yet.
-	warningEntityThreshold       int
-	criticalEntityThreshold      int
-	warningObjectLayerThreshold  int
-	criticalObjectLayerThreshold int
-	maxEntityCapacity            int
-	maxObjectLayers              int
+	// Thresholds. Not user-tunable yet.
+	warningEntityThreshold      int
+	warningObjectLayerThreshold int
+	maxEntityCapacity           int
+	maxObjectLayers             int
 }
 
 // NewMetricsHandler wires a MetricsHandler to a GameServer.
 func NewMetricsHandler(gs *game.GameServer, instanceCode string) *MetricsHandler {
 	return &MetricsHandler{
-		gameServer:                   gs,
-		serverStartTime:              time.Now(),
-		wsStatus:                     WebSocketRunning,
-		instanceCode:                 instanceCode,
-		warningEntityThreshold:       800,
-		criticalEntityThreshold:      950,
-		warningObjectLayerThreshold:  8000,
-		criticalObjectLayerThreshold: 9500,
-		maxEntityCapacity:            3000,
-		maxObjectLayers:              10000,
+		gameServer:                  gs,
+		serverStartTime:             time.Now(),
+		wsStatus:                    WebSocketRunning,
+		instanceCode:                instanceCode,
+		warningEntityThreshold:      800,
+		warningObjectLayerThreshold: 8000,
+		maxEntityCapacity:           3000,
+		maxObjectLayers:             10000,
 	}
-}
-
-// SetWebSocketStatus lets the process lifecycle (e.g. graceful shutdown)
-// flip the reported status. Not currently wired but kept for the
-// preStop hook in conf.instances.json to call once we expose it.
-func (h *MetricsHandler) SetWebSocketStatus(s WebSocketStatus) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.wsStatus = s
 }
 
 // Routes mounts the metrics endpoints onto an existing chi.Router.
@@ -322,8 +307,6 @@ func (h *MetricsHandler) collectWebSocketMetricsLocked() WebSocketServerMetrics 
 		WriteErrorsTotal:  rc.WsWriteErrors,
 		ConnectsTotal:     rc.WsConnectsTotal,
 		DisconnectsTotal:  rc.WsDisconnectsTotal,
-		LastErrorMessage:  h.lastError,
-		LastErrorTime:     h.lastErrorTime,
 	}
 }
 
@@ -420,13 +403,6 @@ func pct(num, denom int) float64 {
 }
 
 func (h *MetricsHandler) determineHealth(em EntityMetrics, wm WorkloadMetrics, ws WebSocketServerMetrics) (HealthStatus, string) {
-	switch ws.Status {
-	case WebSocketError, WebSocketCrashed:
-		return HealthCritical, "WebSocket server is in an error state — unable to accept new connections."
-	case WebSocketStopping:
-		return HealthMaintenance, "Server is performing a graceful shutdown — new connections are rejected."
-	}
-
 	if wm.CurrentLoad == WorkloadCritical {
 		return HealthCritical, "Workload is critical (≥ 90 %) — saturation risk is imminent."
 	}

@@ -18,9 +18,8 @@ const LoopTimeout = 2 * time.Minute
 
 // Loop polls the Engine on a fixed interval, patching whatever changed.
 type Loop struct {
-	svc      *Service
-	interval time.Duration
-	stopCh   chan struct{}
+	svc    *Service
+	stopCh chan struct{}
 }
 
 // StartLoop begins passive reload polling every `interval`
@@ -31,7 +30,7 @@ type Loop struct {
 // only what changed. Full world rebuilds stay on-demand (the control trigger),
 // since they churn every map entity.
 func StartLoop(svc *Service, interval time.Duration) *Loop {
-	l := &Loop{svc: svc, interval: interval, stopCh: make(chan struct{})}
+	l := &Loop{svc: svc, stopCh: make(chan struct{})}
 	if svc == nil || interval <= 0 {
 		logx.Infof("[HotReload] Passive reload loop disabled (interval <= 0).")
 		return l

@@ -79,7 +79,6 @@ var serviceDesc = grpc.ServiceDesc{
 // GRPCServer is the control-plane gRPC listener.
 type GRPCServer struct {
 	server *grpc.Server
-	lis    net.Listener
 }
 
 // ListenGRPC starts the control service on `addr`. Returns a nil server (and
@@ -101,7 +100,7 @@ func ListenGRPC(svc *Service, addr string) (*GRPCServer, error) {
 			logx.Warnf("[HotReload] gRPC control service stopped: %v", err)
 		}
 	}()
-	return &GRPCServer{server: s, lis: lis}, nil
+	return &GRPCServer{server: s}, nil
 }
 
 // Stop gracefully shuts the control listener down.

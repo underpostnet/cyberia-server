@@ -92,12 +92,6 @@ func (p Problem) WithExtension(key string, value any) Problem {
 	return p
 }
 
-// WithDetail returns a copy of p with a new Detail line.
-func (p Problem) WithDetail(detail string) Problem {
-	p.Detail = detail
-	return p
-}
-
 // Write serializes the problem to w with the correct Content-Type and
 // status code, deriving Instance from the request URI if unset. This is
 // the only sanctioned path for emitting an error in the API package.
