@@ -135,7 +135,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				dirX := nearestPlayer.Pos.X - bot.Pos.X
 				dirY := nearestPlayer.Pos.Y - bot.Pos.Y
 				if dirX != 0 || dirY != 0 {
-					s.updateBotDirection(bot, dirX, dirY)
+					bot.Direction = directionFromVector(dirX, dirY)
 				}
 
 				// Hostile bots that are idle (not moving) have a chance to use a skill.
@@ -245,47 +245,19 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 // update bot movement similar to players
 func (s *GameServer) updateBotPosition(bot *BotState, mapState *MapState, stats ComputedStats) {
+	if bot.Mode != WALKING {
+		return
+	}
 	speed := s.CalculateMovementSpeed(stats)
 
-	if bot.Mode == WALKING && len(bot.Path) > 0 {
-		targetNode := bot.Path[0]
-		dx := float64(targetNode.X) - bot.Pos.X
-		dy := float64(targetNode.Y) - bot.Pos.Y
-		dist := math.Sqrt(dx*dx + dy*dy)
-		step := speed * s.tickDuration.Seconds() // dt-based: cells per simulation tick
-
-		if dist < step {
-			bot.Pos = Point{X: float64(targetNode.X), Y: float64(targetNode.Y)}
-			bot.Path = bot.Path[1:]
-			if len(bot.Path) == 0 {
-				bot.Mode = IDLE
-			} else {
-				next := bot.Path[0]
-				dirX := float64(next.X) - bot.Pos.X
-				dirY := float64(next.Y) - bot.Pos.Y
-				norm := math.Sqrt(dirX*dirX + dirY*dirY)
-				if norm > 0 {
-					dirX /= norm
-					dirY /= norm
-					s.updateBotDirection(bot, dirX, dirY)
-				}
-			}
-		} else {
-			dirX, dirY := dx/dist, dy/dist
-			bot.Pos.X += dirX * step
-			bot.Pos.Y += dirY * step
-			s.updateBotDirection(bot, dirX, dirY)
-		}
+	pos, path, dir, facing := stepAlongPath(bot.Pos, bot.Path, speed, s.tickDuration.Seconds())
+	bot.Pos, bot.Path = pos, path
+	if facing {
+		bot.Direction = dir
 	}
-}
-
-func (s *GameServer) updateBotDirection(bot *BotState, dirX, dirY float64) {
-	angle := math.Atan2(dirY, dirX)
-	if angle < 0 {
-		angle += 2 * math.Pi
+	if len(bot.Path) == 0 {
+		bot.Mode = IDLE
 	}
-	directionIndex := (int(math.Round(angle/(math.Pi/4))) + 2) % 8
-	bot.Direction = Direction(directionIndex)
 }
 
 // getDirectionVector converts a Direction enum to a normalized (dx, dy) vector.

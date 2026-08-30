@@ -49,13 +49,7 @@ const storageMaxSlots = 64
 
 // storageCapacity clamps an authored capacity into the renderable range.
 func storageCapacity(slots int) int {
-	if slots < 0 {
-		return 0
-	}
-	if slots > storageMaxSlots {
-		return storageMaxSlots
-	}
-	return slots
+	return min(max(slots, 0), storageMaxSlots)
 }
 
 // storageVault resolves the vault a player has at a bot's bound action, or nil

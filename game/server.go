@@ -391,7 +391,61 @@ func (s *GameServer) gameLoop() {
 	}
 }
 
-// ---------- Player movement and direction ----------
+// ---------- Movement and direction ----------
+
+// directionFromVector maps a movement vector onto one of the eight facings.
+func directionFromVector(dirX, dirY float64) Direction {
+	angle := math.Atan2(dirY, dirX)
+	if angle < 0 {
+		angle += 2 * math.Pi
+	}
+	return Direction((int(math.Round(angle/(math.Pi/4))) + 2) % 8)
+}
+
+// stepAlongPath advances pos toward the head of path by speed*dt cells.
+//
+// dt-based integration: speed is cells/second and dt is the authoritative
+// simulation step (1 / tickRate). A frame count instead of dt silently breaks
+// movement whenever the loop runs slow or the tickRate config changes.
+//
+// It returns the new position, the path left to walk, and the facing for this
+// step. The bool is false when the step produced no heading — an empty path
+// or a zero-length hop — so the caller decides what an arriving entity faces.
+func stepAlongPath(pos Point, path []PointI, speed, dt float64) (Point, []PointI, Direction, bool) {
+	if len(path) == 0 {
+		return pos, path, NONE, false
+	}
+
+	targetNode := path[0]
+	dx := float64(targetNode.X) - pos.X
+	dy := float64(targetNode.Y) - pos.Y
+	dist := math.Sqrt(dx*dx + dy*dy)
+	step := speed * dt // cells per simulation tick
+
+	if dist >= step {
+		dirX, dirY := dx/dist, dy/dist
+		pos.X += dirX * step
+		pos.Y += dirY * step
+		return pos, path, directionFromVector(dirX, dirY), true
+	}
+
+	// Node reached. Face the next leg, if there is one.
+	pos = Point{X: float64(targetNode.X), Y: float64(targetNode.Y)}
+	path = path[1:]
+	if len(path) == 0 {
+		return pos, path, NONE, false
+	}
+
+	next := path[0]
+	dirX := float64(next.X) - pos.X
+	dirY := float64(next.Y) - pos.Y
+	norm := math.Sqrt(dirX*dirX + dirY*dirY)
+	if norm == 0 {
+		return pos, path, NONE, false
+	}
+	return pos, path, directionFromVector(dirX/norm, dirY/norm), true
+}
+
 func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapState) {
 	// Dead players can't move.
 	if player.IsGhost() {
@@ -401,50 +455,19 @@ func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapStat
 	playerStats := s.CalculateStats(player, mapState)
 	speed := s.CalculatePlayerMovementSpeed(playerStats)
 
-	if player.Mode == WALKING && len(player.Path) > 0 {
-		targetNode := player.Path[0]
-		dx := float64(targetNode.X) - player.Pos.X
-		dy := float64(targetNode.Y) - player.Pos.Y
-		dist := math.Sqrt(dx*dx + dy*dy)
-		// dt-based integration. speed is cells/second; tickDuration is the
-		// authoritative simulation step (1 / tickRate). Using a frame count
-		// instead — as the prior `speed / fps` did — silently broke movement
-		// every time the loop ran slow or the tickRate config changed.
-		step := speed * s.tickDuration.Seconds() // cells per simulation tick
-
-		if dist < step {
-			player.Pos = Point{X: float64(targetNode.X), Y: float64(targetNode.Y)}
-			player.Path = player.Path[1:]
-			if len(player.Path) == 0 {
-				player.Mode = IDLE
-				player.Direction = NONE
-			} else {
-				next := player.Path[0]
-				dirX := float64(next.X) - player.Pos.X
-				dirY := float64(next.Y) - player.Pos.Y
-				norm := math.Sqrt(dirX*dirX + dirY*dirY)
-				if norm > 0 {
-					dirX /= norm
-					dirY /= norm
-					s.updatePlayerDirection(player, dirX, dirY)
-				}
-			}
-		} else {
-			dirX, dirY := dx/dist, dy/dist
-			player.Pos.X += dirX * step
-			player.Pos.Y += dirY * step
-			s.updatePlayerDirection(player, dirX, dirY)
-		}
+	if player.Mode != WALKING {
+		return
 	}
-}
 
-func (s *GameServer) updatePlayerDirection(player *PlayerState, dirX, dirY float64) {
-	angle := math.Atan2(dirY, dirX)
-	if angle < 0 {
-		angle += 2 * math.Pi
+	pos, path, dir, facing := stepAlongPath(player.Pos, player.Path, speed, s.tickDuration.Seconds())
+	player.Pos, player.Path = pos, path
+	if facing {
+		player.Direction = dir
 	}
-	directionIndex := (int(math.Round(angle/(math.Pi/4))) + 2) % 8
-	player.Direction = Direction(directionIndex)
+	if len(player.Path) == 0 {
+		player.Mode = IDLE
+		player.Direction = NONE
+	}
 }
 
 // ---------- Portals ----------

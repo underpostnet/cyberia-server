@@ -74,6 +74,10 @@ type EntityBase struct {
 	ObjectLayers []ObjectLayerState `json:"objectLayers"`
 }
 
+// Base returns the shared entity block. It gives a generic helper one way to
+// reach the embedded fields of any entity type.
+func (e EntityBase) Base() EntityBase { return e }
+
 // Mortal — life/respawn block for entities that can die (Player, Bot, Resource).
 type Mortal struct {
 	MaxLife                float64            `json:"maxLife"`

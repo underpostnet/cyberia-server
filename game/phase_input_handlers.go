@@ -122,7 +122,7 @@ func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
 		dx := float64(first.X) - player.Pos.X
 		dy := float64(first.Y) - player.Pos.Y
 		if dist := math.Sqrt(dx*dx + dy*dy); dist > 0 {
-			s.updatePlayerDirection(player, dx/dist, dy/dist)
+			player.Direction = directionFromVector(dx/dist, dy/dist)
 		}
 	} else if startPosI.X == targetPosI.X && startPosI.Y == targetPosI.Y {
 		player.Mode = IDLE
@@ -137,7 +137,7 @@ func (s *GameServer) faceTargetWithoutPath(player *PlayerState, tx, ty float64) 
 	dy := ty - player.Pos.Y
 	dist := math.Sqrt(dx*dx + dy*dy)
 	if dist > 0 {
-		s.updatePlayerDirection(player, dx/dist, dy/dist)
+		player.Direction = directionFromVector(dx/dist, dy/dist)
 		player.Mode = WALKING
 	} else {
 		player.Mode = IDLE

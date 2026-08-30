@@ -182,6 +182,22 @@ func respawnSeconds(ghost bool, respawnTime time.Time) float64 {
 	return remaining
 }
 
+// hasBase is satisfied by every type that embeds EntityBase.
+type hasBase interface{ Base() EntityBase }
+
+// appendPassive appends every entity of src inside the AOI. Passive entities
+// never act, so they always report facing NONE and mode IDLE.
+func appendPassive[T hasBase](snap *Snapshot, kind string, src map[string]T,
+	inAOI func(Point, Dimensions) bool) {
+	for _, entity := range src {
+		e := entity.Base()
+		if inAOI(e.Pos, e.Dims) {
+			snap.Entities = append(snap.Entities,
+				baseEntity(kind, e.ID, e.Pos, e.Dims, NONE, IDLE, e.ObjectLayers))
+		}
+	}
+}
+
 // baseEntity fills the fields every entity type carries.
 func baseEntity(entityType, id string, pos Point, dims Dimensions,
 	dir Direction, mode ObjectLayerMode, layers []ObjectLayerState) SnapshotEntity {
@@ -205,9 +221,13 @@ func baseEntity(entityType, id string, pos Point, dims Dimensions,
 // statsSum returns the clamped sum of all stat fields for any entity
 // (PlayerState, BotState, or ResourceState). Players clamp to their own
 // SumStatsLimit; other entities use the server-level cap.
+// sumStats adds the six stat fields.
+func sumStats(cs ComputedStats) int {
+	return int(cs.Effect + cs.Resistance + cs.Agility + cs.Range + cs.Intelligence + cs.Utility)
+}
+
 func (s *GameServer) statsSum(entity interface{}, mapState *MapState) int {
-	cs := s.CalculateStats(entity, mapState)
-	sum := int(cs.Effect + cs.Resistance + cs.Agility + cs.Range + cs.Intelligence + cs.Utility)
+	sum := sumStats(s.CalculateStats(entity, mapState))
 	limit := s.sumStatsLimit
 	if p, ok := entity.(*PlayerState); ok {
 		limit = p.SumStatsLimit
@@ -252,13 +272,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		snap.Entities = append(snap.Entities, e)
 	}
 
-	// Obstacles
-	for _, o := range mapState.obstacles {
-		if inAOI(o.Pos, o.Dims) {
-			snap.Entities = append(snap.Entities,
-				baseEntity(EntityObstacle, o.ID, o.Pos, o.Dims, NONE, IDLE, o.ObjectLayers))
-		}
-	}
+	appendPassive(&snap, EntityObstacle, mapState.obstacles, inAOI)
 
 	// Floors — sorted: layered floors first (background), then solid-colour
 	// floors on top. Within each group sort by Y→X→ID for stability. Go maps
@@ -308,13 +322,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		snap.Entities = append(snap.Entities, e)
 	}
 
-	// Foregrounds
-	for _, fg := range mapState.foregrounds {
-		if inAOI(fg.Pos, fg.Dims) {
-			snap.Entities = append(snap.Entities,
-				baseEntity(EntityForeground, fg.ID, fg.Pos, fg.Dims, NONE, IDLE, fg.ObjectLayers))
-		}
-	}
+	appendPassive(&snap, EntityForeground, mapState.foregrounds, inAOI)
 
 	// Resources — static exploitable entities
 	for _, r := range mapState.resources {
@@ -331,12 +339,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 	}
 
 	// Statics — non-moving, passable decorators
-	for _, st := range mapState.statics {
-		if inAOI(st.Pos, st.Dims) {
-			snap.Entities = append(snap.Entities,
-				baseEntity(EntityStatic, st.ID, st.Pos, st.Dims, NONE, IDLE, st.ObjectLayers))
-		}
-	}
+	appendPassive(&snap, EntityStatic, mapState.statics, inAOI)
 
 	// Bots
 	for _, b := range mapState.bots {
@@ -386,8 +389,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 // buildSnapshotSelf fills the viewing player's own block.
 func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) SnapshotSelf {
 	stats := s.CalculateStats(player, mapState)
-	activeStatsSum := int(stats.Effect + stats.Resistance + stats.Agility +
-		stats.Range + stats.Intelligence + stats.Utility)
+	activeStatsSum := sumStats(stats)
 
 	// Portal hold progress — the fraction of portalHoldTime elapsed while the
 	// player stands on a portal. checkPortal clears OnPortal for a ghost, so
@@ -428,10 +430,7 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 	self.Life = player.Life
 	self.MaxLife = player.MaxLife
 	self.RespawnIn = respawnSeconds(player.IsGhost(), player.RespawnTime)
-	self.StatsSum = activeStatsSum
-	if self.StatsSum > player.SumStatsLimit {
-		self.StatsSum = player.SumStatsLimit
-	}
+	self.StatsSum = min(activeStatsSum, player.SumStatsLimit)
 	self.StatusIcon = PlayerStatusIcon(player)
 	return self
 }

@@ -77,13 +77,7 @@ func (s *GameServer) shopPrice(item *ActionShopItem) (string, int) {
 // A client that sends 0 (or an older client that sends no quantity at all)
 // means one unit.
 func shopBuyQuantity(requested int) int {
-	if requested < 1 {
-		return 1
-	}
-	if requested > shopBuyMaxQty {
-		return shopBuyMaxQty
-	}
-	return requested
+	return min(max(requested, 1), shopBuyMaxQty)
 }
 
 // handleShopBuy is the authoritative purchase path: validate the vendor, the
@@ -140,11 +134,9 @@ func (s *GameServer) handleShopBuy(player *PlayerState, cmd *InputCommand) {
 // sendShopAck notifies the buyer of the outcome. An empty reason means the
 // purchase was applied; anything else is a rejection code the client renders.
 func (s *GameServer) sendShopAck(player *PlayerState, entityID, itemID string, quantity int, reason string) {
-	sendMessage(player, "shop_ack", map[string]interface{}{
+	sendAck(player, "shop_ack", reason, map[string]interface{}{
 		"entityId": entityID,
 		"itemId":   itemID,
 		"quantity": quantity,
-		"ok":       reason == "",
-		"reason":   reason,
 	})
 }

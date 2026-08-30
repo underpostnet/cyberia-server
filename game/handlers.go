@@ -283,6 +283,14 @@ func sendMessage(player *PlayerState, msgType string, payload any) {
 	}
 }
 
+// sendAck answers a request with the {ok, reason} pair every ack carries, plus
+// the caller's own fields. An empty reason means success.
+func sendAck(player *PlayerState, msgType, reason string, fields map[string]interface{}) {
+	fields["ok"] = reason == ""
+	fields["reason"] = reason
+	sendMessage(player, msgType, fields)
+}
+
 // readPump runs the client read loop until the connection fails.
 func (c *Client) readPump(server *GameServer) {
 	defer func() {

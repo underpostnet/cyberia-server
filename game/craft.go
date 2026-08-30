@@ -49,13 +49,7 @@ type ActiveCraft struct {
 // craftTimeMs validates an authored duration into the accepted range. Zero is
 // legal and means the assembly resolves on the same tick it starts.
 func craftTimeMs(recipe *ActionCraftRecipe) int {
-	if recipe.CraftTimeMs < 0 {
-		return 0
-	}
-	if recipe.CraftTimeMs > craftMaxTimeMs {
-		return craftMaxTimeMs
-	}
-	return recipe.CraftTimeMs
+	return min(max(recipe.CraftTimeMs, 0), craftMaxTimeMs)
 }
 
 // craftRecipeAt returns the recipe an action holds at `index`, or nil.
@@ -207,11 +201,9 @@ func (s *GameServer) completeCrafts(mapState *MapState) {
 // bar adopts; anything else is a rejection code it renders.
 func (s *GameServer) sendCraftAck(player *PlayerState, entityID string, recipeIndex,
 	craftTimeMs int, reason string) {
-	sendMessage(player, "craft_ack", map[string]interface{}{
+	sendAck(player, "craft_ack", reason, map[string]interface{}{
 		"entityId":    entityID,
 		"recipeIndex": recipeIndex,
 		"craftTimeMs": craftTimeMs,
-		"ok":          reason == "",
-		"reason":      reason,
 	})
 }

@@ -489,54 +489,38 @@ func (s *GameServer) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
 	}
 }
 
-func (s *GameServer) buildForeground(ms *MapState, ent *pb.EntityMessage) {
+// buildEntityBase makes the EntityBase shared by every map entity of `kind`.
+// An entity that carries neither object layers nor a colour falls back to the
+// kind's default live items.
+func (s *GameServer) buildEntityBase(ent *pb.EntityMessage, kind string) EntityBase {
 	var objectLayers []ObjectLayerState
 	for _, itemID := range ent.GetObjectLayerItemIds() {
 		objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
 	}
 	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
-		if d, ok := s.entityDefaults["foreground"]; ok && len(d.LiveItemIDs) > 0 {
+		if d, ok := s.entityDefaults[kind]; ok {
 			for _, itemID := range d.LiveItemIDs {
 				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
 			}
 		}
 	}
 
-	fg := ObjectState{
-		EntityBase: EntityBase{
-			ID:           uuid.New().String(),
-			Pos:          Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
-			Dims:         Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
-			ObjectLayers: objectLayers,
-		},
-		Type: "foreground",
+	return EntityBase{
+		ID:           uuid.New().String(),
+		Pos:          Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
+		Dims:         Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
+		ObjectLayers: objectLayers,
 	}
+}
+
+func (s *GameServer) buildForeground(ms *MapState, ent *pb.EntityMessage) {
+	fg := ObjectState{EntityBase: s.buildEntityBase(ent, "foreground"), Type: "foreground"}
 	ms.foregrounds[fg.ID] = fg
 }
 
 func (s *GameServer) buildStatic(ms *MapState, mapCode string, ent *pb.EntityMessage) {
-	var objectLayers []ObjectLayerState
-	for _, itemID := range ent.GetObjectLayerItemIds() {
-		objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
-	}
-	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
-		if d, ok := s.entityDefaults["static"]; ok && len(d.LiveItemIDs) > 0 {
-			for _, itemID := range d.LiveItemIDs {
-				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
-			}
-		}
-	}
-
-	st := &StaticState{
-		EntityBase: EntityBase{
-			ID:           uuid.New().String(),
-			Pos:          Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
-			Dims:         Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
-			ObjectLayers: objectLayers,
-		},
-		MapCode: mapCode,
-	}
 	// Statics are passable: no pathfinder cells are blocked.
+	st := &StaticState{EntityBase: s.buildEntityBase(ent, "static"), MapCode: mapCode}
 	ms.statics[st.ID] = st
 }
 

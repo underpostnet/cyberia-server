@@ -108,7 +108,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 					// Capture the victim's skin before death deactivates its
 					// layers — quest `kill` objectives match on it.
 					killedSkin := s.botActiveSkin(otherBot.ID)
-					s.handleBotDeath(otherBot, projectile, mapState)
+					s.handleBotDeath(otherBot, mapState)
 					if killer, ok := mapState.players[projectile.CasterID]; ok {
 						s.advancePlayerQuestsOnKill(killer, killedSkin)
 					}
@@ -135,7 +135,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				recordDamage(&res.DamageLedger, mapState, projectile.CasterID, projectileStats.Effect)
 				if res.Life <= 0 {
 					res.Life = 0
-					s.handleResourceDeath(res, projectile, mapState)
+					s.handleResourceDeath(res, mapState)
 				}
 				// FCT: resource amounts are public — the same red "-N" for
 				// every AOI viewer.
@@ -269,48 +269,47 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) 
 	player.Mode = IDLE // Stop movement
 }
 
-// handleBotDeath sets a bot to its dead state and transfers its drop items to the
-// killer. Both the dead visuals and the drops come from the entity-type default
-// resolved by the bot's pre-death active items (most-specific subset match), so a
+// killEntity runs the death sequence shared by bots and resources: snapshot the
+// live loadout for respawn, scatter the drops the damage contributors race to
+// collect, swap in the dead visuals, and arm the respawn timer. The caller
+// invalidates the stats cache: only it knows the concrete entity type.
+//
+// Both the dead visuals and the drops come from the entity-type default
+// resolved by the pre-death active items (most-specific subset match), so a
 // skin can carry different dead/drop sets depending on its full active set.
-func (s *GameServer) handleBotDeath(bot *BotState, killerProjectile *BotState, mapState *MapState) {
-	layersToSave := make([]ObjectLayerState, len(bot.ObjectLayers))
-	copy(layersToSave, bot.ObjectLayers)
-	bot.PreRespawnObjectLayers = layersToSave
-	build, _ := s.resolveEntityDefaultBuild("bot", activeObjectLayerItemIDs(layersToSave))
+func (s *GameServer) killEntity(base *EntityBase, mortal *Mortal, kind, mapCode string,
+	ledger map[string]float64, coins int, mapState *MapState) {
 
-	// Loot and coins are no longer injected into the killer — both scatter as
-	// collectible tokens the damage contributors race to collect.
-	botCenter := Point{X: bot.Pos.X + bot.Dims.Width*0.5, Y: bot.Pos.Y + bot.Dims.Height*0.5}
-	s.spawnDrops(mapState, bot.MapCode, botCenter, build.DropItemIDs, s.botCoinDropAmount(bot), bot.DamageLedger)
+	layersToSave := make([]ObjectLayerState, len(base.ObjectLayers))
+	copy(layersToSave, base.ObjectLayers)
+	mortal.PreRespawnObjectLayers = layersToSave
+	build, _ := s.resolveEntityDefaultBuild(kind, activeObjectLayerItemIDs(layersToSave))
+
+	center := Point{X: base.Pos.X + base.Dims.Width*0.5, Y: base.Pos.Y + base.Dims.Height*0.5}
+	s.spawnDrops(mapState, mapCode, center, build.DropItemIDs, coins, ledger)
+
+	base.ObjectLayers = applyDeadItems(base.ObjectLayers, s.resolveDeadItemIDs(build))
+	mortal.RespawnTime = time.Now().Add(s.respawnDuration)
+}
+
+// handleBotDeath kills a bot. Loot and coins are not injected into the killer:
+// both scatter as collectible tokens.
+func (s *GameServer) handleBotDeath(bot *BotState, mapState *MapState) {
+	s.killEntity(&bot.EntityBase, &bot.Mortal, "bot", bot.MapCode,
+		bot.DamageLedger, s.botCoinDropAmount(bot), mapState)
 	bot.DamageLedger = nil
 
-	bot.ObjectLayers = applyDeadItems(bot.ObjectLayers, s.resolveDeadItemIDs(build))
-
-	bot.RespawnTime = time.Now().Add(s.respawnDuration)
-	// Recalculate stats for the ghost state to ensure consistency (mainly MaxLife).
 	s.InvalidateStats(bot)
 	s.ApplyResistanceStat(bot, s.maps[bot.MapCode])
 	bot.Mode = IDLE // Stop movement
 }
 
-// handleResourceDeath sets a resource to a destroyed state, scatters its drop
-// items as collectible tokens (top extraction contributor gets loot priority),
-// and activates the dead/extracted visuals until respawn.
-func (s *GameServer) handleResourceDeath(res *ResourceState, killerProjectile *BotState, mapState *MapState) {
-	layersToSave := make([]ObjectLayerState, len(res.ObjectLayers))
-	copy(layersToSave, res.ObjectLayers)
-	res.PreRespawnObjectLayers = layersToSave
-	build, _ := s.resolveEntityDefaultBuild("resource", activeObjectLayerItemIDs(layersToSave))
-
-	resCenter := Point{X: res.Pos.X + res.Dims.Width*0.5, Y: res.Pos.Y + res.Dims.Height*0.5}
-	// Resources carry no coins — item drops only.
-	s.spawnDrops(mapState, res.MapCode, resCenter, build.DropItemIDs, 0, res.DamageLedger)
+// handleResourceDeath destroys a resource. Resources carry no coins — item
+// drops only, with loot priority to the top extraction contributor.
+func (s *GameServer) handleResourceDeath(res *ResourceState, mapState *MapState) {
+	s.killEntity(&res.EntityBase, &res.Mortal, "resource", res.MapCode,
+		res.DamageLedger, 0, mapState)
 	res.DamageLedger = nil
-
-	res.ObjectLayers = applyDeadItems(res.ObjectLayers, s.resolveDeadItemIDs(build))
-
-	res.RespawnTime = time.Now().Add(s.respawnDuration)
 	s.InvalidateStats(res)
 }
 
