@@ -33,6 +33,19 @@ One commit = one logical theme. No bundling unrelated changes.
 - Themes that touch a shared file (`main.go`, message parser, central state): land the feature commits first, then one final "wire X through main loop" glue commit. Don't merge themes just to avoid the glue commit.
 - Commit subject names ONE concern. If you need "and" or "+" to describe it, it's two commits.
 
+## manifests/ — engine-cyberia owns it
+
+`manifests/` is not ours. `engine-cyberia` writes it and an external tool syncs
+it here. This repo is a passive consumer.
+
+- A change that seems to need a `manifests/` edit: **stop**. Name the file and
+  the line, and let the user take it to the owner. The sync will overwrite it.
+- A change that touches `manifests/` and nothing else: allowed. Keep it in its
+  own commit, and warn the user the next sync can overwrite it.
+- Never bundle a `manifests/` edit with source changes in one commit.
+- Do not read it as the source of truth for deploy config.
+
+
 # System Map
 
 Three processes:
@@ -50,7 +63,8 @@ Two links carry client traffic:
 2. **Content link** — HTTPS REST to the engine origin.
    `cyberia-client/src/network/engine_client.c` (`emscripten_fetch`)
 
-The game server never serves content, and the engine never sees simulation
+The game server never serves game content, and the engine never sees simulation
+state.
 
 ## Transport Layer
 Goal: Transport only: the socket moves bytes. It never reads or builds a message. Client and Server must mirror 1:1.
