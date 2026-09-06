@@ -881,13 +881,13 @@ func (s *GameServer) sendQuestUpdate(player *PlayerState, affected []QuestSnapsh
 
 // persistQuestProgress best-effort mirrors a progress record to engine REST.
 // In-memory state is the session authority; the HTTP call is fire-and-forget
-// using the shared engineHTTPClient so no goroutine leak occurs.  The engine
-// API call is still async from the simulation perspective but does NOT spawn
-// a new goroutine — the HTTP client's own transport handles connections.
+// using the shared engineHTTPClient so no goroutine leak occurs.  The Data
+// Server call is still async from the simulation perspective but does NOT
+// spawn a new goroutine — the HTTP client's own transport handles connections.
 //
-// When the engine base URL is unset the call is a no-op (e.g. for tests).
+// When the Data Server URL is unset the call is a no-op (e.g. for tests).
 func (s *GameServer) persistQuestProgress(player *PlayerState, qp *QuestProgress) {
-	if s.engineApiBaseUrl == "" {
+	if s.dataServerURL == "" {
 		return
 	}
 	body := map[string]interface{}{
@@ -902,7 +902,7 @@ func (s *GameServer) persistQuestProgress(player *PlayerState, qp *QuestProgress
 // errors are logged only. The caller's goroutine is reused — no new goroutine
 // is spawned for the HTTP call itself.
 func (s *GameServer) enginePostJSON(path string, body interface{}) {
-	url := strings.TrimRight(s.engineApiBaseUrl, "/") + path
+	url := strings.TrimRight(s.dataServerURL, "/") + path
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return

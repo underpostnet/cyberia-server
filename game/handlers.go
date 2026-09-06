@@ -215,7 +215,6 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		Quests:         s.buildQuestSnapshot(playerState),
 	}
 	metadataPayload := map[string]interface{}{
-		"apiBaseUrl":     s.enginePublicURL,
 		"instanceCode":   s.instanceCode,
 		"equipmentRules": s.equipmentRules,
 	}

@@ -100,3 +100,37 @@ func TestLoadWSLimits(t *testing.T) {
 		}
 	}
 }
+
+// Both Data Server endpoints come from the command line and are required.
+// A blank one is an error, so a misconfigured deploy fails at startup.
+func TestLoadRequiresDataServer(t *testing.T) {
+	t.Setenv("INSTANCE_CODE", "test-instance")
+
+	tests := []struct {
+		name    string
+		url     string
+		grpc    string
+		wantErr bool
+	}{
+		{name: "both set", url: "http://data", grpc: "data:50051"},
+		{name: "trims blanks", url: "  http://data  ", grpc: " data:50051 "},
+		{name: "no url", grpc: "data:50051", wantErr: true},
+		{name: "no grpc", url: "http://data", wantErr: true},
+		{name: "whitespace only", url: "   ", grpc: "   ", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Load(tt.url, tt.grpc)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Load(%q, %q) error = %v, wantErr %v", tt.url, tt.grpc, err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if got.DataServerURL != "http://data" || got.DataServerGRPC != "data:50051" {
+				t.Fatalf("endpoints not trimmed: %q %q", got.DataServerURL, got.DataServerGRPC)
+			}
+		})
+	}
+}

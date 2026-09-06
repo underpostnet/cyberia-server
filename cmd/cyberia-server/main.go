@@ -74,6 +74,11 @@ func main() {
 	// serve-static gates the dashboard: httpserver's static file server only
 	// mounts when true, so a missing/broken dashboard build never blocks startup.
 	serveStatic := flag.Bool("serve-static", true, "serve the static dashboard via httpserver")
+
+	// The Data Server endpoints. Both are required and const for the process
+	// lifetime; there is no environment fallback.
+	dataServerURL := flag.String("data-server-url", "", "Data Server REST origin, e.g. https://www.cyberiaonline.com")
+	dataServerGRPC := flag.String("data-server-grpc", "", "Data Server gRPC endpoint, e.g. localhost:50051")
 	flag.Parse()
 
 	// Load .env from CWD (project root) if present. Does not override
@@ -92,8 +97,8 @@ func main() {
 	// the active soft limit without changing it, for ops visibility.
 	logx.Infof("GC soft memory limit (GOMEMLIMIT) = %d bytes (math.MaxInt64 ⇒ unset)", debug.SetMemoryLimit(-1))
 
-	// All environment configuration is resolved here, once.
-	cfg, err := config.Load()
+	// All configuration is resolved here, once.
+	cfg, err := config.Load(*dataServerURL, *dataServerGRPC)
 	if err != nil {
 		runUnderpostStatus(cfg.ContainerDeployID, "error")
 		logx.Errorf("config: %v", err)
@@ -116,23 +121,17 @@ func main() {
 	s.SetConnectionLimits(limits)
 	logx.Infof("[GameServer] ws limits: %s", limits.Describe())
 
-	if cfg.EngineAPIBaseURL != "" {
-		// Internal engine origin for server-to-server content calls.
-		s.SetEngineApiBaseUrl(cfg.EngineAPIBaseURL)
-	}
-	if cfg.EnginePublicURL != "" {
-		// Client-visible Content Authority origin, forwarded to clients.
-		s.SetEnginePublicURL(cfg.EnginePublicURL)
-	}
+	// Data Server origin for server-to-server content calls.
+	s.SetDataServerURL(cfg.DataServerURL)
 
 	// ── Data loading: engine_client dispatcher (gRPC primary, REST fallback) ──
-	// Every engine call tries gRPC first and retries over the REST boot
-	// endpoints at ENGINE_API_BASE_URL (same payloads). The server exits when
-	// the load fails on all configured transports — no fallback world is generated.
-	ds, err := engine_client.NewDispatcher(cfg.EngineGRPCAddress, cfg.EngineAPIBaseURL)
+	// Every Data Server call tries gRPC first and retries over the REST boot
+	// endpoints at --data-server-url (same payloads). The server exits when
+	// the load fails on both transports — no fallback world is generated.
+	ds, err := engine_client.NewDispatcher(cfg.DataServerGRPC, cfg.DataServerURL)
 	if err != nil {
 		runUnderpostStatus(cfg.ContainerDeployID, "error")
-		logx.Errorf("Engine transport required: %v", err)
+		logx.Errorf("Data Server transport required: %v", err)
 		os.Exit(1)
 	}
 	defer ds.Close()
@@ -143,7 +142,7 @@ func main() {
 	if err := wb.LoadAll(ctx); err != nil {
 		cancel()
 		runUnderpostStatus(cfg.ContainerDeployID, "error")
-		logx.Errorf("Engine world load failed: %v — Engine must be running before starting cyberia-server.", err)
+		logx.Errorf("Data Server world load failed: %v — the Data Server must run before cyberia-server starts.", err)
 		os.Exit(1)
 	}
 	cancel()

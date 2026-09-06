@@ -25,13 +25,13 @@ import (
 
 const restBootPath = "/api/cyberia-instance/boot"
 
-// RestClient implements DataSource over the engine REST boot endpoints.
+// RestClient implements DataSource over the Data Server REST boot endpoints.
 type RestClient struct {
 	base string
 	http *http.Client
 }
 
-// NewRestClient targets the engine REST origin (ENGINE_API_BASE_URL).
+// NewRestClient targets the Data Server REST origin (--data-server-url).
 // Per-call deadlines come from request contexts, not a client-wide timeout.
 func NewRestClient(baseURL string) *RestClient {
 	return &RestClient{

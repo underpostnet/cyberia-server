@@ -347,14 +347,10 @@ type GameServer struct {
 	olMu                 sync.RWMutex
 	objectLayerDataCache map[string]*ObjectLayer
 
-	// engineApiBaseUrl is the internal engine-cyberia origin for
-	// server-to-server content-authority calls (quest persistence). Never
-	// forwarded to clients.
-	engineApiBaseUrl string
-
-	// enginePublicURL is the client-visible Content Authority origin forwarded
-	// to clients for every content/asset/metadata request.
-	enginePublicURL string
+	// dataServerURL is the Data Server origin for server-to-server
+	// content-authority calls (quest persistence). Never forwarded to clients:
+	// each client learns its own Data Server URL from its command line.
+	dataServerURL string
 
 	entityBaseSpeed float64
 	// playerBaseSpeed applies to the player entity only. 0 means unset, and

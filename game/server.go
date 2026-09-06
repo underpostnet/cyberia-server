@@ -260,22 +260,13 @@ func (s *GameServer) GetObjectLayerData(itemID string) (*ObjectLayer, bool) {
 	return ol, ok
 }
 
-// SetEngineApiBaseUrl sets the internal engine-cyberia origin used for
-// server-to-server content-authority calls. Never forwarded to clients.
-func (s *GameServer) SetEngineApiBaseUrl(url string) {
+// SetDataServerURL sets the Data Server origin used for server-to-server
+// content-authority calls. Never forwarded to clients.
+func (s *GameServer) SetDataServerURL(url string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.engineApiBaseUrl = url
-	logx.Infof("Engine internal API base URL set to: %s", url)
-}
-
-// SetEnginePublicURL sets the client-visible Content Authority origin
-// forwarded to clients for content/asset/metadata requests.
-func (s *GameServer) SetEnginePublicURL(url string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.enginePublicURL = url
-	logx.Infof("Engine public URL set to: %s", url)
+	s.dataServerURL = url
+	logx.Infof("Data Server URL set to: %s", url)
 }
 
 func (s *GameServer) Run() {

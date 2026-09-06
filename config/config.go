@@ -1,7 +1,8 @@
-// Package config centralizes all environment-variable configuration for
-// cyberia-server. Load reads the environment once at startup, applies
-// defaults, and fails fast on missing required or malformed values so the
-// rest of the program never touches os.Getenv directly.
+// Package config centralizes all configuration for cyberia-server. Load reads
+// the environment once at startup, takes the Data Server endpoints from the
+// command line, applies defaults, and fails fast on missing required or
+// malformed values so the rest of the program never touches os.Getenv
+// directly.
 package config
 
 import (
@@ -32,19 +33,13 @@ type Config struct {
 	// InstanceCode selects the Engine instance to load. INSTANCE_CODE, required.
 	InstanceCode string
 
-	// EngineGRPCAddress is the Engine gRPC endpoint (host:port).
-	// ENGINE_GRPC_ADDRESS, default "localhost:50051".
-	EngineGRPCAddress string
+	// DataServerURL is the Data Server REST origin this server calls.
+	// The --data-server-url flag, required.
+	DataServerURL string
 
-	// EngineAPIBaseURL is the internal engine-cyberia origin for
-	// server-to-server calls (cyberia-server -> engine-cyberia). Infrastructure
-	// only; never forwarded to clients. ENGINE_API_BASE_URL, optional.
-	EngineAPIBaseURL string
-
-	// EnginePublicURL is the client-visible engine-cyberia (Content Authority)
-	// origin forwarded to clients for every content/asset/metadata request.
-	// Distinct from EngineAPIBaseURL. ENGINE_PUBLIC_URL, optional (empty = unset).
-	EnginePublicURL string
+	// DataServerGRPC is the Data Server gRPC endpoint (host:port).
+	// The --data-server-grpc flag, required.
+	DataServerGRPC string
 
 	// GRPCReloadInterval enables Engine hot-reload polling.
 	// ENGINE_GRPC_RELOAD_INTERVAL_SEC, 0 = disabled.
@@ -91,20 +86,20 @@ func DefaultCORSOrigins() []string {
 	return out
 }
 
-// Load reads configuration from the environment, applies defaults, and
-// returns an error when a required variable is missing or malformed. The
-// returned Config is populated even on error (notably ContainerDeployID) so
-// callers can still report deploy status before exiting.
-func Load() (Config, error) {
+// Load reads configuration from the environment, takes the two Data Server
+// endpoints from the command line, applies defaults, and returns an error
+// when a required value is missing or malformed. The returned Config is
+// populated even on error (notably ContainerDeployID) so callers can still
+// report deploy status before exiting.
+func Load(dataServerURL, dataServerGRPC string) (Config, error) {
 	basePath, err := normalizeBasePath(os.Getenv("CYBERIA_BASE_PATH"))
 	c := Config{
 		ServerPort:           getEnv("SERVER_PORT", "8081"),
 		StaticDir:            getEnv("STATIC_DIR", "../../public"),
 		BasePath:             basePath,
 		InstanceCode:         os.Getenv("INSTANCE_CODE"),
-		EngineGRPCAddress:    getEnv("ENGINE_GRPC_ADDRESS", "localhost:50051"),
-		EngineAPIBaseURL:     os.Getenv("ENGINE_API_BASE_URL"),
-		EnginePublicURL:      os.Getenv("ENGINE_PUBLIC_URL"),
+		DataServerURL:        strings.TrimSpace(dataServerURL),
+		DataServerGRPC:       strings.TrimSpace(dataServerGRPC),
 		ProblemBaseURI:       os.Getenv("CYBERIA_PROBLEM_BASE_URI"),
 		ContainerDeployID:    os.Getenv("CONTAINER_DEPLOY_ID"),
 		ServerAPIKey:         os.Getenv("CYBERIA_SERVER_API_KEY"),
@@ -117,6 +112,13 @@ func Load() (Config, error) {
 
 	if c.InstanceCode == "" {
 		return c, fmt.Errorf("INSTANCE_CODE required")
+	}
+
+	if c.DataServerURL == "" {
+		return c, fmt.Errorf("--data-server-url required")
+	}
+	if c.DataServerGRPC == "" {
+		return c, fmt.Errorf("--data-server-grpc required")
 	}
 
 	reload, err := parseReloadInterval(os.Getenv("ENGINE_GRPC_RELOAD_INTERVAL_SEC"))

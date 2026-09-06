@@ -31,8 +31,8 @@ type Dispatcher struct {
 	rest DataSource
 }
 
-// NewDispatcher wires the configured transports (ENGINE_GRPC_ADDRESS /
-// ENGINE_API_BASE_URL). At least one transport is required.
+// NewDispatcher wires both Data Server transports (--data-server-grpc /
+// --data-server-url). At least one transport is required.
 func NewDispatcher(grpcAddress, restBaseURL string) (*Dispatcher, error) {
 	d := &Dispatcher{}
 	if grpcAddress != "" {
@@ -47,7 +47,7 @@ func NewDispatcher(grpcAddress, restBaseURL string) (*Dispatcher, error) {
 		d.rest = NewRestClient(restBaseURL)
 	}
 	if d.grpc == nil && d.rest == nil {
-		return nil, fmt.Errorf("engine_client: no transport available (set ENGINE_GRPC_ADDRESS and/or ENGINE_API_BASE_URL)")
+		return nil, fmt.Errorf("engine_client: no transport available (set --data-server-grpc and/or --data-server-url)")
 	}
 	return d, nil
 }
