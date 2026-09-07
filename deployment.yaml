@@ -38,7 +38,7 @@ spec:
             - /bin/sh
             - -c
             - >
-              set -a && . /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server/env/production.env && set +a && exec /home/dd/engine/cyberia-server/server --data-server-url=${DATA_SERVER_URL} --data-server-grpc=dd-cyberia-grpc-service-production-blue.default.svc.cluster.local:50051
+              set -a && . /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server/env/production.env && set +a && exec /home/dd/engine/cyberia-server/server --data-server-url=$CYBERIA_DATA_SERVER_URL --data-server-grpc=dd-cyberia-grpc-service-production-blue.default.svc.cluster.local:50051
           readinessProbe:
             {
               "tcpSocket": {

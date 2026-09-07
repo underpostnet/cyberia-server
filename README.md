@@ -38,7 +38,7 @@ persisted maps + rules                  tick + AOI + snapshots           render 
 ```
 
 - Each service is supervised independently and owns its own monitor and reconnector.
-- `cyberia-server` dials the Data Server gRPC at boot; on dial or load failure it retries over the REST boot fallback (`--data-server-url`, `/api/cyberia-instance/boot/*`) and exits only when both transports fail rather than fabricate a world.
+- `cyberia-server` dials `engine-cyberia` gRPC at boot; on dial or load failure it retries over the REST boot fallback (`--data-server-url`, `/api/cyberia-instance/boot/*`) and exits only when both transports fail rather than fabricate a world.
 - On reconnect, world configuration is reloaded via `GetFullInstance(instanceCode)`.
 - If any one of the three services is unhealthy, the game moves to standby until all three recover.
 
@@ -266,17 +266,22 @@ All content data (ObjectLayer metadata, asset blobs, optional client hints, the 
 
 ## Environment
 
-Two endpoints are command-line flags, not variables. Both are required, and
-each is const for the life of the process.
+Both Data Server endpoints are command-line flags, not environment reads, and the server exits
+rather than start without them. The image's default command fills them from the two variables
+below, so a `docker run` or a Compose service that sets no command still starts; a Kubernetes pod
+spec passes its own command and supplies the flags directly.
 
-| Flag                  | Example                        | Description                     |
-| --------------------- | ------------------------------ | ------------------------------- |
-| `--data-server-url`   | `https://www.cyberiaonline.com` | Data Server REST origin        |
-| `--data-server-grpc`  | `localhost:50051`              | Data Server gRPC endpoint       |
+| Flag                 | Image default                  | Description                          |
+| -------------------- | ------------------------------ | ------------------------------------ |
+| `--data-server-url`  | `$CYBERIA_DATA_SERVER_URL`     | engine-cyberia REST origin (**required**) |
+| `--data-server-grpc` | `$CYBERIA_DATA_SERVER_GRPC`    | engine-cyberia gRPC `host:port` (**required**) |
 
 | Variable                          | Default           | Description                                        |
 | --------------------------------- | ----------------- | -------------------------------------------------- |
+| `CYBERIA_DATA_SERVER_URL`         | `http://engine-cyberia` | Internal engine-cyberia REST origin, read by the image's default command |
+| `CYBERIA_DATA_SERVER_GRPC`        | `engine-cyberia-runtime:50051` | Internal engine-cyberia gRPC endpoint, read by the image's default command |
 | `INSTANCE_CODE`                   | `default`         | Instance code to load on startup                   |
+| `ENGINE_PUBLIC_URL`               | _(empty)_         | Client-visible Content Authority origin (forwarded to clients) |
 | `ENGINE_GRPC_RELOAD_INTERVAL_SEC` | _(disabled)_      | ObjectLayer hot-reload polling interval            |
 | `SERVER_PORT`                     | `8081`            | WebSocket + HTTP listen port                       |
 | `STATIC_DIR`                      | `./public`        | Directory for static WASM client files             |
