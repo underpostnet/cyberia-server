@@ -229,9 +229,40 @@ func playerItemActive(player *PlayerState, itemID string) bool {
 	return false
 }
 
+// bankableWhileWorn reports whether an equipped item may be taken off to be banked.
+//
+// The loadout has to survive without it, and the equipment rules say what that means: requireSkin
+// keeps a skin on the entity, so the last active one stays put while a second skin — or a weapon,
+// or a breastplate — is free to go. Anything the rules do not govern was never held back.
+func (s *GameServer) bankableWhileWorn(player *PlayerState, itemID string) bool {
+	if !s.equipmentRules.RequireSkin || s.itemType(itemID) != "skin" {
+		return true
+	}
+	for i := range player.ObjectLayers {
+		layer := player.ObjectLayers[i]
+		if layer.ItemID == itemID || !layer.Active {
+			continue
+		}
+		if s.itemType(layer.ItemID) == "skin" {
+			return true
+		}
+	}
+	return false
+}
+
+// setLayerActive flips one carried layer, leaving the rest of the inventory alone.
+func setLayerActive(layers []ObjectLayerState, itemID string, active bool) {
+	for i := range layers {
+		if layers[i].ItemID == itemID {
+			layers[i].Active = active
+			return
+		}
+	}
+}
+
 // storageDeposit consumes the stack from the player and lands it on the target
-// slot, merging when the slot already holds the same item. An equipped item is
-// refused: the client hides the drag for one, and the rule is enforced here too.
+// slot, merging when the slot already holds the same item. A worn item is taken
+// off first, and only refused when the equipment rules need it worn.
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) storageDeposit(player *PlayerState, slots []StorageSlot, capacity int,
@@ -240,7 +271,11 @@ func (s *GameServer) storageDeposit(player *PlayerState, slots []StorageSlot, ca
 		return slots
 	}
 	if playerItemActive(player, cmd.ItemID) {
-		return slots
+		if !s.bankableWhileWorn(player, cmd.ItemID) {
+			return slots
+		}
+		// Putting something away is taking it off: what is banked is no longer worn.
+		setLayerActive(player.ObjectLayers, cmd.ItemID, false)
 	}
 	qty := cmd.Quantity
 	if held := s.playerItemQuantity(player, cmd.ItemID); qty > held {

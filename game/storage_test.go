@@ -83,13 +83,17 @@ func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 		t.Fatalf("a slot past the capacity must be rejected, got %+v", got)
 	}
 
-	// An equipped item is stock the player is wearing — it may never be banked.
+	// A worn item is taken off as it is banked; only the equipment rules hold one back, and this
+	// server configures none. See TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive.
 	player.ObjectLayers = append(player.ObjectLayers,
 		ObjectLayerState{ItemID: "helmet", Quantity: 1, Active: true})
 	if got := s.storageDeposit(player, slots, 25, &InputCommand{
 		ItemID: "helmet", Quantity: 1, ToIndex: 0,
-	}); len(got) != 1 {
-		t.Fatalf("an active item must not be storable, got %+v", got)
+	}); len(got) != 2 {
+		t.Fatalf("a worn item with nothing holding it back is storable, got %+v", got)
+	}
+	if s.playerItemQuantity(player, "helmet") != 0 {
+		t.Fatal("what is banked leaves the player")
 	}
 
 	// Partial withdrawal keeps the slot; draining it removes the slot.
@@ -156,5 +160,41 @@ func TestStorageRelocateMergesOntoTheSameItem(t *testing.T) {
 	}
 	if partial[1].Index != 9 || partial[1].Qty != 6 {
 		t.Fatalf("the target absorbs only the picked count: %+v", partial[1])
+	}
+}
+
+// A skin the player is wearing can be banked as long as another skin stays on: requireSkin keeps
+// an entity dressed, it does not pin one particular skin to it for good.
+func TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive(t *testing.T) {
+	server := &GameServer{
+		equipmentRules: EquipmentRulesConfig{
+			ActiveItemTypes: map[string]bool{"skin": true, "weapon": true},
+			OnePerType:      true,
+			RequireSkin:     true,
+		},
+		objectLayerDataCache: map[string]*ObjectLayer{
+			"anon": {Data: ObjectLayerData{Item: Item{Type: "skin"}}},
+			"punk": {Data: ObjectLayerData{Item: Item{Type: "skin"}}},
+		},
+	}
+	player := &PlayerState{EntityBase: EntityBase{ID: "p1", ObjectLayers: []ObjectLayerState{
+		{ItemID: "anon", Active: true, Quantity: 1},
+		{ItemID: "punk", Active: true, Quantity: 1},
+	}}}
+
+	slots := server.storageDeposit(player, nil, 8, &InputCommand{ItemID: "anon", Quantity: 1, ToIndex: 0})
+	if len(slots) != 1 || slots[0].ItemID != "anon" {
+		t.Fatalf("the skin belongs in the vault: %+v", slots)
+	}
+	for _, layer := range player.ObjectLayers {
+		if layer.ItemID == "anon" {
+			t.Fatalf("a banked skin is no longer carried: %+v", player.ObjectLayers)
+		}
+	}
+
+	// The last active skin stays: with nothing else dressed, the vault does not take it.
+	slots = server.storageDeposit(player, slots, 8, &InputCommand{ItemID: "punk", Quantity: 1, ToIndex: 1})
+	if len(slots) != 1 {
+		t.Fatalf("the last worn skin cannot be banked: %+v", slots)
 	}
 }
