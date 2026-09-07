@@ -331,24 +331,9 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 		aggroRange = ent.GetAggroRange()
 	}
 
-	// Build object layers
-	var objectLayers []ObjectLayerState
-	for _, itemID := range ent.GetObjectLayerItemIds() {
-		objectLayers = append(objectLayers, ObjectLayerState{
-			ItemID: itemID, Active: true, Quantity: 1,
-		})
-	}
-	// If no items are assigned in the map definition use the instance-level
-	// bot default visual — but only when the entity has no explicit DB colour.
-	// A non-zero ColorA means the map creator intentionally placed a
-	// solid-colour bot without sprites.
-	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
-		if d, ok := s.entityDefaults["bot"]; ok && len(d.LiveItemIDs) > 0 {
-			for _, itemID := range d.LiveItemIDs {
-				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
-			}
-		}
-	}
+	// A non-zero ColorA means the map creator intentionally placed a solid-colour bot without
+	// sprites, so it carries no default layers.
+	objectLayers := s.spawnObjectLayers("bot", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
 	bot := &BotState{
 		EntityBase: EntityBase{
@@ -415,22 +400,7 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 		maxLife = ent.GetMaxLife()
 	}
 
-	// Build object layers
-	resourceDefaults, hasResourceDefaults := s.resolveEntityDefaultBuild("resource", ent.GetObjectLayerItemIds())
-	var objectLayers []ObjectLayerState
-	for _, itemID := range ent.GetObjectLayerItemIds() {
-		objectLayers = append(objectLayers, ObjectLayerState{
-			ItemID: itemID, Active: true, Quantity: 1,
-		})
-	}
-	// Fall back to entity defaults when no items assigned and no explicit colour.
-	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
-		if hasResourceDefaults && len(resourceDefaults.LiveItemIDs) > 0 {
-			for _, itemID := range resourceDefaults.LiveItemIDs {
-				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
-			}
-		}
-	}
+	objectLayers := s.spawnObjectLayers("resource", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
 	res := &ResourceState{
 		EntityBase: EntityBase{
@@ -456,17 +426,7 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 func (s *GameServer) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
 	dims := Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())}
 	pos := Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
-	var objectLayers []ObjectLayerState
-	for _, itemID := range ent.GetObjectLayerItemIds() {
-		objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
-	}
-	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
-		if d, ok := s.entityDefaults["obstacle"]; ok && len(d.LiveItemIDs) > 0 {
-			for _, itemID := range d.LiveItemIDs {
-				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
-			}
-		}
-	}
+	objectLayers := s.spawnObjectLayers("obstacle", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
 	obs := ObjectState{
 		EntityBase: EntityBase{
@@ -493,17 +453,7 @@ func (s *GameServer) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
 // An entity that carries neither object layers nor a colour falls back to the
 // kind's default live items.
 func (s *GameServer) buildEntityBase(ent *pb.EntityMessage, kind string) EntityBase {
-	var objectLayers []ObjectLayerState
-	for _, itemID := range ent.GetObjectLayerItemIds() {
-		objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
-	}
-	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
-		if d, ok := s.entityDefaults[kind]; ok {
-			for _, itemID := range d.LiveItemIDs {
-				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
-			}
-		}
-	}
+	objectLayers := s.spawnObjectLayers(kind, ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
 	return EntityBase{
 		ID:           uuid.New().String(),
@@ -538,18 +488,7 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 		subtype = "inter-portal"
 	}
 
-	portalDefaults, hasPortalDefaults := s.resolveEntityDefaultBuild("portal", ent.GetObjectLayerItemIds())
-	var objectLayers []ObjectLayerState
-	for _, itemID := range ent.GetObjectLayerItemIds() {
-		objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
-	}
-	if len(objectLayers) == 0 && ent.GetColorA() == 0 {
-		if hasPortalDefaults && len(portalDefaults.LiveItemIDs) > 0 {
-			for _, itemID := range portalDefaults.LiveItemIDs {
-				objectLayers = append(objectLayers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
-			}
-		}
-	}
+	objectLayers := s.spawnObjectLayers("portal", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
 	portal := &PortalState{
 		EntityBase: EntityBase{

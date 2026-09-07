@@ -247,7 +247,7 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) 
 		}
 	}
 	playerCenter := Point{X: player.Pos.X + player.Dims.Width*0.5, Y: player.Pos.Y + player.Dims.Height*0.5}
-	s.spawnDrops(mapState, player.MapCode, playerCenter, build.DropItemIDs, coinDrop, player.DamageLedger)
+	s.spawnDrops(mapState, player.MapCode, playerCenter, build, coinDrop, player.DamageLedger)
 	player.DamageLedger = nil
 
 	// The Fragmented State reuses the loadout from the player's last death;
@@ -286,7 +286,7 @@ func (s *GameServer) killEntity(base *EntityBase, mortal *Mortal, kind, mapCode 
 	build, _ := s.resolveEntityDefaultBuild(kind, activeObjectLayerItemIDs(layersToSave))
 
 	center := Point{X: base.Pos.X + base.Dims.Width*0.5, Y: base.Pos.Y + base.Dims.Height*0.5}
-	s.spawnDrops(mapState, mapCode, center, build.DropItemIDs, coins, ledger)
+	s.spawnDrops(mapState, mapCode, center, build, coins, ledger)
 
 	base.ObjectLayers = applyDeadItems(base.ObjectLayers, s.resolveDeadItemIDs(build))
 	mortal.RespawnTime = time.Now().Add(s.respawnDuration)

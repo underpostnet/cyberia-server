@@ -136,17 +136,9 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 	lifeRegen := s.playerBaseLifeRegenMin + rand.Float64()*(s.playerBaseLifeRegenMax-s.playerBaseLifeRegenMin)
 
-	// Copy default object layers from entityDefaults["player"].DefaultObjectLayers.
-	// Falls back to liveItemIds if no defaultObjectLayers are configured.
-	var playerOLs []ObjectLayerState
-	if d, ok := s.entityDefaults["player"]; ok && len(d.DefaultObjectLayers) > 0 {
-		playerOLs = make([]ObjectLayerState, len(d.DefaultObjectLayers))
-		copy(playerOLs, d.DefaultObjectLayers)
-	} else if d, ok := s.entityDefaults["player"]; ok && len(d.LiveItemIDs) > 0 {
-		for _, itemID := range d.LiveItemIDs {
-			playerOLs = append(playerOLs, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
-		}
-	}
+	// A player is placed by nothing, so its whole stack comes from its default — read the one way
+	// every entity type reads it.
+	playerOLs := s.spawnObjectLayers("player", nil, true)
 	playerState := &PlayerState{
 		EntityBase: EntityBase{
 			ID:           playerID,

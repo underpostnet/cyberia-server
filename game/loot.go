@@ -99,7 +99,7 @@ func contributorSet(ledger map[string]float64) map[string]struct{} {
 // token whose quantity is the looted amount. Every player in `ledger` may race
 // to collect the tokens once they settle. Shared by every dying
 // content-authority entity (bots, resources). Caller holds s.mu.
-func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point, dropItemIDs []string, coinAmount int, ledger map[string]float64) {
+func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point, build EntityTypeDefaultConfig, coinAmount int, ledger map[string]float64) {
 	contributors := contributorSet(ledger)
 	// At least one contributor (player or bot) must have dealt damage for loot to
 	// drop. A death nobody contributed to leaves nothing behind.
@@ -107,11 +107,11 @@ func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point
 		return
 	}
 
-	for _, itemID := range dropItemIDs {
+	for _, itemID := range build.DropItemIDs {
 		if itemID == "" {
 			continue
 		}
-		s.spawnDropToken(mapState, mapCode, center, itemID, 1, contributors)
+		s.spawnDropToken(mapState, mapCode, center, itemID, stackQuantity(build, itemID), contributors)
 	}
 
 	// Coins scatter as a single quantity-bearing token rather than crediting the
@@ -121,7 +121,7 @@ func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point
 	}
 
 	logx.Debugf("[LOOT] scattered %d item drop(s) + %d coins at (%.1f,%.1f) on %s (contributors=%d)",
-		len(dropItemIDs), coinAmount, center.X, center.Y, mapCode, len(contributors))
+		len(build.DropItemIDs), coinAmount, center.X, center.Y, mapCode, len(contributors))
 }
 
 // spawnDropToken creates one BehaviorDrop token carrying (itemID × quantity),
