@@ -107,11 +107,18 @@ func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point
 		return
 	}
 
+	scattered := 0
 	for _, itemID := range build.DropItemIDs {
 		if itemID == "" {
 			continue
 		}
+		// Each id is rolled on its own, so a build can pair a common drop with a rare one and
+		// have both decided independently. An id the build says nothing about always scatters.
+		if chance := dropChance(build, itemID); chance < 1 && rand.Float64() >= chance {
+			continue
+		}
 		s.spawnDropToken(mapState, mapCode, center, itemID, stackQuantity(build, itemID), contributors)
+		scattered++
 	}
 
 	// Coins scatter as a single quantity-bearing token rather than crediting the
@@ -120,8 +127,8 @@ func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point
 		s.spawnDropToken(mapState, mapCode, center, s.coinItemID, coinAmount, contributors)
 	}
 
-	logx.Debugf("[LOOT] scattered %d item drop(s) + %d coins at (%.1f,%.1f) on %s (contributors=%d)",
-		len(build.DropItemIDs), coinAmount, center.X, center.Y, mapCode, len(contributors))
+	logx.Debugf("[LOOT] scattered %d/%d item drop(s) + %d coins at (%.1f,%.1f) on %s (contributors=%d)",
+		scattered, len(build.DropItemIDs), coinAmount, center.X, center.Y, mapCode, len(contributors))
 }
 
 // spawnDropToken creates one BehaviorDrop token carrying (itemID × quantity),

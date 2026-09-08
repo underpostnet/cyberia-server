@@ -259,6 +259,11 @@ message DefaultObjectLayerState {
   string item_id  = 1;
   bool   active   = 2;
   int32  quantity = 3;
+  // Probability in [0,1] that this id scatters when the entity dies. Only meaningful for an id the
+  // build carries in drop_item_ids. Explicitly optional so absent stays distinguishable from a
+  // deliberate 0: a payload from before this field existed must read as "always drops", while an
+  // operator who authors 0 means "never". See OverrideItemStateSchema.dropChance.
+  optional double drop_chance = 4;
 }
 
 message SkillDetail {

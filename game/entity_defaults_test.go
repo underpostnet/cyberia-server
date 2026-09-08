@@ -218,3 +218,42 @@ func TestSpawnObjectLayersTakesTheBuildStateForAPlacedID(t *testing.T) {
 		t.Fatalf("the weapon the override names is the one worn: %+v", layers)
 	}
 }
+
+// A build that says nothing about an id must keep dropping it: worlds configured before drop
+// chances existed carry no map at all, and reading that as "never" would empty every loot table.
+func TestDropChanceDefaultsToAlways(t *testing.T) {
+	build := EntityTypeDefaultConfig{EntityType: "resource", DropItemIDs: []string{"wood-drop-1"}}
+	if got := dropChance(build, "wood-drop-1"); got != 1 {
+		t.Fatalf("unstated id: want 1, got %v", got)
+	}
+	if got := dropChance(build, "absent"); got != 1 {
+		t.Fatalf("unknown id: want 1, got %v", got)
+	}
+}
+
+func TestDropChanceHonoursAndClampsWhatTheBuildStates(t *testing.T) {
+	build := EntityTypeDefaultConfig{
+		EntityType:  "resource",
+		DropItemIDs: []string{"common", "rare", "never", "broken-low", "broken-high"},
+		DropChances: map[string]float64{
+			"rare":        0.25,
+			"never":       0,
+			"broken-low":  -3,
+			"broken-high": 7.5,
+		},
+	}
+	for _, tc := range []struct {
+		itemID string
+		want   float64
+	}{
+		{"common", 1},      // stated by no row
+		{"rare", 0.25},     // honoured verbatim
+		{"never", 0},       // a deliberate zero survives, which is why the wire field is optional
+		{"broken-low", 0},  // clamped, not rejected
+		{"broken-high", 1}, // clamped toward the old always-drops behaviour
+	} {
+		if got := dropChance(build, tc.itemID); got != tc.want {
+			t.Errorf("%s: want %v, got %v", tc.itemID, tc.want, got)
+		}
+	}
+}

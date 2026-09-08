@@ -151,12 +151,19 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	s.entityDefaultBuilds = make([]EntityTypeDefaultConfig, 0, len(cfg.GetEntityDefaults()))
 	for _, etd := range cfg.GetEntityDefaults() {
 		var dols []ObjectLayerState
+		dropChances := make(map[string]float64)
 		for _, dol := range etd.GetDefaultObjectLayers() {
 			dols = append(dols, ObjectLayerState{
 				ItemID:   dol.GetItemId(),
 				Active:   dol.GetActive(),
 				Quantity: int(dol.GetQuantity()),
 			})
+			// Only a row that states a chance is recorded. The field is optional precisely so a
+			// payload from before it existed reads as absent rather than as a deliberate 0, and
+			// dropChance answers 1 for anything unrecorded.
+			if dol.DropChance != nil {
+				dropChances[dol.GetItemId()] = dol.GetDropChance()
+			}
 		}
 		defaultBuild := EntityTypeDefaultConfig{
 			EntityType:          etd.GetEntityType(),
@@ -164,6 +171,7 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 			DeadItemIDs:         etd.GetDeadItemIds(),
 			DropItemIDs:         etd.GetDropItemIds(),
 			DefaultObjectLayers: dols,
+			DropChances:         dropChances,
 			Behavior:            etd.GetBehavior(),
 		}
 		s.entityDefaultBuilds = append(s.entityDefaultBuilds, defaultBuild)

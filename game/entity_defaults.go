@@ -80,6 +80,26 @@ func stackQuantity(build EntityTypeDefaultConfig, itemID string) int {
 	return 1
 }
 
+// dropChance is how often an id actually scatters when the entity dies, in [0,1].
+//
+// A build that says nothing about an id drops it every time, which is what every world did before
+// the field existed. Values are clamped rather than rejected: engine-cyberia already constrains
+// the authored range, and a payload that slipped past it should bias toward the old behaviour
+// instead of silently dropping nothing.
+func dropChance(build EntityTypeDefaultConfig, itemID string) float64 {
+	chance, ok := build.DropChances[itemID]
+	if !ok {
+		return 1
+	}
+	if chance < 0 {
+		return 0
+	}
+	if chance > 1 {
+		return 1
+	}
+	return chance
+}
+
 // buildLayer is a placed id as the build states it: its row when the build carries one, and a
 // plainly worn single item when it does not.
 func buildLayer(build EntityTypeDefaultConfig, itemID string) ObjectLayerState {

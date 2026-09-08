@@ -467,6 +467,11 @@ type EntityTypeDefaultConfig struct {
 	DeadItemIDs         []string           `json:"deadItemIds"`
 	DropItemIDs         []string           `json:"dropItemIds"`
 	DefaultObjectLayers []ObjectLayerState `json:"defaultObjectLayers,omitempty"`
+	// DropChances is itemID → probability in [0,1] that the id scatters on death. It lives on the
+	// build rather than on ObjectLayerState because it describes what an entity type drops, not
+	// what one entity is currently wearing — and ObjectLayerState rides every snapshot, where a
+	// per-layer probability would be dead weight on the wire. A missing id means 1.
+	DropChances map[string]float64 `json:"dropChances,omitempty"`
 	// Canonical entity behavior bound to matched entities (see behavior.go).
 	// Empty = derive from layers (armed → hostile, else passive).
 	Behavior string `json:"behavior,omitempty"`
