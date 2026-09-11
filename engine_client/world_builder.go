@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	game "cyberia-server/game"
+	pb "cyberia-server/gen/proto"
 )
 
 // WorldBuilder orchestrates data loading from an engine DataSource
@@ -60,13 +61,19 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 		return err
 	}
 
+	if err := validateWorldProgression(resp); err != nil {
+		return err
+	}
+
 	// Apply instance config to GameServer (must happen before building world).
 	// Config is required — a world without it is misconfigured.
 	cfg := resp.GetConfig()
 	if cfg == nil {
 		return fmt.Errorf("instance %q returned no config", wb.InstanceCode)
 	}
-	wb.server.ApplyInstanceConfig(cfg)
+	if err := wb.server.ApplyInstanceConfig(cfg); err != nil {
+		return err
+	}
 	logx.Infof("[WorldBuilder] Applied instance config.")
 
 	// Build object layer cache exclusively from the instance response.
@@ -80,7 +87,9 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 	}
 
 	// Push OL cache into GameServer FIRST (needed for bot behavior detection)
-	wb.server.ReplaceObjectLayerCache(cache)
+	if err := wb.server.ReplaceObjectLayerCache(cache); err != nil {
+		return err
+	}
 
 	// Build manifest
 	wb.mu.Lock()
@@ -161,7 +170,9 @@ func (wb *WorldBuilder) HotReload(ctx context.Context) error {
 			updates[itemID] = ol
 		}
 
-		wb.server.PatchObjectLayerCache(updates, toDelete)
+		if err := wb.server.PatchObjectLayerCache(updates, toDelete); err != nil {
+			return err
+		}
 
 		wb.mu.Lock()
 		for itemID, ol := range updates {
@@ -180,7 +191,7 @@ func (wb *WorldBuilder) HotReload(ctx context.Context) error {
 	//    MapEngineCyberia or InstanceEngineCyberia) are picked up even when
 	//    no ObjectLayer binary changed.
 	if err := wb.ReloadWorld(ctx); err != nil {
-		logx.Errorf("[WorldBuilder] Hot-reload: world rebuild failed: %v", err)
+		return err
 	}
 
 	return nil
@@ -195,13 +206,14 @@ func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
 		return err
 	}
 
+	if err := validateWorldProgression(resp); err != nil {
+		return err
+	}
+
 	// Compare version — skip rebuild when instance+maps are unchanged.
 	newVersion := resp.GetVersion()
 	wb.mu.Lock()
 	same := newVersion != "" && newVersion == wb.lastInstanceVersion
-	if !same {
-		wb.lastInstanceVersion = newVersion
-	}
 	wb.mu.Unlock()
 
 	if same {
@@ -212,24 +224,42 @@ func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
 
 	// Re-apply config in case it changed.
 	if cfg := resp.GetConfig(); cfg != nil {
-		wb.server.ApplyInstanceConfig(cfg)
+		if err := wb.server.ApplyInstanceConfig(cfg); err != nil {
+			return err
+		}
 	}
 
-	// Merge any new OLs into the cache (entities may reference new items).
-	for _, olMsg := range resp.GetObjectLayers() {
-		ol := protoToObjectLayer(olMsg)
+	updates := make(map[string]*game.ObjectLayer, len(resp.GetObjectLayers()))
+	for _, msg := range resp.GetObjectLayers() {
+		ol := protoToObjectLayer(msg)
 		if ol.Data.Item.ID != "" {
-			wb.server.PatchObjectLayerCache(
-				map[string]*game.ObjectLayer{ol.Data.Item.ID: ol},
-				nil,
-			)
+			updates[ol.Data.Item.ID] = ol
 		}
+	}
+	if err := wb.server.PatchObjectLayerCache(updates, nil); err != nil {
+		return err
 	}
 
 	// Rebuild world preserving players.
 	wb.server.RebuildWorld(resp.GetInstance(), resp.GetMaps(), resp.GetObjectLayers(),
 		resp.GetActions(), resp.GetQuests())
 
+	wb.mu.Lock()
+	wb.lastInstanceVersion = newVersion
+	wb.mu.Unlock()
+
 	logx.Infof("[WorldBuilder] ReloadWorld complete — maps and entities refreshed.")
+	return nil
+}
+
+func validateWorldProgression(response *pb.GetFullInstanceResponse) error {
+	if err := game.ValidateWorldProgression(response.GetConfig(), response.GetMaps()); err != nil {
+		return err
+	}
+	for _, message := range response.GetObjectLayers() {
+		if err := protoToObjectLayer(message).Data.Stats.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }

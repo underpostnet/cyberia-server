@@ -30,7 +30,7 @@ func fixtureHandler(t *testing.T, routes map[string]string) http.Handler {
 
 func TestRestClientFetchFullInstanceContract(t *testing.T) {
 	srv := httptest.NewServer(fixtureHandler(t, map[string]string{
-		restBootPath + "/full-instance/contract-test": "testdata/boot_full_instance_fallback.json",
+		restBootPath + "/full-instance/contract-test": "testdata/boot_full_instance.json",
 	}))
 	defer srv.Close()
 
@@ -38,8 +38,8 @@ func TestRestClientFetchFullInstanceContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchFullInstance: %v", err)
 	}
-	if resp.GetVersion() != "fallback" {
-		t.Errorf("version = %q, want %q", resp.GetVersion(), "fallback")
+	if resp.GetVersion() != "contract-fixture" {
+		t.Errorf("version = %q, want %q", resp.GetVersion(), "contract-fixture")
 	}
 	if len(resp.GetMaps()) == 0 {
 		t.Error("maps empty")
@@ -50,6 +50,12 @@ func TestRestClientFetchFullInstanceContract(t *testing.T) {
 	cfg := resp.GetConfig()
 	if cfg == nil || cfg.GetTickRate() <= 0 {
 		t.Fatalf("config missing or tickRate unset: %+v", cfg)
+	}
+	if cfg.GetProgressionRules().GetMaxLevel() != 100 || resp.GetMaps()[0].GetEntities()[0].GetLevel() != 7 {
+		t.Fatal("progression config or entity level missing")
+	}
+	if stats := resp.GetObjectLayers()[0].GetStats(); stats.GetEffect() != -100 || stats.GetResistance() != 100 {
+		t.Fatal("signed stat boundary changed")
 	}
 	if len(cfg.GetEntityDefaults()) == 0 {
 		t.Error("entityDefaults empty")
@@ -90,5 +96,19 @@ func TestRestClientErrorEnvelope(t *testing.T) {
 
 	if _, err := NewRestClient(srv.URL).FetchObjectLayer(context.Background(), "ghost"); err == nil {
 		t.Fatal("expected error for 404 envelope")
+	}
+}
+
+func TestRestClientSignedObjectLayer(t *testing.T) {
+	server := httptest.NewServer(fixtureHandler(t, map[string]string{
+		restBootPath + "/object-layer/sword": "testdata/boot_object_layer.json",
+	}))
+	defer server.Close()
+	layer, err := NewRestClient(server.URL).FetchObjectLayer(context.Background(), "sword")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layer.Data.Stats.Effect != -100 || layer.Data.Stats.Resistance != 100 {
+		t.Fatal("signed stat boundaries changed")
 	}
 }

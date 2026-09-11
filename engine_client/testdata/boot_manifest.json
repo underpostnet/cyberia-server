@@ -1,0 +1,11 @@
+{
+  "status": "success",
+  "data": {
+    "entries": [
+      {
+        "itemId": "sword",
+        "sha256": "abc"
+      }
+    ]
+  }
+}

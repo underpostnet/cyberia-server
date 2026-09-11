@@ -1,0 +1,31 @@
+{
+  "status": "success",
+  "data": {
+    "mongoId": "contract-layer",
+    "stats": {
+      "effect": -100,
+      "resistance": 100,
+      "agility": 0,
+      "range": 0,
+      "intelligence": 0,
+      "utility": 0
+    },
+    "item": {
+      "id": "sword",
+      "type": "weapon",
+      "description": "",
+      "activable": false
+    },
+    "ledger": {
+      "type": "OFF_CHAIN",
+      "address": "",
+      "tokenId": ""
+    },
+    "render": {
+      "cid": "",
+      "metadataCid": ""
+    },
+    "sha256": "abc",
+    "cid": ""
+  }
+}
