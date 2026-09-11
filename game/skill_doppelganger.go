@@ -1,7 +1,6 @@
 package game
 
 import (
-	"math"
 	"math/rand"
 	"time"
 
@@ -14,8 +13,7 @@ import (
 func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 	casterStats := s.CalculateStats(ctx.Caster, ctx.MapState)
 
-	// Intelligence stat increases the chance of the skill activating.
-	if rand.Float64() >= math.Min(s.doppelgangerSpawnChance+(casterStats.Intelligence/100.0), s.maxChance) {
+	if rand.Float64() >= s.summonChance(s.doppelgangerSpawnChance, casterStats) {
 		return
 	}
 
@@ -45,9 +43,7 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 		defer s.mu.Unlock()
 	}
 
-	// Range stat increases the doppelganger's lifetime in milliseconds.
-	botLifetime := (time.Duration(s.doppelgangerLifetimeMs) * time.Millisecond) +
-		(time.Duration(casterStats.Range) * time.Millisecond)
+	botLifetime := summonLifetime(s.doppelgangerLifetimeMs, casterStats)
 
 	// Find the caster's active skin layer. Fall back to the first active layer if no skin is found.
 	var doppelgangerLayers []ObjectLayerState

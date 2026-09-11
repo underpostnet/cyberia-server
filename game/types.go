@@ -80,11 +80,14 @@ func (e EntityBase) Base() EntityBase { return e }
 
 // Mortal — life/respawn block for entities that can die (Player, Bot, Resource).
 type Mortal struct {
-	MaxLife                float64            `json:"maxLife"`
-	Life                   float64            `json:"life"`
-	RespawnTime            time.Time          `json:"-"`
-	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
-	StatsDirty             bool               `json:"-"` // Set true when ObjectLayers change; cleared by CalculateStats cache.
+	NextSkillAt            time.Time
+	BaseMaxLife            float64
+	Progression            EntityProgression   `json:"progression"`
+	TemporaryModifiers     []TemporaryModifier `json:"-"`
+	MaxLife                float64             `json:"maxLife"`
+	Life                   float64             `json:"life"`
+	RespawnTime            time.Time           `json:"-"`
+	PreRespawnObjectLayers []ObjectLayerState  `json:"-"`
 }
 
 // IsGhost reports whether the entity is dead and waiting to respawn.
@@ -108,7 +111,6 @@ type PlayerState struct {
 	OnPortal       bool            `json:"onPortal"`
 	TimeOnPortal   time.Time       `json:"-"`
 	ActivePortalID string          `json:"activePortalID"`
-	SumStatsLimit  int             `json:"sumStatsLimit"`
 	LifeRegen      float64         `json:"lifeRegen"`
 	// Coins is the canonical flat coin balance — the single source of truth
 	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
@@ -321,16 +323,17 @@ type Client struct {
 }
 
 type GameServer struct {
-	mu             sync.Mutex
-	maps           map[string]*MapState
-	instanceCode   string               // INSTANCE_CODE — selects which instance to load
-	playerSpawn    PlayerSpawnConfig    // authoritative initial spawn for new players
-	questsByCell   map[cellKey][]string // quest codes bound to each action cell
-	clients        map[string]*Client
-	register       chan *Client
-	unregister     chan *Client
-	aoiRadius      float64
-	portalHoldTime time.Duration
+	progressionRules ProgressionRules
+	mu               sync.Mutex
+	maps             map[string]*MapState
+	instanceCode     string               // INSTANCE_CODE — selects which instance to load
+	playerSpawn      PlayerSpawnConfig    // authoritative initial spawn for new players
+	questsByCell     map[cellKey][]string // quest codes bound to each action cell
+	clients          map[string]*Client
+	register         chan *Client
+	unregister       chan *Client
+	aoiRadius        float64
+	portalHoldTime   time.Duration
 
 	// ── Tick model (authoritative simulation cadence) ────────────────────────
 	// The server advances one logical Tick per tickDuration. snapshotRate
@@ -365,7 +368,6 @@ type GameServer struct {
 	defaultPlayerHeight    float64
 	playerBaseLifeRegenMin float64
 	playerBaseLifeRegenMax float64
-	sumStatsLimit          int
 	maxActiveLayers        int
 	initialLifeFraction    float64
 
@@ -433,11 +435,6 @@ type GameServer struct {
 	// only; the slot shape is the future persistence document.
 	storage   map[storageKey][]StorageSlot
 	questDefs map[string]*CyberiaQuest
-
-	// Stats cache: entityID → cached entry with TTL. Invalidated when StatsDirty is set
-	// or when the TTL (statsCacheTTL) expires.
-	statsCache    map[string]statsCacheEntry
-	statsCacheTTL time.Duration
 
 	// Equipment rules — governs activation constraints.
 	equipmentRules EquipmentRulesConfig
@@ -508,7 +505,6 @@ type InitPayload struct {
 	TickRate       int                        `json:"tickRate"`
 	SnapshotRate   int                        `json:"snapshotRate"`
 	AoiRadius      float64                    `json:"aoiRadius"`
-	SumStatsLimit  int                        `json:"sumStatsLimit"`
 	ObjectLayers   []ObjectLayerState         `json:"objectLayers"`
 	SkillMap       map[string][]SkillMapEntry `json:"skillMap"`
 	EntityDefaults []EntityTypeDefaultConfig  `json:"entityDefaults"`

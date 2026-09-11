@@ -671,7 +671,6 @@ func (s *GameServer) removePlayerItem(player *PlayerState, itemID string, qty in
 		kept = append(kept, ol)
 	}
 	player.ObjectLayers = kept
-	s.InvalidateStats(player)
 }
 
 // playerItemQuantity returns how many of itemID the player holds. Coins route
@@ -801,6 +800,10 @@ func (s *GameServer) advancePlayerQuestsOnKill(player *PlayerState, killedSkin s
 // completeQuest marks a quest completed, delivers its rewards, unlocks
 // successors, and records the affected snapshot entries.
 func (s *GameServer) completeQuest(player *PlayerState, qp *QuestProgress, affected *[]QuestSnapshotEntry) {
+	if qp.Status == "completed" {
+		return
+	}
+	s.awardProgression(player, xpQuest, qp.QuestCode, 0, time.Now())
 	qp.Status = "completed"
 	s.deliverQuestRewards(player, qp.QuestCode)
 	s.persistQuestProgress(player, qp)

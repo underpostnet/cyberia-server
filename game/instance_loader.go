@@ -343,8 +343,9 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 			ObjectLayers: objectLayers,
 		},
 		Mortal: Mortal{
-			MaxLife: maxLife,
-			Life:    maxLife * s.initialLifeFraction,
+			MaxLife:     maxLife,
+			BaseMaxLife: maxLife,
+			Life:        maxLife * s.initialLifeFraction,
 		},
 		MapCode:     mapCode,
 		Path:        []PointI{},
@@ -358,7 +359,7 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 		LifeRegen:   lifeRegen,
 	}
 
-	// Apply initial stats
+	bot.Progression = NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig())
 	s.ApplyResistanceStat(bot, ms)
 	bot.Life = bot.MaxLife * s.initialLifeFraction
 
@@ -410,13 +411,15 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 			ObjectLayers: objectLayers,
 		},
 		Mortal: Mortal{
-			MaxLife: maxLife,
-			Life:    maxLife,
+			MaxLife:     maxLife,
+			BaseMaxLife: maxLife,
+			Life:        maxLife,
 		},
 		MapCode: mapCode,
 	}
 
 	// Apply stats (resistance may increase MaxLife)
+	res.Progression = NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig())
 	s.ApplyResistanceStat(res, ms)
 	res.Life = res.MaxLife
 

@@ -20,7 +20,6 @@ func movementFixture(t *testing.T) (*GameServer, *MapState, *PlayerState) {
 
 	s := &GameServer{
 		maps:                        map[string]*MapState{"test": mapState},
-		statsCache:                  map[string]statsCacheEntry{},
 		entityBaseSpeed:             5,
 		entityBaseActionCooldown:    500 * time.Millisecond,
 		entityBaseMinActionCooldown: 100 * time.Millisecond,

@@ -2,16 +2,6 @@ package game
 
 import "time"
 
-// Stats describes the attribute distribution for an object layer.
-type Stats struct {
-	Effect       int `json:"effect"`
-	Resistance   int `json:"resistance"`
-	Agility      int `json:"agility"`
-	Range        int `json:"range"`
-	Intelligence int `json:"intelligence"`
-	Utility      int `json:"utility"`
-}
-
 // Item describes a generic item.
 type Item struct {
 	ID          string `json:"id"`

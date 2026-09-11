@@ -247,7 +247,6 @@ func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 			if drop.DropItemID == s.coinItemID {
 				// No coin-gain FCT — the amount is shown on the grid loot counter.
 				s.addCoins(collector, drop.DropQuantity)
-				s.InvalidateStats(collector)
 			} else {
 				s.grantItemToPlayer(collector, drop.DropItemID, drop.DropQuantity)
 				s.advancePlayerQuestsOnGain(collector)
@@ -263,7 +262,6 @@ func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 			} else {
 				s.grantItemToBot(bot, drop.DropItemID, drop.DropQuantity)
 			}
-			s.InvalidateStats(bot)
 			s.broadcastDropCollect(mapState, drop, bot.ID, cx, cy)
 			delete(mapState.bots, dropID)
 		}

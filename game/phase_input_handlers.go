@@ -26,18 +26,7 @@ import (
 	"cyberia-server/logx"
 )
 
-// handlePlayerActionInput applies a TAP from the client: skill trigger now,
-// movement intent recorded for the end of the phase.
-//
-// Skills fire on every valid tap, probability-gated by Intelligence. Movement
-// does not re-plan here: taps that arrive inside one tick all describe the same
-// instant, and only the newest of them names where the player wants to go, so
-// the intent is recorded and phaseInput re-plans once per tick from the last
-// one. That coalescing is the whole bound on pathfinder cost — one A* per
-// player per tick whatever the tap rate — and it costs the player nothing,
-// because the tap it drops is one a later tap in the same tick superseded.
-// Nothing else may throttle the re-plan: a walk that cannot turn until some
-// cooldown elapses reads as input lag and sets off in the abandoned direction.
+// Taps record movement and request cooldown-limited skills.
 func (s *GameServer) handlePlayerActionInput(player *PlayerState, mapState *MapState, cmd *InputCommand) {
 	if player.IsGhost() {
 		return
@@ -46,7 +35,6 @@ func (s *GameServer) handlePlayerActionInput(player *PlayerState, mapState *MapS
 		return
 	}
 
-	// Skills + regen run on every accepted tap.
 	target := Point{X: cmd.TargetX, Y: cmd.TargetY}
 	s.HandlePlayerTapAction(player, mapState, target)
 
@@ -251,7 +239,6 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 		player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(player.ObjectLayers)
 	}
 
-	s.InvalidateStats(player)
 	s.ApplyResistanceStat(player, s.maps[player.MapCode])
 }
 

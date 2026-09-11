@@ -8,7 +8,7 @@
 //   - The player receives NO incoming damage or effects (skill collisions skip them).
 //   - The player cannot execute actions (taps, skills, movement commands are rejected).
 //   - No other entity can target the player for events.
-//   - Stats computation for the player is paused (cached values remain stable).
+//   - Temporary stat effects keep their server expiry times.
 //   - The rest of the world continues running normally.
 //
 // The Go server (relayer) is the single source of truth for this state.

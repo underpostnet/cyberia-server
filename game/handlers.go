@@ -147,16 +147,16 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			ObjectLayers: playerOLs,
 		},
 		Mortal: Mortal{
-			MaxLife: s.entityBaseMaxLife,
-			Life:    s.entityBaseMaxLife * s.initialLifeFraction,
+			Progression: NewEntityProgression(1, false, s.progressionConfig()),
+			MaxLife:     s.entityBaseMaxLife,
+			Life:        s.entityBaseMaxLife * s.initialLifeFraction,
 		},
-		MapCode:       startMapCode,
-		Path:          []PointI{},
-		TargetPos:     PointI{-1, -1},
-		Direction:     NONE,
-		Mode:          IDLE,
-		SumStatsLimit: s.sumStatsLimit,
-		LifeRegen:     lifeRegen,
+		MapCode:   startMapCode,
+		Path:      []PointI{},
+		TargetPos: PointI{-1, -1},
+		Direction: NONE,
+		Mode:      IDLE,
+		LifeRegen: lifeRegen,
 	}
 	client := &Client{
 		playerID: playerID,
@@ -199,7 +199,6 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		TickRate:       s.tickRate,
 		SnapshotRate:   s.snapshotRate,
 		AoiRadius:      s.aoiRadius,
-		SumStatsLimit:  playerState.SumStatsLimit,
 		ObjectLayers:   s.visibleInventory(playerState.ObjectLayers),
 		SkillMap:       s.buildSkillMap(),
 		EntityDefaults: s.buildEntityDefaultsSlice(),
@@ -261,7 +260,7 @@ func (s *GameServer) detachClient(client *Client) {
 // sendMessage packs a message and queues it for the player. The send never
 // blocks: a full queue drops the message.
 func sendMessage(player *PlayerState, msgType string, payload any) {
-	if player == nil || player.Client == nil {
+	if player == nil || player.Client == nil || player.Client.sock == nil {
 		return
 	}
 	pack, err := serial.Pack(msgType, payload)

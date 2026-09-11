@@ -41,10 +41,12 @@ package game
 // │  • portalFee           — flat fee per portal use                        │
 // │  • craftingFeePercent  — fraction of item value burned on crafting      │
 // │                                                                         │
-// │  FCT EVENTS                                                             │
-// │  Combat only (damage/regen, broadcast to AOI). Coin changes emit no     │
-// │  FCT — the inventory-bar quantity FX shows them. Gains no               │
-// │  longer emit FCT — that feedback lives in the loot grid.                 │
+// │  FCT AND AUDIO EVENTS                                                   │
+// │  Damage and regen broadcast to the AOI; XP goes to its earner only.     │
+// │  Coin changes emit no FCT — the inventory-bar quantity FX shows them.   │
+// │  Item gains emit no FCT — that feedback lives in the loot grid.         │
+// │  A defeat and a level gained broadcast their audio id to the AOI, so    │
+// │  every viewer hears the same event.                                     │
 // └─────────────────────────────────────────────────────────────────────────┘
 
 import (
@@ -55,17 +57,27 @@ import (
 
 // ── Wire message helpers ──────────────────────────────────────────────────
 
-// broadcastFCT delivers the same combat-text event to every player whose AOI
-// covers the event point — identical feedback for every viewer, so
-// per-recipient amounts can never leak.
-func broadcastFCT(mapState *MapState, kind string, worldX, worldY float64, value int) {
-	payload := CombatText{Kind: kind, WorldX: worldX, WorldY: worldY, Value: value}
+// broadcastAt delivers one message to every player whose AOI covers the
+// event point — identical feedback for every viewer, so per-recipient
+// amounts can never leak.
+func broadcastAt(mapState *MapState, msgType string, payload any, worldX, worldY float64) {
 	pt := Rectangle{MinX: worldX, MinY: worldY, MaxX: worldX, MaxY: worldY}
 	for _, player := range mapState.players {
 		if rectsOverlap(player.AOI, pt) {
-			sendMessage(player, "combat_text", payload)
+			sendMessage(player, msgType, payload)
 		}
 	}
+}
+
+// broadcastFCT delivers the same combat-text event to every viewer in reach.
+func broadcastFCT(mapState *MapState, kind string, worldX, worldY float64, value int) {
+	broadcastAt(mapState, "combat_text", CombatText{Kind: kind, WorldX: worldX, WorldY: worldY, Value: value}, worldX, worldY)
+}
+
+// broadcastAudioEvent raises one audio logic id for every viewer in reach, so
+// a defeat or a level gained sounds for everyone who can see it.
+func broadcastAudioEvent(mapState *MapState, logicEventID string, at Point) {
+	broadcastAt(mapState, "audio_event", AudioEvent{LogicEventID: logicEventID, WorldX: at.X, WorldY: at.Y}, at.X, at.Y)
 }
 
 // ── Coin helpers (flat-field design) ─────────────────────────────────────────
@@ -157,28 +169,20 @@ func (s *GameServer) addPlayerItem(player *PlayerState, itemID string, qty int) 
 		getOrCreateItemOL(&player.ObjectLayers, itemID).Quantity += qty
 	}
 	// Either branch can append a slot, so the cached stat block is stale.
-	s.InvalidateStats(player)
 }
 
 // ── Fountain helpers ──────────────────────────────────────────────────────
 
 // FountainInitPlayer credits the player's starting wallet on first connect.
-// Sets entity.Coins and syncs the display coin OL slot.
+// It always runs, so the seeded coin slot mirrors the balance even at zero.
 func (s *GameServer) FountainInitPlayer(player *PlayerState) {
-	if s.playerSpawnCoins <= 0 {
-		return
-	}
-	s.setCoinQuantity(player, uint32(s.playerSpawnCoins))
-	s.InvalidateStats(player)
+	s.setCoinQuantity(player, uint32(max(s.playerSpawnCoins, 0)))
 }
 
 // FountainInitBot credits a bot's coin pool at spawn / respawn time.
 // Implements the botSpawnCoins fountain (infinite mint bounded by kill rate).
 func (s *GameServer) FountainInitBot(bot *BotState) {
-	if s.botSpawnCoins <= 0 {
-		return
-	}
-	s.setCoinQuantity(bot, uint32(s.botSpawnCoins))
+	s.setCoinQuantity(bot, uint32(max(s.botSpawnCoins, 0)))
 }
 
 // ── Kill loot amounts ─────────────────────────────────────────────────────
@@ -238,7 +242,6 @@ func (s *GameServer) SinkRespawnCost(player *PlayerState) {
 	}
 	// No coin FCT — balance changes surface in the inventory-bar quantity FX.
 	s.addCoins(player, -burn)
-	s.InvalidateStats(player)
 	logx.Debugf("[ECONOMY] Respawn sink: %s burned %d coins (%.0f%%)",
 		player.ID, burn, s.respawnCostPercent*100)
 }

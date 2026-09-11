@@ -1,51 +1,37 @@
 package game
 
-import (
-	"math"
-	"math/rand"
-)
+import "math/rand"
 
-// handleProbabilisticRegen gives an entity a chance to regenerate life when they perform an action.
-// This is called when a player sets a target or a bot decides on a new path. The chance to trigger
-// is increased by Utility, and the amount regenerated is increased by Resistance.
+// handleProbabilisticRegen gives an entity a chance to regenerate life on an
+// action: a player's tap or a bot's new path. Utility raises the chance,
+// resistance the amount, on top of the entity's own base regeneration.
 func (s *GameServer) handleProbabilisticRegen(entity interface{}, mapState *MapState) {
-	stats := s.CalculateStats(entity, mapState)
-
-	// Utility stat increases the chance of the skill activating.
-	triggerChance := math.Min(s.lifeRegenChance+(stats.Utility/100.0), s.maxChance)
-
-	if rand.Float64() >= triggerChance {
-		return // Regeneration did not trigger
-	}
-
+	var mortal *Mortal
+	var base *EntityBase
+	var lifeRegen float64
 	switch e := entity.(type) {
 	case *PlayerState:
-		// Resistance stat increases the amount of life regenerated.
-		regenAmount := e.LifeRegen + stats.Resistance
-		if regenAmount > 0 && e.Life < e.MaxLife {
-			e.Life = e.Life + regenAmount
-			if e.Life > e.MaxLife {
-				e.Life = e.MaxLife
-			}
-			// FCT: the same green "+N" for every AOI viewer.
-			if regenInt := int(regenAmount + 0.5); regenInt > 0 {
-				broadcastFCT(mapState, FCTRegen, e.Pos.X, e.Pos.Y, regenInt)
-			}
-		}
+		mortal, base, lifeRegen = &e.Mortal, &e.EntityBase, e.LifeRegen
 	case *BotState:
-		// Resistance stat increases the amount of life regenerated.
-		regenAmount := e.LifeRegen + stats.Resistance
-		if regenAmount > 0 && e.Life < e.MaxLife {
-			e.Life = e.Life + regenAmount
-			if e.Life > e.MaxLife {
-				e.Life = e.MaxLife
-			}
-			// FCT: bot amounts are public — the same green "+N" for every AOI
-			// viewer, so bot regeneration is visible feedback rather than a
-			// silently refilling HP bar.
-			if regenInt := int(regenAmount + 0.5); regenInt > 0 {
-				broadcastFCT(mapState, FCTRegen, e.Pos.X, e.Pos.Y, regenInt)
-			}
-		}
+		mortal, base, lifeRegen = &e.Mortal, &e.EntityBase, e.LifeRegen
+	default:
+		return
+	}
+	if mortal.Life >= mortal.MaxLife {
+		return
+	}
+	stats := s.CalculateStats(entity, mapState)
+	if rand.Float64() >= s.chance(s.lifeRegenChance, stats.Utility*statScales.Utility) {
+		return
+	}
+	amount := lifeRegen + stats.Resistance*statRegenPerResistance
+	if amount <= 0 {
+		return
+	}
+	mortal.Life = min(mortal.Life+amount, mortal.MaxLife)
+	// FCT: the same green "+N" for every AOI viewer, for players and bots alike,
+	// so regeneration is visible feedback rather than a silently refilling bar.
+	if shown := int(amount + 0.5); shown > 0 {
+		broadcastFCT(mapState, FCTRegen, base.Pos.X, base.Pos.Y, shown)
 	}
 }

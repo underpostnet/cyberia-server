@@ -39,8 +39,8 @@ func TestStorageSlotAtLocatesByIndex(t *testing.T) {
 func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 	s := &GameServer{
 		coinItemID: "coin",
-		statsCache: map[string]statsCacheEntry{},
-		storage:    map[storageKey][]StorageSlot{},
+
+		storage: map[storageKey][]StorageSlot{},
 	}
 	player := &PlayerState{
 		EntityBase: EntityBase{ID: "p1", ObjectLayers: []ObjectLayerState{

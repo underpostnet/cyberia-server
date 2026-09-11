@@ -143,7 +143,7 @@ func TestCraftTimeMsValidatesTheAuthoredDuration(t *testing.T) {
 // The ingredients leave the inventory when the bar starts, so cancelling before
 // the timer elapses has to put every one of them back and pay out nothing.
 func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
-	s := &GameServer{coinItemID: "coin", statsCache: map[string]statsCacheEntry{}}
+	s := &GameServer{coinItemID: "coin"}
 	newPlayer := func() *PlayerState {
 		return &PlayerState{
 			EntityBase: EntityBase{ID: "p1", ObjectLayers: []ObjectLayerState{
@@ -219,7 +219,7 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 func TestCraftKeepsTheSessionFreeze(t *testing.T) {
 	s := &GameServer{
 		coinItemID: "coin",
-		statsCache: map[string]statsCacheEntry{},
+
 		actionCache: map[string]*CyberiaAction{
 			"assembler": {Code: "loc-0-0", CraftRecipes: []ActionCraftRecipe{{
 				OutputItems: []ActionCraftItem{{ItemID: "hatchet", Qty: 1}},

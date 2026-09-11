@@ -1,5 +1,7 @@
 package game
 
+import "time"
+
 // SkillDefinition defines the properties of a single skill logic event
 // associated with a trigger item.
 type SkillDefinition struct {
@@ -9,24 +11,28 @@ type SkillDefinition struct {
 	SummonedEntityItemID string
 }
 
-// HandlePlayerTapAction is the canonical handler for every tap/click event from
-// the client.  It must:
-//  1. Always attempt to trigger skills (dispatchSkillsForEntity) — skills fire on
-//     every TAP, probability-gated by Intelligence only; movement must NOT gate
-//     skill execution.
-//  2. Optionally trigger probabilistic life regen.
-//
-// Movement path calculation remains a separate concern handled in readPump
-// (handlers.go) and is gated by the Utility cooldown, independent of this call.
-//
-// Called from phaseInput (inside simTicker) which holds s.mu — callerHoldsLock = true.
+// HandlePlayerTapAction gates skills and regeneration with the authoritative cooldown.
 func (s *GameServer) HandlePlayerTapAction(player *PlayerState, mapState *MapState, target Point) {
+	if player.IsGhost() || player.Frozen {
+		return
+	}
+	if !s.acceptSkillAction(player, mapState, time.Now()) {
+		return
+	}
 	s.handleProbabilisticRegen(player, mapState)
 	s.dispatchSkillsForEntity(player, mapState, target, true)
 }
 
-// handleBotSkills checks and executes skills for a bot when it takes an "action".
-// Called from updateBots (ai.go) which runs inside the game loop lock — callerHoldsLock = true.
+func (s *GameServer) acceptSkillAction(entity statSource, mapState *MapState, now time.Time) bool {
+	state := entity.StatState()
+	if state.IsGhost() || now.Before(state.NextSkillAt) {
+		return false
+	}
+	state.NextSkillAt = now.Add(s.CalculateActionCooldown(s.CalculateStats(entity, mapState)))
+	return true
+}
+
+// Bot action scheduling owns its cooldown.
 func (s *GameServer) handleBotSkills(bot *BotState, mapState *MapState, target Point) {
 	s.dispatchSkillsForEntity(bot, mapState, target, true)
 }

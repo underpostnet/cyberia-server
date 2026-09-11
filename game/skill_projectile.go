@@ -21,8 +21,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 		}
 	}
 
-	// Intelligence stat increases the chance of the skill activating.
-	if rand.Float64() >= math.Min(s.projectileSpawnChance+(casterStats.Intelligence/100.0), s.maxChance) {
+	if rand.Float64() >= s.summonChance(s.projectileSpawnChance, casterStats) {
 		return
 	}
 
@@ -67,9 +66,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 		defer s.mu.Unlock()
 	}
 
-	// Range stat increases the projectile's lifetime in milliseconds.
-	projectileLifetime := (time.Duration(s.projectileLifetimeMs) * time.Millisecond) +
-		(time.Duration(casterStats.Range) * time.Millisecond)
+	projectileLifetime := summonLifetime(s.projectileLifetimeMs, casterStats)
 	projectileDims := Dimensions{Width: s.projectileWidth, Height: s.projectileHeight}
 	projectileBaseLife := s.entityBaseMaxLife
 

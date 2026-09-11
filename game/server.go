@@ -1,6 +1,7 @@
 package game
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"time"
@@ -37,14 +38,18 @@ func (s *GameServer) SetConnectionLimits(limits ConnectionLimits) {
 
 // ApplyInstanceConfig applies the gRPC InstanceConfig to the game server.
 // This replaces all hardcoded defaults — called during LoadAll and hot-reload.
-func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
+func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 	if cfg == nil {
-		logx.Warnf("[GameServer] ApplyInstanceConfig called with nil config")
-		return
+		return fmt.Errorf("instance config is required")
 	}
 
+	rules := progressionRulesFromProto(cfg.GetProgressionRules())
+	if err := rules.Validate(); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.progressionRules = rules
 
 	// ── Simulation cadence ─────────────────────────────────────────────────
 	// Presentation defaults (cell-pixel size, object default dims, camera,
@@ -84,7 +89,6 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 	s.defaultPlayerHeight = cfg.GetDefaultPlayerHeight()
 	s.playerBaseLifeRegenMin = cfg.GetPlayerBaseLifeRegenMin()
 	s.playerBaseLifeRegenMax = cfg.GetPlayerBaseLifeRegenMax()
-	s.sumStatsLimit = int(cfg.GetSumStatsLimit())
 	s.maxActiveLayers = int(cfg.GetMaxActiveLayers())
 	s.initialLifeFraction = cfg.GetInitialLifeFraction()
 
@@ -216,19 +220,20 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) {
 		}
 	}
 
-	// Stats cache (invalidated per-entity via StatsDirty flag + TTL expiry).
-	s.statsCache = make(map[string]statsCacheEntry)
-
 	// Register built-in skill handlers now that skillConfig is populated.
 	s.InitSkills()
 
 	logx.Infof("[GameServer] Instance config applied: tickRate=%dHz, snapshotRate=%dHz, tickDuration=%v, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d skills, %d entityDefaultTypes, %d entityDefaultBuilds, floorItem=%q, ghostItem=%q, coinItem=%q",
 		s.tickRate, s.snapshotRate, s.tickDuration, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.skillConfig), len(s.entityDefaults), len(s.entityDefaultBuilds), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
+	return nil
 }
 
 // ReplaceObjectLayerCache atomically replaces the entire cache.
 // Used by WorldBuilder for initial full load via gRPC.
-func (s *GameServer) ReplaceObjectLayerCache(cache map[string]*ObjectLayer) {
+func (s *GameServer) ReplaceObjectLayerCache(cache map[string]*ObjectLayer) error {
+	if err := validateObjectLayers(cache); err != nil {
+		return err
+	}
 	s.olMu.Lock()
 	defer s.olMu.Unlock()
 	s.objectLayerDataCache = cache
@@ -245,19 +250,27 @@ func (s *GameServer) ReplaceObjectLayerCache(cache map[string]*ObjectLayer) {
 	for itemType, count := range typeCounts {
 		logx.Debugf("  %-20s %d", itemType, count)
 	}
+	return nil
 }
 
 // PatchObjectLayerCache applies incremental updates and deletions.
 // Used by WorldBuilder for hot-reload via gRPC manifest diffing.
-func (s *GameServer) PatchObjectLayerCache(updates map[string]*ObjectLayer, deletions []string) {
+func (s *GameServer) PatchObjectLayerCache(updates map[string]*ObjectLayer, deletions []string) error {
+	if err := validateObjectLayers(updates); err != nil {
+		return err
+	}
 	s.olMu.Lock()
 	defer s.olMu.Unlock()
+	if s.objectLayerDataCache == nil {
+		s.objectLayerDataCache = make(map[string]*ObjectLayer)
+	}
 	for itemID, ol := range updates {
 		s.objectLayerDataCache[itemID] = ol
 	}
 	for _, itemID := range deletions {
 		delete(s.objectLayerDataCache, itemID)
 	}
+	return nil
 }
 
 // GetObjectLayerData returns an ObjectLayer by item ID (read-locked).
@@ -280,7 +293,6 @@ func (s *GameServer) SetDataServerURL(url string) {
 func (s *GameServer) Run() {
 	go s.listenForClients()
 	go s.gameLoop()
-	go s.statsCacheCleanupLoop()
 }
 
 func (s *GameServer) listenForClients() {
@@ -591,31 +603,7 @@ func (s *GameServer) sendAOI(player *PlayerState) {
 	sendMessage(player, "snapshot", s.buildSnapshot(player, mapState))
 }
 
-// statsCacheCleanupLoop periodically purges stale entries from the stats
-// cache to prevent unbounded growth when entities are deleted or
-// disconnected. Runs until the process exits.
-func (s *GameServer) statsCacheCleanupLoop() {
-	ticker := time.NewTicker(statsCacheCleanupInterval)
-	defer ticker.Stop()
-	for range ticker.C {
-		s.mu.Lock()
-		now := time.Now()
-		ttl := s.statsCacheTTL
-		if ttl == 0 {
-			ttl = defaultStatsCacheTTL
-		}
-		for id, entry := range s.statsCache {
-			if now.Sub(entry.cachedAt) > ttl*10 {
-				delete(s.statsCache, id)
-			}
-		}
-		s.mu.Unlock()
-	}
-}
-
-// ===== Metrics Methods =====
-
-// GetConnectedClientsCount returns the number of currently connected WebSocket clients
+// GetConnectedClientsCount returns the current connection count.
 func (s *GameServer) GetConnectedClientsCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()

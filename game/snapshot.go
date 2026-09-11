@@ -1,12 +1,4 @@
-// Package game — snapshot.go
-//
-// The AOI snapshot: what one player sees this tick. buildSnapshot walks the
-// map and fills structs; package serial turns them into JSON bytes.
-//
-// One SnapshotEntity shape covers all eight entity types. JSON names each
-// key, so a type that does not use a field ships it as zero. No omitempty
-// anywhere: the client must read `mode: 0`, `life: 0` and `posX: 0` as
-// values, not as missing data.
+// Snapshots carry authoritative state. Passive objects omit progression fields.
 package game
 
 import (
@@ -31,6 +23,7 @@ const (
 const (
 	FCTDamage = "damage" // life loss — red "-N"
 	FCTRegen  = "regen"  // life gain — green "+N"
+	FCTXp     = "xp"     // XP award — gold "+N XP", sent to the earner only
 )
 
 // SnapshotEntity is one entity inside a player's area of interest.
@@ -48,8 +41,10 @@ type SnapshotEntity struct {
 	MaxLife   float64 `json:"maxLife"`
 	RespawnIn float64 `json:"respawnIn"` // seconds, 0 when alive
 
-	StatsSum   int   `json:"statsSum"`
-	StatusIcon uint8 `json:"statusIcon"`
+	Level          int                 `json:"level,omitempty"`
+	EffectiveStats *[StatCount]float64 `json:"effectiveStats,omitempty"`
+	StatsSum       int                 `json:"statsSum"`
+	StatusIcon     uint8               `json:"statusIcon"`
 
 	// Bot fields.
 	Behavior string `json:"behavior"`
@@ -85,9 +80,15 @@ type SnapshotSelf struct {
 	AoiMaxX float64 `json:"aoiMaxX"`
 	AoiMaxY float64 `json:"aoiMaxY"`
 
-	OnPortal       bool `json:"onPortal"`
-	SumStatsLimit  int  `json:"sumStatsLimit"`
-	ActiveStatsSum int  `json:"activeStatsSum"`
+	OnPortal bool `json:"onPortal"`
+	// XP is total. LevelXP and NextLevelXP are the thresholds that bound the
+	// current level, so the client can draw in-level progress without the curve.
+	XP             uint64             `json:"xp"`
+	LevelXP        uint64             `json:"levelXp"`
+	NextLevelXP    uint64             `json:"nextLevelXp"`
+	BaseStats      [StatCount]float64 `json:"baseStats"`
+	LayerStats     [StatCount]float64 `json:"layerStats"`
+	TemporaryStats [StatCount]float64 `json:"temporaryStats"`
 
 	MapCode        string   `json:"mapCode"`
 	Path           []PointI `json:"path"`
@@ -103,11 +104,7 @@ type SnapshotSelf struct {
 	// MoveSpeed is cells per second. The client prediction integrator uses
 	// it directly, so its step formula matches phaseMovement.
 	MoveSpeed float64 `json:"moveSpeed"`
-	// ActionCooldownMs is the effective action cooldown for this player. It
-	// does not gate movement — that re-plans every tick — but every tap fires
-	// skills, so it is the cadence at which repeating an input is worth
-	// anything. Keyboard steering paces its refresh by it; sending it keeps
-	// the Utility stat reduction in one place.
+	// ActionCooldownMs gates skills and regeneration, independently of movement.
 	ActionCooldownMs int `json:"actionCooldownMs"`
 	// PortalHoldProgress is the authoritative teleport charge, 0..1.
 	PortalHoldProgress float64 `json:"portalHoldProgress"`
@@ -128,6 +125,21 @@ type Snapshot struct {
 	MoveAck  uint32           `json:"moveAck"`
 	Entities []SnapshotEntity `json:"entities"`
 	Self     SnapshotSelf     `json:"self"`
+}
+
+// Audio logic ids the server raises. The client binds them to assets per map,
+// so an id here must exist in engine-cyberia's AUDIO_LOGIC_IDS.
+const (
+	AudioEventDeath   = "death"
+	AudioEventLevelUp = "level-up"
+)
+
+// AudioEvent is the `audio_event` message payload: a world event every viewer
+// in reach hears the same way.
+type AudioEvent struct {
+	LogicEventID string  `json:"logicEventId"`
+	WorldX       float64 `json:"worldX"`
+	WorldY       float64 `json:"worldY"`
 }
 
 // CombatText is the `combat_text` message payload.
@@ -218,24 +230,20 @@ func baseEntity(entityType, id string, pos Point, dims Dimensions,
 // Stats sum helper
 // ═══════════════════════════════════════════════════════════════════
 
-// statsSum returns the clamped sum of all stat fields for any entity
-// (PlayerState, BotState, or ResourceState). Players clamp to their own
-// SumStatsLimit; other entities use the server-level cap.
-// sumStats adds the six stat fields.
 func sumStats(cs ComputedStats) int {
-	return int(cs.Effect + cs.Resistance + cs.Agility + cs.Range + cs.Intelligence + cs.Utility)
+	total := 0.0
+	for _, value := range cs.Values() {
+		total += value
+	}
+	return int(total)
 }
 
-func (s *GameServer) statsSum(entity interface{}, mapState *MapState) int {
-	sum := sumStats(s.CalculateStats(entity, mapState))
-	limit := s.sumStatsLimit
-	if p, ok := entity.(*PlayerState); ok {
-		limit = p.SumStatsLimit
-	}
-	if sum > limit {
-		sum = limit
-	}
-	return sum
+func (s *GameServer) snapshotStats(snapshot *SnapshotEntity, entity statSource, ms *MapState) {
+	stats := s.CalculateStats(entity, ms)
+	values := stats.Values()
+	snapshot.Level = s.entityProgression(entity).Level
+	snapshot.EffectiveStats = &values
+	snapshot.StatsSum = sumStats(stats)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -267,7 +275,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		e.Life = op.Life
 		e.MaxLife = op.MaxLife
 		e.RespawnIn = respawnSeconds(op.IsGhost(), op.RespawnTime)
-		e.StatsSum = s.statsSum(op, mapState)
+		s.snapshotStats(&e, op, mapState)
 		e.StatusIcon = PlayerStatusIcon(op)
 		snap.Entities = append(snap.Entities, e)
 	}
@@ -333,7 +341,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		e.Life = r.Life
 		e.MaxLife = r.MaxLife
 		e.RespawnIn = respawnSeconds(r.IsGhost(), r.RespawnTime)
-		e.StatsSum = s.statsSum(r, mapState)
+		s.snapshotStats(&e, r, mapState)
 		e.StatusIcon = ResourceStatusIcon(r)
 		snap.Entities = append(snap.Entities, e)
 	}
@@ -350,7 +358,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		e.Life = b.Life
 		e.MaxLife = b.MaxLife
 		e.RespawnIn = respawnSeconds(b.IsGhost(), b.RespawnTime)
-		e.StatsSum = s.statsSum(b, mapState)
+		s.snapshotStats(&e, b, mapState)
 		e.StatusIcon = BotStatusIcon(b)
 		e.Behavior = b.Behavior
 		e.CasterID = b.CasterID
@@ -389,7 +397,8 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 // buildSnapshotSelf fills the viewing player's own block.
 func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) SnapshotSelf {
 	stats := s.CalculateStats(player, mapState)
-	activeStatsSum := sumStats(stats)
+	breakdown := s.statBreakdown(player, mapState, time.Now(), make(map[string]bool))
+	progression := s.entityProgression(player)
 
 	// Portal hold progress — the fraction of portalHoldTime elapsed while the
 	// player stands on a portal. checkPortal clears OnPortal for a ghost, so
@@ -412,8 +421,13 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 		AoiMaxX:        player.AOI.MaxX,
 		AoiMaxY:        player.AOI.MaxY,
 		OnPortal:       player.OnPortal,
-		SumStatsLimit:  player.SumStatsLimit,
-		ActiveStatsSum: activeStatsSum,
+		XP:             progression.XP,
+		LevelXP:        s.progressionConfig().Threshold(progression.Level),
+		NextLevelXP:    s.progressionConfig().Threshold(progression.Level + 1),
+		BaseStats:      breakdown.Base.Values(),
+		LayerStats:     breakdown.Layers.Values(),
+		TemporaryStats: breakdown.Temporary.Values(),
+
 		MapCode:        player.MapCode,
 		Path:           player.Path,
 		TargetPosX:     player.TargetPos.X,
@@ -430,7 +444,7 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 	self.Life = player.Life
 	self.MaxLife = player.MaxLife
 	self.RespawnIn = respawnSeconds(player.IsGhost(), player.RespawnTime)
-	self.StatsSum = min(activeStatsSum, player.SumStatsLimit)
+	s.snapshotStats(&self.SnapshotEntity, player, mapState)
 	self.StatusIcon = PlayerStatusIcon(player)
 	return self
 }
