@@ -297,3 +297,7 @@ go build -o cyberia-server .
 ```bash
 go test ./logx/ -run TestResolveLevel
 ```
+
+## Cyberia stat contract
+
+See [Stats and progression](https://github.com/underpostnet/engine/blob/master/src/client/public/cyberia-docs/STATS-PROGRESSION.md) for signed OL modifiers, entity levels, CLI commands, and verification.
