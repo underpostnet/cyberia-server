@@ -1,200 +1,128 @@
 package game
 
 import (
+	"math"
 	"time"
 )
 
-// defaultStatsCacheTTL is the fallback TTL for cached stats entries.
-// Even if StatsDirty is false, entries older than this are recalculated
-// to prevent stale values in edge cases.
-const defaultStatsCacheTTL = 250 * time.Millisecond
-
-// statsCacheEntry wraps a ComputedStats value with a timestamp so the
-// cache can expire entries after the configured TTL.
-type statsCacheEntry struct {
-	stats    ComputedStats
-	cachedAt time.Time
+type StatBreakdown struct {
+	Base      ComputedStats
+	Layers    ComputedStats
+	Temporary ComputedStats
+	Effective ComputedStats
 }
 
-// statsCacheCleanupInterval is how often the cleanup goroutine purges
-// stale entries from the stats cache. Set to 10x the default TTL so
-// entries have several TTL windows to be reaped.
-const statsCacheCleanupInterval = 10 * time.Second
-
-// -----------------------------------------------------------------------------------------
-// Description of passive stats mechanics:
-// -----------------------------------------------------------------------------------------
-
-// Effect — Amount of life removed when an entity collides or deals an impact.
-// Measured in life points.
-
-// Resistance — Adds to the owner's maximum life (survivability cap). This value
-// is summed with the entity's base max life. It also increases the amount of
-// life restored when a regeneration event occurs (adds directly to current life).
-
-// Agility — Increases the movement speed of entities.
-
-// Range — Increases the lifetime of a cast/summoned entity, measured in milliseconds.
-
-// Intelligence — Probability-based stat that increases the chance to
-// spawn/trigger a summoned entity.
-
-// Utility — Reduces the cooldown time between actions as a percentage (1 Utility = 1% reduction),
-// allowing for more frequent actions. It also increases the chance to trigger life-regeneration events.
-
-// -----------------------------------------------------------------------------------------
-// -----------------------------------------------------------------------------------------
-
-// ComputedStats holds the final, summed values of all passive stats for an entity.
-// These values are calculated on-demand from the entity's active object layers
-// and, if applicable, inherited from its caster.
-type ComputedStats struct {
-	Effect       float64 // Collision damage dealt.
-	Resistance   float64 // Bonus to maximum life and regeneration amount.
-	Agility      float64 // Increases movement speed.
-	Range        float64 // Increases lifetime of summoned entities.
-	Intelligence float64 // Increases chance to spawn/trigger summoned entities.
-	Utility      float64 // Reduces action cooldowns and increases life-regen chance.
-}
-
-// CalculateStats computes the final stat values for a given StatSource.
-// It sums the stats from the source's active object layers and recursively
-// adds the stats from its caster, if one exists.
-// Results are cached per entity and reused until StatsDirty is set or the
-// cache TTL expires (default 250ms), whichever comes first.
-func (s *GameServer) CalculateStats(source interface{}, mapState *MapState) ComputedStats {
-	var totalStats ComputedStats
-	var objectLayers []ObjectLayerState
-	var casterID string
-	var entityID string
-	var dirty bool
-
-	switch e := source.(type) {
-	case *PlayerState:
-		entityID = e.ID
-		objectLayers = e.ObjectLayers
-		casterID = "" // Players are not cast
-		dirty = e.StatsDirty
-	case *BotState:
-		entityID = e.ID
-		objectLayers = e.ObjectLayers
-		casterID = e.CasterID
-		dirty = e.StatsDirty
-	case *ResourceState:
-		entityID = e.ID
-		objectLayers = e.ObjectLayers
-		casterID = ""
-		dirty = e.StatsDirty
-	default:
-		return totalStats // Return zero stats for unknown types
+// statBreakdown applies floors once, after all signed contributions.
+func (s *GameServer) statBreakdown(source statSource, mapState *MapState, now time.Time, visited map[string]bool) StatBreakdown {
+	var out StatBreakdown
+	entity := source.Base()
+	if visited[entity.ID] {
+		return out
 	}
-
-	// Return cached stats if the entity is not dirty and the TTL hasn't expired.
-	if !dirty {
-		if entry, ok := s.statsCache[entityID]; ok {
-			ttl := s.statsCacheTTL
-			if ttl == 0 {
-				ttl = defaultStatsCacheTTL
-			}
-			if time.Since(entry.cachedAt) < ttl {
-				return entry.stats
-			}
-		}
-	}
-
-	// 1. Sum stats from the entity's own active layers.
-	for _, layer := range objectLayers {
-		if !layer.Active {
+	visited[entity.ID] = true
+	defer delete(visited, entity.ID)
+	state := source.StatState()
+	progression := s.entityProgression(source)
+	out.Base = s.progressionConfig().BaseAtLevel(progression.Level)
+	var layers, temporary [StatCount]float64
+	for _, layer := range entity.ObjectLayers {
+		if !layer.Active || layer.Quantity <= 0 {
 			continue
 		}
 		if data, ok := s.GetObjectLayerData(layer.ItemID); ok {
-			totalStats.Effect += float64(data.Data.Stats.Effect)
-			totalStats.Resistance += float64(data.Data.Stats.Resistance)
-			totalStats.Agility += float64(data.Data.Stats.Agility)
-			totalStats.Range += float64(data.Data.Stats.Range)
-			totalStats.Intelligence += float64(data.Data.Stats.Intelligence)
-			totalStats.Utility += float64(data.Data.Stats.Utility)
+			for i, value := range data.Data.Stats.computed().Values() {
+				layers[i] += value
+			}
 		}
 	}
-
-	// 2. If the entity was summoned/cast, add the caster's stats.
-	if casterID != "" {
-		var casterSource interface{}
-		// Find the caster, which can be a player or another bot.
-		if p, ok := mapState.players[casterID]; ok {
-			casterSource = p
-		} else if b, ok := mapState.bots[casterID]; ok {
-			casterSource = b
+	out.Layers = statsFromValues(layers)
+	for _, modifier := range state.TemporaryModifiers {
+		if !modifier.ExpiresAt.After(now) {
+			continue
 		}
-
-		// If the caster is found, recursively calculate their stats and add them.
-		if casterSource != nil {
-			casterStats := s.CalculateStats(casterSource, mapState)
-			totalStats.Effect += casterStats.Effect
-			totalStats.Resistance += casterStats.Resistance
-			totalStats.Agility += casterStats.Agility
-			totalStats.Range += casterStats.Range
-			totalStats.Intelligence += casterStats.Intelligence
-			totalStats.Utility += casterStats.Utility
+		for i, value := range modifier.Stats.Values() {
+			temporary[i] += value
 		}
 	}
-
-	// Store in cache with current timestamp and clear dirty flag.
-	s.statsCache[entityID] = statsCacheEntry{
-		stats:    totalStats,
-		cachedAt: time.Now(),
+	if bot, ok := source.(*BotState); ok && bot.CasterID != "" && mapState != nil {
+		var caster statSource
+		if p := mapState.players[bot.CasterID]; p != nil {
+			caster = p
+		} else if b := mapState.bots[bot.CasterID]; b != nil {
+			caster = b
+		}
+		if caster != nil {
+			inherited := s.statBreakdown(caster, mapState, now, visited)
+			out.Base = inherited.Base
+			inheritedLayers, inheritedTemporary := inherited.Layers.Values(), inherited.Temporary.Values()
+			for i := range temporary {
+				temporary[i] += inheritedLayers[i] + inheritedTemporary[i]
+			}
+		}
 	}
-	switch e := source.(type) {
-	case *PlayerState:
-		e.StatsDirty = false
-	case *BotState:
-		e.StatsDirty = false
-	case *ResourceState:
-		e.StatsDirty = false
-	}
-
-	return totalStats
+	out.Temporary = statsFromValues(temporary)
+	out.Effective = aggregateStats(out.Base, out.Layers, out.Temporary)
+	return out
 }
 
-// ApplyResistanceStat updates an entity's MaxLife based on its Resistance stat.
-// This should be called whenever an entity's layers change.
+func (s *GameServer) CalculateStats(source interface{}, mapState *MapState) ComputedStats {
+	entity, ok := source.(statSource)
+	if !ok {
+		return ComputedStats{}
+	}
+	return s.statBreakdown(entity, mapState, time.Now(), make(map[string]bool)).Effective
+}
+
+// ApplyResistanceStat keeps life within the effective maximum.
 func (s *GameServer) ApplyResistanceStat(entity interface{}, mapState *MapState) {
-	stats := s.CalculateStats(entity, mapState)
-	switch e := entity.(type) {
-	case *PlayerState:
-		e.MaxLife = s.entityBaseMaxLife + stats.Resistance
-	case *BotState:
-		e.MaxLife = s.entityBaseMaxLife + stats.Resistance
-	case *ResourceState:
-		e.MaxLife = s.entityBaseMaxLife + stats.Resistance
+	source, ok := entity.(statSource)
+	if !ok {
+		return
 	}
+	state := source.StatState()
+	base := state.BaseMaxLife
+	if base <= 0 {
+		base = s.entityBaseMaxLife
+	}
+	state.MaxLife = max(1, base+s.CalculateStats(entity, mapState).Resistance)
+	state.Life = min(state.Life, state.MaxLife)
 }
 
-// CalculateActionCooldown computes the effective action cooldown for an entity
-// based on its Utility stat.
-func (s *GameServer) CalculateActionCooldown(stats ComputedStats) time.Duration {
-	// Utility stat reduces the base cooldown as a percentage: 1 Utility = 1% reduction.
-	// Consistent with Agility (1% speed) and Intelligence (1% spawn chance).
-	reductionFactor := 1.0 - (stats.Utility / 100.0)
-	if reductionFactor < 0 {
-		reductionFactor = 0
+// chance is a probability the stats raised from `base`, capped so nothing the
+// stats touch becomes a certainty. A configured cap outside (0, 1] means 1.
+func (s *GameServer) chance(base, bonus float64) float64 {
+	cap := s.maxChance
+	if cap <= 0 || cap > 1 {
+		cap = 1
 	}
-	currentCooldown := time.Duration(float64(s.entityBaseActionCooldown) * reductionFactor)
+	return math.Max(0, math.Min(base+bonus, cap))
+}
 
-	// Ensure the cooldown does not fall below the minimum defined threshold.
-	if currentCooldown < s.entityBaseMinActionCooldown {
+// summonChance is the chance a skill summons, raised by intelligence.
+func (s *GameServer) summonChance(base float64, stats ComputedStats) float64 {
+	return s.chance(base, stats.Intelligence*statScales.Intelligence)
+}
+
+// summonLifetime is how long a summon lives, extended by range.
+func summonLifetime(baseMs int, stats ComputedStats) time.Duration {
+	return time.Duration(float64(baseMs)+stats.Range*statScales.Range) * time.Millisecond
+}
+
+// CalculateActionCooldown is the effective action cooldown, shortened by utility
+// down to the configured minimum.
+func (s *GameServer) CalculateActionCooldown(stats ComputedStats) time.Duration {
+	factor := math.Max(0, 1.0-stats.Utility*statScales.Utility)
+	cooldown := time.Duration(float64(s.entityBaseActionCooldown) * factor)
+	if cooldown < s.entityBaseMinActionCooldown {
 		return s.entityBaseMinActionCooldown
 	}
-	return currentCooldown
+	return cooldown
 }
 
-// CalculateMovementSpeed computes the effective movement speed for an entity
-// based on its Agility stat. Speed is measured in grid units per second.
+// CalculateMovementSpeed is the effective movement speed in grid units per
+// second, scaled by agility.
 func (s *GameServer) CalculateMovementSpeed(stats ComputedStats) float64 {
-	// Agility stat increases the base speed.
-	// We'll model this as a percentage increase: 1 Agility = +1% speed.
-	speedMultiplier := 1.0 + (stats.Agility / 100.0)
-	return s.entityBaseSpeed * speedMultiplier
+	return s.entityBaseSpeed * (1.0 + stats.Agility*statScales.Agility)
 }
 
 // CalculatePlayerMovementSpeed is the movement speed for a player. Players walk
@@ -210,22 +138,5 @@ func (s *GameServer) CalculatePlayerMovementSpeed(stats ComputedStats) float64 {
 	if base <= 0 {
 		base = s.entityBaseSpeed
 	}
-	return base * (1.0 + (stats.Agility / 100.0))
-}
-
-// InvalidateStats marks an entity as needing a stats re-calculation and
-// removes its entry from the cache. Call this whenever an entity's
-// ObjectLayers (active flags, additions, removals) change.
-func (s *GameServer) InvalidateStats(entity interface{}) {
-	switch e := entity.(type) {
-	case *PlayerState:
-		e.StatsDirty = true
-		delete(s.statsCache, e.ID)
-	case *BotState:
-		e.StatsDirty = true
-		delete(s.statsCache, e.ID)
-	case *ResourceState:
-		e.StatsDirty = true
-		delete(s.statsCache, e.ID)
-	}
+	return base * (1.0 + stats.Agility*statScales.Agility)
 }
