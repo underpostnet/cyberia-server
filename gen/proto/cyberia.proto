@@ -364,6 +364,21 @@ message EquipmentRules {
 // JSON.  No protobuf message is involved.  History: see
 // DOCUMENTATION-MIGRATION.md.
 
+message ProgressionRules {
+  int32 max_level = 1;
+  int32 xp_per_level = 2;
+  Stats base_stats = 3;
+  Stats per_level_stats = 4;
+  int32 kill_xp = 5;
+  int32 quest_xp = 6;
+  int32 objective_xp = 7;
+  int32 min_award_interval_ms = 8;
+  int32 repeat_window_ms = 9;
+  int32 max_repeat_awards = 10;
+  int32 max_awards_per_window = 11;
+  int32 default_bot_level = 12;
+}
+
 message InstanceConfig {
   // Retired field numbers are reserved. Presentation-only fields (cell-pixel
   // sizing, camera, palette, interpolation window, default object dims,
@@ -395,7 +410,9 @@ message InstanceConfig {
   double default_player_height         = 21;
   double player_base_life_regen_min    = 22;
   double player_base_life_regen_max    = 23;
-  int32  sum_stats_limit               = 24;
+  reserved 24;
+  reserved "sum_stats_limit";
+  ProgressionRules progression_rules = 69;
   // Movement speed for the player entity only, in grid cells per second. Bots,
   // projectiles and every other entity keep entity_base_speed. 0 falls back to
   // entity_base_speed, so an instance that does not set it is unchanged.
@@ -509,6 +526,7 @@ message EntityTypeDefault {
 // ═══════════════════════════════════════════════════════════════════
 
 message EntityMessage {
+  int32 level = 17;
   string          entity_type = 1;
   int32           init_cell_x = 2;
   int32           init_cell_y = 3;
