@@ -232,7 +232,7 @@ Paths are relative to `cyberia-server/`. Gameplay logic lives under `src/`; the 
 | `src/economy.go`                                                                                  | Fountain & Sink coin economy                                                                            |
 | `src/life_regen.go`                                                                               | HP regeneration                                                                                         |
 | `src/ai.go`                                                                                       | Bot AI                                                                                                  |
-| `src/stats.go`                                                                                    | Active stat aggregation, sum-stats limit enforcement                                                    |
+| `src/stats.go`                                                                                    | Signed stat aggregation and effective floors                                                            |
 | `src/entity_status.go`                                                                            | Entity Status Indicator (ESI) numeric IDs                                                               |
 | `src/frozen_state.go`                                                                             | FrozenInteractionState                                                                                  |
 | `src/handlers.go`                                                                                 | WebSocket lifecycle, binary uplink decoder, JSON-uplink back-compat adapter                             |
@@ -297,7 +297,3 @@ go build -o cyberia-server .
 ```bash
 go test ./logx/ -run TestResolveLevel
 ```
-
-## Cyberia stat contract
-
-See [Stats and progression](https://github.com/underpostnet/engine/blob/master/src/client/public/cyberia-docs/STATS-PROGRESSION.md) for signed OL modifiers, entity levels, CLI commands, and verification.
