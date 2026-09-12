@@ -71,6 +71,12 @@ type Config struct {
 	// HotReloadGRPCAddress is the listen address of the hot-reload control
 	// gRPC service. CYBERIA_HOT_RELOAD_GRPC_ADDRESS, default ":50052".
 	HotReloadGRPCAddress string
+
+	// GameServerPublicURL is the http(s) origin players dial, with the deploy
+	// sub-path ("https://server.cyberiaonline.com/FOREST"). The server reports
+	// it to the Data Server registry, which the game client reads to find its
+	// websocket. --game-server-public-url; empty keeps the server off the list.
+	GameServerPublicURL string
 }
 
 // defaultCORSOrigins is the dev-friendly allow-list used when
@@ -86,12 +92,13 @@ func DefaultCORSOrigins() []string {
 	return out
 }
 
-// Load reads configuration from the environment, takes the two Data Server
-// endpoints from the command line, applies defaults, and returns an error
+// Load reads configuration from the environment, takes the Data Server
+// endpoints and the public game server URL from the command line, applies
+// defaults, and returns an error
 // when a required value is missing or malformed. The returned Config is
 // populated even on error (notably ContainerDeployID) so callers can still
 // report deploy status before exiting.
-func Load(dataServerURL, dataServerGRPC string) (Config, error) {
+func Load(dataServerURL, dataServerGRPC, gameServerPublicURL string) (Config, error) {
 	basePath, err := normalizeBasePath(os.Getenv("CYBERIA_BASE_PATH"))
 	c := Config{
 		ServerPort:           getEnv("SERVER_PORT", "8081"),
@@ -100,6 +107,7 @@ func Load(dataServerURL, dataServerGRPC string) (Config, error) {
 		InstanceCode:         os.Getenv("INSTANCE_CODE"),
 		DataServerURL:        strings.TrimSpace(dataServerURL),
 		DataServerGRPC:       strings.TrimSpace(dataServerGRPC),
+		GameServerPublicURL:  strings.TrimSpace(gameServerPublicURL),
 		ProblemBaseURI:       os.Getenv("CYBERIA_PROBLEM_BASE_URI"),
 		ContainerDeployID:    os.Getenv("CONTAINER_DEPLOY_ID"),
 		ServerAPIKey:         os.Getenv("CYBERIA_SERVER_API_KEY"),

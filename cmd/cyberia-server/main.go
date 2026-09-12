@@ -79,6 +79,7 @@ func main() {
 	// lifetime; there is no environment fallback.
 	dataServerURL := flag.String("data-server-url", "", "Data Server REST origin, e.g. https://www.cyberiaonline.com")
 	dataServerGRPC := flag.String("data-server-grpc", "", "Data Server gRPC endpoint, e.g. localhost:50051")
+	gameServerPublicURL := flag.String("game-server-public-url", "", "public origin players dial, e.g. https://server.cyberiaonline.com")
 	flag.Parse()
 
 	// Load .env from CWD (project root) if present. Does not override
@@ -98,7 +99,7 @@ func main() {
 	logx.Infof("GC soft memory limit (GOMEMLIMIT) = %d bytes (math.MaxInt64 ⇒ unset)", debug.SetMemoryLimit(-1))
 
 	// All configuration is resolved here, once.
-	cfg, err := config.Load(*dataServerURL, *dataServerGRPC)
+	cfg, err := config.Load(*dataServerURL, *dataServerGRPC, *gameServerPublicURL)
 	if err != nil {
 		runUnderpostStatus(cfg.ContainerDeployID, "error")
 		logx.Errorf("config: %v", err)
@@ -211,6 +212,14 @@ func main() {
 		os.Exit(1)
 	}
 	runUnderpostStatus(cfg.ContainerDeployID, "running-deployment")
+
+	// Report to the Data Server registry. The game client reads that list to
+	// find this server.
+	engine_client.StartRegistry(context.Background(), cfg.DataServerURL, cfg.ServerAPIKey, engine_client.Report{
+		ServerURL:    cfg.GameServerPublicURL,
+		InstanceCode: cfg.InstanceCode,
+		Name:         cfg.InstanceCode,
+	})
 
 	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		runUnderpostStatus(cfg.ContainerDeployID, "error")

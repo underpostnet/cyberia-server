@@ -121,7 +121,7 @@ func TestLoadRequiresDataServer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Load(tt.url, tt.grpc)
+			got, err := Load(tt.url, tt.grpc, "")
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Load(%q, %q) error = %v, wantErr %v", tt.url, tt.grpc, err, tt.wantErr)
 			}
