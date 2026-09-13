@@ -7,7 +7,7 @@
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
       <script>
-        window.renderPayload = JSON.parse(`{"version":"v3.3.76"}`);
+        window.renderPayload = JSON.parse(`{"version":"v3.3.77"}`);
       </script>
       <meta name="description" content="Cyberia Online 404 — the requested sector is not on the grid.">
 <meta property="og:title" content="Cyberia — Sector Not Found">
@@ -363,7 +363,7 @@ selection
           text-align: center;
           padding: 24px;
         }
-        .badge {
+        .status-badge {
           display: inline-flex;
           align-items: center;
           gap: 8px;
@@ -376,7 +376,7 @@ selection
           margin-bottom: 26px;
           box-shadow: 0 0 12px rgba(34, 211, 238, 0.35);
         }
-        .badge .dot {
+        .status-badge .dot {
           width: 8px;
           height: 8px;
           background: var(--green);
@@ -504,7 +504,7 @@ selection
       </style>
       <div class="grid"></div>
       <main class="wrap">
-        <span class="badge"><span class="dot"></span> INSTANCE ${instanceLabel()}</span>
+        <span class="status-badge"><span class="dot"></span> INSTANCE ${instanceLabel()}</span>
         <div class="code" data-text="404">404</div>
         <div class="headline">SIGNAL LOST</div>
         <p class="sub">
