@@ -102,7 +102,7 @@ type QuestObjectiveProgress struct {
 type QuestSnapshotEntry struct {
 	Code           string `json:"code"`
 	Status         string `json:"status"`         // "active" | "completed"
-	ActiveStep     string `json:"activeStep"`     // first incomplete step ID
+	ActiveStep     string `json:"activeStep"`     // first incomplete step description
 	ObjectivesText string `json:"objectivesText"` // "2/3 kill scp-2040, 1/1 talk wason"
 }
 
