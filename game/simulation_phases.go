@@ -21,7 +21,7 @@
 // A phase MUST NOT:
 //   - touch any presentation concern. PresentationHints has been deleted
 //     from the server; palette / camera / devUi / status-icon visuals live
-//     entirely on the client and at the engine's /api/cyberia-client-hints
+//     entirely on the client and at the engine's /api/v1/cyberia-client-hints
 //     REST endpoint. The Go server does not even hold these values.
 //   - block on I/O.
 //   - launch goroutines that mutate world state.

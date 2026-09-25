@@ -191,7 +191,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// palette, no camera, no devUi, no status-icon visuals, no screen
 	// factors, no interpolation window, no cell-pixel sizing, no default
 	// object dimensions. The C client owns its render policy and resolves
-	// every visual value through /api/cyberia-client-hints using its own
+	// every visual value through /api/v1/cyberia-client-hints using its own
 	// CYBERIA_CLIENT_HINTS_CODE.
 	initPayload := InitPayload{
 		GridW:          startMapState.gridW,

@@ -55,7 +55,7 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 	// Presentation defaults (cell-pixel size, object default dims, camera,
 	// palette, interpolation) are deliberately absent — they are not part
 	// of the simulation contract. The cyberia-client fetches them from
-	// /api/cyberia-client-hints using its own CYBERIA_CLIENT_HINTS_CODE.
+	// /api/v1/cyberia-client-hints using its own CYBERIA_CLIENT_HINTS_CODE.
 	s.tickRate = int(cfg.GetTickRate())
 	if s.tickRate <= 0 {
 		s.tickRate = DefaultTickRate
@@ -204,7 +204,7 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 	// Status-icon visuals (iconId + borderColor) are not on the server.
 	// The simulation writes the numeric status_icon u8 into the AOI encoder;
 	// visual resolution happens on the client via domain/presentation_defaults
-	// and the optional /api/cyberia-client-hints override.
+	// and the optional /api/v1/cyberia-client-hints override.
 
 	// Skill map
 	s.skillConfig = make(map[string][]SkillDefinition, len(cfg.GetSkillConfig()))

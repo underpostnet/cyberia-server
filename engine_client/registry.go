@@ -16,11 +16,12 @@ import (
 	"strings"
 	"time"
 
+	"cyberia-server/engineapi"
 	"cyberia-server/logx"
 )
 
 const (
-	registryPath = "/api/cyberia-server-registry"
+	registryRoute = "/cyberia-server-registry"
 	// The engine drops a server 180 s after its last report.
 	registryInterval = 60 * time.Second
 	registryTimeout  = 10 * time.Second
@@ -42,7 +43,7 @@ func Register(ctx context.Context, baseURL, apiKey string, report Report) error 
 	ctx, cancel := context.WithTimeout(ctx, registryTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+registryPath, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+engineapi.Path(registryRoute), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("engine_client: register: %w", err)
 	}

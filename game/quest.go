@@ -15,6 +15,7 @@
 package game
 
 import (
+	"cyberia-server/engineapi"
 	"cyberia-server/logx"
 	"encoding/json"
 	"fmt"
@@ -97,7 +98,7 @@ type QuestObjectiveProgress struct {
 // and dialog_ack.  It carries ONLY authoritative runtime data that the
 // simulation owns: code, status, and progress counters.  All metadata
 // (title, description, steps, rewards) is fetched by the C client from
-// the engine REST endpoint /api/cyberia-quest/:code — the simulation
+// the engine REST endpoint /api/v1/cyberia-quest/:code — the simulation
 // never transmits non-authoritative presentation data.
 type QuestSnapshotEntry struct {
 	Code           string `json:"code"`
@@ -830,7 +831,7 @@ func (s *GameServer) deliverQuestRewards(player *PlayerState, code string) {
 // questSnapshot projects a progress record into the client-facing entry.
 // Only authoritative runtime data is included — code, status, and progress
 // counters.  All metadata (title, description, steps, rewards) is fetched
-// by the C client from the engine REST endpoint /api/cyberia-quest/:code.
+// by the C client from the engine REST endpoint /api/v1/cyberia-quest/:code.
 func (s *GameServer) questSnapshot(qp *QuestProgress) QuestSnapshotEntry {
 	entry := QuestSnapshotEntry{Code: qp.QuestCode, Status: qp.Status}
 	def, ok := s.questDefs[qp.QuestCode]
@@ -898,7 +899,7 @@ func (s *GameServer) persistQuestProgress(player *PlayerState, qp *QuestProgress
 		"questCode": qp.QuestCode,
 		"status":    qp.Status,
 	}
-	s.enginePostJSON("/api/cyberia-quest-progress", body)
+	s.enginePostJSON(engineapi.Path("/cyberia-quest-progress"), body)
 }
 
 // enginePostJSON performs a best-effort POST using the shared HTTP client;

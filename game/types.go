@@ -497,7 +497,7 @@ type SkillMapEntry struct {
 //
 // Presentation values (cell-pixel size, camera tunings, palette,
 // interpolation window, status-icon visuals) are NOT sent here. The C
-// client resolves all of those through /api/cyberia-client-hints using
+// client resolves all of those through /api/v1/cyberia-client-hints using
 // its own CYBERIA_CLIENT_HINTS_CODE.
 type InitPayload struct {
 	GridW          int                        `json:"gridW"`

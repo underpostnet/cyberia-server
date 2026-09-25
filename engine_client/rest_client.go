@@ -1,7 +1,7 @@
 // Package engine_client — rest_client.go
 //
 // RestClient is the REST boot-fallback DataSource. It consumes the engine's
-// /api/cyberia-instance/boot/* endpoints, which serve the same payloads as
+// /api/v1/cyberia-instance/boot/* endpoints, which serve the same payloads as
 // the gRPC CyberiaDataService, and decodes them into the generated proto
 // types via protojson (the REST JSON uses the proto lowerCamelCase names).
 package engine_client
@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"cyberia-server/engineapi"
 	game "cyberia-server/game"
 	pb "cyberia-server/gen/proto"
 
@@ -23,7 +24,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const restBootPath = "/api/cyberia-instance/boot"
+var restBootPath = engineapi.Path("/cyberia-instance/boot")
 
 // RestClient implements DataSource over the Data Server REST boot endpoints.
 type RestClient struct {
