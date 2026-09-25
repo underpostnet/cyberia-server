@@ -80,11 +80,15 @@ func livenessHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // readinessHandlerFor reports 503 with a problem+json envelope until the
-// GameServer has at least one map loaded.
+// GameServer has at least one map loaded, and again once it drains.
 func readinessHandlerFor(gs *game.GameServer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if gs == nil || !gs.HasMaps() {
 			problem.Write(w, r, problem.ServiceUnavailable("game world not yet loaded"))
+			return
+		}
+		if gs.IsDraining() {
+			problem.Write(w, r, problem.ServiceUnavailable("server is draining"))
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{

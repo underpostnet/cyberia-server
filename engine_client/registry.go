@@ -27,11 +27,13 @@ const (
 	registryTimeout  = 10 * time.Second
 )
 
-// Report is one server registration body.
+// Report is one server registration body. A draining server reports itself so
+// the registry stops offering it.
 type Report struct {
 	ServerURL    string `json:"serverUrl"`
 	InstanceCode string `json:"instanceCode"`
 	Name         string `json:"name"`
+	Draining     bool   `json:"draining"`
 }
 
 // Register posts one report to the Data Server registry.

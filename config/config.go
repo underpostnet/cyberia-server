@@ -45,6 +45,11 @@ type Config struct {
 	// ENGINE_GRPC_RELOAD_INTERVAL_SEC, 0 = disabled.
 	GRPCReloadInterval time.Duration
 
+	// DrainTimeout bounds how long a stopping server waits for its players to
+	// leave after it stops admitting sessions. CYBERIA_DRAIN_TIMEOUT_SEC,
+	// default 25; keep it under the pod's termination grace period.
+	DrainTimeout time.Duration
+
 	// CORSAllowedOrigins is the CORS allow-list.
 	// CYBERIA_CORS_ALLOWED_ORIGINS (comma-separated), dev default when unset.
 	CORSAllowedOrigins []string
@@ -129,11 +134,17 @@ func Load(dataServerURL, dataServerGRPC, gameServerPublicURL string) (Config, er
 		return c, fmt.Errorf("--data-server-grpc required")
 	}
 
-	reload, err := parseReloadInterval(os.Getenv("ENGINE_GRPC_RELOAD_INTERVAL_SEC"))
+	reload, err := parseSeconds("ENGINE_GRPC_RELOAD_INTERVAL_SEC", os.Getenv("ENGINE_GRPC_RELOAD_INTERVAL_SEC"))
 	if err != nil {
 		return c, err
 	}
 	c.GRPCReloadInterval = reload
+
+	drain, err := parseSeconds("CYBERIA_DRAIN_TIMEOUT_SEC", getEnv("CYBERIA_DRAIN_TIMEOUT_SEC", "25"))
+	if err != nil {
+		return c, err
+	}
+	c.DrainTimeout = drain
 
 	limits, err := loadWSLimits()
 	if err != nil {
@@ -255,19 +266,18 @@ func parseCSV(raw string, def []string) []string {
 	return out
 }
 
-// parseReloadInterval converts ENGINE_GRPC_RELOAD_INTERVAL_SEC to a Duration.
-// Empty means disabled (0). A non-numeric or negative value is a fatal
-// misconfiguration rather than a silently-ignored default.
-func parseReloadInterval(raw string) (time.Duration, error) {
+// parseSeconds converts a whole-seconds variable to a Duration. Empty is 0. A
+// non-numeric or negative value is a fatal misconfiguration, never a default.
+func parseSeconds(key, raw string) (time.Duration, error) {
 	if raw == "" {
 		return 0, nil
 	}
 	sec, err := strconv.Atoi(raw)
 	if err != nil {
-		return 0, fmt.Errorf("ENGINE_GRPC_RELOAD_INTERVAL_SEC %q: %w", raw, err)
+		return 0, fmt.Errorf("%s %q: %w", key, raw, err)
 	}
 	if sec < 0 {
-		return 0, fmt.Errorf("ENGINE_GRPC_RELOAD_INTERVAL_SEC must be >= 0, got %d", sec)
+		return 0, fmt.Errorf("%s must be >= 0, got %d", key, sec)
 	}
 	return time.Duration(sec) * time.Second, nil
 }

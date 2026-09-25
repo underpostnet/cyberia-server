@@ -2,6 +2,7 @@ package game
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"cyberia-server/socket"
@@ -445,6 +446,9 @@ type GameServer struct {
 	// guard holds the connection admission limits. See connection_guard.go.
 	guard  *connectionGuard
 	limits ConnectionLimits
+
+	// draining refuses new sessions while connected players stay. See drain.go.
+	draining atomic.Bool
 }
 
 // PlayerSpawnConfig — authoritative initial spawn for new players. When Random

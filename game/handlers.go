@@ -56,6 +56,11 @@ func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
 func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// Admission runs before the upgrade so a refused client costs one HTTP
 	// response, not a WebSocket session.
+	if s.IsDraining() {
+		s.recordWsRefused()
+		http.Error(w, "server is draining", http.StatusServiceUnavailable)
+		return
+	}
 	ip := clientIP(r)
 	if refusal := s.guard.admit(ip); refusal != admitted {
 		s.recordWsRefused()

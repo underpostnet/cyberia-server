@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime/debug"
+	"syscall"
 	"time"
 
 	api "cyberia-server/api"
@@ -215,11 +217,39 @@ func main() {
 
 	// Report to the Data Server registry. The game client reads that list to
 	// find this server.
-	engine_client.StartRegistry(context.Background(), cfg.DataServerURL, cfg.ServerAPIKey, engine_client.Report{
+	report := engine_client.Report{
 		ServerURL:    cfg.GameServerPublicURL,
 		InstanceCode: cfg.InstanceCode,
 		Name:         cfg.InstanceCode,
-	})
+	}
+	registryCtx, stopRegistry := context.WithCancel(context.Background())
+	engine_client.StartRegistry(registryCtx, cfg.DataServerURL, cfg.ServerAPIKey, report)
+
+	// SIGTERM drains: no new session, the registry stops offering this server,
+	// connected players get until DrainTimeout, then the server closes.
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, os.Interrupt)
+	go func() {
+		<-stop
+		s.BeginDrain()
+		stopRegistry()
+		runUnderpostStatus(cfg.ContainerDeployID, "draining-deployment")
+		if report.ServerURL != "" && cfg.ServerAPIKey != "" {
+			report.Draining = true
+			if err := engine_client.Register(context.Background(), cfg.DataServerURL, cfg.ServerAPIKey, report); err != nil {
+				logx.Warnf("[Drain] registry report failed: %v", err)
+			}
+		}
+		drainCtx, cancel := context.WithTimeout(context.Background(), cfg.DrainTimeout)
+		remaining := s.WaitDrained(drainCtx, time.Second)
+		cancel()
+		logx.Infof("[Drain] closing with %d player(s) connected", remaining)
+		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelShutdown()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			logx.Warnf("[Drain] shutdown: %v", err)
+		}
+	}()
 
 	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		runUnderpostStatus(cfg.ContainerDeployID, "error")
