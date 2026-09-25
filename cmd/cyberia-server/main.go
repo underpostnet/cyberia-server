@@ -124,8 +124,8 @@ func main() {
 	s.SetConnectionLimits(limits)
 	logx.Infof("[GameServer] ws limits: %s", limits.Describe())
 
-	// Data Server origin for server-to-server content calls.
-	s.SetDataServerURL(cfg.DataServerURL)
+	// Data Server origin for server-to-server content calls, and their key.
+	s.SetDataServerURL(cfg.DataServerURL, cfg.ServerAPIKey)
 
 	// ── Data loading: engine_client dispatcher (gRPC primary, REST fallback) ──
 	// Every Data Server call tries gRPC first and retries over the REST boot

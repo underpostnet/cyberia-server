@@ -355,6 +355,9 @@ type GameServer struct {
 	// content-authority calls (quest persistence). Never forwarded to clients:
 	// each client learns its own Data Server URL from its command line.
 	dataServerURL string
+	// dataServerAPIKey is CYBERIA_SERVER_API_KEY, sent with every server-to-server
+	// write. An empty key disables them.
+	dataServerAPIKey string
 
 	entityBaseSpeed float64
 	// playerBaseSpeed applies to the player entity only. 0 means unset, and

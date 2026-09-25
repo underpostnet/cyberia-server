@@ -899,7 +899,7 @@ func (s *GameServer) sendQuestUpdate(player *PlayerState, affected []QuestSnapsh
 //
 // When the Data Server URL is unset the call is a no-op (e.g. for tests).
 func (s *GameServer) persistQuestProgress(player *PlayerState, qp *QuestProgress) {
-	if s.dataServerURL == "" {
+	if s.dataServerURL == "" || s.dataServerAPIKey == "" {
 		return
 	}
 	body := map[string]interface{}{
@@ -910,21 +910,31 @@ func (s *GameServer) persistQuestProgress(player *PlayerState, qp *QuestProgress
 	s.enginePostJSON(engineapi.Path("/cyberia-quest-progress"), body)
 }
 
-// enginePostJSON performs a best-effort POST using the shared HTTP client;
-// errors are logged only. The caller's goroutine is reused — no new goroutine
-// is spawned for the HTTP call itself.
+// enginePostJSON performs a best-effort POST using the shared HTTP client,
+// with the server key the engine requires of a game server; errors are
+// logged only. The caller's goroutine is reused — no new goroutine is spawned
+// for the HTTP call itself.
 func (s *GameServer) enginePostJSON(path string, body interface{}) {
 	url := strings.TrimRight(s.dataServerURL, "/") + path
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return
 	}
-	resp, err := engineHTTPClient.Post(url, "application/json", strings.NewReader(string(buf)))
+	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(string(buf)))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Cyberia-Server-Api-Key", s.dataServerAPIKey)
+	resp, err := engineHTTPClient.Do(req)
 	if err != nil {
 		logx.Errorf("[Quest] persist POST %s failed: %v", path, err)
 		return
 	}
 	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		logx.Errorf("[Quest] persist POST %s answered HTTP %d", path, resp.StatusCode)
+	}
 }
 
 func containsStr(list []string, v string) bool {

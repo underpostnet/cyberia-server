@@ -282,11 +282,13 @@ func (s *GameServer) GetObjectLayerData(itemID string) (*ObjectLayer, bool) {
 }
 
 // SetDataServerURL sets the Data Server origin used for server-to-server
-// content-authority calls. Never forwarded to clients.
-func (s *GameServer) SetDataServerURL(url string) {
+// content-authority calls, and the key those calls carry. Never forwarded to
+// clients.
+func (s *GameServer) SetDataServerURL(url, apiKey string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.dataServerURL = url
+	s.dataServerAPIKey = apiKey
 	logx.Infof("Data Server URL set to: %s", url)
 }
 
