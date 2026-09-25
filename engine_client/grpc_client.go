@@ -115,13 +115,13 @@ func (c *GrpcClient) FetchFullInstance(ctx context.Context, instanceCode string)
 	return resp, nil
 }
 
-// ManifestEntry is a lightweight item-ID + hash pair for diffing.
+// ManifestEntry names the definition bound to one item label, for diffing by identity.
 type ManifestEntry struct {
 	ItemID string
-	Sha256 string
+	Cid    string
 }
 
-// FetchObjectLayerManifest returns the manifest of all item IDs + hashes.
+// FetchObjectLayerManifest returns the manifest of every bound item label.
 func (c *GrpcClient) FetchObjectLayerManifest(ctx context.Context) ([]ManifestEntry, error) {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
@@ -133,10 +133,7 @@ func (c *GrpcClient) FetchObjectLayerManifest(ctx context.Context) ([]ManifestEn
 
 	entries := make([]ManifestEntry, 0, len(resp.GetEntries()))
 	for _, e := range resp.GetEntries() {
-		entries = append(entries, ManifestEntry{
-			ItemID: e.GetItemId(),
-			Sha256: e.GetSha256(),
-		})
+		entries = append(entries, ManifestEntry{ItemID: e.GetItemId(), Cid: e.GetCid()})
 	}
 	return entries, nil
 }
@@ -147,9 +144,7 @@ func (c *GrpcClient) FetchObjectLayerManifest(ctx context.Context) ([]ManifestEn
 
 func protoToObjectLayer(msg *pb.ObjectLayerMessage) *game.ObjectLayer {
 	ol := &game.ObjectLayer{
-		ID:     msg.GetMongoId(),
-		Sha256: msg.GetSha256(),
-		Cid:    msg.GetCid(),
+		Cid: msg.GetCid(),
 		Data: game.ObjectLayerData{
 			Stats: game.Stats{
 				Effect:       int(msg.GetStats().GetEffect()),
@@ -168,10 +163,12 @@ func protoToObjectLayer(msg *pb.ObjectLayerMessage) *game.ObjectLayer {
 		},
 	}
 
-	if l := msg.GetLedger(); l != nil {
+	if l := msg.GetLedger(); l != nil && l.GetStandard() != "" {
 		ol.Data.Ledger = &game.Ledger{
-			Type:    l.GetType(),
-			Address: l.GetAddress(),
+			Standard:        l.GetStandard(),
+			ChainID:         l.GetChainId(),
+			ContractAddress: l.GetContractAddress(),
+			TokenID:         l.GetTokenId(),
 		}
 	}
 	if r := msg.GetRender(); r != nil {

@@ -13,11 +13,11 @@ import (
 	"github.com/google/uuid"
 )
 
-// OLMeta is the JSON shape sent to the client for each ObjectLayer.
-// Matches the client's populate_object_layer_from_json expectations.
+// OLMeta is the JSON shape sent to the client for each ObjectLayer: the cid of the definition
+// bound to the label, and its content. Matches populate_object_layer_from_json.
 type OLMeta struct {
-	Sha256 string          `json:"sha256"`
-	Data   ObjectLayerData `json:"data"`
+	Cid  string          `json:"cid"`
+	Data ObjectLayerData `json:"data"`
 }
 
 // buildSkillMap returns a compact { triggerItemId → [SkillMapEntry] } map
@@ -47,10 +47,7 @@ func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
 	// Pre-allocated capacity per type hint; typical cache has ~400 items.
 	out := make(map[string]*OLMeta, len(s.objectLayerDataCache))
 	for itemID, ol := range s.objectLayerDataCache {
-		out[itemID] = &OLMeta{
-			Sha256: ol.Sha256,
-			Data:   ol.Data,
-		}
+		out[itemID] = &OLMeta{Cid: ol.Cid, Data: ol.Data}
 	}
 	return out
 }

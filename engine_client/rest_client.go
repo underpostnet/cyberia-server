@@ -124,7 +124,7 @@ func (c *RestClient) FetchFullInstance(ctx context.Context, instanceCode string)
 	return &msg, nil
 }
 
-// FetchObjectLayerManifest returns the manifest of all item IDs + hashes
+// FetchObjectLayerManifest returns the manifest of every bound item label
 // (boot/object-layer-manifest).
 func (c *RestClient) FetchObjectLayerManifest(ctx context.Context) ([]ManifestEntry, error) {
 	var msg pb.GetObjectLayerManifestResponse
@@ -133,7 +133,7 @@ func (c *RestClient) FetchObjectLayerManifest(ctx context.Context) ([]ManifestEn
 	}
 	entries := make([]ManifestEntry, 0, len(msg.GetEntries()))
 	for _, e := range msg.GetEntries() {
-		entries = append(entries, ManifestEntry{ItemID: e.GetItemId(), Sha256: e.GetSha256()})
+		entries = append(entries, ManifestEntry{ItemID: e.GetItemId(), Cid: e.GetCid()})
 	}
 	return entries, nil
 }

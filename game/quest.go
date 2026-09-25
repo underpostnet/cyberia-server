@@ -49,15 +49,18 @@ type QuestStep struct {
 	Objectives  []QuestObjective `json:"objectives"`
 }
 
+// ItemID is the label; ObjectLayerCid is the definition the quest pins.
 type QuestObjective struct {
-	Type     string `json:"type"` // collect | talk | kill
-	ItemID   string `json:"itemId"`
-	Quantity int    `json:"quantity"`
+	Type           string `json:"type"` // collect | talk | kill
+	ItemID         string `json:"itemId"`
+	ObjectLayerCid string `json:"objectLayerCid,omitempty"`
+	Quantity       int    `json:"quantity"`
 }
 
 type QuestReward struct {
-	ItemID   string `json:"itemId"`
-	Quantity int    `json:"quantity"`
+	ItemID         string `json:"itemId"`
+	ObjectLayerCid string `json:"objectLayerCid,omitempty"`
+	Quantity       int    `json:"quantity"`
 }
 
 // ── Per-player progress (session authority) ─────────────────────────────────
@@ -130,14 +133,19 @@ func protoToQuest(q *pb.CyberiaQuestMessage) *CyberiaQuest {
 		step := QuestStep{ID: st.GetId(), Description: st.GetDescription()}
 		for _, o := range st.GetObjectives() {
 			step.Objectives = append(step.Objectives, QuestObjective{
-				Type: o.GetType(), ItemID: o.GetItemId(), Quantity: int(o.GetQuantity()),
+				Type:           o.GetType(),
+				ItemID:         o.GetItemId(),
+				ObjectLayerCid: o.GetObjectLayerCid(),
+				Quantity:       int(o.GetQuantity()),
 			})
 		}
 		cq.Steps = append(cq.Steps, step)
 	}
 	for _, r := range q.GetRewards() {
 		cq.Rewards = append(cq.Rewards, QuestReward{
-			ItemID: r.GetItemId(), Quantity: int(r.GetQuantity()),
+			ItemID:         r.GetItemId(),
+			ObjectLayerCid: r.GetObjectLayerCid(),
+			Quantity:       int(r.GetQuantity()),
 		})
 	}
 	return cq

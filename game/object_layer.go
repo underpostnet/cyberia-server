@@ -1,7 +1,5 @@
 package game
 
-import "time"
-
 // Item describes a generic item.
 type Item struct {
 	ID          string `json:"id"`
@@ -10,17 +8,19 @@ type Item struct {
 	Activable   bool   `json:"activable"`
 }
 
-// Ledger holds blockchain protocol metadata linking the visual object-layer
-// prefab to its economic reality (token standard + smart-contract address).
+// Ledger is the ItemLedger binding of a definition: a projection of chain state.
+// Empty when the definition is not registered.
 type Ledger struct {
-	Type    string `json:"type"`              // ERC20, ERC721, OFF_CHAIN
-	Address string `json:"address,omitempty"` // Solidity contract address
+	Standard        string `json:"standard,omitempty"` // ERC1155
+	ChainID         uint64 `json:"chainId,omitempty"`
+	ContractAddress string `json:"contractAddress,omitempty"`
+	TokenID         string `json:"tokenId,omitempty"` // uint256, decimal
 }
 
-// Render holds IPFS content identifiers for the consolidated atlas sprite sheet.
+// Render is the render contract of a definition. Both CIDs are empty when it names no render.
 type Render struct {
-	Cid         string `json:"cid,omitempty"`         // IPFS CID for the atlas PNG
-	MetadataCid string `json:"metadataCid,omitempty"` // IPFS CID for the atlas metadata JSON
+	Cid         string `json:"cid,omitempty"`         // canonical render CID: the primary render PNG
+	MetadataCid string `json:"metadataCid,omitempty"` // canonical metadata CID: the layout of the primary render
 }
 
 // ObjectLayerData groups the data for an ObjectLayer.
@@ -31,13 +31,9 @@ type ObjectLayerData struct {
 	Render *Render `json:"render,omitempty"`
 }
 
-// ObjectLayer is the top level schema for an object layer.
+// ObjectLayer is one immutable Object Layer definition. Cid is its canonical identity;
+// Data.Item.ID is the Cyberia label the catalog binds to it.
 type ObjectLayer struct {
-	ID                        string          `json:"_id,omitempty"`
-	Data                      ObjectLayerData `json:"data"`
-	Cid                       string          `json:"cid,omitempty"`
-	ObjectLayerRenderFramesId interface{}     `json:"objectLayerRenderFramesId,omitempty"`
-	Sha256                    string          `json:"sha256"`
-	CreatedAt                 time.Time       `json:"createdAt,omitempty"`
-	UpdatedAt                 time.Time       `json:"updatedAt,omitempty"`
+	Data ObjectLayerData `json:"data"`
+	Cid  string          `json:"cid"`
 }

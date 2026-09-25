@@ -56,7 +56,6 @@
     ],
     "objectLayers": [
       {
-        "mongoId": "contract-layer",
         "stats": {
           "effect": -100,
           "resistance": 100,
@@ -72,16 +71,16 @@
           "activable": false
         },
         "ledger": {
-          "type": "OFF_CHAIN",
-          "address": "",
+          "standard": "",
+          "chainId": 0,
+          "contractAddress": "",
           "tokenId": ""
         },
         "render": {
-          "cid": "",
-          "metadataCid": ""
+          "cid": "bafkreidksiktki2pjijlf63djoorcifkov56idvalevbj4clakjz7mvl3q",
+          "metadataCid": "bafkreigcohqyadv5kpqjoph2m4s53wfmu5pvuaufgwilobl7n4hxgha6hm"
         },
-        "sha256": "abc",
-        "cid": ""
+        "cid": "bafkreihbdxmw6pzohkabf3pxtvqytnmkfi6h6f3ovmihp7vb6g7im3fule"
       }
     ],
     "config": {
@@ -691,6 +690,7 @@
               {
                 "type": "talk",
                 "itemId": "alex",
+                "objectLayerCid": "",
                 "quantity": 1
               }
             ]
@@ -702,6 +702,7 @@
               {
                 "type": "collect",
                 "itemId": "wood-drop-1",
+                "objectLayerCid": "",
                 "quantity": 1
               }
             ]
@@ -713,6 +714,7 @@
               {
                 "type": "kill",
                 "itemId": "kishins",
+                "objectLayerCid": "",
                 "quantity": 2
               }
             ]
@@ -721,6 +723,7 @@
         "rewards": [
           {
             "itemId": "coin",
+            "objectLayerCid": "",
             "quantity": 50
           }
         ]

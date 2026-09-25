@@ -2,8 +2,8 @@
 //
 // WorldBuilder uses an engine DataSource (gRPC primary or REST boot fallback)
 // to populate the GameServer's objectLayerDataCache at startup and supports
-// incremental hot-reload by diffing sha256 manifests and surgically replacing
-// stale entries.
+// incremental hot-reload by diffing label → CID manifests and surgically
+// replacing stale entries.
 package engine_client
 
 import (
@@ -26,7 +26,7 @@ type WorldBuilder struct {
 	// InstanceCode is the INSTANCE_CODE to query from the Engine.
 	InstanceCode string
 
-	// manifest tracks the last-known sha256 per item ID for diffing.
+	// manifest maps each item label to the CID of its bound definition.
 	manifest map[string]string
 
 	// lastInstanceVersion is the opaque version string returned by
@@ -91,11 +91,11 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 		return err
 	}
 
-	// Build manifest
+	// Build manifest: label → identity of the bound definition.
 	wb.mu.Lock()
 	wb.manifest = make(map[string]string, len(cache))
 	for itemID, ol := range cache {
-		wb.manifest[itemID] = ol.Sha256
+		wb.manifest[itemID] = ol.Cid
 	}
 	wb.mu.Unlock()
 
@@ -130,18 +130,18 @@ func (wb *WorldBuilder) HotReload(ctx context.Context) error {
 
 	remoteMap := make(map[string]string, len(remoteEntries))
 	for _, e := range remoteEntries {
-		remoteMap[e.ItemID] = e.Sha256
+		remoteMap[e.ItemID] = e.Cid
 	}
 
 	wb.mu.Lock()
 	localManifest := wb.manifest
 	wb.mu.Unlock()
 
-	// 3. Diff: find new/changed items
+	// 3. Diff: labels whose bound definition is new or changed identity
 	var toFetch []string
-	for itemID, remoteSha := range remoteMap {
-		localSha, exists := localManifest[itemID]
-		if !exists || localSha != remoteSha {
+	for itemID, remoteCid := range remoteMap {
+		localCid, exists := localManifest[itemID]
+		if !exists || localCid != remoteCid {
 			toFetch = append(toFetch, itemID)
 		}
 	}
@@ -176,7 +176,7 @@ func (wb *WorldBuilder) HotReload(ctx context.Context) error {
 
 		wb.mu.Lock()
 		for itemID, ol := range updates {
-			wb.manifest[itemID] = ol.Sha256
+			wb.manifest[itemID] = ol.Cid
 		}
 		for _, itemID := range toDelete {
 			delete(wb.manifest, itemID)

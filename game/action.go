@@ -35,16 +35,20 @@ type ActionQuestDialogue struct {
 }
 
 // ActionShopItem is one vendor catalog row: an item on sale and what it costs.
+// ItemID is the label; ObjectLayerCid is the definition the content pins.
 type ActionShopItem struct {
-	ItemID      string `json:"itemId"`
-	PriceItemID string `json:"priceItemId"`
-	PriceQty    int    `json:"priceQty"`
+	ItemID              string `json:"itemId"`
+	ObjectLayerCid      string `json:"objectLayerCid,omitempty"`
+	PriceItemID         string `json:"priceItemId"`
+	PriceObjectLayerCid string `json:"priceObjectLayerCid,omitempty"`
+	PriceQty            int    `json:"priceQty"`
 }
 
 // ActionCraftItem is one side of a recipe line: an item and how many of it.
 type ActionCraftItem struct {
-	ItemID string `json:"itemId"`
-	Qty    int    `json:"qty"`
+	ItemID         string `json:"itemId"`
+	ObjectLayerCid string `json:"objectLayerCid,omitempty"`
+	Qty            int    `json:"qty"`
 }
 
 // ActionCraftRecipe is one assembler recipe: ingredients consumed, outputs
@@ -89,7 +93,11 @@ func protoToAction(a *pb.CyberiaActionMessage) *CyberiaAction {
 	}
 	for _, si := range a.GetShopItems() {
 		ca.ShopItems = append(ca.ShopItems, ActionShopItem{
-			ItemID: si.GetItemId(), PriceItemID: si.GetPriceItemId(), PriceQty: int(si.GetPriceQty()),
+			ItemID:              si.GetItemId(),
+			ObjectLayerCid:      si.GetObjectLayerCid(),
+			PriceItemID:         si.GetPriceItemId(),
+			PriceObjectLayerCid: si.GetPriceObjectLayerCid(),
+			PriceQty:            int(si.GetPriceQty()),
 		})
 	}
 	for _, r := range a.GetCraftRecipes() {
@@ -106,7 +114,7 @@ func protoToAction(a *pb.CyberiaActionMessage) *CyberiaAction {
 func protoToCraftItems(items []*pb.ActionCraftItem) []ActionCraftItem {
 	out := make([]ActionCraftItem, 0, len(items))
 	for _, i := range items {
-		out = append(out, ActionCraftItem{ItemID: i.GetItemId(), Qty: int(i.GetQty())})
+		out = append(out, ActionCraftItem{ItemID: i.GetItemId(), ObjectLayerCid: i.GetObjectLayerCid(), Qty: int(i.GetQty())})
 	}
 	return out
 }
