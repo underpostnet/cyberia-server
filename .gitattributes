@@ -1,0 +1,12 @@
+# normalize LF in repo
+* text=auto
+
+# treat scripts as text
+*.py text
+
+# enforce LF for Unix specific
+*.sh text eol=lf
+
+# enforce CRLF for windows specific
+*.bat text eol=crlf
+*.cmd text eol=crlf
