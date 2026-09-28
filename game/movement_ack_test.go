@@ -112,26 +112,25 @@ func TestTapsInOneTickCoalesceToTheNewest(t *testing.T) {
 	}
 }
 
-// A superseded tap is acked on arrival but never planned. The client must be
-// able to tell those apart, or it would adopt a route belonging to a target it
-// has already abandoned.
-func TestAckCoversSupersededTapsButMoveAckDoesNot(t *testing.T) {
+// The cursor moves when a tick applies a command, not when it is queued. A
+// snapshot built between enqueue and the next tick must not claim it.
+func TestEnqueueIsNotConsumption(t *testing.T) {
 	s, mapState, player := movementFixture(t)
 
 	EnqueueInput(player, tap(1, 18, 1))
 	EnqueueInput(player, tap(2, 1, 18))
 
-	if player.LastAckedInputSequence != 2 {
-		t.Fatalf("ack = %d, want 2 — arrival acks every command",
-			player.LastAckedInputSequence)
-	}
-	if player.LastMovementSequence != 0 {
-		t.Fatalf("moveAck = %d, want 0 — nothing is planned before the phase runs",
-			player.LastMovementSequence)
+	if player.InputConsumedThrough != 0 || player.LastMovementSequence != 0 {
+		t.Fatalf("cursor = %d, moveAck = %d, want 0, 0 — enqueue is not consumption",
+			player.InputConsumedThrough, player.LastMovementSequence)
 	}
 
 	s.phaseInput(0, mapState)
 
+	if player.InputConsumedThrough != 2 {
+		t.Fatalf("cursor = %d, want 2 — the tick consumes every command",
+			player.InputConsumedThrough)
+	}
 	if player.LastMovementSequence != 2 {
 		t.Fatalf("moveAck = %d, want 2", player.LastMovementSequence)
 	}

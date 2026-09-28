@@ -78,7 +78,4 @@ func EnqueueInput(p *PlayerState, cmd InputCommand) {
 		p.InputQueue = p.InputQueue[:len(p.InputQueue)-1]
 	}
 	p.InputQueue = append(p.InputQueue, cmd)
-	if cmd.Sequence > p.LastAckedInputSequence {
-		p.LastAckedInputSequence = cmd.Sequence
-	}
 }

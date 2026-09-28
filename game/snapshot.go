@@ -113,12 +113,13 @@ type SnapshotSelf struct {
 // Snapshot is the `snapshot` message payload.
 type Snapshot struct {
 	Tick uint32 `json:"tick"`
-	// Ack is the highest input sequence received for this player. The client
-	// drops acknowledged commands from its prediction buffer.
-	Ack uint32 `json:"ack"`
+	// InputConsumedThrough is the highest input sequence a tick has applied
+	// for this player. The client drops consumed commands from its prediction
+	// buffer.
+	InputConsumedThrough uint32 `json:"inputConsumedThrough"`
 	// MoveAck is the highest PLAYER_ACTION sequence that re-planned movement.
-	// Ack only proves arrival: taps landing in the same tick are all
-	// acknowledged, but only the newest is planned, so self.path and
+	// Consumption is not planning: taps landing in the same tick are all
+	// consumed, but only the newest is planned, so self.path and
 	// self.targetPos can still describe an earlier command. The client adopts
 	// the authoritative route only once MoveAck covers its newest command, so a
 	// rapid change of direction can never pull prediction onto a stale route.
@@ -253,10 +254,10 @@ func (s *GameServer) snapshotStats(snapshot *SnapshotEntity, entity statSource, 
 // buildSnapshot collects everything inside the player's area of interest.
 func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snapshot {
 	snap := Snapshot{
-		Tick:     player.LastSnapshotTick,
-		Ack:      player.LastAckedInputSequence,
-		MoveAck:  player.LastMovementSequence,
-		Entities: make([]SnapshotEntity, 0, 64),
+		Tick:                 player.LastSnapshotTick,
+		InputConsumedThrough: player.InputConsumedThrough,
+		MoveAck:              player.LastMovementSequence,
+		Entities:             make([]SnapshotEntity, 0, 64),
 	}
 
 	inAOI := func(pos Point, dims Dimensions) bool {

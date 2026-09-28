@@ -59,6 +59,11 @@ func (s *GameServer) phaseInput(tick uint32, mapState *MapState) {
 		player.InputQueue = nil // drained; further EnqueueInput appends a fresh slice
 		for i := range queue {
 			s.applyInputCommand(player, mapState, &queue[i])
+			// The cursor means consumed. A snapshot built between this
+			// tick and the next must not claim a command no tick has run.
+			if queue[i].Sequence > player.InputConsumedThrough {
+				player.InputConsumedThrough = queue[i].Sequence
+			}
 		}
 		s.flushPendingMove(player, mapState)
 	}

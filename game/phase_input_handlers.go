@@ -47,7 +47,7 @@ func (s *GameServer) handlePlayerActionInput(player *PlayerState, mapState *MapS
 // once per player per tick by phaseInput, after the input queue is drained.
 //
 // Every re-plan stamps LastMovementSequence, which the snapshot echoes as
-// moveAck. Arrival is not acceptance — a superseded tap is acknowledged and
+// moveAck. Consumption is not planning — a superseded tap is consumed and
 // never planned — so the client needs moveAck to know which command the route
 // it is being handed was planned for.
 func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {

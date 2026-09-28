@@ -162,18 +162,18 @@ type PlayerState struct {
 	// ── Tick / replication metadata ─────────────────────────────────────────
 	// LastSnapshotTick is stamped by phaseReplication just before the AOI
 	// encoder runs for this player. It is embedded in the snapshot header.
-	// LastAckedInputSequence is the highest InputCommand.Sequence accepted by
-	// the simulation for this player; the snapshot encoder echoes it so the
-	// client can drop acknowledged commands from its prediction buffer.
+	// InputConsumedThrough is the highest InputCommand.Sequence phaseInput has
+	// applied for this player; the snapshot encoder echoes it so the client
+	// can drop consumed commands from its prediction buffer.
 	// LastMovementSequence is the highest PLAYER_ACTION sequence that actually
-	// re-planned movement. Arrival is not acceptance: taps that land in the
-	// same tick are all acknowledged, but only the newest of them is planned,
+	// re-planned movement. Consumption is not planning: taps that land in the
+	// same tick are all consumed, but only the newest of them is planned,
 	// so Path and TargetPos can describe an earlier command. The client needs
 	// the two apart — it predicts on acknowledgement but may only adopt the
 	// authoritative route once movement has been re-planned for its command.
-	LastSnapshotTick       uint32 `json:"-"`
-	LastAckedInputSequence uint32 `json:"-"`
-	LastMovementSequence   uint32 `json:"-"`
+	LastSnapshotTick     uint32 `json:"-"`
+	InputConsumedThrough uint32 `json:"-"`
+	LastMovementSequence uint32 `json:"-"`
 	// PendingMove is the destination of the newest PLAYER_ACTION drained this
 	// tick. phaseInput re-plans from it once, after the whole queue is applied,
 	// so a burst of taps costs one A* instead of one per tap. Cleared by the
