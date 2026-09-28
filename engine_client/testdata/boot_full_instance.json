@@ -145,476 +145,20 @@
       "maxChance": 0.95,
       "entityDefaults": [
         {
-          "entityType": "player",
-          "liveItemIds": [
-            "anon",
-            "atlas_pistol_mk2"
-          ],
-          "deadItemIds": [
-            "fragmentation"
-          ],
-          "dropItemIds": [],
-          "inventoryItemsIds": [
-            "coin"
-          ],
-          "overrideItemsIdsState": [],
-          "behavior": "",
-          "defaultObjectLayers": [
-            {
-              "itemId": "anon",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "atlas_pistol_mk2",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "fragmentation",
-              "active": false,
-              "quantity": 0,
-              "dropChance": 1
-            },
-            {
-              "itemId": "coin",
-              "active": false,
-              "quantity": 1,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
-          "entityType": "other_player",
-          "liveItemIds": [
-            "anon",
-            "atlas_pistol_mk2"
-          ],
-          "deadItemIds": [
-            "fragmentation"
-          ],
-          "dropItemIds": [],
-          "inventoryItemsIds": [
-            "coin"
-          ],
-          "overrideItemsIdsState": [],
-          "behavior": "",
-          "defaultObjectLayers": [
-            {
-              "itemId": "anon",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "atlas_pistol_mk2",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "fragmentation",
-              "active": false,
-              "quantity": 0,
-              "dropChance": 1
-            },
-            {
-              "itemId": "coin",
-              "active": false,
-              "quantity": 1,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
           "entityType": "bot",
           "liveItemIds": [
-            "purple"
-          ],
-          "deadItemIds": [
-            "fragmentation"
-          ],
-          "dropItemIds": [],
-          "inventoryItemsIds": [
-            "coin"
-          ],
-          "overrideItemsIdsState": [],
-          "behavior": "",
-          "defaultObjectLayers": [
-            {
-              "itemId": "purple",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "fragmentation",
-              "active": false,
-              "quantity": 0,
-              "dropChance": 1
-            },
-            {
-              "itemId": "coin",
-              "active": false,
-              "quantity": 1,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
-          "entityType": "bot",
-          "liveItemIds": [
-            "wason"
-          ],
-          "deadItemIds": [
-            "fragmentation"
-          ],
-          "dropItemIds": [],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "provider",
-          "defaultObjectLayers": [
-            {
-              "itemId": "wason",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "fragmentation",
-              "active": false,
-              "quantity": 0,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
-          "entityType": "bot",
-          "liveItemIds": [
-            "alex"
-          ],
-          "deadItemIds": [
-            "fragmentation"
-          ],
-          "dropItemIds": [],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "provider",
-          "defaultObjectLayers": [
-            {
-              "itemId": "alex",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "fragmentation",
-              "active": false,
-              "quantity": 0,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
-          "entityType": "bot",
-          "liveItemIds": [
-            "agent"
-          ],
-          "deadItemIds": [
-            "fragmentation"
-          ],
-          "dropItemIds": [],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "provider",
-          "defaultObjectLayers": [
-            {
-              "itemId": "agent",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "fragmentation",
-              "active": false,
-              "quantity": 0,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
-          "entityType": "bot",
-          "liveItemIds": [
-            "punk"
-          ],
-          "deadItemIds": [
-            "fragmentation"
-          ],
-          "dropItemIds": [],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "provider",
-          "defaultObjectLayers": [
-            {
-              "itemId": "punk",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "fragmentation",
-              "active": false,
-              "quantity": 0,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
-          "entityType": "bot",
-          "liveItemIds": [
-            "eiri"
-          ],
-          "deadItemIds": [
-            "fragmentation"
-          ],
-          "dropItemIds": [],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "provider-static",
-          "defaultObjectLayers": [
-            {
-              "itemId": "eiri",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "fragmentation",
-              "active": false,
-              "quantity": 0,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
-          "entityType": "bot",
-          "liveItemIds": [
-            "kaneki"
-          ],
-          "deadItemIds": [
-            "fragmentation"
-          ],
-          "dropItemIds": [],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "provider-static",
-          "defaultObjectLayers": [
-            {
-              "itemId": "kaneki",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "fragmentation",
-              "active": false,
-              "quantity": 0,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
-          "entityType": "bot",
-          "liveItemIds": [
-            "lain"
-          ],
-          "deadItemIds": [
-            "fragmentation"
-          ],
-          "dropItemIds": [],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "provider-static",
-          "defaultObjectLayers": [
-            {
-              "itemId": "lain",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "fragmentation",
-              "active": false,
-              "quantity": 0,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
-          "entityType": "skill",
-          "liveItemIds": [
-            "atlas_pistol_mk2_bullet"
+            "sword"
           ],
           "deadItemIds": [],
           "dropItemIds": [],
           "inventoryItemsIds": [],
           "overrideItemsIdsState": [],
-          "behavior": "",
+          "behavior": "hostile",
           "defaultObjectLayers": [
             {
-              "itemId": "atlas_pistol_mk2_bullet",
+              "itemId": "sword",
               "active": true,
               "quantity": 1,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
-          "entityType": "coin",
-          "liveItemIds": [
-            "coin"
-          ],
-          "deadItemIds": [],
-          "dropItemIds": [],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "",
-          "defaultObjectLayers": [
-            {
-              "itemId": "coin",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
-          "entityType": "floor",
-          "liveItemIds": [
-            "grass"
-          ],
-          "deadItemIds": [],
-          "dropItemIds": [],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "",
-          "defaultObjectLayers": [
-            {
-              "itemId": "grass",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
-          "entityType": "obstacle",
-          "liveItemIds": [],
-          "deadItemIds": [],
-          "dropItemIds": [],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "",
-          "defaultObjectLayers": []
-        },
-        {
-          "entityType": "portal",
-          "liveItemIds": [],
-          "deadItemIds": [],
-          "dropItemIds": [],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "",
-          "defaultObjectLayers": []
-        },
-        {
-          "entityType": "foreground",
-          "liveItemIds": [],
-          "deadItemIds": [],
-          "dropItemIds": [],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "",
-          "defaultObjectLayers": []
-        },
-        {
-          "entityType": "static",
-          "liveItemIds": [],
-          "deadItemIds": [],
-          "dropItemIds": [],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "",
-          "defaultObjectLayers": []
-        },
-        {
-          "entityType": "resource",
-          "liveItemIds": [
-            "wood-1"
-          ],
-          "deadItemIds": [
-            "wood-extracted-1"
-          ],
-          "dropItemIds": [
-            "wood-drop-1"
-          ],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "",
-          "defaultObjectLayers": [
-            {
-              "itemId": "wood-1",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "wood-extracted-1",
-              "active": false,
-              "quantity": 0,
-              "dropChance": 1
-            },
-            {
-              "itemId": "wood-drop-1",
-              "active": false,
-              "quantity": 0,
-              "dropChance": 1
-            }
-          ]
-        },
-        {
-          "entityType": "resource",
-          "liveItemIds": [
-            "wood-2"
-          ],
-          "deadItemIds": [
-            "wood-extracted-2"
-          ],
-          "dropItemIds": [
-            "wood-drop-2"
-          ],
-          "inventoryItemsIds": [],
-          "overrideItemsIdsState": [],
-          "behavior": "",
-          "defaultObjectLayers": [
-            {
-              "itemId": "wood-2",
-              "active": true,
-              "quantity": 1,
-              "dropChance": 1
-            },
-            {
-              "itemId": "wood-extracted-2",
-              "active": false,
-              "quantity": 0,
-              "dropChance": 1
-            },
-            {
-              "itemId": "wood-drop-2",
-              "active": false,
-              "quantity": 0,
               "dropChance": 1
             }
           ]
@@ -645,24 +189,16 @@
     "version": "contract-fixture",
     "actions": [
       {
-        "code": "loc-fallback-map-0-12-10",
-        "label": "Wason",
-        "sourceMapCode": "fallback-map-0",
-        "sourceCellX": 12,
-        "sourceCellY": 10,
-        "dialogCode": "default-wason",
+        "code": "contract-action",
+        "label": "Contract",
+        "sourceMapCode": "contract-map",
+        "sourceCellX": 1,
+        "sourceCellY": 1,
+        "dialogCode": "default-sword",
         "questDialogueCodes": [
           {
-            "questCode": "fallback-intro-quest",
-            "dialogCode": "quest-talk-wason"
-          },
-          {
-            "questCode": "wason-errand",
-            "dialogCode": "quest-talk-wason-errand"
-          },
-          {
-            "questCode": "bounty-quest-alpha",
-            "dialogCode": "quest-talk-wason"
+            "questCode": "contract-quest",
+            "dialogCode": "quest-talk-contract"
           }
         ],
         "shopItems": [],
@@ -672,59 +208,33 @@
     ],
     "quests": [
       {
-        "code": "fallback-intro-quest",
-        "title": "The Wanderer's Task",
-        "description": "Help Wason restore order to the fractured nodes.",
-        "unlocksQuestCodes": [
-          "bounty-quest-alpha"
-        ],
+        "code": "contract-quest",
+        "title": "Contract Quest",
+        "description": "Collect a sword.",
+        "unlocksQuestCodes": [],
         "prerequisiteCodes": [],
-        "sourceMapCode": "fallback-map-0",
-        "sourceCellX": 12,
-        "sourceCellY": 10,
+        "sourceMapCode": "contract-map",
+        "sourceCellX": 1,
+        "sourceCellY": 1,
         "steps": [
           {
-            "id": "step-talk-alex",
-            "description": "Find Alex and hear her report on the portal anomalies.",
-            "objectives": [
-              {
-                "type": "talk",
-                "itemId": "alex",
-                "objectLayerCid": "",
-                "quantity": 1
-              }
-            ]
-          },
-          {
-            "id": "step-collect-wood",
-            "description": "Obtain a wood for Wason.",
+            "id": "step-collect",
+            "description": "Collect a sword.",
             "objectives": [
               {
                 "type": "collect",
-                "itemId": "wood-drop-1",
+                "itemId": "sword",
                 "objectLayerCid": "",
                 "quantity": 1
-              }
-            ]
-          },
-          {
-            "id": "step-kill-kishins",
-            "description": "Eliminate Kishins anomalies threatening the trade routes.",
-            "objectives": [
-              {
-                "type": "kill",
-                "itemId": "kishins",
-                "objectLayerCid": "",
-                "quantity": 2
               }
             ]
           }
         ],
         "rewards": [
           {
-            "itemId": "coin",
+            "itemId": "sword",
             "objectLayerCid": "",
-            "quantity": 50
+            "quantity": 1
           }
         ]
       }
