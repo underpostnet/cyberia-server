@@ -15,6 +15,7 @@
 package game
 
 import (
+	"bytes"
 	"cyberia-server/engineapi"
 	"cyberia-server/logx"
 	"encoding/json"
@@ -891,49 +892,68 @@ func (s *GameServer) sendQuestUpdate(player *PlayerState, affected []QuestSnapsh
 	s.sendDlgAck(player, "", true, affected)
 }
 
+// persistJob is one engine POST, built under s.mu and sent by persistLoop.
+type persistJob struct {
+	url, apiKey string
+	body        []byte
+}
+
 // persistQuestProgress best-effort mirrors a progress record to engine REST.
-// In-memory state is the session authority; the HTTP call is fire-and-forget
-// using the shared engineHTTPClient so no goroutine leak occurs.  The Data
-// Server call is still async from the simulation perspective but does NOT
-// spawn a new goroutine — the HTTP client's own transport handles connections.
+// In-memory state is the session authority. The caller holds s.mu, so this
+// only queues the POST; persistLoop sends it. A full queue drops the record.
 //
 // When the Data Server URL is unset the call is a no-op (e.g. for tests).
 func (s *GameServer) persistQuestProgress(player *PlayerState, qp *QuestProgress) {
 	if s.dataServerURL == "" || s.dataServerAPIKey == "" {
 		return
 	}
-	body := map[string]interface{}{
+	buf, err := json.Marshal(map[string]interface{}{
 		"playerId":  player.ID,
 		"questCode": qp.QuestCode,
 		"status":    qp.Status,
-	}
-	s.enginePostJSON(engineapi.Path("/cyberia-quest-progress"), body)
-}
-
-// enginePostJSON performs a best-effort POST using the shared HTTP client,
-// with the server key the engine requires of a game server; errors are
-// logged only. The caller's goroutine is reused — no new goroutine is spawned
-// for the HTTP call itself.
-func (s *GameServer) enginePostJSON(path string, body interface{}) {
-	url := strings.TrimRight(s.dataServerURL, "/") + path
-	buf, err := json.Marshal(body)
+	})
 	if err != nil {
 		return
 	}
-	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(string(buf)))
+	job := persistJob{
+		url:    strings.TrimRight(s.dataServerURL, "/") + engineapi.Path("/cyberia-quest-progress"),
+		apiKey: s.dataServerAPIKey,
+		body:   buf,
+	}
+	select {
+	case s.persistQueue <- job:
+	default:
+		logx.Errorf("[Quest] persist queue full, dropped %s/%s", player.ID, qp.QuestCode)
+	}
+}
+
+// persistLoop sends the queued POSTs one at a time, in queue order, so the
+// engine keeps the newest record of each player.
+// ponytail: one worker for every player keeps per-player order, but a slow
+// engine delays all players' POSTs; per-player workers if that backlog shows.
+func (s *GameServer) persistLoop() {
+	for job := range s.persistQueue {
+		enginePost(job)
+	}
+}
+
+// enginePost performs a best-effort POST using the shared HTTP client, with
+// the server key the engine requires of a game server; errors are logged only.
+func enginePost(job persistJob) {
+	req, err := http.NewRequest(http.MethodPost, job.url, bytes.NewReader(job.body))
 	if err != nil {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Cyberia-Server-Api-Key", s.dataServerAPIKey)
+	req.Header.Set("X-Cyberia-Server-Api-Key", job.apiKey)
 	resp, err := engineHTTPClient.Do(req)
 	if err != nil {
-		logx.Errorf("[Quest] persist POST %s failed: %v", path, err)
+		logx.Errorf("[Quest] persist POST %s failed: %v", job.url, err)
 		return
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		logx.Errorf("[Quest] persist POST %s answered HTTP %d", path, resp.StatusCode)
+		logx.Errorf("[Quest] persist POST %s answered HTTP %d", job.url, resp.StatusCode)
 	}
 }
 

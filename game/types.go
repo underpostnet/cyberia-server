@@ -358,6 +358,9 @@ type GameServer struct {
 	// dataServerAPIKey is CYBERIA_SERVER_API_KEY, sent with every server-to-server
 	// write. An empty key disables them.
 	dataServerAPIKey string
+	// persistQueue holds engine POSTs for persistLoop, so no HTTP call runs
+	// under s.mu.
+	persistQueue chan persistJob
 
 	entityBaseSpeed float64
 	// playerBaseSpeed applies to the player entity only. 0 means unset, and

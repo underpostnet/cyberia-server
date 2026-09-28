@@ -24,6 +24,7 @@ func NewGameServer() *GameServer {
 		unregister:           make(chan *Client, 64),
 		objectLayerDataCache: make(map[string]*ObjectLayer),
 		skillConfig:          make(map[string][]SkillDefinition),
+		persistQueue:         make(chan persistJob, 256),
 	}
 	gs.SetConnectionLimits(DefaultConnectionLimits())
 	return gs
@@ -295,6 +296,7 @@ func (s *GameServer) SetDataServerURL(url, apiKey string) {
 func (s *GameServer) Run() {
 	go s.listenForClients()
 	go s.gameLoop()
+	go s.persistLoop()
 }
 
 func (s *GameServer) listenForClients() {
