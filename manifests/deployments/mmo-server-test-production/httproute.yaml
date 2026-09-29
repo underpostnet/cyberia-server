@@ -17,13 +17,13 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /TEST/404
+            value: /test/404
       filters:
         - type: URLRewrite
           urlRewrite:
             path:
               type: ReplacePrefixMatch
-              replacePrefixMatch: /server.cyberiaonline.com/TEST/status-pages/404
+              replacePrefixMatch: /server.cyberiaonline.com/test/status-pages/404
         - type: ResponseHeaderModifier
           responseHeaderModifier:
             set:
@@ -42,7 +42,7 @@ spec:
           urlRewrite:
             path:
               type: ReplaceFullPath
-              replaceFullPath: /server.cyberiaonline.com/TEST/status-pages/404/index.html
+              replaceFullPath: /server.cyberiaonline.com/test/status-pages/404/index.html
         - type: ResponseHeaderModifier
           responseHeaderModifier:
             set:
@@ -55,7 +55,7 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /TEST
+            value: /test
       filters:
         - type: ResponseHeaderModifier
           responseHeaderModifier:

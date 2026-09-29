@@ -12,7 +12,7 @@ spec:
       secretName: server.cyberiaonline.com
   routes:
     - conditions:
-        - prefix: /TEST
+        - prefix: /test
       
       enableWebsockets: true
       services:
