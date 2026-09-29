@@ -57,10 +57,9 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 	// palette, interpolation) are deliberately absent — they are not part
 	// of the simulation contract. The cyberia-client fetches them from
 	// /api/v1/cyberia-client-hints using its own CYBERIA_CLIENT_HINTS_CODE.
-	s.tickRate = int(cfg.GetTickRate())
-	if s.tickRate <= 0 {
-		s.tickRate = DefaultTickRate
-	}
+	// The instance config tick_rate is ignored. The client fixes its step
+	// at compile time, and a replay needs the same dt on both sides.
+	s.tickRate = DefaultTickRate
 	s.snapshotRate = int(cfg.GetSnapshotRate())
 	if s.snapshotRate <= 0 {
 		s.snapshotRate = DefaultSnapshotRate

@@ -518,7 +518,6 @@ type SkillMapEntry struct {
 type InitPayload struct {
 	GridW          int                        `json:"gridW"`
 	GridH          int                        `json:"gridH"`
-	TickRate       int                        `json:"tickRate"`
 	SnapshotRate   int                        `json:"snapshotRate"`
 	AoiRadius      float64                    `json:"aoiRadius"`
 	ObjectLayers   []ObjectLayerState         `json:"objectLayers"`

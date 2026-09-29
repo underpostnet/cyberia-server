@@ -29,8 +29,9 @@ import "time"
 // enough for any conceivable session and small enough to be cheap on wire.
 type Tick uint32
 
-// Default simulation/replication rates. Override via InstanceConfig.tick_rate
-// (and InstanceConfig.snapshot_rate where applicable).
+// DefaultTickRate is the only simulation rate. It must equal the client
+// TICK_RATE_HZ. DefaultSnapshotRate applies when InstanceConfig.snapshot_rate
+// is unset.
 const (
 	DefaultTickRate     = 30
 	DefaultSnapshotRate = 20

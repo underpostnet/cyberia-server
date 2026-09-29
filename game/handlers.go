@@ -198,7 +198,6 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	initPayload := InitPayload{
 		GridW:          startMapState.gridW,
 		GridH:          startMapState.gridH,
-		TickRate:       s.tickRate,
 		SnapshotRate:   s.snapshotRate,
 		AoiRadius:      s.aoiRadius,
 		ObjectLayers:   s.visibleInventory(playerState.ObjectLayers),
