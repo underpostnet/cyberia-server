@@ -1,9 +1,10 @@
 package game
 
-// Canonical entity behaviors. Mirrors SharedDefaultsCyberia.ENTITY_BEHAVIORS.
-// An entity's behavior is content-authored on its matched entity-type default
+// Canonical bot behaviors. Mirrors the bot behaviors of SharedDefaultsCyberia.ENTITY_BEHAVIORS.
+// A bot's behavior is content-authored on its matched entity-type default
 // (resolved by active itemId), or derived when unset. `skill` / `coin` are
 // assigned by the runtime (skill engine / economy), never authored.
+// A foreground behavior is presentation only: the server sends it and the client runs it.
 const (
 	BehaviorPassive        = "passive"
 	BehaviorHostile        = "hostile"
@@ -55,14 +56,20 @@ func (s *GameServer) deriveBehaviorFromLayers(layers []ObjectLayerState) string 
 	return BehaviorPassive
 }
 
-// resolveEntityBehavior picks an entity's behavior: the canonical behavior bound
-// to the matched entity-type default (by active itemId — the same liveItemIds
-// match used for the live/dead/drop sets) when set, otherwise derived from the
-// layers. This is the single entry point for assigning a spawned entity's
-// behavior.
+// boundBehavior is the behavior bound to the entity-type default the layers
+// match (by active itemId — the same liveItemIds match used for the
+// live/dead/drop sets), or "" when that default binds none.
+func (s *GameServer) boundBehavior(entityType string, layers []ObjectLayerState) string {
+	build, _ := s.resolveEntityDefaultBuild(entityType, activeObjectLayerItemIDs(layers))
+	return build.Behavior
+}
+
+// resolveEntityBehavior picks a bot's behavior: the bound behavior when set,
+// otherwise derived from the layers. This is the single entry point for
+// assigning a spawned bot's behavior.
 func (s *GameServer) resolveEntityBehavior(entityType string, layers []ObjectLayerState) string {
-	if build, ok := s.resolveEntityDefaultBuild(entityType, activeObjectLayerItemIDs(layers)); ok && build.Behavior != "" {
-		return build.Behavior
+	if behavior := s.boundBehavior(entityType, layers); behavior != "" {
+		return behavior
 	}
 	return s.deriveBehaviorFromLayers(layers)
 }
