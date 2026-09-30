@@ -283,6 +283,12 @@ type StaticState struct {
 	MapCode string `json:"MapCode"`
 }
 
+// ForegroundState is a decoration the client draws over every entity.
+type ForegroundState struct {
+	EntityBase
+	Behavior string `json:"behavior"`
+}
+
 type PortalState struct {
 	EntityBase
 	Type         string        `json:"Type"`
@@ -294,7 +300,7 @@ type MapState struct {
 	mu           sync.RWMutex
 	pathfinder   *Pathfinder
 	obstacles    map[string]ObjectState
-	foregrounds  map[string]ObjectState
+	foregrounds  map[string]ForegroundState
 	portals      map[string]*PortalState
 	floors       map[string]*FloorState
 	players      map[string]*PlayerState
@@ -480,7 +486,7 @@ type EntityTypeDefaultConfig struct {
 	// per-layer probability would be dead weight on the wire. A missing id means 1.
 	DropChances map[string]float64 `json:"dropChances,omitempty"`
 	// Canonical entity behavior bound to matched entities (see behavior.go).
-	// Empty = derive from layers (armed → hostile, else passive).
+	// Empty: a bot derives it from layers (armed → hostile, else passive); a foreground stays normal.
 	Behavior string `json:"behavior,omitempty"`
 }
 

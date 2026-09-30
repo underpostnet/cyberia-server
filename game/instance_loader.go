@@ -185,7 +185,7 @@ func (s *GameServer) buildMapsFromInstance(
 			players:     make(map[string]*PlayerState),
 			portals:     make(map[string]*PortalState),
 			obstacles:   make(map[string]ObjectState),
-			foregrounds: make(map[string]ObjectState),
+			foregrounds: make(map[string]ForegroundState),
 			floors:      make(map[string]*FloorState),
 			pathfinder:  NewPathfinder(gridW, gridH),
 			bots:        make(map[string]*BotState),
@@ -467,7 +467,8 @@ func (s *GameServer) buildEntityBase(ent *pb.EntityMessage, kind string) EntityB
 }
 
 func (s *GameServer) buildForeground(ms *MapState, ent *pb.EntityMessage) {
-	fg := ObjectState{EntityBase: s.buildEntityBase(ent, "foreground"), Type: "foreground"}
+	base := s.buildEntityBase(ent, "foreground")
+	fg := ForegroundState{EntityBase: base, Behavior: s.boundBehavior("foreground", base.ObjectLayers)}
 	ms.foregrounds[fg.ID] = fg
 }
 

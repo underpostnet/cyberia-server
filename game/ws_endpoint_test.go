@@ -33,7 +33,7 @@ func newWSTestServer(t *testing.T, limits ConnectionLimits) *wsTestServer {
 		players:     map[string]*PlayerState{},
 		bots:        map[string]*BotState{},
 		obstacles:   map[string]ObjectState{},
-		foregrounds: map[string]ObjectState{},
+		foregrounds: map[string]ForegroundState{},
 		portals:     map[string]*PortalState{},
 		floors:      map[string]*FloorState{},
 		resources:   map[string]*ResourceState{},

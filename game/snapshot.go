@@ -46,8 +46,10 @@ type SnapshotEntity struct {
 	StatsSum       int                 `json:"statsSum"`
 	StatusIcon     uint8               `json:"statusIcon"`
 
-	// Bot fields.
+	// Behavior is set on bots and foregrounds.
 	Behavior string `json:"behavior"`
+
+	// Bot fields.
 	CasterID string `json:"casterId"`
 	// InteractionFlags resolve per viewing player. Each bit enables an
 	// overlay icon and its interact-modal tab.
@@ -331,7 +333,14 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		snap.Entities = append(snap.Entities, e)
 	}
 
-	appendPassive(&snap, EntityForeground, mapState.foregrounds, inAOI)
+	for _, fg := range mapState.foregrounds {
+		if !inAOI(fg.Pos, fg.Dims) {
+			continue
+		}
+		e := baseEntity(EntityForeground, fg.ID, fg.Pos, fg.Dims, NONE, IDLE, fg.ObjectLayers)
+		e.Behavior = fg.Behavior
+		snap.Entities = append(snap.Entities, e)
+	}
 
 	// Resources — static exploitable entities
 	for _, r := range mapState.resources {
