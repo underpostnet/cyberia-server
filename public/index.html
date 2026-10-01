@@ -6,9 +6,7 @@
       <link rel="icon" type="image/x-icon" href="/favicon.ico" />
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-      <script>
-        window.renderPayload = JSON.parse(`{"version":"v3.4.5"}`);
-      </script>
+      <link rel="https://underpost.net/rel/build-manifest" href="/underpost.manifest" type="application/json" /><script id="underpost-build-manifest" type="application/json">{"schema":1,"application":"cyberia-server","version":"v3.4.5","build":{"id":"19de2d568f7eb414","mode":"production"},"runtime":{"basePath":"/","apiBasePath":"api/v1"}}</script>
       <meta name="description" content="Operational dashboard for the cyberia-server MMO runtime.">
 <meta property="og:title" content="Metrics | CYBERIA MMO">
 <meta property="og:description" content="Operational dashboard for the cyberia-server MMO runtime.">
@@ -240,6 +238,7 @@ selection
       const POLL_INTERVAL_MS = 2000;
       const s = (el) => document.querySelector(el);
       const sa = (el) => document.querySelectorAll(el);
+      const BUILD_VERSION = JSON.parse(s('#underpost-build-manifest').textContent).version;
       const append = (el, html) => s(el).insertAdjacentHTML('beforeend', html);
       const setHTML = (el, html) => {
   const element = s(el);
@@ -634,7 +633,7 @@ selection
       <footer class="dash-foot">
         <span>POLL ${POLL_INTERVAL_MS} ms</span>
         <span>RFC 9457 problem+json on error</span>
-        <span>v${(window.renderPayload && window.renderPayload.version) || '0.0.0'}</span>
+        <span>${BUILD_VERSION}</span>
       </footer>
     </main>
   `;
