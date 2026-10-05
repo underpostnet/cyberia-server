@@ -123,13 +123,29 @@ func readInitData(t *testing.T, conn *websocket.Conn) InitPayload {
 	return InitPayload{}
 }
 
-func sendFrame(t *testing.T, conn *websocket.Conn, msgType string, payload any) error {
+// packEvents builds one "events" batch, one event per payload, all of type
+// eventType.
+func packEvents(t *testing.T, eventType string, payloads ...map[string]any) []byte {
 	t.Helper()
-	pack, err := serial.Pack(msgType, payload)
-	if err != nil {
-		t.Fatalf("pack %s: %v", msgType, err)
+	events := make([]json.RawMessage, 0, len(payloads))
+	for _, payload := range payloads {
+		event, err := serial.Pack(eventType, payload)
+		if err != nil {
+			t.Fatalf("pack %s: %v", eventType, err)
+		}
+		events = append(events, event)
 	}
-	return conn.WriteMessage(websocket.BinaryMessage, pack)
+	pack, err := serial.Pack("events", map[string]any{"events": events})
+	if err != nil {
+		t.Fatalf("pack events: %v", err)
+	}
+	return pack
+}
+
+// sendEvent sends one client event as a batch of one.
+func sendEvent(t *testing.T, conn *websocket.Conn, eventType string, payload map[string]any) error {
+	t.Helper()
+	return conn.WriteMessage(websocket.BinaryMessage, packEvents(t, eventType, payload))
 }
 
 // The ordinary case: a client connects, gets init_data with the real grid, and
@@ -190,8 +206,8 @@ func TestWSFiveSyntheticClientsAllConnectAndClearOnExit(t *testing.T) {
 	// Each client taps, as the load test does.
 	for i, conn := range conns {
 		for tap := 1; tap <= 5; tap++ {
-			if err := sendFrame(t, conn, "player_action", map[string]any{
-				"x": 10 + tap, "y": 12, "tick": 0, "seq": tap,
+			if err := sendEvent(t, conn, "player_action", map[string]any{
+				"x": 10 + tap, "y": 12, "frame": 0, "seq": tap,
 			}); err != nil {
 				t.Fatalf("client %d tap %d: %v", i, tap, err)
 			}
@@ -302,8 +318,8 @@ func TestWSInputFloodEvictsTheClientAndCleansUp(t *testing.T) {
 
 	// Flood well past the burst plus the strike allowance.
 	for i := 1; i <= 400; i++ {
-		if err := sendFrame(t, conn, "player_action", map[string]any{
-			"x": 10, "y": 10, "tick": 0, "seq": i,
+		if err := sendEvent(t, conn, "player_action", map[string]any{
+			"x": 10, "y": 10, "frame": 0, "seq": i,
 		}); err != nil {
 			break // the server has closed the connection
 		}
@@ -363,15 +379,15 @@ func TestWSAbsurdTapTargetsAreRejectedWithoutKillingTheSession(t *testing.T) {
 	for _, target := range []struct{ x, y float64 }{
 		{1e18, 1e18}, {-1e18, 0}, {maxTapCoordinate + 1, 5},
 	} {
-		if err := sendFrame(t, conn, "player_action", map[string]any{
-			"x": target.x, "y": target.y, "tick": 0, "seq": 1,
+		if err := sendEvent(t, conn, "player_action", map[string]any{
+			"x": target.x, "y": target.y, "frame": 0, "seq": 1,
 		}); err != nil {
 			t.Fatalf("send absurd tap: %v", err)
 		}
 	}
 	// A valid tap afterwards proves the session is still usable.
-	if err := sendFrame(t, conn, "player_action", map[string]any{
-		"x": 12, "y": 12, "tick": 0, "seq": 2,
+	if err := sendEvent(t, conn, "player_action", map[string]any{
+		"x": 12, "y": 12, "frame": 0, "seq": 2,
 	}); err != nil {
 		t.Fatalf("valid tap after absurd ones: %v", err)
 	}
@@ -382,6 +398,78 @@ func TestWSAbsurdTapTargetsAreRejectedWithoutKillingTheSession(t *testing.T) {
 	}
 	conn.Close()
 	waitFor(t, "cleanup", func() bool { return srv.playerCount() == 0 })
+}
+
+// Every seq of a batch is consumed. An invalid middle event costs a strike, is
+// still queued, and one input phase moves the cursor past all three.
+func TestWSBatchWithAnInvalidEventIsConsumedWhole(t *testing.T) {
+	limits := DefaultConnectionLimits()
+	limits.MaxStrikes = 1000 // isolate consumption from eviction
+	srv := newWSTestServer(t, limits)
+
+	conn, _, err := dial(t, srv.url)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	readInitData(t, conn)
+	waitFor(t, "the client to register", func() bool { return srv.clientCount() == 1 })
+
+	batch := packEvents(t, "player_action",
+		map[string]any{"x": 12, "y": 12, "frame": 7, "seq": 1},
+		map[string]any{"x": 1e18, "y": 12, "frame": 7, "seq": 2},
+		map[string]any{"x": 13, "y": 12, "frame": 7, "seq": 3},
+	)
+	if err := conn.WriteMessage(websocket.BinaryMessage, batch); err != nil {
+		t.Fatalf("send batch: %v", err)
+	}
+
+	mapState := srv.game.maps["test"]
+	queued := func() int {
+		srv.game.mu.Lock()
+		defer srv.game.mu.Unlock()
+		for _, p := range mapState.players {
+			return len(p.InputQueue)
+		}
+		return 0
+	}
+	waitFor(t, "the batch to be queued", func() bool { return queued() == 3 })
+
+	srv.game.mu.Lock()
+	defer srv.game.mu.Unlock()
+	srv.game.phaseInput(0, mapState)
+	for _, p := range mapState.players {
+		if p.InputConsumedThrough != 3 || len(p.InputQueue) != 0 {
+			t.Fatalf("cursor = %d, queue = %d, want 3, 0", p.InputConsumedThrough, len(p.InputQueue))
+		}
+	}
+}
+
+// A batch over the queue cap is a protocol violation. A correct client never
+// sends one, so the server evicts at once.
+func TestWSOversizedBatchEvictsTheClient(t *testing.T) {
+	srv := newWSTestServer(t, DefaultConnectionLimits())
+
+	conn, _, err := dial(t, srv.url)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	readInitData(t, conn)
+	waitFor(t, "the client to register", func() bool { return srv.clientCount() == 1 })
+
+	payloads := make([]map[string]any, maxInputQueue+1)
+	for i := range payloads {
+		payloads[i] = map[string]any{"x": 10, "y": 10, "frame": 0, "seq": i + 1}
+	}
+	if err := conn.WriteMessage(websocket.BinaryMessage, packEvents(t, "player_action", payloads...)); err != nil {
+		t.Fatalf("send batch: %v", err)
+	}
+
+	waitFor(t, "the client to be evicted", func() bool { return srv.playerCount() == 0 })
+	if srv.game.counters.wsEvictedTotal.Load() == 0 {
+		t.Fatal("the eviction must be counted")
+	}
 }
 
 // Acceptance: after a load run ends, the server holds no residue.
@@ -403,7 +491,7 @@ func TestWSNoResidueAfterAConcurrentConnectAndDisconnectCycle(t *testing.T) {
 				if err != nil {
 					return
 				}
-				pack, _ := serial.Pack("player_action", map[string]any{"x": 9, "y": 9, "tick": 0, "seq": 1})
+				pack := packEvents(t, "player_action", map[string]any{"x": 9, "y": 9, "frame": 0, "seq": 1})
 				conn.WriteMessage(websocket.BinaryMessage, pack)
 				conn.Close()
 			}()
@@ -455,7 +543,7 @@ func TestWSUnlimitedProfileAcceptsAWideSameAddressRun(t *testing.T) {
 	// Sustained input well past the default 30/s budget must not evict anyone.
 	for _, conn := range conns {
 		for seq := 1; seq <= 100; seq++ {
-			sendFrame(t, conn, "player_action", map[string]any{"x": 10, "y": 10, "tick": 0, "seq": seq})
+			sendEvent(t, conn, "player_action", map[string]any{"x": 10, "y": 10, "frame": 0, "seq": seq})
 		}
 	}
 	time.Sleep(200 * time.Millisecond)

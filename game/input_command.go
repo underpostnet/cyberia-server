@@ -1,13 +1,13 @@
 // Package game — input_command.go
 //
-// InputCommand is the canonical client-→-server input frame. It carries
-// everything required for an authoritative server to (a) apply the input on
-// the correct tick, (b) acknowledge it back to the client for prediction
-// reconciliation, and (c) gate stale or replayed inputs.
+// InputCommand is one client event: the unit of client→server input.
 //
-// The wire carries the JSON envelope {"type", "payload"}; receiveMessage in
-// handlers.go maps the type word to an InputKind. The payload tick + seq
-// fields are optional; zero values are accepted and handled by the simulation.
+// One "events" message carries many commands, in sequence order. Each one is
+// the envelope {"type", "payload"}; receiveMessage maps the inner type word to
+// an InputKind. Every payload carries seq, frame and timestamp. Every seq is
+// consumed: an event that fails validation is enqueued as InputKindUnknown, so
+// phaseInput moves the cursor past it and InputConsumedThrough lands on the
+// last seq of each batch.
 //
 // Ownership:
 //   - Built and enqueued by handlers.go (per-WS-goroutine).
@@ -22,9 +22,9 @@ package game
 type InputKind uint8
 
 const (
-	InputKindUnknown InputKind = iota
-	InputKindHandshake
-	InputKindPlayerAction // tap move + skill trigger
+	// InputKindUnknown is an event that failed validation: consumed, never applied.
+	InputKindUnknown      InputKind = iota
+	InputKindPlayerAction           // tap move + skill trigger
 	InputKindItemActivation
 	InputKindFreezeStart
 	InputKindFreezeEnd
@@ -45,8 +45,10 @@ const (
 
 // InputCommand is the unit of client→server input.
 type InputCommand struct {
-	Kind     InputKind
-	Sequence uint32 // monotonic per-client sequence number
+	Kind      InputKind
+	Sequence  uint32  // monotonic per-client sequence number
+	Frame     uint32  // client fixed-step count at push. Not a server tick.
+	Timestamp float64 // client GetTime() at push. No reader.
 	// Payload fields — only the ones relevant to Kind are populated.
 	TargetX     float64 // PlayerAction
 	TargetY     float64 // PlayerAction
@@ -63,19 +65,17 @@ type InputCommand struct {
 	RecipeIndex int     // CraftItem — index into the action's craftRecipes
 }
 
-// EnqueueInput pushes a command onto the player's InputQueue. Called from
-// the WS read goroutine; phaseInput drains under the world mutex on the
-// next tick. Bounded length keeps a buggy client from causing unbounded
-// growth — overflow drops the oldest entry, preserving recency. The
-// evicted slot is zeroed to release string references for GC.
-func EnqueueInput(p *PlayerState, cmd InputCommand) {
-	const maxQueue = 64
-	if len(p.InputQueue) >= maxQueue {
-		// Zero the evicted slot so string fields (ItemID, ChatText, etc.)
-		// are released for GC rather than retained by the backing array.
-		p.InputQueue[0] = InputCommand{}
-		copy(p.InputQueue, p.InputQueue[1:])
-		p.InputQueue = p.InputQueue[:len(p.InputQueue)-1]
+// maxInputQueue bounds one player's queue between two ticks. It equals the
+// client CLIENT_EVENT_CAP, so one batch from a correct client always fits.
+const maxInputQueue = 512
+
+// EnqueueInputs appends one batch to the player's InputQueue, whole, so one
+// phaseInput drains it. Called under the world mutex. It never drops: a batch
+// that does not fit returns false, and the caller evicts the client.
+func EnqueueInputs(p *PlayerState, cmds []InputCommand) bool {
+	if len(p.InputQueue)+len(cmds) > maxInputQueue {
+		return false
 	}
-	p.InputQueue = append(p.InputQueue, cmd)
+	p.InputQueue = append(p.InputQueue, cmds...)
+	return true
 }

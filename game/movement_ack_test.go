@@ -40,9 +40,7 @@ func movementFixture(t *testing.T) (*GameServer, *MapState, *PlayerState) {
 // tapTick queues taps and runs one full input phase over them, which is the only
 // path that re-plans movement.
 func tapTick(s *GameServer, mapState *MapState, player *PlayerState, taps ...InputCommand) {
-	for _, cmd := range taps {
-		EnqueueInput(player, cmd)
-	}
+	EnqueueInputs(player, taps)
 	s.phaseInput(0, mapState)
 }
 
@@ -117,8 +115,7 @@ func TestTapsInOneTickCoalesceToTheNewest(t *testing.T) {
 func TestEnqueueIsNotConsumption(t *testing.T) {
 	s, mapState, player := movementFixture(t)
 
-	EnqueueInput(player, tap(1, 18, 1))
-	EnqueueInput(player, tap(2, 1, 18))
+	EnqueueInputs(player, []InputCommand{tap(1, 18, 1), tap(2, 1, 18)})
 
 	if player.InputConsumedThrough != 0 || player.LastMovementSequence != 0 {
 		t.Fatalf("cursor = %d, moveAck = %d, want 0, 0 — enqueue is not consumption",

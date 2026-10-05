@@ -13,9 +13,10 @@ import (
 
 const (
 	sendQueue = 256
-	// readLimit bounds one inbound client frame. The largest client → server
-	// message is a chat line inside the JSON envelope.
-	readLimit    = 8 * 1024
+	// readLimit bounds one inbound client frame: one batch of client events.
+	// It holds a full batch of 512 taps, so a batch over the cap reaches the
+	// cap check in game.receiveMessage instead of the socket.
+	readLimit    = 64 * 1024
 	readTimeout  = 60 * time.Second
 	writeTimeout = 10 * time.Second
 	pingInterval = 30 * time.Second

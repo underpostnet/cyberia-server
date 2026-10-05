@@ -44,9 +44,8 @@ import "time"
 //   - Handlers run synchronously and may freely read/write world state.
 //   - Each command is consumed exactly once. The queue is emptied at the
 //     end of the phase.
-//   - Per-player input budget is bounded by the queue capacity in
-//     EnqueueInput (currently 64) so a malicious client cannot starve
-//     other tick work.
+//   - Per-player input budget is bounded by maxInputQueue (512) in
+//     EnqueueInputs, so a malicious client cannot starve other tick work.
 //   - Movement re-plans at most once per player per tick. Handlers record the
 //     intent; flushPendingMove runs the single A*. This is the only bound on
 //     pathfinder cost, so no other path may call it.
@@ -56,7 +55,7 @@ func (s *GameServer) phaseInput(tick uint32, mapState *MapState) {
 			continue
 		}
 		queue := player.InputQueue
-		player.InputQueue = nil // drained; further EnqueueInput appends a fresh slice
+		player.InputQueue = nil // drained; further EnqueueInputs appends a fresh slice
 		for i := range queue {
 			s.applyInputCommand(player, mapState, &queue[i])
 			// The cursor means consumed. A snapshot built between this
@@ -117,8 +116,8 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 		s.handleStorageSwap(player, cmd)
 	case InputKindStorageTransfer:
 		s.handleStorageTransfer(player, cmd)
-	case InputKindHandshake, InputKindUnknown:
-		// no-op
+	case InputKindUnknown:
+		// failed validation: consumed, never applied
 	}
 }
 

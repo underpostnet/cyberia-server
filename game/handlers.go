@@ -301,10 +301,9 @@ func (c *Client) readPump(server *GameServer) {
 	c.sock.Receive(func(pack []byte) { c.receiveMessage(pack, server) })
 }
 
-// inputKinds maps a wire message type to the internal input kind. The kind
-// enum stays internal; only this table knows the wire words.
+// inputKinds maps the inner type word of a client event to the internal input
+// kind. The kind enum stays internal; only this table knows the wire words.
 var inputKinds = map[string]InputKind{
-	"handshake":        InputKindHandshake,
 	"player_action":    InputKindPlayerAction,
 	"item_active":      InputKindItemActivation,
 	"freeze_start":     InputKindFreezeStart,
@@ -324,11 +323,12 @@ var inputKinds = map[string]InputKind{
 	"storage_transfer": InputKindStorageTransfer,
 }
 
-// inputPayload holds every client → server payload field. Each message type
-// fills the subset it needs; the rest stay zero.
+// inputPayload holds every client event payload field. Each event type fills
+// the subset it needs; the rest stay zero.
 type inputPayload struct {
-	Tick uint32 `json:"tick"`
-	Seq  uint32 `json:"seq"`
+	Seq       uint32  `json:"seq"`
+	Frame     uint32  `json:"frame"`
+	Timestamp float64 `json:"timestamp"`
 
 	X float64 `json:"x"` // player_action
 	Y float64 `json:"y"`
@@ -353,9 +353,19 @@ type inputPayload struct {
 	Deposit   bool `json:"deposit"` // storage_transfer
 }
 
-// receiveMessage is the single client → server dispatch point. It unpacks one
-// message into an InputCommand and enqueues it on the player's per-tick input
-// queue. phaseInput drains and applies it exactly once per tick.
+// eventsPayload is the payload of "events", the one uplink input message.
+type eventsPayload struct {
+	Events []serial.Message `json:"events"`
+}
+
+// receiveMessage is the single client → server dispatch point. A message is a
+// handshake or one batch of client events. The batch becomes one InputCommand
+// per event and is enqueued whole; phaseInput applies each command once.
+//
+// A protocol violation evicts: a message that is not a handshake or a batch,
+// a batch over maxInputQueue, or an event without a seq. An event that fails
+// validation costs a strike and is still enqueued as InputKindUnknown, so its
+// seq is consumed.
 func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 	// Rate limit first: an over-budget frame costs no parsing work.
 	if allowed, evict := c.limiter.allow(); !allowed {
@@ -366,49 +376,62 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 		return
 	}
 
-	// reject records a protocol violation. A client that keeps sending
-	// malformed input is closed rather than left to repeat it.
-	reject := func(format string, args ...any) {
-		logx.Debugf(format, args...)
-		if c.limiter.strike() {
-			c.evict(server, "repeated protocol violations")
-		}
-	}
-
 	msg, err := serial.Unpack(pack)
-	if err != nil {
-		reject("Bad message from player %s: %v", c.playerID, err)
-		return
-	}
-	kind, known := inputKinds[msg.Type]
-	if !known {
-		reject("Unknown message type %q from player %s", msg.Type, c.playerID)
-		return
-	}
-	if kind == InputKindHandshake {
+	if err == nil && msg.Type == "handshake" {
 		return // already authenticated upstream; nothing to do
 	}
-
-	var p inputPayload
-	if err := json.Unmarshal(msg.Payload, &p); err != nil {
-		reject("Bad %q payload from player %s: %v", msg.Type, c.playerID, err)
+	var batch eventsPayload
+	if err != nil || msg.Type != "events" || json.Unmarshal(msg.Payload, &batch) != nil {
+		c.evict(server, "bad message")
+		return
+	}
+	if len(batch.Events) > maxInputQueue {
+		c.evict(server, "event batch too large")
 		return
 	}
 
-	cmd := InputCommand{Kind: kind, Sequence: p.Seq}
+	cmds := make([]InputCommand, 0, len(batch.Events))
+	for _, ev := range batch.Events {
+		var p inputPayload
+		if err := json.Unmarshal(ev.Payload, &p); err != nil || p.Seq == 0 {
+			c.evict(server, "event without seq")
+			return
+		}
+		cmd, ok := parseInput(ev.Type, &p)
+		if !ok {
+			logx.Debugf("Invalid %q event from player %s", ev.Type, c.playerID)
+			if c.limiter.strike() {
+				c.evict(server, "repeated protocol violations")
+				return
+			}
+			cmd = InputCommand{Kind: InputKindUnknown}
+		}
+		cmd.Sequence, cmd.Frame, cmd.Timestamp = p.Seq, p.Frame, p.Timestamp
+		cmds = append(cmds, cmd)
+	}
+	c.dispatchInputs(server, cmds)
+}
+
+// parseInput validates one event payload and builds its command. False means
+// the type word is unknown or the payload fails validation.
+func parseInput(msgType string, p *inputPayload) (InputCommand, bool) {
+	kind, known := inputKinds[msgType]
+	if !known {
+		return InputCommand{}, false
+	}
+	cmd := InputCommand{Kind: kind}
 	switch kind {
 	case InputKindPlayerAction:
 		// A tap target reaches the pathfinder directly. Reject anything that
 		// is not a finite, plausible coordinate before it costs tick time.
 		if !validTapTarget(p.X, p.Y) {
-			reject("Out-of-range tap (%v,%v) from player %s", p.X, p.Y, c.playerID)
-			return
+			return InputCommand{}, false
 		}
 		cmd.TargetX = p.X
 		cmd.TargetY = p.Y
 	case InputKindItemActivation:
 		if p.ItemID == "" || !validIdentifier(p.ItemID) {
-			return
+			return InputCommand{}, false
 		}
 		cmd.ItemID = p.ItemID
 		cmd.Active = p.Active
@@ -419,56 +442,56 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 		}
 	case InputKindChat:
 		if p.ToID == "" || p.Text == "" || !validIdentifier(p.ToID) {
-			return
+			return InputCommand{}, false
 		}
 		cmd.ItemID = p.ToID // chat target id
 		cmd.ChatText = truncateRunes(p.Text, maxChatRunes)
 	case InputKindDlgStart, InputKindDlgCancel:
 		if p.EntityID == "" || !validIdentifier(p.EntityID) || !validIdentifier(p.ItemID) {
-			return
+			return InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.ItemID
 	case InputKindDlgComplete:
 		if p.EntityID == "" || !validIdentifier(p.EntityID) || !validIdentifier(p.DialogCode) {
-			return
+			return InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.ItemID
 		cmd.DialogCode = p.DialogCode
 	case InputKindQuestAbandon:
 		if p.QuestCode == "" || !validIdentifier(p.QuestCode) {
-			return
+			return InputCommand{}, false
 		}
 		cmd.ItemID = p.QuestCode
 	case InputKindQuestAccept:
 		if p.EntityID == "" || p.QuestCode == "" ||
 			!validIdentifier(p.EntityID) || !validIdentifier(p.QuestCode) {
-			return
+			return InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.QuestCode
 	case InputKindShopBuy:
 		if p.EntityID == "" || p.ItemID == "" ||
 			!validIdentifier(p.EntityID) || !validIdentifier(p.ItemID) {
-			return
+			return InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.ItemID
 		cmd.Quantity = clampQuantity(p.Quantity)
 	case InputKindCraftItem:
 		if p.EntityID == "" || !validIdentifier(p.EntityID) || p.RecipeIndex < 0 {
-			return
+			return InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.RecipeIndex = p.RecipeIndex
 	case InputKindStorageOpen, InputKindStorageMove, InputKindStorageSwap,
 		InputKindStorageTransfer:
 		if p.EntityID == "" || !validIdentifier(p.EntityID) || !validIdentifier(p.ItemID) {
-			return
+			return InputCommand{}, false
 		}
 		if kind != InputKindStorageOpen && (!validSlotIndex(p.FromIndex) || !validSlotIndex(p.ToIndex)) {
-			return
+			return InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.ItemID
@@ -476,7 +499,7 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 		cmd.FromIndex, cmd.ToIndex = p.FromIndex, p.ToIndex
 		cmd.Deposit = p.Deposit
 	}
-	c.dispatchInputCommand(server, cmd)
+	return cmd, true
 }
 
 // evict closes an abusive connection. The read loop ends on the closed socket
@@ -487,15 +510,19 @@ func (c *Client) evict(server *GameServer, reason string) {
 	c.sock.Close()
 }
 
-// dispatchInputCommand enqueues a typed InputCommand on the player's
-// per-tick input queue. phaseInput drains and applies it exactly once.
-func (c *Client) dispatchInputCommand(server *GameServer, cmd InputCommand) {
+// dispatchInputs enqueues one batch on the player's per-tick input queue.
+// phaseInput drains and applies each command exactly once. A batch that does
+// not fit evicts the client.
+func (c *Client) dispatchInputs(server *GameServer, cmds []InputCommand) {
+	fits := true
 	server.mu.Lock()
-	mapState, mapOK := server.maps[c.playerState.MapCode]
-	if mapOK {
+	if mapState, ok := server.maps[c.playerState.MapCode]; ok {
 		if player := mapState.players[c.playerID]; player != nil {
-			EnqueueInput(player, cmd)
+			fits = EnqueueInputs(player, cmds)
 		}
 	}
 	server.mu.Unlock()
+	if !fits {
+		c.evict(server, "input queue full")
+	}
 }
