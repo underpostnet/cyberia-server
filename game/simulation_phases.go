@@ -78,18 +78,12 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 		s.handlePlayerActionInput(player, mapState, cmd)
 	case InputKindItemActivation:
 		s.handleItemActivationInput(player, cmd)
-	case InputKindFreezeStart:
-		reason := cmd.Reason
-		if reason == "" {
-			reason = "freeze"
+	case InputKindPlayerStasis:
+		if cmd.Active {
+			FreezePlayer(player)
+		} else {
+			ThawPlayer(player)
 		}
-		FreezePlayer(player, reason)
-	case InputKindFreezeEnd:
-		reason := cmd.Reason
-		if reason == "" {
-			reason = "freeze"
-		}
-		ThawPlayer(player, reason)
 	case InputKindChat:
 		s.handleChatInput(player, mapState, cmd)
 	case InputKindDlgStart:

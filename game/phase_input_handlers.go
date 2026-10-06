@@ -58,7 +58,7 @@ func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
 	sequence := player.PendingMoveSequence
 	player.HasPendingMove = false
 
-	// Re-check the refusals the recording handler already applied: a FreezeStart
+	// Re-check the refusals the recording handler already applied: a player_stasis
 	// or a death later in the same queue lands between the record and this
 	// flush, and the tap must not outlive it.
 	if player.IsGhost() || player.Frozen {

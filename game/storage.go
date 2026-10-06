@@ -110,9 +110,6 @@ func (s *GameServer) resolveStorage(player *PlayerState, entityID string) (stora
 	if !ok {
 		return storageKey{}, 0, false
 	}
-	// Trading with a vault is an interaction: assert the modal protection so a
-	// transfer can never resolve while the player is exposed.
-	s.holdProviderFreeze(player, bot.ID)
 	return key, capacity, true
 }
 

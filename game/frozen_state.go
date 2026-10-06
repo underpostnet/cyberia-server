@@ -1,8 +1,7 @@
 // Package game — frozen_state.go
 //
-// FrozenInteractionState is a general-purpose mechanism that protects a
-// player during modal interactions (inventory, dialogue, future special
-// modes) without pausing the rest of the real-time sandbox.
+// FrozenInteractionState protects a player while a client modal is open,
+// without a pause of the rest of the real-time sandbox.
 //
 // While frozen:
 //   - The player receives NO incoming damage or effects (skill collisions skip them).
@@ -11,17 +10,8 @@
 //   - Temporary stat effects keep their server expiry times.
 //   - The rest of the world continues running normally.
 //
-// The Go server (relayer) is the single source of truth for this state.
-// The client sends "freeze_start" / "freeze_end" messages with a reason
-// string, and the server broadcasts the frozen flag back in the
-// AOI self-player payload so the client always reflects the authoritative
-// state.
-//
-// Usage:
-//
-//	FreezePlayer(player, "dialogue")   // enter frozen state
-//	ThawPlayer(player, "dialogue")     // exit frozen state
-//	player.Frozen                      // fast bool check in hot paths
+// The client event "player_stasis" is the only writer after join. The server
+// sends the flag back as "frozen" in the AOI self-player payload.
 //
 // The caller MUST hold server.mu when calling these functions.
 package game
@@ -31,56 +21,32 @@ import (
 	"time"
 )
 
-// FreezePlayer puts a player into FrozenInteractionState for the given
-// reason.  If the player is already frozen, this is a no-op (the existing
-// reason is preserved — first-writer wins).
+// FreezePlayer puts a player into FrozenInteractionState. No-op when frozen.
 //
 // Caller MUST hold server.mu.
-func FreezePlayer(player *PlayerState, reason string) {
+func FreezePlayer(player *PlayerState) {
 	if player.Frozen {
-		// Bridge transition: override the reason so the new modal "owns"
-		// the freeze.  The old modal's subsequent freeze_end will carry the
-		// stale reason and be rejected by ThawPlayer's reason-match check,
-		// keeping the player frozen throughout the transition — no gap.
-		if player.FreezeReason != reason {
-			logx.Debugf("[FREEZE] Player %s bridge: %q -> %q",
-				player.ID, player.FreezeReason, reason)
-			player.FreezeReason = reason
-		}
 		return
 	}
 	player.Frozen = true
-	player.FreezeReason = reason
 	player.FreezeStart = time.Now()
 
 	// Clear any in-flight movement so the player doesn't drift while frozen.
 	player.Path = nil
 	player.Mode = IDLE
 
-	logx.Debugf("[FREEZE] Player %s frozen (reason=%q)", player.ID, reason)
+	logx.Debugf("[FREEZE] Player %s frozen", player.ID)
 }
 
-// ThawPlayer exits FrozenInteractionState.  The supplied reason must match
-// the active freeze reason — this prevents a stale "dialogue end" from
-// thawing a player who has since entered "inventory" freeze.
-// If reason is empty, it thaws unconditionally (force-thaw for disconnect
-// cleanup).
+// ThawPlayer exits FrozenInteractionState. No-op when not frozen.
 //
 // Caller MUST hold server.mu.
-func ThawPlayer(player *PlayerState, reason string) {
+func ThawPlayer(player *PlayerState) {
 	if !player.Frozen {
 		return
 	}
-	if reason != "" && player.FreezeReason != reason {
-		logx.Debugf("[FREEZE] Player %s thaw reason mismatch: active=%q, requested=%q — ignoring",
-			player.ID, player.FreezeReason, reason)
-		return
-	}
-
-	dur := time.Since(player.FreezeStart)
-	logx.Debugf("[FREEZE] Player %s thawed (reason=%q, duration=%v)", player.ID, player.FreezeReason, dur)
+	logx.Debugf("[FREEZE] Player %s thawed (duration=%v)", player.ID, time.Since(player.FreezeStart))
 
 	player.Frozen = false
-	player.FreezeReason = ""
 	player.FreezeStart = time.Time{}
 }

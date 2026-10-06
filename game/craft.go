@@ -117,10 +117,6 @@ func (s *GameServer) handleCraftItem(player *PlayerState, cmd *InputCommand) {
 		s.sendCraftAck(player, cmd.EntityID, cmd.RecipeIndex, 0, craftRejectNoRecipe)
 		return
 	}
-	// Assert the modal protection here rather than trusting the client to still
-	// hold it, so an assembly can never run while the player is exposed.
-	s.holdProviderFreeze(player, bot.ID)
-
 	// All-or-nothing: a partial consume would burn ingredients for nothing.
 	if !s.playerCanCraft(player, recipe) {
 		s.sendCraftAck(player, cmd.EntityID, cmd.RecipeIndex, 0, craftRejectMissing)
@@ -163,9 +159,6 @@ func (s *GameServer) handleCraftCancel(player *PlayerState) {
 	for _, in := range active.Refund {
 		s.addPlayerItem(player, in.ItemID, in.Qty)
 	}
-	// The interact modal is still open behind the assembly card, so the session
-	// keeps its protection until the player closes it.
-	s.holdProviderFreeze(player, active.EntityID)
 	logx.Debugf("[CRAFT] player %s cancelled recipe %d", player.ID, active.RecipeIndex)
 }
 
@@ -187,11 +180,6 @@ func (s *GameServer) completeCrafts(mapState *MapState) {
 		// An assembly is an inventory gain like any other — reconcile collect
 		// objectives so a quest step satisfied by assembling advances at once.
 		s.advancePlayerQuestsOnGain(player)
-		// The player is still standing in the interact modal watching the
-		// result arrive: re-assert the session freeze so finishing an assembly
-		// never leaves them killable. Their freeze_end on closing the modal
-		// releases it.
-		s.holdProviderFreeze(player, active.EntityID)
 		logx.Debugf("[CRAFT] player %s completed recipe %d", player.ID, active.RecipeIndex)
 	}
 }

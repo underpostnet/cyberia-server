@@ -184,10 +184,9 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	s.ApplyResistanceStat(playerState, startMapState)
 	playerState.Life = playerState.MaxLife * s.initialLifeFraction // Set life based on config fraction
 
-	// Loading protection: every join spawns frozen under "loading" — no
-	// movement, no combat, no damage, no interactions — until the client
-	// confirms the player pressed Tap-to-Start (freeze_end "loading").
-	FreezePlayer(playerState, "loading")
+	// Every join spawns frozen. The client loading overlay is its first open
+	// modal; Tap-to-Start closes it and sends player_stasis false.
+	FreezePlayer(playerState)
 
 	// InitPayload is strictly simulation/protocol. Zero presentation: no
 	// palette, no camera, no devUi, no status-icon visuals, no screen
@@ -306,8 +305,7 @@ func (c *Client) readPump(server *GameServer) {
 var inputKinds = map[string]InputKind{
 	"player_action":    InputKindPlayerAction,
 	"item_active":      InputKindItemActivation,
-	"freeze_start":     InputKindFreezeStart,
-	"freeze_end":       InputKindFreezeEnd,
+	"player_stasis":    InputKindPlayerStasis,
 	"chat":             InputKindChat,
 	"dialog_start":     InputKindDlgStart,
 	"dialog_complete":  InputKindDlgComplete,
@@ -336,7 +334,7 @@ type inputPayload struct {
 	ItemID string `json:"itemId"` // item_active, shop_buy
 	Active bool   `json:"active"` // item_active
 
-	Reason string `json:"reason"` // freeze_start, freeze_end
+	Stasis bool `json:"stasis"` // player_stasis
 
 	ToID string `json:"toId"` // chat
 	Text string `json:"text"`
@@ -435,11 +433,8 @@ func parseInput(msgType string, p *inputPayload) (InputCommand, bool) {
 		}
 		cmd.ItemID = p.ItemID
 		cmd.Active = p.Active
-	case InputKindFreezeStart, InputKindFreezeEnd:
-		cmd.Reason = p.Reason
-		if cmd.Reason == "" || !validIdentifier(cmd.Reason) {
-			cmd.Reason = "freeze"
-		}
+	case InputKindPlayerStasis:
+		cmd.Active = p.Stasis
 	case InputKindChat:
 		if p.ToID == "" || p.Text == "" || !validIdentifier(p.ToID) {
 			return InputCommand{}, false

@@ -106,11 +106,6 @@ func (s *GameServer) handleShopBuy(player *PlayerState, cmd *InputCommand) {
 		s.sendShopAck(player, cmd.EntityID, cmd.ItemID, 0, shopRejectNotForSale)
 		return
 	}
-	// Trading is an interaction: assert the modal protection here rather than
-	// trusting the client to still hold it, so a purchase can never resolve
-	// while the buyer is exposed to damage.
-	s.holdProviderFreeze(player, bot.ID)
-
 	// All-or-nothing: a partial fill would silently charge for fewer units than
 	// the player confirmed in the quantity picker.
 	priceItemID, unitPrice := s.shopPrice(item)

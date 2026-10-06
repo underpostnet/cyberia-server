@@ -26,8 +26,7 @@ const (
 	InputKindUnknown      InputKind = iota
 	InputKindPlayerAction           // tap move + skill trigger
 	InputKindItemActivation
-	InputKindFreezeStart
-	InputKindFreezeEnd
+	InputKindPlayerStasis // client modal count > 0 — freeze, else thaw
 	InputKindChat
 	InputKindDlgStart        // dialogue opened — freeze + bind context
 	InputKindDlgComplete     // all lines read — advance talk/quest, unfreeze
@@ -53,8 +52,7 @@ type InputCommand struct {
 	TargetX     float64 // PlayerAction
 	TargetY     float64 // PlayerAction
 	ItemID      string  // ItemActivation, Chat target, ShopBuy
-	Active      bool    // ItemActivation
-	Reason      string  // FreezeStart, FreezeEnd
+	Active      bool    // ItemActivation; PlayerStasis — the stasis bool
 	ChatText    string  // Chat
 	EntityID    string  // DlgStart, DlgComplete, DlgCancel, ShopBuy, CraftItem, Storage* — the NPC entity
 	DialogCode  string  // DlgComplete — the dialogue group the player just read

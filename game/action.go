@@ -315,30 +315,9 @@ func botInPlayerRange(player *PlayerState, bot *BotState) bool {
 	return rectsOverlap(player.AOI, botRect)
 }
 
-// holdProviderFreeze keeps a player protected for the rest of an interaction
-// with an action-bound entity. A dialogue is only one step of a provider
-// session: the interact modal stays open afterwards with its shop and quest
-// tabs live, so lifting the freeze on dlg_complete/dlg_cancel would leave the
-// player killable mid-session. Re-bridging to "interact" makes the protection
-// the server's own guarantee instead of trusting the client to re-assert it.
-// The client releases it with freeze_end "interact" when the modal closes, and
-// its freeze watchdog covers a client that never does.
-//
-// Returns true when the freeze was held rather than released.
-//
-// Caller MUST hold s.mu.
-func (s *GameServer) holdProviderFreeze(player *PlayerState, entityID string) bool {
-	if s.actionCache[entityID] == nil {
-		return false
-	}
-	FreezePlayer(player, "interact")
-	return true
-}
-
 // ── Dialogue handlers (phaseInput) ──────────────────────────────────────────
 
-// handleDlgStart binds the dialogue context and freezes the player. The freeze
-// grants modal protection (immunity); it is released on dlg_complete / dlg_cancel.
+// handleDlgStart binds the dialogue context.
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) handleDlgStart(player *PlayerState, cmd *InputCommand) {
@@ -350,22 +329,17 @@ func (s *GameServer) handleDlgStart(player *PlayerState, cmd *InputCommand) {
 	// so it still resolves if the bot later dies or leaves AOI.
 	player.ActiveDialogueEntityID = cmd.EntityID
 	player.ActiveDialogueSkin = s.botActiveSkin(cmd.EntityID)
-	FreezePlayer(player, "dialogue")
 }
 
-// handleDlgCancel releases the dialogue freeze without recording progress.
+// handleDlgCancel clears the dialogue context without recording progress.
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) handleDlgCancel(player *PlayerState, cmd *InputCommand) {
 	if player.ActiveDialogueEntityID == "" || player.ActiveDialogueEntityID != cmd.EntityID {
 		return
 	}
-	entityID := player.ActiveDialogueEntityID
 	player.ActiveDialogueEntityID = ""
 	player.ActiveDialogueSkin = ""
-	if !s.holdProviderFreeze(player, entityID) {
-		ThawPlayer(player, "dialogue")
-	}
 }
 
 // handleDlgComplete is the authoritative dialogue-completion path. It validates
@@ -390,9 +364,6 @@ func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {
 	talkedSkin := player.ActiveDialogueSkin
 	player.ActiveDialogueEntityID = ""
 	player.ActiveDialogueSkin = ""
-	if !s.holdProviderFreeze(player, entityID) {
-		ThawPlayer(player, "dialogue")
-	}
 
 	// dlg_complete NEVER grants a quest — acceptance is explicit (quest_accept,
 	// the Take Quest button). Reading the dialogue only advances `talk` objectives

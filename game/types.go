@@ -131,9 +131,8 @@ type PlayerState struct {
 	// While Frozen, the player cannot deal or receive damage, send or
 	// receive events, or move.  The rest of the world continues.
 	// Managed exclusively by FreezePlayer / ThawPlayer (frozen_state.go).
-	Frozen       bool      `json:"-"`
-	FreezeReason string    `json:"-"` // e.g. "dialogue", "inventory"
-	FreezeStart  time.Time `json:"-"`
+	Frozen      bool      `json:"-"`
+	FreezeStart time.Time `json:"-"` // [FREEZE] duration log only
 
 	// ── Dialogue interaction context ────────────────────────────────────────
 	// ActiveDialogueEntityID is the entity the player currently has an open
