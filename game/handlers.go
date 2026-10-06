@@ -303,20 +303,18 @@ func (c *Client) readPump(server *GameServer) {
 // inputKinds maps the inner type word of a client event to the internal input
 // kind. The kind enum stays internal; only this table knows the wire words.
 var inputKinds = map[string]InputKind{
-	"player_action":   InputKindPlayerAction,
-	"item_active":     InputKindItemActivation,
-	"player_stasis":   InputKindPlayerStasis,
-	"chat":            InputKindChat,
-	"dialog_start":    InputKindDlgStart,
-	"dialog_complete": InputKindDlgComplete,
-	"dialog_cancel":   InputKindDlgCancel,
-	"quest_abandon":   InputKindQuestAbandon,
-	"quest_accept":    InputKindQuestAccept,
-	"shop_buy":        InputKindShopBuy,
-	"craft_item":      InputKindCraftItem,
-	"craft_cancel":    InputKindCraftCancel,
-	"storage_open":    InputKindStorageOpen,
-	"item_ops":        InputKindItemOps,
+	"player_action": InputKindPlayerAction,
+	"item_active":   InputKindItemActivation,
+	"player_stasis": InputKindPlayerStasis,
+	"chat":          InputKindChat,
+	"talk_done":     InputKindTalkDone,
+	"quest_abandon": InputKindQuestAbandon,
+	"quest_accept":  InputKindQuestAccept,
+	"shop_buy":      InputKindShopBuy,
+	"craft_item":    InputKindCraftItem,
+	"craft_cancel":  InputKindCraftCancel,
+	"storage_open":  InputKindStorageOpen,
+	"item_ops":      InputKindItemOps,
 }
 
 // inputPayload holds every client event payload field. Each event type fills
@@ -337,8 +335,8 @@ type inputPayload struct {
 	ToID string `json:"toId"` // chat
 	Text string `json:"text"`
 
-	EntityID   string `json:"entityId"`   // dialog_*, quest_accept, shop_buy
-	DialogCode string `json:"dialogCode"` // dialog_complete
+	EntityID   string `json:"entityId"`   // talk_done, quest_accept, shop_buy, storage_open, item_ops
+	DialogCode string `json:"dialogCode"` // talk_done
 	QuestCode  string `json:"questCode"`  // quest_*
 
 	Quantity    int `json:"quantity"`    // shop_buy
@@ -437,18 +435,11 @@ func parseInput(msgType string, p *inputPayload) (InputCommand, bool) {
 		}
 		cmd.ItemID = p.ToID // chat target id
 		cmd.ChatText = truncateRunes(p.Text, maxChatRunes)
-	case InputKindDlgStart, InputKindDlgCancel:
-		if p.EntityID == "" || !validIdentifier(p.EntityID) || !validIdentifier(p.ItemID) {
-			return InputCommand{}, false
-		}
-		cmd.EntityID = p.EntityID
-		cmd.ItemID = p.ItemID
-	case InputKindDlgComplete:
+	case InputKindTalkDone:
 		if p.EntityID == "" || !validIdentifier(p.EntityID) || !validIdentifier(p.DialogCode) {
 			return InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
-		cmd.ItemID = p.ItemID
 		cmd.DialogCode = p.DialogCode
 	case InputKindQuestAbandon:
 		if p.QuestCode == "" || !validIdentifier(p.QuestCode) {

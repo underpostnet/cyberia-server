@@ -86,12 +86,8 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 		}
 	case InputKindChat:
 		s.handleChatInput(player, mapState, cmd)
-	case InputKindDlgStart:
-		s.handleDlgStart(player, cmd)
-	case InputKindDlgComplete:
-		s.handleDlgComplete(player, cmd)
-	case InputKindDlgCancel:
-		s.handleDlgCancel(player, cmd)
+	case InputKindTalkDone:
+		s.handleTalkDone(player, cmd)
 	case InputKindQuestAbandon:
 		s.handleQuestAbandon(player, cmd)
 	case InputKindQuestAccept:

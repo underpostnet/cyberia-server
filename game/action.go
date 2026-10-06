@@ -3,17 +3,13 @@
 // Server-side cyberia-action runtime: the interactive-NPC / dialogue (talk)
 // layer. engine-cyberia owns the persisted CyberiaAction content and exposes it
 // over REST; the Go simulation binds each action to the entity on its source
-// cell and drives the dialogue handshake (dlg_start / dlg_complete / dlg_cancel).
-// Reading a dialogue advances quest `talk` objectives (see quest.go) — that is
-// the only coupling between the two otherwise-independent flows.
+// cell. Reading a dialogue advances quest `talk` objectives (see quest.go) —
+// that is the only coupling between the two otherwise-independent flows.
 //
 // Cross-process contract:
 //
-//	dlg_start    (client→server) — freeze the player, snapshot the interaction
-//	                               context (action + NPC skin) for validation
-//	dlg_complete (client→server) — advance talk objectives for the talked-to NPC,
-//	                               send dialog_ack, thaw
-//	dlg_cancel   (client→server) — clear context, thaw, no progress
+//	talk_done (client→server) — the client read dialogue D with entity E to the
+//	                            end: advance talk objectives for that NPC
 //
 // Caller MUST hold s.mu for every handler / mutation helper here (they run inside
 // phaseInput). Binding runs at world (re)build time, also under s.mu.
@@ -315,64 +311,22 @@ func botInPlayerRange(player *PlayerState, bot *BotState) bool {
 	return rectsOverlap(player.AOI, botRect)
 }
 
-// ── Dialogue handlers (phaseInput) ──────────────────────────────────────────
+// ── Dialogue (phaseInput) ───────────────────────────────────────────────────
 
-// handleDlgStart binds the dialogue context.
+// handleTalkDone advances the `talk` objectives for a dialogue the client read
+// to the end. The skin comes from botActiveSkin at apply time, which reads a
+// dead bot's pre-respawn skin and has no AOI test. When the NPC's action maps a
+// quest→dialogue, the dialogue code must match that mapping
+// (advanceTalkObjectives). It never grants a quest — that is quest_accept.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleDlgStart(player *PlayerState, cmd *InputCommand) {
+func (s *GameServer) handleTalkDone(player *PlayerState, cmd *InputCommand) {
 	if player.IsGhost() {
 		return
 	}
-	// Snapshot the provider's NPC skin now, while the bot is in range. dlg_complete
-	// validates the talk objective against this frozen skin, not a live re-lookup,
-	// so it still resolves if the bot later dies or leaves AOI.
-	player.ActiveDialogueEntityID = cmd.EntityID
-	player.ActiveDialogueSkin = s.botActiveSkin(cmd.EntityID)
-}
-
-// handleDlgCancel clears the dialogue context without recording progress.
-//
-// Caller MUST hold s.mu.
-func (s *GameServer) handleDlgCancel(player *PlayerState, cmd *InputCommand) {
-	if player.ActiveDialogueEntityID == "" || player.ActiveDialogueEntityID != cmd.EntityID {
-		return
-	}
-	player.ActiveDialogueEntityID = ""
-	player.ActiveDialogueSkin = ""
-}
-
-// handleDlgComplete is the authoritative dialogue-completion path. It validates
-// the frozen dialogue context, advances the `talk` objectives that target the
-// NPC the player spoke with (quest.go), and notifies the client via dialog_ack.
-//
-// Caller MUST hold s.mu.
-func (s *GameServer) handleDlgComplete(player *PlayerState, cmd *InputCommand) {
-	// Validate: drop unless this matches the dialogue the player opened.
-	if player.ActiveDialogueEntityID == "" || player.ActiveDialogueEntityID != cmd.EntityID {
-		return
-	}
-	// Resolve against the skin frozen at dlg_start, not a live re-lookup, so
-	// completion is independent of the bot's current alive/AOI state. Talk
-	// validation is by NPC skin; when the NPC's action maps a quest→dialogue
-	// (questDialogueCodes), the completed dialogCode must additionally match
-	// that mapping (advanceTalkObjectives enforces it), so finishing the
-	// default greeting cannot satisfy a quest-talk objective. A pure
-	// quest-giver (no bound action) still validates on skin alone.
-	entityID := player.ActiveDialogueEntityID
-	action := s.actionCache[entityID]
-	talkedSkin := player.ActiveDialogueSkin
-	player.ActiveDialogueEntityID = ""
-	player.ActiveDialogueSkin = ""
-
-	// dlg_complete NEVER grants a quest — acceptance is explicit (quest_accept,
-	// the Take Quest button). Reading the dialogue only advances `talk` objectives
-	// that target the NPC the player spoke with.
 	var affected []QuestSnapshotEntry
-	objectivesDone := s.advanceTalkObjectives(player, talkedSkin, action, cmd.DialogCode, &affected)
-	if s.advanceCollectObjectives(player, &affected) {
-		objectivesDone = true
-	}
-
-	s.sendDlgAck(player, "", objectivesDone, affected)
+	s.advanceTalkObjectives(player, s.botActiveSkin(cmd.EntityID), s.actionCache[cmd.EntityID],
+		cmd.DialogCode, &affected)
+	s.advanceCollectObjectives(player, &affected)
+	s.sendQuestUpdate(player, affected)
 }

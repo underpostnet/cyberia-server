@@ -134,20 +134,6 @@ type PlayerState struct {
 	Frozen      bool      `json:"-"`
 	FreezeStart time.Time `json:"-"` // [FREEZE] duration log only
 
-	// ── Dialogue interaction context ────────────────────────────────────────
-	// ActiveDialogueEntityID is the entity the player currently has an open
-	// dialogue with (set on dlg_start, cleared on dlg_complete / dlg_cancel).
-	// It is the cross-process contract that lets dlg_complete validate that
-	// the client is acknowledging the dialogue it actually opened — a stale
-	// or spoofed entityId is dropped. The client never declares the action
-	// type or quest code; the server resolves those from actionCache.
-	ActiveDialogueEntityID string `json:"-"`
-	// ActiveDialogueSkin freezes the provider's NPC skin at dlg_start, when the bot
-	// is in range and the modal opens. It is the authority dlg_complete validates
-	// the talk objective against, so completion resolves from the snapshot taken on
-	// open — independent of whether the bot later dies, wanders off, or leaves the
-	// player's AOI before the dialogue is finished.
-	ActiveDialogueSkin string `json:"-"`
 	// ActiveCraft is the assembly currently running for this player, or nil.
 	// A craft consumes its ingredients up front and pays out only when the
 	// timer elapses, so this record is also the refund receipt a cancel needs.
@@ -439,7 +425,7 @@ type GameServer struct {
 	// Action / quest content fetched from engine-cyberia REST at instance
 	// init (actions and quests are not part of the gRPC world payload).
 	//   actionCache  — entityId → bound CyberiaAction (resolved by the server
-	//                  on every dlg_complete; the client never declares it).
+	//                  on every talk_done; the client never declares it).
 	//   questDefs    — questCode → CyberiaQuest definition (steps/rewards).
 	// Both are rebuilt on every world (re)build; access is under s.mu.
 	actionCache map[string]*CyberiaAction

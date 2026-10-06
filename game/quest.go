@@ -546,7 +546,7 @@ func questComplete(qp *QuestProgress) bool {
 
 // advanceTalkObjectives advances, across all the player's active quests, every
 // current-step `talk` objective that targets the NPC the player just spoke with
-// (matched by the skin frozen at dlg_start). Matching on the skin — the NPC's
+// (matched by its active skin at talk_done). Matching on the skin — the NPC's
 // identity — rather than the client-supplied dialogCode makes validation
 // deterministic: it can't be stranded by the client sending a stale or
 // not-yet-resolved per-quest dialogCode, and it stays correct when one NPC line

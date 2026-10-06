@@ -28,9 +28,7 @@ const (
 	InputKindItemActivation
 	InputKindPlayerStasis // client modal count > 0 — freeze, else thaw
 	InputKindChat
-	InputKindDlgStart     // dialogue opened — freeze + bind context
-	InputKindDlgComplete  // all lines read — advance talk/quest, unfreeze
-	InputKindDlgCancel    // dismissed early — unfreeze, no progress
+	InputKindTalkDone     // dialogue read to the end — advance talk objectives
 	InputKindQuestAbandon // drop an active quest — moves it to failed
 	InputKindQuestAccept  // explicitly accept the NPC's offered quest
 	InputKindShopBuy      // buy one catalog item from a vendor action
@@ -52,8 +50,8 @@ type InputCommand struct {
 	ItemID      string   // ItemActivation, Chat target, ShopBuy
 	Active      bool     // ItemActivation; PlayerStasis — the stasis bool
 	ChatText    string   // Chat
-	EntityID    string   // DlgStart, DlgComplete, DlgCancel, ShopBuy, CraftItem, Storage* — the NPC entity
-	DialogCode  string   // DlgComplete — the dialogue group the player just read
+	EntityID    string   // TalkDone, ShopBuy, CraftItem, StorageOpen, ItemOps — the NPC entity
+	DialogCode  string   // TalkDone — the dialogue group the player just read
 	Quantity    int      // ShopBuy — units (clamped server-side)
 	RecipeIndex int      // CraftItem — index into the action's craftRecipes
 	Ops         []itemOp // ItemOps — applied front to back
