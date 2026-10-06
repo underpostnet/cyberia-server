@@ -104,12 +104,8 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 		s.handleCraftCancel(player)
 	case InputKindStorageOpen:
 		s.handleStorageOpen(player, cmd)
-	case InputKindStorageMove:
-		s.handleStorageMove(player, cmd)
-	case InputKindStorageSwap:
-		s.handleStorageSwap(player, cmd)
-	case InputKindStorageTransfer:
-		s.handleStorageTransfer(player, cmd)
+	case InputKindItemOps:
+		s.handleItemOps(player, cmd)
 	case InputKindUnknown:
 		// failed validation: consumed, never applied
 	}

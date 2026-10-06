@@ -67,9 +67,6 @@ func truncateRunes(s string, n int) string {
 	return s
 }
 
-// validSlotIndex bounds a storage slot index before it indexes a vault.
-func validSlotIndex(i int) bool { return i >= 0 && i <= storageMaxSlots }
-
 // clampQuantity bounds a client-supplied count. Handlers clamp again against
 // what the player actually holds; this stops an absurd value earlier.
 func clampQuantity(q int) int {

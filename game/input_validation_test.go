@@ -100,19 +100,6 @@ func TestParseInputCarriesTheStasisBool(t *testing.T) {
 	}
 }
 
-func TestValidSlotIndexBoundsVaultAccess(t *testing.T) {
-	for _, i := range []int{0, 1, storageMaxSlots} {
-		if !validSlotIndex(i) {
-			t.Fatalf("slot %d is in range", i)
-		}
-	}
-	for _, i := range []int{-1, storageMaxSlots + 1, 1 << 30} {
-		if validSlotIndex(i) {
-			t.Fatalf("slot %d must be rejected", i)
-		}
-	}
-}
-
 func TestClampQuantityBoundsClientCounts(t *testing.T) {
 	cases := []struct{ in, want int }{
 		{5, 5}, {0, 0}, {-1, 0}, {-1 << 30, 0},

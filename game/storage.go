@@ -3,37 +3,38 @@
 // Authoritative personal storage. engine-cyberia owns the vault's capacity: a
 // CyberiaAction carrying `storageSlots` makes the entity on its source cell a
 // storage terminal, and the value arrives with the world over gRPC (action.go).
-// Contents are runtime state held here for the session, shaped so each slot
+// Contents are runtime state held here for the session, shaped so each stack
 // maps 1:1 onto a future Mongoose document.
 //
-// A slot's address is its linear index in 0..capacity-1. The client wraps those
-// slots into however many columns its panel width admits, so a row/column pair
-// is presentation and can never be authoritative.
+// The vault is a bag of stacks. Cell order is client presentation.
 //
 // Cross-process contract:
 //
-//	storage_open     (client→server) — bind the vault, reply with its contents
-//	storage_move     (client→server) — relocate a slot onto an empty slot, or
-//	                                   merge it into one holding the same item
-//	storage_swap     (client→server) — exchange two occupied slots
-//	storage_transfer (client→server) — move a stack between vault and inventory
-//	storage_state    (server→client) — the authoritative vault after any of them
+//	storage_open  (client→server) — bind the vault, reply with its contents
+//	item_ops      (client→server) — the deposits and withdrawals of one session,
+//	                                replayed in order against the server's items
+//	storage_state (server→client) — the vault, once per open
 //
-// Every mutation answers with the full vault: the client applies its drop
-// optimistically and reconciles from this, so a rejected op self-heals without
-// a bespoke error path.
+// A replayed op clamps to what the source holds. No ack: the next snapshot
+// carries the inventory.
 //
 // Caller MUST hold s.mu for every handler here (they run inside phaseInput).
 package game
 
 import "cyberia-server/logx"
 
-// StorageSlot is one occupied slot. The JSON tags are the persistence shape:
-// itemId + qty + index is everything a document needs.
+// StorageSlot is one stack. The JSON tags are the persistence shape.
 type StorageSlot struct {
 	ItemID string `json:"itemId"`
 	Qty    int    `json:"qty"`
-	Index  int    `json:"index"`
+}
+
+// itemOp is one replayed vault operation: Qty of ItemID into the vault when
+// ToVault, else out of it.
+type itemOp struct {
+	ItemID  string `json:"itemId"`
+	Qty     int    `json:"qty"`
+	ToVault bool   `json:"toVault"`
 }
 
 // storageKey scopes a vault to one player at one action cell — storage is
@@ -83,11 +84,10 @@ func (s *GameServer) botHasStorage(bot *BotState) bool {
 	return action != nil && storageCapacity(action.StorageSlots) >= 1
 }
 
-// storageSlotAt returns the position in the vault of the slot occupying an
-// index, or -1 when that index is free.
-func storageSlotAt(slots []StorageSlot, index int) int {
+// storageStackOf returns the position of the stack holding itemID, or -1.
+func storageStackOf(slots []StorageSlot, itemID string) int {
 	for i := range slots {
-		if slots[i].Index == index {
+		if slots[i].ItemID == itemID {
 			return i
 		}
 	}
@@ -124,95 +124,24 @@ func (s *GameServer) handleStorageOpen(player *PlayerState, cmd *InputCommand) {
 	s.sendStorageState(player, cmd.EntityID, capacity, s.storage[key])
 }
 
-// handleStorageMove moves a slot onto another index of the same vault: free,
-// or holding the same item, in which case the two stacks merge. A Quantity
-// below what the source holds splits it, leaving the remainder where it was.
-// A target holding a different item is refused — that drop is a swap.
+// handleItemOps replays one session's vault ops, front to back, against the
+// server's own items. It sends no reply.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleStorageMove(player *PlayerState, cmd *InputCommand) {
+func (s *GameServer) handleItemOps(player *PlayerState, cmd *InputCommand) {
 	key, capacity, ok := s.resolveStorage(player, cmd.EntityID)
 	if !ok {
 		return
 	}
 	slots := s.storage[key]
-	from := storageSlotAt(slots, cmd.FromIndex)
-	to := storageSlotAt(slots, cmd.ToIndex)
-	if from < 0 || cmd.FromIndex == cmd.ToIndex ||
-		cmd.ToIndex < 0 || cmd.ToIndex >= capacity ||
-		(to >= 0 && slots[to].ItemID != slots[from].ItemID) {
-		s.sendStorageState(player, cmd.EntityID, capacity, slots)
-		return
-	}
-	slots = storageRelocate(slots, from, to, cmd.ToIndex, cmd.Quantity)
-	s.storage[key] = slots
-	s.sendStorageState(player, cmd.EntityID, capacity, slots)
-}
-
-// storageRelocate moves qty out of the slot at position `from` onto toIndex.
-// `to` is the position of the slot already at toIndex holding the same item, or
-// -1 when that index is free. A qty below what the source holds splits it,
-// leaving the remainder in place; anything else moves the whole stack.
-func storageRelocate(slots []StorageSlot, from, to, toIndex, qty int) []StorageSlot {
-	whole := qty <= 0 || qty >= slots[from].Qty
-	if whole {
-		qty = slots[from].Qty
-	}
-
-	if to < 0 {
-		if whole {
-			slots[from].Index = toIndex
-			return slots
+	for _, op := range cmd.Ops {
+		if op.ToVault {
+			slots = s.storageDeposit(player, slots, capacity, op.ItemID, op.Qty)
+		} else {
+			slots = s.storageWithdraw(player, slots, op.ItemID, op.Qty)
 		}
-		slots[from].Qty -= qty
-		return append(slots, StorageSlot{ItemID: slots[from].ItemID, Qty: qty, Index: toIndex})
-	}
-
-	slots[to].Qty += qty
-	if whole {
-		return append(slots[:from], slots[from+1:]...)
-	}
-	slots[from].Qty -= qty
-	return slots
-}
-
-// handleStorageSwap exchanges the indices of two occupied slots.
-//
-// Caller MUST hold s.mu.
-func (s *GameServer) handleStorageSwap(player *PlayerState, cmd *InputCommand) {
-	key, capacity, ok := s.resolveStorage(player, cmd.EntityID)
-	if !ok {
-		return
-	}
-	slots := s.storage[key]
-	from := storageSlotAt(slots, cmd.FromIndex)
-	to := storageSlotAt(slots, cmd.ToIndex)
-	if from < 0 || to < 0 || from == to {
-		s.sendStorageState(player, cmd.EntityID, capacity, slots)
-		return
-	}
-	slots[from].Index, slots[to].Index = slots[to].Index, slots[from].Index
-	s.sendStorageState(player, cmd.EntityID, capacity, slots)
-}
-
-// handleStorageTransfer moves a stack across the vault boundary: Deposit takes
-// it out of the player's inventory into the named slot, Withdraw does the
-// reverse. Quantities are clamped to what the source actually holds.
-//
-// Caller MUST hold s.mu.
-func (s *GameServer) handleStorageTransfer(player *PlayerState, cmd *InputCommand) {
-	key, capacity, ok := s.resolveStorage(player, cmd.EntityID)
-	if !ok {
-		return
-	}
-	slots := s.storage[key]
-	if cmd.Deposit {
-		slots = s.storageDeposit(player, slots, capacity, cmd)
-	} else {
-		slots = s.storageWithdraw(player, slots, cmd)
 	}
 	s.storage[key] = slots
-	s.sendStorageState(player, cmd.EntityID, capacity, slots)
 }
 
 // playerItemActive reports whether the player currently has this item equipped.
@@ -257,54 +186,50 @@ func setLayerActive(layers []ObjectLayerState, itemID string, active bool) {
 	}
 }
 
-// storageDeposit consumes the stack from the player and lands it on the target
-// slot, merging when the slot already holds the same item. A worn item is taken
-// off first, and only refused when the equipment rules need it worn.
+// storageDeposit moves qty of itemID from the player into the vault, merging
+// into its stack. A new stack is refused once the vault holds capacity stacks.
+// A worn item is taken off first, and only refused when the equipment rules
+// need it worn.
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) storageDeposit(player *PlayerState, slots []StorageSlot, capacity int,
-	cmd *InputCommand) []StorageSlot {
-	if cmd.ToIndex < 0 || cmd.ToIndex >= capacity {
+	itemID string, qty int) []StorageSlot {
+	at := storageStackOf(slots, itemID)
+	if at < 0 && len(slots) >= capacity {
 		return slots
 	}
-	if playerItemActive(player, cmd.ItemID) {
-		if !s.bankableWhileWorn(player, cmd.ItemID) {
+	if playerItemActive(player, itemID) {
+		if !s.bankableWhileWorn(player, itemID) {
 			return slots
 		}
 		// Putting something away is taking it off: what is banked is no longer worn.
-		setLayerActive(player.ObjectLayers, cmd.ItemID, false)
+		setLayerActive(player.ObjectLayers, itemID, false)
 	}
-	qty := cmd.Quantity
-	if held := s.playerItemQuantity(player, cmd.ItemID); qty > held {
+	if held := s.playerItemQuantity(player, itemID); qty > held {
 		qty = held
 	}
 	if qty <= 0 {
 		return slots
 	}
-	at := storageSlotAt(slots, cmd.ToIndex)
-	if at >= 0 && slots[at].ItemID != cmd.ItemID {
-		return slots
-	}
 
-	s.removePlayerItem(player, cmd.ItemID, qty)
+	s.removePlayerItem(player, itemID, qty)
 	if at >= 0 {
 		slots[at].Qty += qty
 		return slots
 	}
-	return append(slots, StorageSlot{ItemID: cmd.ItemID, Qty: qty, Index: cmd.ToIndex})
+	return append(slots, StorageSlot{ItemID: itemID, Qty: qty})
 }
 
-// storageWithdraw drains the named slot back into the player's inventory,
-// dropping it once it is empty.
+// storageWithdraw moves qty of itemID from the vault back into the player's
+// inventory, dropping the stack once it is empty.
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) storageWithdraw(player *PlayerState, slots []StorageSlot,
-	cmd *InputCommand) []StorageSlot {
-	at := storageSlotAt(slots, cmd.FromIndex)
+	itemID string, qty int) []StorageSlot {
+	at := storageStackOf(slots, itemID)
 	if at < 0 {
 		return slots
 	}
-	qty := cmd.Quantity
 	if qty > slots[at].Qty {
 		qty = slots[at].Qty
 	}
@@ -321,12 +246,11 @@ func (s *GameServer) storageWithdraw(player *PlayerState, slots []StorageSlot,
 	if slots[at].Qty > 0 {
 		return slots
 	}
-	logx.Debugf("[STORAGE] player %s emptied slot %d", player.ID, cmd.FromIndex)
+	logx.Debugf("[STORAGE] player %s emptied stack %s", player.ID, itemID)
 	return append(slots[:at], slots[at+1:]...)
 }
 
-// sendStorageState pushes the authoritative vault, which the client adopts
-// wholesale over its optimistic view.
+// sendStorageState pushes the vault. The client seeds its grid from it.
 func (s *GameServer) sendStorageState(player *PlayerState, entityID string, capacity int,
 	slots []StorageSlot) {
 	if slots == nil {

@@ -17,24 +17,8 @@ func TestStorageCapacityClampsToTheRenderableCeiling(t *testing.T) {
 	}
 }
 
-func TestStorageSlotAtLocatesByIndex(t *testing.T) {
-	slots := []StorageSlot{
-		{ItemID: "coin", Qty: 5, Index: 0},
-		{ItemID: "hatchet", Qty: 1, Index: 7},
-	}
-	if at := storageSlotAt(slots, 7); at != 1 {
-		t.Fatalf("want the hatchet at position 1, got %d", at)
-	}
-	if at := storageSlotAt(slots, 3); at != -1 {
-		t.Fatalf("a free index must not match, got %d", at)
-	}
-	if at := storageSlotAt(nil, 0); at != -1 {
-		t.Fatal("an empty vault holds nothing")
-	}
-}
-
 // A deposit leaves the player's inventory and lands in the vault; a withdrawal
-// does the reverse and drops the slot once drained. Quantities are clamped to
+// does the reverse and drops the stack once drained. Quantities are clamped to
 // what the source actually holds, so a spoofed count can never mint items.
 func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 	s := &GameServer{
@@ -49,117 +33,72 @@ func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 	}
 
 	// Deposit more than held → clamped to the 2 the player actually has.
-	slots := s.storageDeposit(player, nil, 25, &InputCommand{
-		ItemID: "hatchet", Quantity: 9, ToIndex: 6,
-	})
-	if len(slots) != 1 || slots[0].Qty != 2 || slots[0].Index != 6 {
-		t.Fatalf("deposit must clamp to the held count and land on the slot: %+v", slots)
+	slots := s.storageDeposit(player, nil, 2, "hatchet", 9)
+	if len(slots) != 1 || slots[0].Qty != 2 {
+		t.Fatalf("deposit must clamp to the held count: %+v", slots)
 	}
 	if s.playerItemQuantity(player, "hatchet") != 0 {
 		t.Fatal("a deposit must leave the player's inventory")
 	}
 
-	// A second deposit of the same item merges into the occupied cell.
+	// A second deposit of the same item merges into its stack.
 	player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: "hatchet", Quantity: 1})
-	slots = s.storageDeposit(player, slots, 25, &InputCommand{
-		ItemID: "hatchet", Quantity: 1, ToIndex: 6,
-	})
+	slots = s.storageDeposit(player, slots, 2, "hatchet", 1)
 	if len(slots) != 1 || slots[0].Qty != 3 {
 		t.Fatalf("same-item deposit must merge, got %+v", slots)
-	}
-
-	// A different item may not land on an occupied cell.
-	player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: "coin", Quantity: 4})
-	if got := s.storageDeposit(player, slots, 25, &InputCommand{
-		ItemID: "coin", Quantity: 4, ToIndex: 6,
-	}); len(got) != 1 {
-		t.Fatalf("a foreign item must not occupy a taken slot, got %+v", got)
-	}
-
-	// Out-of-range indices are rejected rather than clamped.
-	if got := s.storageDeposit(player, slots, 25, &InputCommand{
-		ItemID: "coin", Quantity: 1, ToIndex: 25,
-	}); len(got) != 1 {
-		t.Fatalf("a slot past the capacity must be rejected, got %+v", got)
 	}
 
 	// A worn item is taken off as it is banked; only the equipment rules hold one back, and this
 	// server configures none. See TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive.
 	player.ObjectLayers = append(player.ObjectLayers,
 		ObjectLayerState{ItemID: "helmet", Quantity: 1, Active: true})
-	if got := s.storageDeposit(player, slots, 25, &InputCommand{
-		ItemID: "helmet", Quantity: 1, ToIndex: 0,
-	}); len(got) != 2 {
-		t.Fatalf("a worn item with nothing holding it back is storable, got %+v", got)
+	if slots = s.storageDeposit(player, slots, 2, "helmet", 1); len(slots) != 2 {
+		t.Fatalf("a worn item with nothing holding it back is storable, got %+v", slots)
 	}
 	if s.playerItemQuantity(player, "helmet") != 0 {
 		t.Fatal("what is banked leaves the player")
 	}
 
-	// Partial withdrawal keeps the slot; draining it removes the slot.
-	slots = s.storageWithdraw(player, slots, &InputCommand{Quantity: 1, FromIndex: 6})
-	if len(slots) != 1 || slots[0].Qty != 2 || s.playerItemQuantity(player, "hatchet") != 1 {
-		t.Fatalf("partial withdrawal must keep the slot: %+v", slots)
+	// A full vault refuses a new stack and keeps the item with the player.
+	player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: "gem", Quantity: 4})
+	if got := s.storageDeposit(player, slots, 2, "gem", 4); len(got) != 2 {
+		t.Fatalf("a full vault must refuse a new stack, got %+v", got)
 	}
-	slots = s.storageWithdraw(player, slots, &InputCommand{Quantity: 99, FromIndex: 6})
-	if len(slots) != 0 || s.playerItemQuantity(player, "hatchet") != 3 {
-		t.Fatalf("draining a slot must remove it and return everything: %+v", slots)
+	if s.playerItemQuantity(player, "gem") != 4 {
+		t.Fatal("a refused deposit must not take the item")
+	}
+
+	// Partial withdrawal keeps the stack; draining it removes the stack.
+	slots = s.storageWithdraw(player, slots, "hatchet", 1)
+	if len(slots) != 2 || slots[0].Qty != 2 || s.playerItemQuantity(player, "hatchet") != 1 {
+		t.Fatalf("partial withdrawal must keep the stack: %+v", slots)
+	}
+	slots = s.storageWithdraw(player, slots, "hatchet", 99)
+	if len(slots) != 1 || s.playerItemQuantity(player, "hatchet") != 3 {
+		t.Fatalf("draining a stack must remove it and return everything: %+v", slots)
 	}
 }
 
-// Dragging a stack onto a free slot either relocates it whole or splits it,
-// depending on the count the player picked in the split card.
-func TestStorageRelocateSplitsOrMovesWhole(t *testing.T) {
-	whole := storageRelocate([]StorageSlot{{ItemID: "hatchet", Qty: 4, Index: 2}}, 0, -1, 9, 4)
-	if len(whole) != 1 || whole[0].Index != 9 || whole[0].Qty != 4 {
-		t.Fatalf("a full-count move must relocate the stack: %+v", whole)
+// item_ops is a trust boundary: every op names an item and a positive count,
+// and the list never exceeds the largest vault.
+func TestParseInputBoundsItemOps(t *testing.T) {
+	op := itemOp{ItemID: "hatchet", Qty: 1, ToVault: true}
+	full := make([]itemOp, storageMaxSlots)
+	for i := range full {
+		full[i] = op
 	}
-
-	// A zero quantity is the unsized drag of a single item — still whole.
-	unsized := storageRelocate([]StorageSlot{{ItemID: "hatchet", Qty: 1, Index: 2}}, 0, -1, 9, 0)
-	if len(unsized) != 1 || unsized[0].Index != 9 {
-		t.Fatalf("an unsized move must relocate the stack: %+v", unsized)
+	if _, ok := parseInput("item_ops", &inputPayload{EntityID: "vault", Ops: full}); !ok {
+		t.Fatal("a list at the cap must pass")
 	}
-
-	split := storageRelocate([]StorageSlot{{ItemID: "hatchet", Qty: 4, Index: 2}}, 0, -1, 9, 1)
-	if len(split) != 2 {
-		t.Fatalf("a partial count must leave a remainder behind: %+v", split)
-	}
-	if split[0].Index != 2 || split[0].Qty != 3 {
-		t.Fatalf("the source keeps the remainder in place: %+v", split[0])
-	}
-	if split[1].Index != 9 || split[1].Qty != 1 || split[1].ItemID != "hatchet" {
-		t.Fatalf("the split lands on the target slot: %+v", split[1])
-	}
-}
-
-// Dropping a stack onto one holding the same item merges them. A full count
-// drains the source slot away; a partial one leaves the remainder behind.
-func TestStorageRelocateMergesOntoTheSameItem(t *testing.T) {
-	stock := func() []StorageSlot {
-		return []StorageSlot{
-			{ItemID: "hatchet", Qty: 4, Index: 2},
-			{ItemID: "hatchet", Qty: 5, Index: 9},
+	for name, ops := range map[string][]itemOp{
+		"empty":    nil,
+		"over cap": append(full, op),
+		"zero qty": {{ItemID: "hatchet", Qty: 0}},
+		"no item":  {{Qty: 1}},
+	} {
+		if _, ok := parseInput("item_ops", &inputPayload{EntityID: "vault", Ops: ops}); ok {
+			t.Fatalf("%s: must be rejected", name)
 		}
-	}
-
-	merged := storageRelocate(stock(), 0, 1, 9, 4)
-	if len(merged) != 1 {
-		t.Fatalf("a full merge must drain the source slot: %+v", merged)
-	}
-	if merged[0].Index != 9 || merged[0].Qty != 9 {
-		t.Fatalf("the target absorbs the whole stack: %+v", merged[0])
-	}
-
-	partial := storageRelocate(stock(), 0, 1, 9, 1)
-	if len(partial) != 2 {
-		t.Fatalf("a partial merge must keep the source slot: %+v", partial)
-	}
-	if partial[0].Index != 2 || partial[0].Qty != 3 {
-		t.Fatalf("the source keeps the remainder: %+v", partial[0])
-	}
-	if partial[1].Index != 9 || partial[1].Qty != 6 {
-		t.Fatalf("the target absorbs only the picked count: %+v", partial[1])
 	}
 }
 
@@ -182,7 +121,7 @@ func TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive(t *testing.T) {
 		{ItemID: "punk", Active: true, Quantity: 1},
 	}}}
 
-	slots := server.storageDeposit(player, nil, 8, &InputCommand{ItemID: "anon", Quantity: 1, ToIndex: 0})
+	slots := server.storageDeposit(player, nil, 8, "anon", 1)
 	if len(slots) != 1 || slots[0].ItemID != "anon" {
 		t.Fatalf("the skin belongs in the vault: %+v", slots)
 	}
@@ -193,7 +132,7 @@ func TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive(t *testing.T) {
 	}
 
 	// The last active skin stays: with nothing else dressed, the vault does not take it.
-	slots = server.storageDeposit(player, slots, 8, &InputCommand{ItemID: "punk", Quantity: 1, ToIndex: 1})
+	slots = server.storageDeposit(player, slots, 8, "punk", 1)
 	if len(slots) != 1 {
 		t.Fatalf("the last worn skin cannot be banked: %+v", slots)
 	}

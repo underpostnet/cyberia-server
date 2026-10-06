@@ -190,25 +190,6 @@ func applyDeadItems(layers []ObjectLayerState, deadItemIDs []string) []ObjectLay
 	return layers
 }
 
-// grantItemToPlayer adds `qty` of a non-coin item to a player's inventory
-// (appended inactive if new). No gain FCT — the pickup shows in the loot grid.
-func (s *GameServer) grantItemToPlayer(player *PlayerState, itemID string, qty int) {
-	if itemID == "" || qty <= 0 {
-		return
-	}
-	found := false
-	for i := range player.ObjectLayers {
-		if player.ObjectLayers[i].ItemID == itemID {
-			player.ObjectLayers[i].Quantity += qty
-			found = true
-			break
-		}
-	}
-	if !found {
-		player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: itemID, Active: false, Quantity: qty})
-	}
-}
-
 // grantItemToBot transfers `qty` of a non-coin item into a contributing bot's
 // inventory when it collects a scattered drop (appended inactive if new).
 func (s *GameServer) grantItemToBot(bot *BotState, itemID string, qty int) {

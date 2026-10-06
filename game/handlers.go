@@ -303,22 +303,20 @@ func (c *Client) readPump(server *GameServer) {
 // inputKinds maps the inner type word of a client event to the internal input
 // kind. The kind enum stays internal; only this table knows the wire words.
 var inputKinds = map[string]InputKind{
-	"player_action":    InputKindPlayerAction,
-	"item_active":      InputKindItemActivation,
-	"player_stasis":    InputKindPlayerStasis,
-	"chat":             InputKindChat,
-	"dialog_start":     InputKindDlgStart,
-	"dialog_complete":  InputKindDlgComplete,
-	"dialog_cancel":    InputKindDlgCancel,
-	"quest_abandon":    InputKindQuestAbandon,
-	"quest_accept":     InputKindQuestAccept,
-	"shop_buy":         InputKindShopBuy,
-	"craft_item":       InputKindCraftItem,
-	"craft_cancel":     InputKindCraftCancel,
-	"storage_open":     InputKindStorageOpen,
-	"storage_move":     InputKindStorageMove,
-	"storage_swap":     InputKindStorageSwap,
-	"storage_transfer": InputKindStorageTransfer,
+	"player_action":   InputKindPlayerAction,
+	"item_active":     InputKindItemActivation,
+	"player_stasis":   InputKindPlayerStasis,
+	"chat":            InputKindChat,
+	"dialog_start":    InputKindDlgStart,
+	"dialog_complete": InputKindDlgComplete,
+	"dialog_cancel":   InputKindDlgCancel,
+	"quest_abandon":   InputKindQuestAbandon,
+	"quest_accept":    InputKindQuestAccept,
+	"shop_buy":        InputKindShopBuy,
+	"craft_item":      InputKindCraftItem,
+	"craft_cancel":    InputKindCraftCancel,
+	"storage_open":    InputKindStorageOpen,
+	"item_ops":        InputKindItemOps,
 }
 
 // inputPayload holds every client event payload field. Each event type fills
@@ -346,9 +344,7 @@ type inputPayload struct {
 	Quantity    int `json:"quantity"`    // shop_buy
 	RecipeIndex int `json:"recipeIndex"` // craft_item
 
-	FromIndex int  `json:"fromIndex"` // storage_*
-	ToIndex   int  `json:"toIndex"`
-	Deposit   bool `json:"deposit"` // storage_transfer
+	Ops []itemOp `json:"ops"` // item_ops
 }
 
 // eventsPayload is the payload of "events", the one uplink input message.
@@ -480,19 +476,24 @@ func parseInput(msgType string, p *inputPayload) (InputCommand, bool) {
 		}
 		cmd.EntityID = p.EntityID
 		cmd.RecipeIndex = p.RecipeIndex
-	case InputKindStorageOpen, InputKindStorageMove, InputKindStorageSwap,
-		InputKindStorageTransfer:
-		if p.EntityID == "" || !validIdentifier(p.EntityID) || !validIdentifier(p.ItemID) {
-			return InputCommand{}, false
-		}
-		if kind != InputKindStorageOpen && (!validSlotIndex(p.FromIndex) || !validSlotIndex(p.ToIndex)) {
+	case InputKindStorageOpen:
+		if p.EntityID == "" || !validIdentifier(p.EntityID) {
 			return InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
-		cmd.ItemID = p.ItemID
-		cmd.Quantity = clampQuantity(p.Quantity)
-		cmd.FromIndex, cmd.ToIndex = p.FromIndex, p.ToIndex
-		cmd.Deposit = p.Deposit
+	case InputKindItemOps:
+		// Trust boundary: the list replays under s.mu, so its length is capped.
+		if p.EntityID == "" || !validIdentifier(p.EntityID) ||
+			len(p.Ops) == 0 || len(p.Ops) > storageMaxSlots {
+			return InputCommand{}, false
+		}
+		for _, op := range p.Ops {
+			if op.ItemID == "" || !validIdentifier(op.ItemID) || op.Qty <= 0 {
+				return InputCommand{}, false
+			}
+		}
+		cmd.EntityID = p.EntityID
+		cmd.Ops = p.Ops
 	}
 	return cmd, true
 }
