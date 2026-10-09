@@ -19,7 +19,7 @@ import (
 // serializers — no .proto codegen on either side.
 //
 // Keep ServiceName/MethodName in sync with the engine client
-// (src/projects/cyberia/hot-reload-trigger.js).
+// (src/projects/cyberia/runtime/hot-reload-trigger.js).
 const (
 	ServiceName = "cyberia.CyberiaControlService"
 	MethodName  = "TriggerHotReload"
