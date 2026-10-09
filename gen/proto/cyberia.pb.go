@@ -913,15 +913,14 @@ func (x *ActionQuestDialogue) GetDialogCode() string {
 	return ""
 }
 
+// Items are named by item id; the catalog resolves the definition each one runs.
 type ActionShopItem struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	ItemId              string                 `protobuf:"bytes,1,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"`                  // label
-	PriceItemId         string                 `protobuf:"bytes,2,opt,name=price_item_id,json=priceItemId,proto3" json:"price_item_id,omitempty"` // currency item label (default "coin")
-	PriceQty            int32                  `protobuf:"varint,3,opt,name=price_qty,json=priceQty,proto3" json:"price_qty,omitempty"`
-	ObjectLayerCid      string                 `protobuf:"bytes,4,opt,name=object_layer_cid,json=objectLayerCid,proto3" json:"object_layer_cid,omitempty"`                  // pinned definition of the sold item
-	PriceObjectLayerCid string                 `protobuf:"bytes,5,opt,name=price_object_layer_cid,json=priceObjectLayerCid,proto3" json:"price_object_layer_cid,omitempty"` // pinned definition of the currency
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ItemId        string                 `protobuf:"bytes,1,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"`
+	PriceItemId   string                 `protobuf:"bytes,2,opt,name=price_item_id,json=priceItemId,proto3" json:"price_item_id,omitempty"` // currency item id (default "coin")
+	PriceQty      int32                  `protobuf:"varint,3,opt,name=price_qty,json=priceQty,proto3" json:"price_qty,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ActionShopItem) Reset() {
@@ -975,27 +974,12 @@ func (x *ActionShopItem) GetPriceQty() int32 {
 	return 0
 }
 
-func (x *ActionShopItem) GetObjectLayerCid() string {
-	if x != nil {
-		return x.ObjectLayerCid
-	}
-	return ""
-}
-
-func (x *ActionShopItem) GetPriceObjectLayerCid() string {
-	if x != nil {
-		return x.PriceObjectLayerCid
-	}
-	return ""
-}
-
 type ActionCraftItem struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	ItemId         string                 `protobuf:"bytes,1,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"` // label
-	Qty            int32                  `protobuf:"varint,2,opt,name=qty,proto3" json:"qty,omitempty"`
-	ObjectLayerCid string                 `protobuf:"bytes,3,opt,name=object_layer_cid,json=objectLayerCid,proto3" json:"object_layer_cid,omitempty"` // pinned definition
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ItemId        string                 `protobuf:"bytes,1,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"`
+	Qty           int32                  `protobuf:"varint,2,opt,name=qty,proto3" json:"qty,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ActionCraftItem) Reset() {
@@ -1040,13 +1024,6 @@ func (x *ActionCraftItem) GetQty() int32 {
 		return x.Qty
 	}
 	return 0
-}
-
-func (x *ActionCraftItem) GetObjectLayerCid() string {
-	if x != nil {
-		return x.ObjectLayerCid
-	}
-	return ""
 }
 
 type ActionCraftRecipe struct {
@@ -1226,13 +1203,12 @@ func (x *CyberiaActionMessage) GetStorageSlots() int32 {
 }
 
 type QuestObjectiveMessage struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Type           string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`                   // collect | talk | kill
-	ItemId         string                 `protobuf:"bytes,2,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"` // label
-	Quantity       int32                  `protobuf:"varint,3,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	ObjectLayerCid string                 `protobuf:"bytes,4,opt,name=object_layer_cid,json=objectLayerCid,proto3" json:"object_layer_cid,omitempty"` // pinned definition, empty when the objective names no content
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"` // collect | talk | kill
+	ItemId        string                 `protobuf:"bytes,2,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"`
+	Quantity      int32                  `protobuf:"varint,3,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *QuestObjectiveMessage) Reset() {
@@ -1284,13 +1260,6 @@ func (x *QuestObjectiveMessage) GetQuantity() int32 {
 		return x.Quantity
 	}
 	return 0
-}
-
-func (x *QuestObjectiveMessage) GetObjectLayerCid() string {
-	if x != nil {
-		return x.ObjectLayerCid
-	}
-	return ""
 }
 
 type QuestStepMessage struct {
@@ -1354,12 +1323,11 @@ func (x *QuestStepMessage) GetObjectives() []*QuestObjectiveMessage {
 }
 
 type QuestRewardMessage struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	ItemId         string                 `protobuf:"bytes,1,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"` // label
-	Quantity       int32                  `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	ObjectLayerCid string                 `protobuf:"bytes,3,opt,name=object_layer_cid,json=objectLayerCid,proto3" json:"object_layer_cid,omitempty"` // pinned definition
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ItemId        string                 `protobuf:"bytes,1,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"`
+	Quantity      int32                  `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *QuestRewardMessage) Reset() {
@@ -1404,13 +1372,6 @@ func (x *QuestRewardMessage) GetQuantity() int32 {
 		return x.Quantity
 	}
 	return 0
-}
-
-func (x *QuestRewardMessage) GetObjectLayerCid() string {
-	if x != nil {
-		return x.ObjectLayerCid
-	}
-	return ""
 }
 
 type CyberiaQuestMessage struct {
@@ -3344,17 +3305,14 @@ const file_cyberia_proto_rawDesc = "" +
 	"\n" +
 	"quest_code\x18\x01 \x01(\tR\tquestCode\x12\x1f\n" +
 	"\vdialog_code\x18\x02 \x01(\tR\n" +
-	"dialogCode\"\xc9\x01\n" +
+	"dialogCode\"\xa0\x01\n" +
 	"\x0eActionShopItem\x12\x17\n" +
 	"\aitem_id\x18\x01 \x01(\tR\x06itemId\x12\"\n" +
 	"\rprice_item_id\x18\x02 \x01(\tR\vpriceItemId\x12\x1b\n" +
-	"\tprice_qty\x18\x03 \x01(\x05R\bpriceQty\x12(\n" +
-	"\x10object_layer_cid\x18\x04 \x01(\tR\x0eobjectLayerCid\x123\n" +
-	"\x16price_object_layer_cid\x18\x05 \x01(\tR\x13priceObjectLayerCid\"f\n" +
+	"\tprice_qty\x18\x03 \x01(\x05R\bpriceQtyJ\x04\b\x04\x10\x05J\x04\b\x05\x10\x06R\x10object_layer_cidR\x16price_object_layer_cid\"T\n" +
 	"\x0fActionCraftItem\x12\x17\n" +
 	"\aitem_id\x18\x01 \x01(\tR\x06itemId\x12\x10\n" +
-	"\x03qty\x18\x02 \x01(\x05R\x03qty\x12(\n" +
-	"\x10object_layer_cid\x18\x03 \x01(\tR\x0eobjectLayerCid\"\xb0\x01\n" +
+	"\x03qty\x18\x02 \x01(\x05R\x03qtyJ\x04\b\x03\x10\x04R\x10object_layer_cid\"\xb0\x01\n" +
 	"\x11ActionCraftRecipe\x12;\n" +
 	"\foutput_items\x18\x01 \x03(\v2\x18.cyberia.ActionCraftItemR\voutputItems\x12:\n" +
 	"\vingredients\x18\x02 \x03(\v2\x18.cyberia.ActionCraftItemR\vingredients\x12\"\n" +
@@ -3372,22 +3330,20 @@ const file_cyberia_proto_rawDesc = "" +
 	"\n" +
 	"shop_items\x18\v \x03(\v2\x17.cyberia.ActionShopItemR\tshopItems\x12?\n" +
 	"\rcraft_recipes\x18\f \x03(\v2\x1a.cyberia.ActionCraftRecipeR\fcraftRecipes\x12#\n" +
-	"\rstorage_slots\x18\r \x01(\x05R\fstorageSlotsJ\x04\b\x02\x10\x03J\x04\b\a\x10\bJ\x04\b\b\x10\t\"\x8a\x01\n" +
+	"\rstorage_slots\x18\r \x01(\x05R\fstorageSlotsJ\x04\b\x02\x10\x03J\x04\b\a\x10\bJ\x04\b\b\x10\t\"x\n" +
 	"\x15QuestObjectiveMessage\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x17\n" +
 	"\aitem_id\x18\x02 \x01(\tR\x06itemId\x12\x1a\n" +
-	"\bquantity\x18\x03 \x01(\x05R\bquantity\x12(\n" +
-	"\x10object_layer_cid\x18\x04 \x01(\tR\x0eobjectLayerCid\"\x84\x01\n" +
+	"\bquantity\x18\x03 \x01(\x05R\bquantityJ\x04\b\x04\x10\x05R\x10object_layer_cid\"\x84\x01\n" +
 	"\x10QuestStepMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12>\n" +
 	"\n" +
 	"objectives\x18\x03 \x03(\v2\x1e.cyberia.QuestObjectiveMessageR\n" +
-	"objectives\"s\n" +
+	"objectives\"a\n" +
 	"\x12QuestRewardMessage\x12\x17\n" +
 	"\aitem_id\x18\x01 \x01(\tR\x06itemId\x12\x1a\n" +
-	"\bquantity\x18\x02 \x01(\x05R\bquantity\x12(\n" +
-	"\x10object_layer_cid\x18\x03 \x01(\tR\x0eobjectLayerCid\"\x98\x03\n" +
+	"\bquantity\x18\x02 \x01(\x05R\bquantityJ\x04\b\x03\x10\x04R\x10object_layer_cid\"\x98\x03\n" +
 	"\x13CyberiaQuestMessage\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +

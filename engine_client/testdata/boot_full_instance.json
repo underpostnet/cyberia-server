@@ -224,7 +224,6 @@
               {
                 "type": "collect",
                 "itemId": "sword",
-                "objectLayerCid": "",
                 "quantity": 1
               }
             ]
@@ -233,7 +232,6 @@
         "rewards": [
           {
             "itemId": "sword",
-            "objectLayerCid": "",
             "quantity": 1
           }
         ]
