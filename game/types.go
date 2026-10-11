@@ -156,27 +156,19 @@ type PlayerState struct {
 	Quests map[string]*QuestProgress `json:"-"`
 
 	// ── Tick / replication metadata ─────────────────────────────────────────
-	// LastSnapshotTick is stamped by phaseReplication just before the AOI
-	// encoder runs for this player. It is embedded in the snapshot header.
 	// InputConsumedThrough is the highest InputCommand.Sequence phaseInput has
-	// applied for this player; the snapshot encoder echoes it so the client
-	// can drop consumed commands from its prediction buffer.
-	// LastMovementSequence is the highest PLAYER_ACTION sequence that actually
-	// re-planned movement. Consumption is not planning: taps that land in the
-	// same tick are all consumed, but only the newest of them is planned,
-	// so Path and TargetPos can describe an earlier command. The client needs
-	// the two apart — it predicts on acknowledgement but may only adopt the
-	// authoritative route once movement has been re-planned for its command.
-	LastSnapshotTick     uint32 `json:"-"`
+	// applied for this player; the snapshot echoes it so the client can drop
+	// consumed events from its replay list.
 	InputConsumedThrough uint32 `json:"-"`
-	LastMovementSequence uint32 `json:"-"`
+	// FrameOffset is the client step minus the server tick, from the newest
+	// consumed event.
+	FrameOffset int64 `json:"-"`
 	// PendingMove is the destination of the newest PLAYER_ACTION drained this
 	// tick. phaseInput re-plans from it once, after the whole queue is applied,
 	// so a burst of taps costs one A* instead of one per tap. Cleared by the
 	// flush; never persisted across ticks.
-	PendingMove         PointI `json:"-"`
-	PendingMoveSequence uint32 `json:"-"`
-	HasPendingMove      bool   `json:"-"`
+	PendingMove    PointI `json:"-"`
+	HasPendingMove bool   `json:"-"`
 	// InputQueue holds InputCommand frames received from the client between
 	// simulation ticks. Drained in fixed order by phaseInput. nil-safe: the
 	// queue is allocated lazily when the first command is enqueued.
@@ -358,10 +350,9 @@ type GameServer struct {
 	portalHoldTime   time.Duration
 
 	// ── Tick model (authoritative simulation cadence) ────────────────────────
-	// The server advances one logical Tick per tickDuration. snapshotRate
-	// is the AOI replication Hz; ≤ tickRate.
+	// The server advances one logical Tick per tickDuration and sends one
+	// snapshot per player each tick.
 	tickRate     int           // simulation Hz (e.g. 30)
-	snapshotRate int           // replication Hz (e.g. 20)
 	tickDuration time.Duration // 1 / tickRate
 	currentTick  uint32        // monotonic; advanced once per simulation tick
 
@@ -534,7 +525,6 @@ type SkillMapEntry struct {
 type InitPayload struct {
 	GridW          int                        `json:"gridW"`
 	GridH          int                        `json:"gridH"`
-	SnapshotRate   int                        `json:"snapshotRate"`
 	AoiRadius      float64                    `json:"aoiRadius"`
 	ObjectLayers   []ObjectLayerState         `json:"objectLayers"`
 	SkillMap       map[string][]SkillMapEntry `json:"skillMap"`

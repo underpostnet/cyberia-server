@@ -2317,9 +2317,7 @@ type InstanceConfig struct {
 	EntityDefaults []*EntityTypeDefault `protobuf:"bytes,52,rep,name=entity_defaults,json=entityDefaults,proto3" json:"entity_defaults,omitempty"`
 	// ── Tick model (authoritative simulation cadence) ─────────────────────────
 	// tick_rate is the canonical simulation Hz on cyberia-server.
-	TickRate int32 `protobuf:"varint,65,opt,name=tick_rate,json=tickRate,proto3" json:"tick_rate,omitempty"`
-	// snapshot_rate is the AOI replication Hz. Typically ≤ tick_rate.
-	SnapshotRate  int32 `protobuf:"varint,66,opt,name=snapshot_rate,json=snapshotRate,proto3" json:"snapshot_rate,omitempty"`
+	TickRate      int32 `protobuf:"varint,65,opt,name=tick_rate,json=tickRate,proto3" json:"tick_rate,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2525,13 +2523,6 @@ func (x *InstanceConfig) GetEntityDefaults() []*EntityTypeDefault {
 func (x *InstanceConfig) GetTickRate() int32 {
 	if x != nil {
 		return x.TickRate
-	}
-	return 0
-}
-
-func (x *InstanceConfig) GetSnapshotRate() int32 {
-	if x != nil {
-		return x.SnapshotRate
 	}
 	return 0
 }
@@ -3421,7 +3412,7 @@ const file_cyberia_proto_rawDesc = "" +
 	"\x11max_repeat_awards\x18\n" +
 	" \x01(\x05R\x0fmaxRepeatAwards\x121\n" +
 	"\x15max_awards_per_window\x18\v \x01(\x05R\x12maxAwardsPerWindow\x12*\n" +
-	"\x11default_bot_level\x18\f \x01(\x05R\x0fdefaultBotLevel\"\xd5\x11\n" +
+	"\x11default_bot_level\x18\f \x01(\x05R\x0fdefaultBotLevel\"\xc5\x11\n" +
 	"\x0eInstanceConfig\x12\x1d\n" +
 	"\n" +
 	"aoi_radius\x18\f \x01(\x01R\taoiRadius\x12-\n" +
@@ -3450,10 +3441,9 @@ const file_cyberia_proto_rawDesc = "" +
 	"\reconomy_rules\x18> \x01(\v2\x15.cyberia.EconomyRulesR\feconomyRules\x12@\n" +
 	"\x0fequipment_rules\x18? \x01(\v2\x17.cyberia.EquipmentRulesR\x0eequipmentRules\x12C\n" +
 	"\x0fentity_defaults\x184 \x03(\v2\x1a.cyberia.EntityTypeDefaultR\x0eentityDefaults\x12\x1b\n" +
-	"\ttick_rate\x18A \x01(\x05R\btickRate\x12#\n" +
-	"\rsnapshot_rate\x18B \x01(\x05R\fsnapshotRateJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
+	"\ttick_rate\x18A \x01(\x05R\btickRateJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
 	"J\x04\b\n" +
-	"\x10\vJ\x04\b\v\x10\fJ\x04\b\x18\x10\x19J\x04\b\x1b\x10\x1cJ\x04\b\x1c\x10\x1dJ\x04\b \x10!J\x04\b5\x106J\x04\b6\x107J\x04\b7\x108J\x04\b8\x109J\x04\b9\x10:J\x04\b:\x10;J\x04\b;\x10<J\x04\b<\x10=J\x04\b=\x10>J\x04\b#\x10$J\x04\b$\x10%J\x04\b%\x10&J\x04\b&\x10'J\x04\b'\x10(J\x04\b(\x10)J\x04\b)\x10*J\x04\b*\x10+J\x04\b+\x10,J\x04\b.\x10/J\x04\b\x1d\x10\x1eJ\x04\b\x1f\x10 J\x04\b,\x10-J\x04\b0\x101J\x04\b1\x102J\x04\b2\x103J\x04\b3\x104J\x04\b@\x10AJ\x04\bC\x10DR\tcell_sizeR\x03fpsR\x10interpolation_msR\x11default_obj_widthR\x12default_obj_heightR\x10camera_smoothingR\vcamera_zoomR\x1bdefault_width_screen_factorR\x1cdefault_height_screen_factorR\x06dev_uiR\x06colorsR\x0fsum_stats_limitR\x1cdefault_player_object_layersR\x13respawn_duration_msR\x13bullet_spawn_chanceR\x12bullet_lifetime_msR\fbullet_widthR\rbullet_heightR\x17bullet_speed_multiplierR\x19doppelganger_spawn_chanceR\x18doppelganger_lifetime_msR\x19doppelganger_spawn_radiusR\"doppelganger_initial_life_fractionR\x14default_player_colorR\rghost_item_idR\fcoin_item_idR\x15default_floor_item_idR\x13bot_default_item_idR\x14user_default_item_idR\x16weapon_default_item_idR\x16bullet_default_item_idR\fstatus_iconsR\fclient_hints\"\xa3\x02\n" +
+	"\x10\vJ\x04\b\v\x10\fJ\x04\b\x18\x10\x19J\x04\b\x1b\x10\x1cJ\x04\b\x1c\x10\x1dJ\x04\b \x10!J\x04\b5\x106J\x04\b6\x107J\x04\b7\x108J\x04\b8\x109J\x04\b9\x10:J\x04\b:\x10;J\x04\b;\x10<J\x04\b<\x10=J\x04\b=\x10>J\x04\b#\x10$J\x04\b$\x10%J\x04\b%\x10&J\x04\b&\x10'J\x04\b'\x10(J\x04\b(\x10)J\x04\b)\x10*J\x04\b*\x10+J\x04\b+\x10,J\x04\b.\x10/J\x04\b\x1d\x10\x1eJ\x04\b\x1f\x10 J\x04\b,\x10-J\x04\b0\x101J\x04\b1\x102J\x04\b2\x103J\x04\b3\x104J\x04\b@\x10AJ\x04\bB\x10CJ\x04\bC\x10DR\tcell_sizeR\x03fpsR\x10interpolation_msR\x11default_obj_widthR\x12default_obj_heightR\x10camera_smoothingR\vcamera_zoomR\x1bdefault_width_screen_factorR\x1cdefault_height_screen_factorR\x06dev_uiR\x06colorsR\x0fsum_stats_limitR\x1cdefault_player_object_layersR\x13respawn_duration_msR\x13bullet_spawn_chanceR\x12bullet_lifetime_msR\fbullet_widthR\rbullet_heightR\x17bullet_speed_multiplierR\x19doppelganger_spawn_chanceR\x18doppelganger_lifetime_msR\x19doppelganger_spawn_radiusR\"doppelganger_initial_life_fractionR\x14default_player_colorR\rghost_item_idR\fcoin_item_idR\x15default_floor_item_idR\x13bot_default_item_idR\x14user_default_item_idR\x16weapon_default_item_idR\x16bullet_default_item_idR\fstatus_iconsR\rsnapshot_rateR\fclient_hints\"\xa3\x02\n" +
 	"\x11EntityTypeDefault\x12\x1f\n" +
 	"\ventity_type\x18\x01 \x01(\tR\n" +
 	"entityType\x12\"\n" +

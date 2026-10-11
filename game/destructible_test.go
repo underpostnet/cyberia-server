@@ -238,8 +238,8 @@ func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 	before := player.Pos
 	s.handleRespawns(ms)
 	if player.Pos != before || player.Mode != WALKING || player.TargetPos != (PointI{X: 15, Y: 15}) ||
-		player.LastMovementSequence != 7 || len(player.Path) == 0 {
-		t.Fatalf("the player keeps its destination and movement acknowledgement: %+v", player)
+		len(player.Path) == 0 {
+		t.Fatalf("the player keeps its destination: %+v", player)
 	}
 	for _, cell := range player.Path {
 		if !ms.pathfinder.isWalkable(cell.X, cell.Y, player.Dims) {

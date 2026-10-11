@@ -43,7 +43,7 @@ func newWSTestServer(t *testing.T, limits ConnectionLimits) *wsTestServer {
 	s := NewGameServer()
 	s.SetConnectionLimits(limits)
 	s.maps["test"] = mapState
-	s.tickRate, s.snapshotRate = 60, 20
+	s.tickRate = 60
 	s.tickDuration = computeTickDuration(60)
 	s.aoiRadius = 10
 	s.defaultPlayerWidth, s.defaultPlayerHeight = 2, 2

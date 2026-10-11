@@ -14,9 +14,7 @@
 //	5. phaseMovement    integrate positions using s.tickDuration
 //	6. phaseLoot        player↔drop-token collection + priority validation
 //	7. phasePortals     portal entry / teleport
-//
-// Replication (phaseReplication) runs on its own ticker at snapshotRate and
-// is invoked from server.go directly.
+//	8. phaseReplication one AOI snapshot per player
 //
 // A phase MUST NOT:
 //   - touch any presentation concern. PresentationHints has been deleted
@@ -63,10 +61,20 @@ func (s *GameServer) phaseInput(tick uint32, mapState *MapState) {
 			if queue[i].Sequence > player.InputConsumedThrough {
 				player.InputConsumedThrough = queue[i].Sequence
 			}
+			// An event pushed in client frame F takes effect in step F + 1,
+			// so this tick stands for that step.
+			player.FrameOffset = int64(queue[i].Frame) + 1 - int64(tick)
 		}
 		s.flushPendingMove(player, mapState)
 	}
-	_ = tick
+}
+
+// frameAt is the client step that tick stands for. 0 before the first consumed event.
+func (p *PlayerState) frameAt(tick uint32) uint32 {
+	if p.InputConsumedThrough == 0 {
+		return 0
+	}
+	return uint32(int64(tick) + p.FrameOffset)
 }
 
 // applyInputCommand is the typed dispatcher. Kept on *GameServer so it
@@ -176,15 +184,11 @@ func (s *GameServer) phasePortals(tick uint32, mapState *MapState) {
 	}
 }
 
-// phaseReplication runs on the snapshot ticker. Iterates connected players
-// for this map, computes their AOI, encodes a snapshot, and sends it. This
-// path is the only one that produces server→client AOI frames at steady
-// state (the bootstrap full snapshot on connect is sent from handlers.go).
-//
-// `tick` is the simulation tick at the moment the snapshot was produced.
-// The wire encoder embeds it in the snapshot header so the client can use
-// it for prediction reconciliation and interpolation.
-func (s *GameServer) phaseReplication(tick uint32, mapState *MapState) {
+// phaseReplication runs last in each tick. Iterates connected players for
+// this map, computes their AOI, encodes a snapshot, and sends it. This path
+// is the only one that produces server→client AOI frames at steady state
+// (the bootstrap full snapshot on connect is sent from handlers.go).
+func (s *GameServer) phaseReplication(mapState *MapState) {
 	for _, player := range mapState.players {
 		player.AOI = Rectangle{
 			MinX: player.Pos.X - s.aoiRadius,
@@ -192,7 +196,6 @@ func (s *GameServer) phaseReplication(tick uint32, mapState *MapState) {
 			MaxX: player.Pos.X + player.Dims.Width + s.aoiRadius,
 			MaxY: player.Pos.Y + player.Dims.Height + s.aoiRadius,
 		}
-		player.LastSnapshotTick = tick
 		s.sendAOI(player)
 	}
 }

@@ -61,16 +61,10 @@ The tick is the universal coordinate of the simulation.
 | ----------------- | --------------- | ------------------------------------------------------------------------------------------------------- |
 | **tick**          | `uint32`        | Monotonic, advanced once per simulation step. Resets only on world rebuild.                             |
 | **tick rate**     | `30` Hz         | Simulation Hz. Loaded from world configuration. **The string `fps` is not used to describe this rate.** |
-| **snapshot rate** | `20` Hz         | AOI replication Hz. Decoupled from tick rate so bandwidth scales independently of simulation fidelity.  |
 | **tick duration** | `1 / tick_rate` | The dt used by every simulation phase.                                                                  |
-| **current tick**  | `uint32`        | The simulation step about to run (or just produced). Stamped into every outgoing snapshot.              |
+| **current tick**  | `uint32`        | The simulation step about to run (or just produced).                                                    |
 
-Two independent tickers:
-
-| Ticker      | Rate              | Responsibility                                               |
-| ----------- | ----------------- | ------------------------------------------------------------ |
-| simulation  | `tickRate` Hz     | advance world by exactly one tick; run phases in fixed order |
-| replication | `snapshotRate` Hz | per-player AOI filter + encode + dispatch                    |
+One ticker at `tickRate` Hz. Each tick advances the world by exactly one step, runs the phases in fixed order, then sends one AOI snapshot per player.
 
 Movement integration is `dt`-based: `step = speed * tickDuration.Seconds()`. Frame-count integration is not used anywhere on the server.
 
@@ -148,18 +142,16 @@ The AOI system filters world state per-player so each client receives only what 
 Per player:
 
 - AOI is a rectangle centered on the player position with size determined by `aoiRadius` from world configuration.
-- On each replication tick, the server iterates the player's map, includes any entity whose bounding rectangle overlaps the AOI, and emits a snapshot.
+- On each tick, the server iterates the player's map, includes any entity whose bounding rectangle overlaps the AOI, and emits a snapshot.
 
-### Snapshot header (binary, little-endian)
+### Snapshot header
 
-```
-[0]      u8   msgType     0x01 = aoi_update, 0x03 = full_aoi
-[1..4]   u32  tick        simulation tick at which the snapshot was produced
-[5..8]   u32  lastAcked   highest InputCommand.Sequence applied for this player
-[9..10]  u16  entityCount entity blocks that follow
-```
+| Field                  | Meaning                                                                 |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `frame`                | the client step this state stands for; 0 before the first consumed event |
+| `inputConsumedThrough` | highest client event sequence a tick has applied for this player        |
 
-The `tick` and `lastAcked` fields are how the client reconciles its predicted self with authoritative state. `lastAcked` proves arrival, not acceptance: movement re-plans once per player per tick from the newest tap of that tick, so a tap superseded within its own tick is acknowledged and never planned. The snapshot therefore carries a second acknowledgement, `moveAck` — the highest `PlayerAction` sequence that actually re-planned movement — and the client adopts the authoritative `targetPos` / `path` only once `moveAck` covers its newest command. See [the input command pipeline](architecture.md#input-command-pipeline).
+The client replaces its own state with the snapshot, drops the events up to `inputConsumedThrough`, and replays the rest from `frame`.
 
 Other message types (init data, FCT) carry their own headers and are not part of the per-tick replication stream.
 

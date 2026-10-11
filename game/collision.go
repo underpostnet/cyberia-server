@@ -378,7 +378,6 @@ func (s *GameServer) clearObstacleCells(ms *MapState, obs EntityBase) {
 			if pathCrossesObstacle(player.Path, player.Dims, obs) {
 				player.Path, player.Mode = nil, IDLE
 				player.PendingMove = player.TargetPos
-				player.PendingMoveSequence = player.LastMovementSequence
 				player.HasPendingMove = true
 				s.flushPendingMove(player, ms)
 			}

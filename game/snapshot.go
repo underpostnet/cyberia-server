@@ -119,20 +119,14 @@ type SnapshotSelf struct {
 
 // Snapshot is the `snapshot` message payload.
 type Snapshot struct {
-	Tick uint32 `json:"tick"`
+	// Frame is the client step this state stands for. 0 before the first
+	// consumed event.
+	Frame uint32 `json:"frame"`
 	// InputConsumedThrough is the highest input sequence a tick has applied
-	// for this player. The client drops consumed commands from its prediction
-	// buffer.
-	InputConsumedThrough uint32 `json:"inputConsumedThrough"`
-	// MoveAck is the highest PLAYER_ACTION sequence that re-planned movement.
-	// Consumption is not planning: taps landing in the same tick are all
-	// consumed, but only the newest is planned, so self.path and
-	// self.targetPos can still describe an earlier command. The client adopts
-	// the authoritative route only once MoveAck covers its newest command, so a
-	// rapid change of direction can never pull prediction onto a stale route.
-	MoveAck  uint32           `json:"moveAck"`
-	Entities []SnapshotEntity `json:"entities"`
-	Self     SnapshotSelf     `json:"self"`
+	// for this player. The client drops consumed events from its replay list.
+	InputConsumedThrough uint32           `json:"inputConsumedThrough"`
+	Entities             []SnapshotEntity `json:"entities"`
+	Self                 SnapshotSelf     `json:"self"`
 }
 
 // Audio logic ids the server raises. The client binds them to assets per map,
@@ -288,9 +282,8 @@ func (s *GameServer) snapshotPortalHold(e *SnapshotEntity, player *PlayerState) 
 // buildSnapshot collects everything inside the player's area of interest.
 func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snapshot {
 	snap := Snapshot{
-		Tick:                 player.LastSnapshotTick,
+		Frame:                player.frameAt(s.currentTick),
 		InputConsumedThrough: player.InputConsumedThrough,
-		MoveAck:              player.LastMovementSequence,
 		Entities:             make([]SnapshotEntity, 0, 64),
 	}
 

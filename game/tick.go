@@ -10,16 +10,12 @@
 //   - Tick is monotonic for the lifetime of a world; it resets only on
 //     world rebuild (which currently never happens after bootstrap).
 //   - tickRate is the simulation Hz; tickDuration = 1 / tickRate.
-//   - snapshotRate is the replication Hz; typically lower than tickRate
-//     (e.g. tick = 30 Hz, snapshot = 20 Hz). Snapshots are independent of
-//     the simulation cadence.
+//   - Each tick sends one snapshot per player.
 //   - The string "fps" must not appear on the server. Use TickRate.
 //
-// On the wire, every server→client AOI frame carries the tick it was
-// produced at. Every client→server InputCommand carries the client's
-// estimated tick plus a monotonic sequence number. The server echoes back
-// the last processed sequence per player in each snapshot, enabling client
-// reconciliation.
+// On the wire, every client→server event carries the client frame plus a
+// monotonic sequence number. Each snapshot carries the client frame it
+// stands for and the last consumed sequence, enabling client replay.
 
 package game
 
@@ -30,12 +26,8 @@ import "time"
 type Tick uint32
 
 // DefaultTickRate is the only simulation rate. It must equal the client
-// TICK_RATE_HZ. DefaultSnapshotRate applies when InstanceConfig.snapshot_rate
-// is unset.
-const (
-	DefaultTickRate     = 30
-	DefaultSnapshotRate = 20
-)
+// TICK_RATE_HZ.
+const DefaultTickRate = 30
 
 // computeTickDuration — derives tickDuration from a tickRate Hz value.
 // Returns the default if rate is non-positive.

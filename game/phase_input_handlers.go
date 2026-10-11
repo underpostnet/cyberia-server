@@ -40,23 +40,16 @@ func (s *GameServer) handlePlayerActionInput(player *PlayerState, mapState *MapS
 	s.HandlePlayerTapAction(player, mapState, target)
 
 	player.PendingMove = PointI{X: int(math.Round(cmd.TargetX)), Y: int(math.Round(cmd.TargetY))}
-	player.PendingMoveSequence = cmd.Sequence
 	player.HasPendingMove = true
 }
 
 // flushPendingMove re-plans the walk from the newest tap of this tick. Called
 // once per player per tick by phaseInput, after the input queue is drained.
-//
-// Every re-plan stamps LastMovementSequence, which the snapshot echoes as
-// moveAck. Consumption is not planning — a superseded tap is consumed and
-// never planned — so the client needs moveAck to know which command the route
-// it is being handed was planned for.
 func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
 	if !player.HasPendingMove {
 		return
 	}
 	target := player.PendingMove
-	sequence := player.PendingMoveSequence
 	player.HasPendingMove = false
 
 	// Re-check the refusals the recording handler already applied: a player_stasis
@@ -64,10 +57,6 @@ func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
 	// flush, and the tap must not outlive it.
 	if player.IsGhost() || player.Frozen {
 		return
-	}
-
-	if sequence > player.LastMovementSequence {
-		player.LastMovementSequence = sequence
 	}
 
 	// Clamp into the map. An off-grid target would otherwise make Astar expand

@@ -48,17 +48,12 @@ func tap(seq uint32, x, y float64) InputCommand {
 	return InputCommand{Kind: InputKindPlayerAction, Sequence: seq, TargetX: x, TargetY: y}
 }
 
-// A tap re-plans on the tick it lands, and publishes the sequence the client
-// waits on before it adopts the authoritative route.
+// A tap re-plans on the tick it lands.
 func TestTapReplansOnTheSameTick(t *testing.T) {
 	s, mapState, player := movementFixture(t)
 
 	tapTick(s, mapState, player, tap(7, 10, 10))
 
-	if player.LastMovementSequence != 7 {
-		t.Fatalf("moveAck = %d, want 7 — a planned tap must publish its sequence",
-			player.LastMovementSequence)
-	}
 	if player.Mode != WALKING {
 		t.Fatalf("mode = %v, want WALKING", player.Mode)
 	}
@@ -85,9 +80,6 @@ func TestConsecutiveTicksTurnImmediately(t *testing.T) {
 		t.Fatalf("second target = %v, want (1,18) — the turn must not wait for a cooldown",
 			player.TargetPos)
 	}
-	if player.LastMovementSequence != 2 {
-		t.Fatalf("moveAck = %d, want 2", player.LastMovementSequence)
-	}
 }
 
 // Taps that land in one tick describe one instant, so only the newest is
@@ -104,10 +96,6 @@ func TestTapsInOneTickCoalesceToTheNewest(t *testing.T) {
 	if player.TargetPos.X != 18 || player.TargetPos.Y != 18 {
 		t.Fatalf("target = %v, want the newest tap (18,18)", player.TargetPos)
 	}
-	if player.LastMovementSequence != 3 {
-		t.Fatalf("moveAck = %d, want 3 — only the newest tap is planned",
-			player.LastMovementSequence)
-	}
 }
 
 // The cursor moves when a tick applies a command, not when it is queued. A
@@ -117,9 +105,9 @@ func TestEnqueueIsNotConsumption(t *testing.T) {
 
 	EnqueueInputs(player, []InputCommand{tap(1, 18, 1), tap(2, 1, 18)})
 
-	if player.InputConsumedThrough != 0 || player.LastMovementSequence != 0 {
-		t.Fatalf("cursor = %d, moveAck = %d, want 0, 0 — enqueue is not consumption",
-			player.InputConsumedThrough, player.LastMovementSequence)
+	if player.InputConsumedThrough != 0 {
+		t.Fatalf("cursor = %d, want 0 — enqueue is not consumption",
+			player.InputConsumedThrough)
 	}
 
 	s.phaseInput(0, mapState)
@@ -127,23 +115,6 @@ func TestEnqueueIsNotConsumption(t *testing.T) {
 	if player.InputConsumedThrough != 2 {
 		t.Fatalf("cursor = %d, want 2 — the tick consumes every command",
 			player.InputConsumedThrough)
-	}
-	if player.LastMovementSequence != 2 {
-		t.Fatalf("moveAck = %d, want 2", player.LastMovementSequence)
-	}
-}
-
-// moveAck never runs backward: out-of-order sequences would otherwise unlock a
-// stale route on the client.
-func TestMoveAckIsMonotonic(t *testing.T) {
-	s, mapState, player := movementFixture(t)
-
-	tapTick(s, mapState, player, tap(9, 10, 10))
-	tapTick(s, mapState, player, tap(4, 1, 18))
-
-	if player.LastMovementSequence != 9 {
-		t.Fatalf("moveAck = %d, want 9 — a lower sequence must not lower it",
-			player.LastMovementSequence)
 	}
 }
 
@@ -174,9 +145,8 @@ func TestFrozenPlayerNeverPlansMovement(t *testing.T) {
 
 	tapTick(s, mapState, player, tap(1, 10, 10))
 
-	if player.LastMovementSequence != 0 {
-		t.Fatalf("moveAck = %d, want 0 — a frozen player does not move",
-			player.LastMovementSequence)
+	if player.Mode == WALKING {
+		t.Fatal("mode = WALKING — a frozen player does not move")
 	}
 	if player.HasPendingMove {
 		t.Fatal("pending move survived the flush — it would fire once the freeze lifts")

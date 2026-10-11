@@ -37,7 +37,6 @@ type runtimeCounters struct {
 // response so the JSON tags match the wire contract.
 type RuntimeMetricsSnapshot struct {
 	TickRate           int     `json:"tick_rate_hz"`
-	SnapshotRate       int     `json:"snapshot_rate_hz"`
 	CurrentTick        uint32  `json:"current_tick"`
 	TickDurationMs     float64 `json:"tick_duration_ms"`
 	AoiRadius          float64 `json:"aoi_radius"`
@@ -81,12 +80,11 @@ func (s *GameServer) recordWsEvicted()     { s.counters.wsEvictedTotal.Add(1) }
 // counters and per-process throughput. Safe to call from the HTTP API
 // without contending with the simulation tick.
 func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
-	// tickRate/snapshotRate/aoiRadius are only mutated inside
+	// tickRate/aoiRadius are only mutated inside
 	// ApplyInstanceConfig, which holds s.mu. Read under the same lock
 	// to avoid a torn read on the float64 / int fields.
 	s.mu.Lock()
 	tickRate := s.tickRate
-	snapRate := s.snapshotRate
 	tickDur := s.tickDuration
 	aoi := s.aoiRadius
 	tick := s.currentTick
@@ -99,7 +97,6 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 
 	return RuntimeMetricsSnapshot{
 		TickRate:           tickRate,
-		SnapshotRate:       snapRate,
 		CurrentTick:        tick,
 		TickDurationMs:     float64(tickDur.Microseconds()) / 1000.0,
 		AoiRadius:          aoi,

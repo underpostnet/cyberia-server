@@ -60,13 +60,6 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 	// The instance config tick_rate is ignored. The client fixes its step
 	// at compile time, and a replay needs the same dt on both sides.
 	s.tickRate = DefaultTickRate
-	s.snapshotRate = int(cfg.GetSnapshotRate())
-	if s.snapshotRate <= 0 {
-		s.snapshotRate = DefaultSnapshotRate
-	}
-	if s.snapshotRate > s.tickRate {
-		s.snapshotRate = s.tickRate
-	}
 	s.tickDuration = computeTickDuration(s.tickRate)
 
 	// World / AOI
@@ -222,8 +215,8 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 	// Register built-in skill handlers now that skillConfig is populated.
 	s.InitSkills()
 
-	logx.Infof("[GameServer] Instance config applied: tickRate=%dHz, snapshotRate=%dHz, tickDuration=%v, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d skills, %d entityDefaultTypes, %d entityDefaultBuilds, floorItem=%q, ghostItem=%q, coinItem=%q",
-		s.tickRate, s.snapshotRate, s.tickDuration, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.skillConfig), len(s.entityDefaults), len(s.entityDefaultBuilds), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
+	logx.Infof("[GameServer] Instance config applied: tickRate=%dHz, tickDuration=%v, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d skills, %d entityDefaultTypes, %d entityDefaultBuilds, floorItem=%q, ghostItem=%q, coinItem=%q",
+		s.tickRate, s.tickDuration, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.skillConfig), len(s.entityDefaults), len(s.entityDefaultBuilds), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
 	return nil
 }
 
@@ -323,15 +316,9 @@ func (s *GameServer) listenForClients() {
 	}
 }
 
-// gameLoop runs two independent tickers:
-//
-//   - simTicker  @ tickRate  Hz  — advances the authoritative world by exactly
-//     one Tick. Calls the named simulation phases in a fixed order. The only
-//     function permitted to mutate world state lives downstream of this path.
-//
-//   - snapTicker @ snapshotRate Hz — produces AOI snapshots (replication).
-//     Decoupled from sim cadence so bandwidth scales independently of
-//     simulation fidelity.
+// gameLoop advances the authoritative world by exactly one Tick per
+// tickDuration. It calls the named simulation phases in a fixed order. The
+// only function permitted to mutate world state lives downstream of this path.
 //
 // Update ordering inside one simulation tick (phase functions live in
 // simulation_phases.go):
@@ -343,64 +330,45 @@ func (s *GameServer) listenForClients() {
 //	phaseMovement   integrate positions using s.tickDuration (NOT 1/fps)
 //	phaseLoot       player↔drop-token collection + priority validation
 //	phasePortals    portal entry / teleport
+//	phaseReplication one snapshot per player, after every map has stepped
 //
-// Neither phase reads PresentationHints. Replication runs on its own
-// goroutine ticker — it does not block the simulation.
+// No phase reads PresentationHints.
 func (s *GameServer) gameLoop() {
 	if s.tickRate <= 0 {
 		s.tickRate = DefaultTickRate
-	}
-	if s.snapshotRate <= 0 || s.snapshotRate > s.tickRate {
-		s.snapshotRate = s.tickRate
 	}
 	s.tickDuration = computeTickDuration(s.tickRate)
 
 	simTicker := time.NewTicker(s.tickDuration)
 	defer simTicker.Stop()
-	snapTicker := time.NewTicker(time.Second / time.Duration(s.snapshotRate))
-	defer snapTicker.Stop()
 
-	logx.Infof("[GameServer] simulation @ %d Hz (tick %v), replication @ %d Hz",
-		s.tickRate, s.tickDuration, s.snapshotRate)
+	logx.Infof("[GameServer] simulation and replication @ %d Hz (tick %v)",
+		s.tickRate, s.tickDuration)
 
-	for {
-		select {
-		case <-simTicker.C:
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						logx.Errorf("[GameServer] PANIC in simulation tick: %v", r)
-					}
-				}()
-				s.mu.Lock()
-				defer s.mu.Unlock()
-				tick := s.currentTick
-				for _, mapState := range s.maps {
-					s.phaseInput(tick, mapState)
-					s.phaseLifecycle(tick, mapState)
-					s.phaseSkills(tick, mapState)
-					s.phaseAI(tick, mapState)
-					s.phaseMovement(tick, mapState)
-					s.phaseLoot(tick, mapState)
-					s.phasePortals(tick, mapState)
-				}
-				s.currentTick++
-			}()
-		case <-snapTicker.C:
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						logx.Errorf("[GameServer] PANIC in snapshot tick: %v", r)
-					}
-				}()
-				s.mu.Lock()
-				defer s.mu.Unlock()
-				tick := s.currentTick
-				for _, mapState := range s.maps {
-					s.phaseReplication(tick, mapState)
+	for range simTicker.C {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logx.Errorf("[GameServer] PANIC in simulation tick: %v", r)
 				}
 			}()
-		}
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			tick := s.currentTick
+			for _, mapState := range s.maps {
+				s.phaseInput(tick, mapState)
+				s.phaseLifecycle(tick, mapState)
+				s.phaseSkills(tick, mapState)
+				s.phaseAI(tick, mapState)
+				s.phaseMovement(tick, mapState)
+				s.phaseLoot(tick, mapState)
+				s.phasePortals(tick, mapState)
+			}
+			for _, mapState := range s.maps {
+				s.phaseReplication(mapState)
+			}
+			s.currentTick++
+		}()
 	}
 }
 
@@ -520,12 +488,8 @@ func (s *GameServer) checkPortal(player *PlayerState, mapState *MapState) {
 }
 
 func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
-	// s.mu is held by the caller (phasePortals → simTicker).
-	// Do NOT release it here — map mutations (delete/insert mapState.players)
-	// must be serialised against snapTicker's phaseReplication reads.
-	// Releasing s.mu and re-acquiring via defer caused a fatal
-	// "concurrent map read and map write" crash: snapTicker could acquire s.mu
-	// and iterate mapState.players while we were still writing to it.
+	// s.mu is held by the caller (phasePortals). Do not release it: map
+	// mutations of mapState.players must not race other readers.
 
 	if portal.PortalConfig == nil {
 		logx.Warnf("Teleportation failed: portal config is nil.")
