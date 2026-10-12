@@ -204,6 +204,9 @@ func (s *GameServer) EntityCensus() map[string]EntityTypeCensus {
 		for _, o := range m.obstacles {
 			addObj("obstacle", o.ObjectLayers)
 		}
+		for _, o := range m.destructibles {
+			addObj("obstacle", o.ObjectLayers)
+		}
 		for _, fg := range m.foregrounds {
 			addObj("foreground", fg.ObjectLayers)
 		}
@@ -232,7 +235,7 @@ func (s *GameServer) MapBreakdowns() []MapBreakdown {
 			Players:     len(m.players),
 			Bots:        len(m.bots),
 			Floors:      len(m.floors),
-			Obstacles:   len(m.obstacles),
+			Obstacles:   len(m.obstacles) + len(m.destructibles),
 			Foregrounds: len(m.foregrounds),
 			Portals:     len(m.portals),
 			Resources:   len(m.resources),
@@ -260,7 +263,7 @@ func (s *GameServer) MapBreakdownByCode(code string) (MapBreakdown, bool) {
 		Players:     len(m.players),
 		Bots:        len(m.bots),
 		Floors:      len(m.floors),
-		Obstacles:   len(m.obstacles),
+		Obstacles:   len(m.obstacles) + len(m.destructibles),
 		Foregrounds: len(m.foregrounds),
 		Portals:     len(m.portals),
 		Resources:   len(m.resources),

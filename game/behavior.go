@@ -1,8 +1,8 @@
 package game
 
-// Canonical bot behaviors. Mirrors the bot behaviors of SharedDefaultsCyberia.ENTITY_BEHAVIORS.
-// A bot's behavior is content-authored on its matched entity-type default
-// (resolved by active itemId), or derived when unset. `skill` / `coin` are
+// Canonical bot, obstacle and loot behaviors. Mirrors the bot, obstacle and loot behaviors of
+// SharedDefaultsCyberia.ENTITY_BEHAVIORS. A bot's behavior is content-authored on its matched
+// entity-type default (resolved by active itemId), or derived when unset. `skill` / `coin` are
 // assigned by the runtime (skill engine / economy), never authored.
 // A foreground behavior is presentation only: the server sends it and the client runs it.
 const (
@@ -16,12 +16,24 @@ const (
 	// a bot death (see loot.go). Drops never move, never aggro, deal no damage,
 	// and are removed on collection or lifetime expiry. Runtime-assigned only.
 	BehaviorDrop = "drop"
+	// BehaviorDestructible marks an obstacle that takes damage, drops its loot and
+	// stops blocking while depleted (see DestructibleState).
+	BehaviorDestructible = "destructible"
+	// BehaviorConsumeOnPickupHeal makes its collector consume a world-loot token's item at once,
+	// restoring life, instead of receiving it (see loot.go).
+	BehaviorConsumeOnPickupHeal = "consume-on-pickup-heal"
 )
 
 // behaviorIsInert reports whether entities with behavior b run no AI: they hold
 // position until removed. Covers scattered loot drops.
 func behaviorIsInert(b string) bool {
 	return b == BehaviorDrop
+}
+
+// behaviorCollectsLoot reports whether a bot with behavior b may collect a loot token: a combat
+// bot, never a projectile, a coin, a token or an immortal provider.
+func behaviorCollectsLoot(b string) bool {
+	return b != BehaviorSkill && b != BehaviorCoin && !behaviorIsInert(b) && !behaviorIsImmortal(b)
 }
 
 // behaviorIsProvider reports whether b is a mission/action giver — immortal and

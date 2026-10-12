@@ -1,6 +1,7 @@
 package game
 
 import (
+	"math"
 	"time"
 )
 
@@ -124,26 +125,15 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 			}
 		}
 
-		// Check collision with resources
 		for _, res := range mapState.resources {
-			if res.IsGhost() {
-				continue // Don't collide with destroyed/respawning resources.
+			if hitStatic(mapState, projectile, projectileStats.Effect, &res.EntityBase, &res.Mortal, &res.DamageLedger,
+				func() { s.handleResourceDeath(res, mapState) }) {
+				isColliding = true
 			}
-			if checkAABBCollision(projectile.Pos, projectile.Dims, res.Pos, res.Dims) {
-				res.Life -= projectileStats.Effect
-				// Attribute extraction damage to the firing player or bot for the loot race.
-				recordDamage(&res.DamageLedger, mapState, projectile.CasterID, projectileStats.Effect)
-				if res.Life <= 0 {
-					res.Life = 0
-					s.handleResourceDeath(res, mapState)
-				}
-				// FCT: resource amounts are public — the same red "-N" for
-				// every AOI viewer.
-				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
-					broadcastFCT(mapState, FCTDamage,
-						res.Pos.X+res.Dims.Width*0.5,
-						res.Pos.Y+res.Dims.Height*0.5, dmg)
-				}
+		}
+		for _, obs := range mapState.destructibles {
+			if hitStatic(mapState, projectile, projectileStats.Effect, &obs.EntityBase, &obs.Mortal, &obs.DamageLedger,
+				func() { s.handleDestructibleDeath(obs, mapState) }) {
 				isColliding = true
 			}
 		}
@@ -161,6 +151,27 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 	for _, id := range projectilesToDelete {
 		delete(mapState.bots, id)
 	}
+}
+
+// hitStatic lands a projectile hit on a static mortal entity — a resource or a
+// destructible obstacle — and reports whether it hit. A ghost takes no hit. The
+// damage joins the loot race ledger, and `die` runs on the lethal hit.
+func hitStatic(mapState *MapState, projectile *BotState, effect float64,
+	base *EntityBase, mortal *Mortal, ledger *map[string]float64, die func()) bool {
+	if mortal.IsGhost() || !checkAABBCollision(projectile.Pos, projectile.Dims, base.Pos, base.Dims) {
+		return false
+	}
+	mortal.Life -= effect
+	recordDamage(ledger, mapState, projectile.CasterID, effect)
+	if mortal.Life <= 0 {
+		mortal.Life = 0
+		die()
+	}
+	// FCT: the amount is public — the same red "-N" for every AOI viewer.
+	if dmg := int(effect + 0.5); dmg > 0 {
+		broadcastFCT(mapState, FCTDamage, base.Pos.X+base.Dims.Width*0.5, base.Pos.Y+base.Dims.Height*0.5, dmg)
+	}
+	return true
 }
 
 // applyDeadItems deactivates every layer and (re)activates the configured dead
@@ -244,15 +255,16 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) 
 	player.ObjectLayers = applyDeadItems(player.ObjectLayers, deadLoadout)
 	player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(player.ObjectLayers)
 
-	player.RespawnTime = time.Now().Add(s.respawnDuration)
+	player.RespawnTime = time.Now().Add(player.respawnDuration())
 	// Recalculate stats for the ghost state to ensure consistency (mainly MaxLife).
 	s.ApplyResistanceStat(player, s.maps[player.MapCode])
 	player.Mode = IDLE // Stop movement
 }
 
-// killEntity runs the death sequence shared by bots and resources: snapshot the
-// live loadout for respawn, scatter the drops the damage contributors race to
-// collect, swap in the dead visuals, and arm the respawn timer.
+// killEntity runs the death sequence shared by bots, resources and destructible
+// obstacles: snapshot the live loadout for respawn, scatter the drops the damage
+// contributors race to collect, swap in the dead visuals, and arm the respawn
+// timer.
 //
 // Both the dead visuals and the drops come from the entity-type default
 // resolved by the pre-death active items (most-specific subset match), so a
@@ -271,7 +283,7 @@ func (s *GameServer) killEntity(base *EntityBase, mortal *Mortal, kind, mapCode 
 	broadcastAudioEvent(mapState, AudioEventDeath, center)
 
 	base.ObjectLayers = applyDeadItems(base.ObjectLayers, s.resolveDeadItemIDs(build))
-	mortal.RespawnTime = time.Now().Add(s.respawnDuration)
+	mortal.RespawnTime = time.Now().Add(mortal.respawnDuration())
 }
 
 // handleBotDeath kills a bot. Loot and coins are not injected into the killer:
@@ -291,6 +303,15 @@ func (s *GameServer) handleResourceDeath(res *ResourceState, mapState *MapState)
 	s.killEntity(&res.EntityBase, &res.Mortal, "resource", res.MapCode,
 		res.DamageLedger, 0, mapState)
 	res.DamageLedger = nil
+}
+
+// handleDestructibleDeath depletes a destructible obstacle. It carries no coins
+// and earns no XP; it frees its cells until it respawns.
+func (s *GameServer) handleDestructibleDeath(obs *DestructibleState, mapState *MapState) {
+	s.killEntity(&obs.EntityBase, &obs.Mortal, EntityObstacle, obs.MapCode,
+		obs.DamageLedger, 0, mapState)
+	obs.DamageLedger = nil
+	mapState.pathfinder.occupy(obs.Pos, obs.Dims, -1)
 }
 
 // handleRespawns checks and respawns dead players and bots.
@@ -335,4 +356,98 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 			res.RespawnTime = time.Time{}
 		}
 	}
+
+	// Restored obstacles block their cells before nearby entities move.
+	for _, obs := range mapState.destructibles {
+		if !obs.IsGhost() || time.Now().Before(obs.RespawnTime) {
+			continue
+		}
+		obs.ObjectLayers = obs.PreRespawnObjectLayers
+		obs.PreRespawnObjectLayers = nil
+		obs.Life = obs.MaxLife
+		obs.RespawnTime = time.Time{}
+		mapState.pathfinder.occupy(obs.Pos, obs.Dims, 1)
+		s.clearObstacleCells(mapState, obs.EntityBase)
+	}
+}
+
+// Projectiles keep their course through restored obstacles.
+func (s *GameServer) clearObstacleCells(ms *MapState, obs EntityBase) {
+	for _, player := range ms.players {
+		if !checkAABBCollision(obs.Pos, obs.Dims, player.Pos, player.Dims) {
+			if pathCrossesObstacle(player.Path, player.Dims, obs) {
+				player.Path, player.Mode = nil, IDLE
+				player.PendingMove = player.TargetPos
+				player.PendingMoveSequence = player.LastMovementSequence
+				player.HasPendingMove = true
+				s.flushPendingMove(player, ms)
+			}
+			continue
+		}
+		if cell, err := obstaclePushCell(ms, obs, player.EntityBase, player.Direction); err == nil {
+			player.Pos = Point{X: float64(cell.X), Y: float64(cell.Y)}
+			player.Path, player.TargetPos, player.Mode = nil, cell, IDLE
+		}
+	}
+	for _, bot := range ms.bots {
+		if bot.Behavior == BehaviorSkill {
+			continue
+		}
+		if checkAABBCollision(obs.Pos, obs.Dims, bot.Pos, bot.Dims) {
+			if cell, err := obstaclePushCell(ms, obs, bot.EntityBase, bot.Direction); err == nil {
+				bot.Pos = Point{X: float64(cell.X), Y: float64(cell.Y)}
+				bot.TargetPos = cell
+			}
+		} else if !pathCrossesObstacle(bot.Path, bot.Dims, obs) {
+			continue
+		}
+		bot.Path, bot.Mode = nil, IDLE
+		bot.CurrentTargetPlayer = ""
+		bot.lastPursuitTargetPos = PointI{-1, -1}
+	}
+}
+
+func obstaclePushCell(ms *MapState, obs, entity EntityBase, direction Direction) (PointI, error) {
+	center := Point{X: obs.Pos.X + obs.Dims.Width*0.5, Y: obs.Pos.Y + obs.Dims.Height*0.5}
+	dx := entity.Pos.X + entity.Dims.Width*0.5 - center.X
+	dy := entity.Pos.Y + entity.Dims.Height*0.5 - center.Y
+	// An entity at the center follows its facing direction.
+	if dx == 0 && dy == 0 {
+		dx, dy = getDirectionVector(direction)
+		if dx == 0 && dy == 0 {
+			dy = 1
+		}
+	}
+	// The combined half-widths place the entire entity outside the obstacle.
+	scale := math.Inf(1)
+	if dx != 0 {
+		scale = (obs.Dims.Width + entity.Dims.Width) * 0.5 / math.Abs(dx)
+	}
+	if dy != 0 {
+		scale = math.Min(scale, (obs.Dims.Height+entity.Dims.Height)*0.5/math.Abs(dy))
+	}
+	x := center.X + dx*scale - entity.Dims.Width*0.5
+	y := center.Y + dy*scale - entity.Dims.Height*0.5
+	cell := PointI{X: int(math.Round(x)), Y: int(math.Round(y))}
+	if dx > 0 {
+		cell.X = int(math.Ceil(x))
+	} else if dx < 0 {
+		cell.X = int(math.Floor(x))
+	}
+	if dy > 0 {
+		cell.Y = int(math.Ceil(y))
+	} else if dy < 0 {
+		cell.Y = int(math.Floor(y))
+	}
+	cell = clampCellToGrid(cell, ms.gridW, ms.gridH)
+	return ms.pathfinder.findClosestWalkablePoint(cell, entity.Dims)
+}
+
+func pathCrossesObstacle(path []PointI, dims Dimensions, obs EntityBase) bool {
+	for _, cell := range path {
+		if checkAABBCollision(obs.Pos, obs.Dims, Point{X: float64(cell.X), Y: float64(cell.Y)}, dims) {
+			return true
+		}
+	}
+	return false
 }

@@ -92,6 +92,18 @@ func (pf *Pathfinder) beginSearch() {
 	}
 }
 
+// occupy adds `delta` blockers to every grid cell the rectangle covers, so
+// overlapping obstacles free a cell only when the last of them leaves it.
+func (pf *Pathfinder) occupy(pos Point, dims Dimensions, delta int) {
+	for y := int(pos.Y); y < int(pos.Y+dims.Height); y++ {
+		for x := int(pos.X); x < int(pos.X+dims.Width); x++ {
+			if pf.inGrid(x, y) {
+				pf.grid[y][x] += delta
+			}
+		}
+	}
+}
+
 // isCellWalkable checks if a single grid cell is walkable.
 func (pf *Pathfinder) isCellWalkable(x, y int) bool {
 	return x >= 0 && x < pf.gridW && y >= 0 && y < pf.gridH && pf.grid[y][x] == 0

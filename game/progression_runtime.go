@@ -81,9 +81,10 @@ func (s *GameServer) awardProgression(source statSource, event progressionEvent,
 	return amount
 }
 
-// awardDefeat uses damage shares and excludes summoned entities and self kills.
+// awardDefeat uses damage shares and excludes summoned entities, self kills
+// and obstacles.
 func (s *GameServer) awardDefeat(base *EntityBase, mortal *Mortal, kind string, ledger map[string]float64, ms *MapState) {
-	if ms == nil || mortal.IsGhost() {
+	if ms == nil || mortal.IsGhost() || kind == EntityObstacle {
 		return
 	}
 	if b := ms.bots[base.ID]; b != nil && (b.CasterID != "" || behaviorIsProvider(b.Behavior) || b.Behavior == BehaviorDrop) {
