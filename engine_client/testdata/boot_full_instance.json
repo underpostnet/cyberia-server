@@ -33,6 +33,7 @@
           {
             "entityType": "bot",
             "level": 7,
+            "respawnDurationMs": 0,
             "initCellX": 0,
             "initCellY": 0,
             "dimX": 1,
@@ -129,7 +130,6 @@
       },
       "maxActiveLayers": 4,
       "initialLifeFraction": 1,
-      "respawnDurationMs": 3000,
       "collisionLifeLoss": 10,
       "economyRules": {
         "botSpawnCoins": 50,
@@ -159,7 +159,8 @@
               "itemId": "sword",
               "active": true,
               "quantity": 1,
-              "dropChance": 1
+              "dropChance": 1,
+              "buffFactor": 0.1
             }
           ]
         }

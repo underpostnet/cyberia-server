@@ -81,18 +81,28 @@ func (e EntityBase) Base() EntityBase { return e }
 
 // Mortal — life/respawn block for entities that can die (Player, Bot, Resource).
 type Mortal struct {
-	NextSkillAt            time.Time
-	BaseMaxLife            float64
-	Progression            EntityProgression   `json:"progression"`
-	TemporaryModifiers     []TemporaryModifier `json:"-"`
-	MaxLife                float64             `json:"maxLife"`
-	Life                   float64             `json:"life"`
-	RespawnTime            time.Time           `json:"-"`
-	PreRespawnObjectLayers []ObjectLayerState  `json:"-"`
+	NextSkillAt        time.Time
+	BaseMaxLife        float64
+	Progression        EntityProgression   `json:"progression"`
+	TemporaryModifiers []TemporaryModifier `json:"-"`
+	MaxLife            float64             `json:"maxLife"`
+	Life               float64             `json:"life"`
+	RespawnTime        time.Time           `json:"-"`
+	// RespawnDuration is the wait before the entity comes back; 0 takes respawnDurationDefaultMs.
+	RespawnDuration        time.Duration      `json:"-"`
+	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
 }
 
 // IsGhost reports whether the entity is dead and waiting to respawn.
 func (m *Mortal) IsGhost() bool { return !m.RespawnTime.IsZero() }
+
+// respawnDuration is the wait before the entity comes back.
+func (m *Mortal) respawnDuration() time.Duration {
+	if m.RespawnDuration > 0 {
+		return m.RespawnDuration
+	}
+	return respawnDurationDefaultMs * time.Millisecond
+}
 
 type ObjectState struct {
 	EntityBase
@@ -139,6 +149,8 @@ type PlayerState struct {
 	// timer elapses, so this record is also the refund receipt a cancel needs.
 	// One at a time: assembling is a modal operation.
 	ActiveCraft *ActiveCraft `json:"-"`
+	// NextItemUseAt ends the cooldown a used consumable starts (consumable.go).
+	NextItemUseAt time.Time `json:"-"`
 	// Quests is the player's per-session quest progress, keyed by quest code.
 	// Authoritative for the session; best-effort mirrored to engine-cyberia
 	// quest-progress REST for persistence.
@@ -212,8 +224,8 @@ type BotState struct {
 	DamageLedger map[string]float64 `json:"-"`
 
 	// ── Transient world-item drop fields (BehaviorDrop bots only) ────────────
-	// A drop is a collectible token scattered on the grid when a bot dies. It
-	// carries exactly one item and is picked up by walking over it.
+	// A drop is a collectible token: scattered on the grid when an entity dies, or
+	// placed by the world build. It shows one item and is picked up by walking over it.
 	// DropItemID is the item this token grants on collection.
 	DropItemID string `json:"-"`
 	// DropQuantity is how many units this token grants on collection. 1 for a
@@ -225,14 +237,19 @@ type BotState struct {
 	// the entity this token dropped from, tracked uniformly for every victim type
 	// (player, bot, resource). Once the token settles, collection is a race among
 	// contributors: a contributing player collects on collision, and a contributing
-	// bot has the loot transferred to it on collision. A token always has ≥1
-	// contributor (a contributor-less death drops nothing — see spawnDrops).
+	// bot has the loot transferred to it on collision. A death drop always has ≥1
+	// contributor (a contributor-less death drops nothing — see spawnDrops); a
+	// world token has none.
 	LootContributors map[string]struct{} `json:"-"`
 	// CollectableAt is the instant the spawn-launch settle window ends. Until
 	// then the token is mid-flight from the corpse to its cell and registers no
 	// collision — collection is disabled regardless of loot priority. Matches
 	// the client launch-animation duration sent in drop_spawn.
 	CollectableAt time.Time `json:"-"`
+	// LootOrigin, LootCollection and LootOutcome are fixed when the token spawns (see loot.go).
+	LootOrigin     LootOrigin     `json:"-"`
+	LootCollection LootCollection `json:"-"`
+	LootOutcome    LootOutcome    `json:"-"`
 }
 
 type PortalConfig struct {
@@ -255,6 +272,17 @@ type ResourceState struct {
 	// DamageLedger is the per-resource extraction ledger: attacking player ID →
 	// cumulative damage dealt. Mirrors BotState.DamageLedger — read once on
 	// death to grant the top contributor loot priority, then reset. Never wired.
+	DamageLedger map[string]float64 `json:"-"`
+}
+
+// DestructibleState is an obstacle with the destructible behavior. It blocks its
+// cells while alive and takes projectile damage like a resource. Depleted, it
+// scatters its drops, wears its dead items, and frees its cells until it
+// respawns. An ordinary obstacle is an ObjectState and takes no damage.
+type DestructibleState struct {
+	EntityBase
+	Mortal
+	MapCode      string             `json:"MapCode"`
 	DamageLedger map[string]float64 `json:"-"`
 }
 
@@ -282,16 +310,19 @@ type PortalState struct {
 }
 
 type MapState struct {
-	mu           sync.RWMutex
-	pathfinder   *Pathfinder
-	obstacles    map[string]ObjectState
-	foregrounds  map[string]ForegroundState
-	portals      map[string]*PortalState
-	floors       map[string]*FloorState
-	players      map[string]*PlayerState
-	bots         map[string]*BotState
-	resources    map[string]*ResourceState
-	statics      map[string]*StaticState
+	mu            sync.RWMutex
+	pathfinder    *Pathfinder
+	obstacles     map[string]ObjectState
+	destructibles map[string]*DestructibleState
+	foregrounds   map[string]ForegroundState
+	portals       map[string]*PortalState
+	floors        map[string]*FloorState
+	players       map[string]*PlayerState
+	bots          map[string]*BotState
+	resources     map[string]*ResourceState
+	statics       map[string]*StaticState
+	// lootRespawns are the consumed world tokens waiting to come back (loot.go).
+	lootRespawns []lootRespawn
 	gridW, gridH int
 }
 
@@ -370,7 +401,6 @@ type GameServer struct {
 	initialLifeFraction    float64
 
 	// Combat / death
-	respawnDuration   time.Duration
 	ghostItemID       string
 	collisionLifeLoss float64
 	// Every configured dead-item id — excluded from the player inventory wire
@@ -470,6 +500,8 @@ type EntityTypeDefaultConfig struct {
 	// what one entity is currently wearing — and ObjectLayerState rides every snapshot, where a
 	// per-layer probability would be dead weight on the wire. A missing id means 1.
 	DropChances map[string]float64 `json:"dropChances,omitempty"`
+	// BuffFactors is itemID → fraction of max life the id restores when it is consumed.
+	BuffFactors map[string]float64 `json:"-"`
 	// Canonical entity behavior bound to matched entities (see behavior.go).
 	// Empty: a bot derives it from layers (armed → hostile, else passive); a foreground stays normal.
 	Behavior string `json:"behavior,omitempty"`

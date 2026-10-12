@@ -196,3 +196,21 @@ func TestSnapshotActionCooldownAppliesUtility(t *testing.T) {
 		t.Fatalf("actionCooldownMs = %d, want 400 (500 ms less 20%% Utility)", wire)
 	}
 }
+
+// The snapshot carries the time left on the shared action cooldown. A tap
+// starts it; it reads 0 once the next tap fires skills again.
+func TestSnapshotActionReadyInFollowsTheSkillGate(t *testing.T) {
+	s, mapState, player := movementFixture(t)
+
+	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready != 0 {
+		t.Fatalf("actionReadyInMs = %d before any tap, want 0", ready)
+	}
+	s.HandlePlayerTapAction(player, mapState, Point{X: 2, Y: 2})
+	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready <= 0 || ready > 500 {
+		t.Fatalf("actionReadyInMs = %d after a tap, want 1..500", ready)
+	}
+	player.NextSkillAt = time.Now().Add(-time.Millisecond)
+	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready != 0 {
+		t.Fatalf("actionReadyInMs = %d after the cooldown, want 0", ready)
+	}
+}

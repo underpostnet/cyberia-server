@@ -12,6 +12,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"time"
 
 	pb "cyberia-server/gen/proto"
 
@@ -180,17 +181,18 @@ func (s *GameServer) buildMapsFromInstance(
 		}
 
 		ms := &MapState{
-			gridW:       gridW,
-			gridH:       gridH,
-			players:     make(map[string]*PlayerState),
-			portals:     make(map[string]*PortalState),
-			obstacles:   make(map[string]ObjectState),
-			foregrounds: make(map[string]ForegroundState),
-			floors:      make(map[string]*FloorState),
-			pathfinder:  NewPathfinder(gridW, gridH),
-			bots:        make(map[string]*BotState),
-			resources:   make(map[string]*ResourceState),
-			statics:     make(map[string]*StaticState),
+			gridW:         gridW,
+			gridH:         gridH,
+			players:       make(map[string]*PlayerState),
+			portals:       make(map[string]*PortalState),
+			obstacles:     make(map[string]ObjectState),
+			destructibles: make(map[string]*DestructibleState),
+			foregrounds:   make(map[string]ForegroundState),
+			floors:        make(map[string]*FloorState),
+			pathfinder:    NewPathfinder(gridW, gridH),
+			bots:          make(map[string]*BotState),
+			resources:     make(map[string]*ResourceState),
+			statics:       make(map[string]*StaticState),
 		}
 
 		for _, ent := range mapMsg.GetEntities() {
@@ -204,9 +206,11 @@ func (s *GameServer) buildMapsFromInstance(
 			case "static":
 				s.buildStatic(ms, mapCode, ent)
 			case "obstacle":
-				s.buildObstacle(ms, ent)
+				s.buildObstacle(ms, mapCode, ent)
 			case "foreground":
 				s.buildForeground(ms, ent)
+			case "loot":
+				s.buildLoot(ms, mapCode, ent)
 			case "portal":
 				portal := s.buildPortal(ms, ent)
 				if portal != nil {
@@ -221,7 +225,6 @@ func (s *GameServer) buildMapsFromInstance(
 				logx.Warnf("[InstanceLoader] Unknown entity type %q in map %q", ent.GetEntityType(), mapCode)
 			}
 		}
-
 		s.maps[mapCode] = ms
 	}
 
@@ -311,10 +314,7 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 	startPos := Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
 
 	// Determine max life
-	maxLife := s.entityBaseMaxLife
-	if ent.GetMaxLife() > 0 {
-		maxLife = ent.GetMaxLife()
-	}
+	maxLife := s.placedMaxLife(ent)
 
 	lifeRegen := s.playerBaseLifeRegenMin + rand.Float64()*(s.playerBaseLifeRegenMax-s.playerBaseLifeRegenMin)
 	if ent.GetLifeRegen() > 0 {
@@ -343,9 +343,10 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 			ObjectLayers: objectLayers,
 		},
 		Mortal: Mortal{
-			MaxLife:     maxLife,
-			BaseMaxLife: maxLife,
-			Life:        maxLife * s.initialLifeFraction,
+			MaxLife:         maxLife,
+			BaseMaxLife:     maxLife,
+			Life:            maxLife * s.initialLifeFraction,
+			RespawnDuration: placedRespawnDuration(ent),
 		},
 		MapCode:     mapCode,
 		Path:        []PointI{},
@@ -396,10 +397,7 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 
 	startPos := Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
 
-	maxLife := s.entityBaseMaxLife
-	if ent.GetMaxLife() > 0 {
-		maxLife = ent.GetMaxLife()
-	}
+	maxLife := s.placedMaxLife(ent)
 
 	objectLayers := s.spawnObjectLayers("resource", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
@@ -411,9 +409,10 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 			ObjectLayers: objectLayers,
 		},
 		Mortal: Mortal{
-			MaxLife:     maxLife,
-			BaseMaxLife: maxLife,
-			Life:        maxLife,
+			MaxLife:         maxLife,
+			BaseMaxLife:     maxLife,
+			Life:            maxLife,
+			RespawnDuration: placedRespawnDuration(ent),
 		},
 		MapCode: mapCode,
 	}
@@ -426,29 +425,41 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 	ms.resources[res.ID] = res
 }
 
-func (s *GameServer) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
+// placedMaxLife is the max life a map entity names, or the instance base when it
+// names none.
+func (s *GameServer) placedMaxLife(ent *pb.EntityMessage) float64 {
+	if ent.GetMaxLife() > 0 {
+		return ent.GetMaxLife()
+	}
+	return s.entityBaseMaxLife
+}
+
+// placedRespawnDuration is the respawn time a map entity names; 0 takes the default.
+func placedRespawnDuration(ent *pb.EntityMessage) time.Duration {
+	return time.Duration(ent.GetRespawnDurationMs()) * time.Millisecond
+}
+
+// buildObstacle places an obstacle and blocks its cells. The destructible
+// behavior binds only on a live-item match: an obstacle that falls back to the
+// first default of its type stays ordinary.
+func (s *GameServer) buildObstacle(ms *MapState, mapCode string, ent *pb.EntityMessage) {
 	dims := Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())}
 	pos := Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
 	objectLayers := s.spawnObjectLayers("obstacle", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
+	base := EntityBase{ID: uuid.New().String(), Pos: pos, Dims: dims, ObjectLayers: objectLayers}
+	ms.pathfinder.occupy(pos, dims, 1)
 
-	obs := ObjectState{
-		EntityBase: EntityBase{
-			ID:           uuid.New().String(),
-			Pos:          pos,
-			Dims:         dims,
-			ObjectLayers: objectLayers,
-		},
-		Type: "obstacle",
+	activeIDs := activeObjectLayerItemIDs(objectLayers)
+	build, _ := s.resolveEntityDefaultBuild("obstacle", activeIDs)
+	if build.Behavior != BehaviorDestructible || !matchesLiveItems(build, activeIDs) {
+		ms.obstacles[base.ID] = ObjectState{EntityBase: base, Type: "obstacle"}
+		return
 	}
-	ms.obstacles[obs.ID] = obs
-
-	// Mark grid cells as blocked
-	for y := int(pos.Y); y < int(pos.Y+dims.Height); y++ {
-		for x := int(pos.X); x < int(pos.X+dims.Width); x++ {
-			if x >= 0 && x < ms.gridW && y >= 0 && y < ms.gridH {
-				ms.pathfinder.grid[y][x] = 1
-			}
-		}
+	maxLife := s.placedMaxLife(ent)
+	ms.destructibles[base.ID] = &DestructibleState{
+		EntityBase: base,
+		Mortal:     Mortal{MaxLife: maxLife, BaseMaxLife: maxLife, Life: maxLife, RespawnDuration: placedRespawnDuration(ent)},
+		MapCode:    mapCode,
 	}
 }
 

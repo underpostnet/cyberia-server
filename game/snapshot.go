@@ -108,6 +108,10 @@ type SnapshotSelf struct {
 	MoveSpeed float64 `json:"moveSpeed"`
 	// ActionCooldownMs gates skills and regeneration, independently of movement.
 	ActionCooldownMs int `json:"actionCooldownMs"`
+	// ActionReadyInMs is the time left on that cooldown, 0 when the next tap fires skills.
+	ActionReadyInMs int `json:"actionReadyInMs"`
+	// ItemReadyInMs is the time left on the item-use cooldown, 0 when a consumable may be used.
+	ItemReadyInMs int `json:"itemReadyInMs"`
 	// PortalHoldProgress is the authoritative teleport charge, 0..1.
 	PortalHoldProgress float64 `json:"portalHoldProgress"`
 }
@@ -171,6 +175,14 @@ type DropCollect struct {
 	WorldX      float64 `json:"worldX"`
 	WorldY      float64 `json:"worldY"`
 	ItemID      string  `json:"itemId"`
+	Granted     bool    `json:"granted"` // the collector received the item; false for an effect such as a heal
+}
+
+// ItemConsume tells viewers an entity consumed an item; Behavior is the loot behavior of the item.
+type ItemConsume struct {
+	EntityID string `json:"entityId"`
+	ItemID   string `json:"itemId"`
+	Behavior string `json:"behavior"`
 }
 
 // activeLayers returns the active object layers — what the client draws.
@@ -195,6 +207,16 @@ func respawnSeconds(ghost bool, respawnTime time.Time) float64 {
 		return 0
 	}
 	return remaining
+}
+
+// msUntil returns the whole milliseconds left until t, rounded up, or 0 once
+// t has passed.
+func msUntil(t time.Time) int {
+	left := time.Until(t)
+	if left <= 0 {
+		return 0
+	}
+	return int((left + time.Millisecond - 1) / time.Millisecond)
 }
 
 // hasBase is satisfied by every type that embeds EntityBase.
@@ -284,6 +306,17 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 	}
 
 	appendPassive(&snap, EntityObstacle, mapState.obstacles, inAOI)
+	// Destructible obstacles add their life; an ordinary obstacle sends maxLife 0.
+	for _, obs := range mapState.destructibles {
+		if !inAOI(obs.Pos, obs.Dims) {
+			continue
+		}
+		e := baseEntity(EntityObstacle, obs.ID, obs.Pos, obs.Dims, NONE, IDLE, obs.ObjectLayers)
+		e.Life = obs.Life
+		e.MaxLife = obs.MaxLife
+		e.RespawnIn = respawnSeconds(obs.IsGhost(), obs.RespawnTime)
+		snap.Entities = append(snap.Entities, e)
+	}
 
 	// Floors — sorted: layered floors first (background), then solid-colour
 	// floors on top. Within each group sort by Y→X→ID for stability. Go maps
@@ -390,12 +423,10 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		}
 		e.InteractionFlags = s.botInteractionFlags(s.botHasActionableQuest(player, b),
 			hasPendingTalk, s.botHasUsableAction(b))
-		// Loot eligibility is personal: only damage contributors may collect a
-		// drop token, and the client colours the particles by this bit.
-		if b.Behavior == BehaviorDrop {
-			if _, ok := b.LootContributors[player.ID]; ok {
-				e.InteractionFlags |= InteractionFlagLootEligible
-			}
+		// Loot eligibility is personal: the token's collection policy decides who
+		// may collect it, and the client colours the particles by this bit.
+		if b.Behavior == BehaviorDrop && lootAdmits(b, player.ID) {
+			e.InteractionFlags |= InteractionFlagLootEligible
 		}
 		snap.Entities = append(snap.Entities, e)
 	}
@@ -449,6 +480,8 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 		Frozen:             player.Frozen,
 		MoveSpeed:          s.CalculatePlayerMovementSpeed(stats),
 		ActionCooldownMs:   int(s.CalculateActionCooldown(stats) / time.Millisecond),
+		ActionReadyInMs:    msUntil(player.NextSkillAt),
+		ItemReadyInMs:      msUntil(player.NextItemUseAt),
 		PortalHoldProgress: portalHold,
 	}
 	self.Life = player.Life
