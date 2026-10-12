@@ -51,17 +51,9 @@ type SnapshotEntity struct {
 
 	// Bot fields.
 	CasterID EntityID `json:"casterId"`
-	// InteractionFlags resolve per viewing player. Each bit enables an
-	// overlay icon and its interact-modal tab.
-	InteractionFlags uint8 `json:"interactionFlags"`
 	// ActionCode is "" for ordinary bots. The client fetches the action
 	// metadata by this code through REST.
 	ActionCode string `json:"actionCode"`
-	// QuestCodes are the quests this NPC offers the viewing player.
-	QuestCodes []string `json:"questCodes"`
-	// QuestTalkDialogCodes is parallel to QuestCodes: entry i is non-empty
-	// when QuestCodes[i] has an open talk objective this NPC answers.
-	QuestTalkDialogCodes []string `json:"questTalkDialogCodes"`
 
 	// Portal fields. A negative target cell marks a random portal.
 	TargetMap  string `json:"targetMap"`
@@ -69,6 +61,18 @@ type SnapshotEntity struct {
 
 	// Layers carries the active layers only.
 	Layers []ObjectLayerState `json:"layers"`
+}
+
+// SnapshotInteraction is what one bot in the AOI offers the viewing player.
+type SnapshotInteraction struct {
+	ID EntityID `json:"id"`
+	// Flags enable the overlay icons and the interact-modal tabs.
+	Flags uint8 `json:"flags"`
+	// QuestCodes are the quests this NPC offers the viewing player.
+	QuestCodes []string `json:"questCodes"`
+	// QuestTalkDialogCodes is parallel to QuestCodes: entry i is non-empty
+	// when QuestCodes[i] has an open talk objective this NPC answers.
+	QuestTalkDialogCodes []string `json:"questTalkDialogCodes"`
 }
 
 // SnapshotSelf is the viewing player's own block. It adds the fields only
@@ -100,6 +104,8 @@ type SnapshotSelf struct {
 	Vaults []SnapshotVault `json:"vaults"`
 	// Craft is the running assembly, absent when none runs.
 	Craft *SnapshotCraft `json:"craft,omitempty"`
+	// Interaction has one row per bot in the AOI that offers something.
+	Interaction []SnapshotInteraction `json:"interaction"`
 
 	Frozen bool `json:"frozen"`
 	// MoveSpeed is cells per second. The client prediction integrator uses
@@ -372,6 +378,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 	}
 
 	// Bots
+	var interaction []SnapshotInteraction
 	for _, b := range mapState.bots {
 		if !inAOI(b.ID) {
 			continue
@@ -389,26 +396,30 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		// Quests resolve per viewing player and per cell. QuestCodes carries
 		// every surfaced quest for the interact modal; the capability bits
 		// light only for actionable content.
-		e.QuestCodes = s.botQuestCodes(player, b)
-		e.QuestTalkDialogCodes = s.pendingActionTalkDialogs(player, b, e.QuestCodes)
+		row := SnapshotInteraction{ID: b.ID, QuestCodes: s.botQuestCodes(player, b)}
+		row.QuestTalkDialogCodes = s.pendingActionTalkDialogs(player, b, row.QuestCodes)
 		hasPendingTalk := false
-		for _, d := range e.QuestTalkDialogCodes {
+		for _, d := range row.QuestTalkDialogCodes {
 			if d != "" {
 				hasPendingTalk = true
 				break
 			}
 		}
-		e.InteractionFlags = s.botInteractionFlags(s.botHasActionableQuest(player, b),
+		row.Flags = s.botInteractionFlags(s.botHasActionableQuest(player, b),
 			hasPendingTalk, s.botHasUsableAction(b))
 		// Loot eligibility is personal: the token's collection policy decides who
 		// may collect it, and the client colours the particles by this bit.
 		if mapState.ag(b.ID).Behavior == BehaviorDrop && lootAdmits(b, player.ID) {
-			e.InteractionFlags |= InteractionFlagLootEligible
+			row.Flags |= InteractionFlagLootEligible
+		}
+		if row.Flags != 0 || len(row.QuestCodes) > 0 {
+			interaction = append(interaction, row)
 		}
 		snap.Entities = append(snap.Entities, e)
 	}
 
 	snap.Self = s.buildSnapshotSelf(player, mapState)
+	snap.Self.Interaction = interaction
 	return snap
 }
 

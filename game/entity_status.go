@@ -33,7 +33,7 @@ const (
 )
 
 // Capability icon IDs (8+) — NOT presence states. They are conveyed per entity
-// as the `interactionFlags` bitmask below and rendered by the client as overlay
+// as the `flags` bitmask of the self `interaction` row and rendered by the client as overlay
 // icons alongside the presence icon. The IDs are the client presentation-table
 // keys (STATUS_ICONS / STATUS_ICONS_PRESENTATION) the client resolves to an icon.
 const (
