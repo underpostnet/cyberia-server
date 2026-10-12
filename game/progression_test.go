@@ -232,7 +232,7 @@ func TestSnapshotCarriesProgressionAndSignedBreakdown(t *testing.T) {
 	ms.ap(p.ID).Layers = []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
 	p.Progression = NewEntityProgression(2, false, s.progressionConfig())
 	snap := s.buildSnapshotSelf(p, ms)
-	if snap.Level != 2 || snap.XP != 100 || snap.LevelXP != 100 || snap.NextLevelXP != 400 || snap.LayerStats[2] != -100 || snap.EffectiveStats[2] != -90 {
+	if snap.Level != 2 || snap.XP != 100 || snap.LevelXP != 100 || snap.NextLevelXP != 400 || snap.LayerStats[2] != -100 || snap.Stats[2] != -90 {
 		t.Fatalf("snapshot: %+v", snap)
 	}
 	if snap.MoveSpeed <= 0 {

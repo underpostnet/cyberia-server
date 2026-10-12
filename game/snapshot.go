@@ -37,10 +37,10 @@ type SnapshotEntity struct {
 	MaxLife   int `json:"maxLife"`
 	RespawnIn int `json:"respawnIn"` // whole seconds, 0 when alive
 
-	Level          int                 `json:"level,omitempty"`
-	EffectiveStats *[StatCount]float64 `json:"effectiveStats,omitempty"`
-	StatsSum       int                 `json:"statsSum"`
-	StatusIcon     uint8               `json:"statusIcon"`
+	Level      int             `json:"level,omitempty"`
+	Stats      *[StatCount]int `json:"stats,omitempty"`
+	StatsSum   int             `json:"statsSum"`
+	StatusIcon uint8           `json:"statusIcon"`
 
 	// Player fields: the teleport charge, 0..1, while the player stands on a portal.
 	OnPortal           bool    `json:"onPortal,omitempty"`
@@ -84,12 +84,12 @@ type SnapshotSelf struct {
 
 	// XP is total. LevelXP and NextLevelXP are the thresholds that bound the
 	// current level, so the client can draw in-level progress without the curve.
-	XP             uint64             `json:"xp"`
-	LevelXP        uint64             `json:"levelXp"`
-	NextLevelXP    uint64             `json:"nextLevelXp"`
-	BaseStats      [StatCount]float64 `json:"baseStats"`
-	LayerStats     [StatCount]float64 `json:"layerStats"`
-	TemporaryStats [StatCount]float64 `json:"temporaryStats"`
+	XP             uint64         `json:"xp"`
+	LevelXP        uint64         `json:"levelXp"`
+	NextLevelXP    uint64         `json:"nextLevelXp"`
+	BaseStats      [StatCount]int `json:"baseStats"`
+	LayerStats     [StatCount]int `json:"layerStats"`
+	TemporaryStats [StatCount]int `json:"temporaryStats"`
 
 	MapCode    string   `json:"mapCode"`
 	Path       []PointI `json:"path"`
@@ -236,11 +236,21 @@ func sumStats(cs ComputedStats) int {
 	return int(total)
 }
 
+// wholeStats is the wire form of stats: every stat source is whole, so this
+// only drops the float type.
+func wholeStats(cs ComputedStats) [StatCount]int {
+	var out [StatCount]int
+	for i, v := range cs.Values() {
+		out[i] = int(math.Round(v))
+	}
+	return out
+}
+
 func (s *GameServer) snapshotStats(snapshot *SnapshotEntity, entity statSource, ms *MapState) {
 	stats := s.CalculateStats(entity, ms)
-	values := stats.Values()
+	values := wholeStats(stats)
 	snapshot.Level = s.entityProgression(entity).Level
-	snapshot.EffectiveStats = &values
+	snapshot.Stats = &values
 	snapshot.StatsSum = sumStats(stats)
 }
 
@@ -413,9 +423,9 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 		XP:             progression.XP,
 		LevelXP:        s.progressionConfig().Threshold(progression.Level),
 		NextLevelXP:    s.progressionConfig().Threshold(progression.Level + 1),
-		BaseStats:      breakdown.Base.Values(),
-		LayerStats:     breakdown.Layers.Values(),
-		TemporaryStats: breakdown.Temporary.Values(),
+		BaseStats:      wholeStats(breakdown.Base),
+		LayerStats:     wholeStats(breakdown.Layers),
+		TemporaryStats: wholeStats(breakdown.Temporary),
 
 		MapCode:    player.MapCode,
 		Path:       player.Path,
