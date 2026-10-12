@@ -175,6 +175,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	}, Appearance{Layers: playerOLs})
 	startMapState.addVitals(playerID, Vitals{MaxLife: s.entityBaseMaxLife})
 	startMapState.addMotion(playerID, Motion{Direction: NONE, Mode: IDLE})
+	startMapState.mask[startMapState.slot(playerID)] |= maskPlayer
 
 	// Economy: credit the player's starting wallet (Fountain: playerSpawnCoins).
 	s.FountainInitPlayer(playerState)

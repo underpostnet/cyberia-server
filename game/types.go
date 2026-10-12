@@ -63,6 +63,7 @@ const (
 	maskMotion     ComponentMask = 1 << 5
 	maskAgent      ComponentMask = 1 << 6
 	maskPortal     ComponentMask = 1 << 7
+	maskPlayer     ComponentMask = 1 << 8 // a client controls the entity; no array yet
 )
 
 type Cell struct {
