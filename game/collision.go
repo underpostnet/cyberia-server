@@ -36,7 +36,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 		var isColliding bool
 
 		// Check collision with players
-		for _, player := range mapState.players {
+		for player := range s.playersOn(mapState) {
 			if mapState.vt(player.ID).ghost() { // Don't hit dead/ghost players
 				continue
 			}
@@ -61,7 +61,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				}
 				// FCT: the same red "-N" for every AOI viewer.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
-					broadcastFCT(mapState, FCTDamage,
+					s.broadcastFCT(mapState, FCTDamage,
 						mapState.tf(projectileID).Pos.X+mapState.tf(projectileID).Size.X*0.5,
 						mapState.tf(projectileID).Pos.Y+mapState.tf(projectileID).Size.Y*0.5, dmg)
 				}
@@ -100,7 +100,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				// FCT: bot amounts are public — the same red "-N" for every AOI
 				// viewer, including the killing (one-shot) blow.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
-					broadcastFCT(mapState, FCTDamage,
+					s.broadcastFCT(mapState, FCTDamage,
 						mapState.tf(otherBotID).Pos.X+mapState.tf(otherBotID).Size.X*0.5,
 						mapState.tf(otherBotID).Pos.Y+mapState.tf(otherBotID).Size.Y*0.5, dmg)
 				}
@@ -110,7 +110,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 					// layers — quest `kill` objectives match on it.
 					killedSkin := s.botActiveSkin(otherBotID)
 					s.handleBotDeath(otherBotID, mapState)
-					if killer, ok := mapState.players[mapState.ag(projectileID).CasterID]; ok {
+					if killer := s.playerOn(mapState, mapState.ag(projectileID).CasterID); killer != nil {
 						s.advancePlayerQuestsOnKill(killer, killedSkin)
 					}
 				}
@@ -126,13 +126,13 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 		}
 
 		for res := range mapState.ofKind(EntityResource) {
-			if hitStatic(mapState, projectileID, projectileStats.Effect, res,
+			if s.hitStatic(mapState, projectileID, projectileStats.Effect, res,
 				func() { s.handleResourceDeath(res, mapState) }) {
 				isColliding = true
 			}
 		}
 		for obs := range mapState.destructibles() {
-			if hitStatic(mapState, projectileID, projectileStats.Effect, obs,
+			if s.hitStatic(mapState, projectileID, projectileStats.Effect, obs,
 				func() { s.handleDestructibleDeath(obs, mapState) }) {
 				isColliding = true
 			}
@@ -156,7 +156,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 // hitStatic lands a projectile hit on a static mortal entity — a resource or a
 // destructible obstacle — and reports whether it hit. A ghost takes no hit. The
 // damage joins the loot race ledger, and `die` runs on the lethal hit.
-func hitStatic(mapState *MapState, projectile EntityID, effect float64,
+func (s *GameServer) hitStatic(mapState *MapState, projectile EntityID, effect float64,
 	id EntityID, die func()) bool {
 	shot, tf, v := mapState.tf(projectile), mapState.tf(id), mapState.vt(id)
 	if v.ghost() || !checkAABBCollision(shot.Pos, shot.Size, tf.Pos, tf.Size) {
@@ -170,7 +170,7 @@ func hitStatic(mapState *MapState, projectile EntityID, effect float64,
 	}
 	// FCT: the amount is public — the same red "-N" for every AOI viewer.
 	if dmg := int(effect + 0.5); dmg > 0 {
-		broadcastFCT(mapState, FCTDamage, tf.Pos.X+tf.Size.X*0.5, tf.Pos.Y+tf.Size.Y*0.5, dmg)
+		s.broadcastFCT(mapState, FCTDamage, tf.Pos.X+tf.Size.X*0.5, tf.Pos.Y+tf.Size.Y*0.5, dmg)
 	}
 	return true
 }
@@ -219,7 +219,7 @@ func (s *GameServer) grantItemToBot(id EntityID, ms *MapState, itemID string, qt
 // bots that dealt damage, so a bot-only kill still drops the victim's coins per
 // the instance economy rules; contributing bots collect on collision. A death
 // nobody contributed to drops nothing.
-func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) {
+func (s *GameServer) handlePlayerDeath(player *Session, mapState *MapState) {
 	mortal := mapState.mt(player.ID)
 	s.awardDefeat(player.ID, "player", mapState)
 	// Economy: apply respawn-cost sink before saving layers (disabled by default, rate = 0).
@@ -242,7 +242,7 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) 
 	}
 	playerCenter := Vec2{X: mapState.tf(player.ID).Pos.X + mapState.tf(player.ID).Size.X*0.5, Y: mapState.tf(player.ID).Pos.Y + mapState.tf(player.ID).Size.Y*0.5}
 	s.spawnDrops(mapState, playerCenter, build, coinDrop, mortal.DamageLedger)
-	broadcastAudioEvent(mapState, AudioEventDeath, playerCenter)
+	s.broadcastAudioEvent(mapState, AudioEventDeath, playerCenter)
 	mortal.DamageLedger = nil
 
 	// The Fragmented State reuses the loadout from the player's last death;
@@ -282,7 +282,7 @@ func (s *GameServer) killEntity(id EntityID, kind string, coins int, mapState *M
 	center := Vec2{X: mapState.tf(id).Pos.X + mapState.tf(id).Size.X*0.5, Y: mapState.tf(id).Pos.Y + mapState.tf(id).Size.Y*0.5}
 	s.spawnDrops(mapState, center, build, coins, mortal.DamageLedger)
 	mortal.DamageLedger = nil
-	broadcastAudioEvent(mapState, AudioEventDeath, center)
+	s.broadcastAudioEvent(mapState, AudioEventDeath, center)
 
 	mapState.ap(id).Layers = applyDeadItems(mapState.ap(id).Layers, s.resolveDeadItemIDs(build))
 	mapState.vt(id).RespawnAt = time.Now().Add(mortal.respawnDuration())
@@ -314,7 +314,7 @@ func (s *GameServer) handleDestructibleDeath(obs EntityID, mapState *MapState) {
 // handleRespawns checks and respawns dead players and bots.
 func (s *GameServer) handleRespawns(mapState *MapState) {
 	// Respawn players
-	for _, player := range mapState.players {
+	for player := range s.playersOn(mapState) {
 		if !mapState.vt(player.ID).RespawnAt.IsZero() && time.Now().After(mapState.vt(player.ID).RespawnAt) {
 			mapState.ap(player.ID).Layers = mapState.mt(player.ID).PreRespawnObjectLayers
 			mapState.mt(player.ID).PreRespawnObjectLayers = nil
@@ -373,7 +373,7 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 
 // Projectiles keep their course through restored obstacles.
 func (s *GameServer) clearObstacleCells(ms *MapState, obs Transform) {
-	for _, player := range ms.players {
+	for player := range s.playersOn(ms) {
 		tf := ms.tf(player.ID)
 		if !checkAABBCollision(obs.Pos, obs.Size, tf.Pos, tf.Size) {
 			if pathCrossesObstacle(player.Path, tf.Size, obs) {

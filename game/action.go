@@ -256,7 +256,7 @@ func (s *GameServer) botInteractionFlags(hasActionableQuest, hasPendingActionTal
 // capability lives in shop.go.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) pendingActionTalkDialogs(player *PlayerState, id EntityID, ms *MapState, questCodes []string) []string {
+func (s *GameServer) pendingActionTalkDialogs(player *Session, id EntityID, ms *MapState, questCodes []string) []string {
 	dialogs := make([]string, len(questCodes))
 	action := s.actionCache[id]
 	if action == nil || len(action.QuestDialogueCodes) == 0 {
@@ -295,7 +295,7 @@ func (s *GameServer) botHasUsableAction(id EntityID, ms *MapState) bool {
 // screen in the first place.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botInPlayerRange(player *PlayerState, id EntityID, ms *MapState) bool {
+func (s *GameServer) botInPlayerRange(player *Session, id EntityID, ms *MapState) bool {
 	if ms.code != player.MapCode {
 		return false
 	}
@@ -316,7 +316,7 @@ func (s *GameServer) botInPlayerRange(player *PlayerState, id EntityID, ms *MapS
 // (advanceTalkObjectives). It never grants a quest — that is quest_accept.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleTalkDone(player *PlayerState, cmd *InputCommand) {
+func (s *GameServer) handleTalkDone(player *Session, cmd *InputCommand) {
 	if s.vt(player.ID, player.MapCode).ghost() {
 		return
 	}

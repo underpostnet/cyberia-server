@@ -12,7 +12,7 @@ import (
 
 // destructibleFixture is the movement map with a damaging bullet item and the
 // obstacle defaults a test resolves against.
-func destructibleFixture(t *testing.T, builds ...EntityTypeDefaultConfig) (*GameServer, *MapState, *PlayerState) {
+func destructibleFixture(t *testing.T, builds ...EntityTypeDefaultConfig) (*GameServer, *MapState, *Session) {
 	t.Helper()
 	s, ms, player := movementFixture(t)
 	s.entityDefaults = map[string]EntityTypeDefaultConfig{}
@@ -34,7 +34,7 @@ func placeObstacle(s *GameServer, ms *MapState, maxLife float64, itemIDs ...stri
 }
 
 // shot is one bullet of the caster's at the point, with a slot in the map.
-func shot(ms *MapState, caster *PlayerState, at Vec2) EntityID {
+func shot(ms *MapState, caster *Session, at Vec2) EntityID {
 	const bullet EntityID = 900
 	ms.addBrain(bullet, &Brain{})
 	ms.spawn(bullet, EntityData{Kind: EntityBot}, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}},
@@ -47,7 +47,7 @@ func shot(ms *MapState, caster *PlayerState, at Vec2) EntityID {
 }
 
 // fire lands one bullet of the caster's at the point, then removes it.
-func fire(s *GameServer, ms *MapState, caster *PlayerState, at Vec2) {
+func fire(s *GameServer, ms *MapState, caster *Session, at Vec2) {
 	bullet := shot(ms, caster, at)
 	s.handleSkillCollisions(ms)
 	ms.despawn(bullet)

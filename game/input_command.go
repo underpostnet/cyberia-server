@@ -12,7 +12,7 @@
 // Ownership:
 //   - Built and enqueued by handlers.go (per-WS-goroutine).
 //   - Consumed exclusively by phaseInput in simulation_phases.go.
-//   - PlayerState.InputQueue is the single rendezvous; no other code path
+//   - Session.InputQueue is the single rendezvous; no other code path
 //     mutates entity state in response to client input.
 
 package game
@@ -63,7 +63,7 @@ const maxInputQueue = 512
 // EnqueueInputs appends one batch to the player's InputQueue, whole, so one
 // phaseInput drains it. Called under the world mutex. It never drops: a batch
 // that does not fit returns false, and the caller evicts the client.
-func EnqueueInputs(p *PlayerState, cmds []InputCommand) bool {
+func EnqueueInputs(p *Session, cmds []InputCommand) bool {
 	if len(p.InputQueue)+len(cmds) > maxInputQueue {
 		return false
 	}

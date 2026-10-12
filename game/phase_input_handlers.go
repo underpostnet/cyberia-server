@@ -28,7 +28,7 @@ import (
 )
 
 // Taps record movement and request cooldown-limited skills.
-func (s *GameServer) handlePlayerActionInput(player *PlayerState, mapState *MapState, cmd *InputCommand) {
+func (s *GameServer) handlePlayerActionInput(player *Session, mapState *MapState, cmd *InputCommand) {
 	if mapState.vt(player.ID).ghost() {
 		return
 	}
@@ -45,7 +45,7 @@ func (s *GameServer) handlePlayerActionInput(player *PlayerState, mapState *MapS
 
 // flushPendingMove re-plans the walk from the newest tap of this tick. Called
 // once per player per tick by phaseInput, after the input queue is drained.
-func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
+func (s *GameServer) flushPendingMove(player *Session, mapState *MapState) {
 	if !player.HasPendingMove {
 		return
 	}
@@ -110,7 +110,7 @@ func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
 // faceTargetWithoutPath updates direction/mode when pathfinding fails but
 // we still want the entity to face the tap. Extracted from the JSON
 // handler so both PlayerAction fallback branches share one helper.
-func (s *GameServer) faceTargetWithoutPath(player *PlayerState, mapState *MapState, tx, ty float64) {
+func (s *GameServer) faceTargetWithoutPath(player *Session, mapState *MapState, tx, ty float64) {
 	dx := tx - mapState.tf(player.ID).Pos.X
 	dy := ty - mapState.tf(player.ID).Pos.Y
 	dist := math.Sqrt(dx*dx + dy*dy)
@@ -124,7 +124,7 @@ func (s *GameServer) faceTargetWithoutPath(player *PlayerState, mapState *MapSta
 
 // handleItemActivationInput toggles an inventory slot and re-validates
 // the equipment rules.
-func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCommand) {
+func (s *GameServer) handleItemActivationInput(player *Session, cmd *InputCommand) {
 	itemID := cmd.ItemID
 	active := cmd.Active
 
@@ -236,7 +236,7 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 // queuePreRespawnActivation marks a pending activation that takes effect
 // when the dead player respawns. Extracted to keep handleItemActivationInput
 // readable.
-func (s *GameServer) queuePreRespawnActivation(player *PlayerState, itemID string) {
+func (s *GameServer) queuePreRespawnActivation(player *Session, itemID string) {
 	layers := s.maps[player.MapCode].mt(player.ID).PreRespawnObjectLayers
 	if layers == nil {
 		return
@@ -276,7 +276,7 @@ func (s *GameServer) itemType(itemID string) string {
 
 // handleChatInput is a pure relay — no game-state mutation. Forwards a
 // chat message to the target player on the same map.
-func (s *GameServer) handleChatInput(sender *PlayerState, mapState *MapState, cmd *InputCommand) {
+func (s *GameServer) handleChatInput(sender *Session, mapState *MapState, cmd *InputCommand) {
 	toID := cmd.EntityID
 	text := cmd.ChatText
 	if toID == 0 || text == "" {
@@ -285,8 +285,8 @@ func (s *GameServer) handleChatInput(sender *PlayerState, mapState *MapState, cm
 	if len(text) > 256 {
 		text = text[:256]
 	}
-	target, ok := mapState.players[toID]
-	if !ok {
+	target := s.playerOn(mapState, toID)
+	if target == nil {
 		return
 	}
 	sendMessage(target, "chat", map[string]interface{}{

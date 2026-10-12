@@ -267,7 +267,7 @@ func (s *GameServer) snapshotStats(snapshot *SnapshotEntity, ms *MapState) {
 
 // snapshotPortalHold sets the teleport charge of a player on a portal: the fraction of
 // portalHoldTime elapsed. checkPortal clears OnPortal for a ghost.
-func (s *GameServer) snapshotPortalHold(e *SnapshotEntity, player *PlayerState) {
+func (s *GameServer) snapshotPortalHold(e *SnapshotEntity, player *Session) {
 	e.OnPortal = player.OnPortal
 	if player.OnPortal && s.portalHoldTime > 0 {
 		e.PortalHoldProgress = min(max(time.Since(player.TimeOnPortal).Seconds()/s.portalHoldTime.Seconds(), 0), 1)
@@ -279,7 +279,7 @@ func (s *GameServer) snapshotPortalHold(e *SnapshotEntity, player *PlayerState) 
 // ═══════════════════════════════════════════════════════════════════
 
 // buildSnapshot collects everything inside the player's area of interest.
-func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snapshot {
+func (s *GameServer) buildSnapshot(player *Session, mapState *MapState) Snapshot {
 	snap := Snapshot{
 		Frame:                player.frameAt(s.currentTick),
 		InputConsumedThrough: player.InputConsumedThrough,
@@ -295,7 +295,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 	}
 
 	// Players
-	for _, op := range mapState.players {
+	for op := range s.playersOn(mapState) {
 		if op.ID == player.ID || !inAOI(op.ID) {
 			continue
 		}
@@ -424,7 +424,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 }
 
 // buildSnapshotSelf fills the viewing player's own block.
-func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) SnapshotSelf {
+func (s *GameServer) buildSnapshotSelf(player *Session, mapState *MapState) SnapshotSelf {
 	stats := s.CalculateStats(player.ID, mapState)
 	breakdown := s.statBreakdown(player.ID, mapState, make(map[EntityID]bool))
 	progression := s.entityProgression(player.ID, mapState)

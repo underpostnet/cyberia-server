@@ -73,7 +73,7 @@ const (
 //  1. Dead/respawning → StatusDead
 //  2. Frozen (modal)  → StatusFrozen
 //  3. Alive           → StatusPlayer
-func PlayerStatusIcon(p *PlayerState, v *Vitals) uint8 {
+func PlayerStatusIcon(p *Session, v *Vitals) uint8 {
 	if v.ghost() {
 		return StatusDead
 	}

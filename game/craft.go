@@ -70,7 +70,7 @@ func (s *GameServer) botHasCraft(id EntityID, ms *MapState) bool {
 // needs. A line with a non-positive quantity is free.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) playerCanCraft(player *PlayerState, recipe *ActionCraftRecipe) bool {
+func (s *GameServer) playerCanCraft(player *Session, recipe *ActionCraftRecipe) bool {
 	for _, in := range recipe.Ingredients {
 		if in.Qty <= 0 {
 			continue
@@ -88,7 +88,7 @@ func (s *GameServer) playerCanCraft(player *PlayerState, recipe *ActionCraftReci
 // the progress bar starts; a cancel before completion refunds them.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleCraftItem(player *PlayerState, cmd *InputCommand) {
+func (s *GameServer) handleCraftItem(player *Session, cmd *InputCommand) {
 	if s.vt(player.ID, player.MapCode).ghost() {
 		return
 	}
@@ -135,7 +135,7 @@ func (s *GameServer) handleCraftItem(player *PlayerState, cmd *InputCommand) {
 // Ignored once the timer has already paid out — there is nothing to abort.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleCraftCancel(player *PlayerState) {
+func (s *GameServer) handleCraftCancel(player *Session) {
 	active := player.ActiveCraft
 	if active == nil {
 		return
@@ -153,7 +153,7 @@ func (s *GameServer) handleCraftCancel(player *PlayerState) {
 // Caller MUST hold s.mu.
 func (s *GameServer) completeCrafts(mapState *MapState) {
 	now := time.Now()
-	for _, player := range mapState.players {
+	for player := range s.playersOn(mapState) {
 		active := player.ActiveCraft
 		if active == nil || now.Before(active.CompleteAt) {
 			continue
@@ -177,7 +177,7 @@ type SnapshotCraft struct {
 }
 
 // snapshotCraft is the player's running assembly, or nil when none runs.
-func snapshotCraft(player *PlayerState) *SnapshotCraft {
+func snapshotCraft(player *Session) *SnapshotCraft {
 	active := player.ActiveCraft
 	if active == nil {
 		return nil

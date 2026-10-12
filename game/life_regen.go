@@ -18,18 +18,18 @@ func (s *GameServer) handleProbabilisticRegen(id EntityID, mapState *MapState) {
 	if amount <= 0 {
 		return
 	}
-	restoreLife(mapState, v, mapState.tf(id).Pos, amount)
+	s.restoreLife(mapState, v, mapState.tf(id).Pos, amount)
 }
 
 // restoreLife adds up to amount life, never past MaxLife. Every AOI viewer sees the same green
 // "+N" for the life actually restored, for players and bots alike.
-func restoreLife(mapState *MapState, v *Vitals, at Vec2, amount float64) {
+func (s *GameServer) restoreLife(mapState *MapState, v *Vitals, at Vec2, amount float64) {
 	gained := min(v.Life+amount, v.MaxLife) - v.Life
 	if gained <= 0 {
 		return
 	}
 	v.Life += gained
 	if shown := int(gained + 0.5); shown > 0 {
-		broadcastFCT(mapState, FCTRegen, at.X, at.Y, shown)
+		s.broadcastFCT(mapState, FCTRegen, at.X, at.Y, shown)
 	}
 }

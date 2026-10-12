@@ -25,7 +25,7 @@
 //   - launch goroutines that mutate world state.
 //
 // A phase MAY:
-//   - read and write fields of MapState and PlayerState.
+//   - read and write fields of MapState and Session.
 //   - read GameServer config (rules) fields that influence gameplay.
 
 package game
@@ -46,7 +46,7 @@ package game
 //     intent; flushPendingMove runs the single A*. This is the only bound on
 //     pathfinder cost, so no other path may call it.
 func (s *GameServer) phaseInput(tick uint32, mapState *MapState) {
-	for _, player := range mapState.players {
+	for player := range s.playersOn(mapState) {
 		if len(player.InputQueue) == 0 {
 			continue
 		}
@@ -68,7 +68,7 @@ func (s *GameServer) phaseInput(tick uint32, mapState *MapState) {
 }
 
 // frameAt is the client step that tick stands for. 0 before the first consumed event.
-func (p *PlayerState) frameAt(tick uint32) uint32 {
+func (p *Session) frameAt(tick uint32) uint32 {
 	if p.InputConsumedThrough == 0 {
 		return 0
 	}
@@ -78,7 +78,7 @@ func (p *PlayerState) frameAt(tick uint32) uint32 {
 // applyInputCommand is the typed dispatcher. Kept on *GameServer so it
 // can call into existing simulation helpers without re-acquiring the
 // world lock. Each branch maps to one InputKind constant.
-func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, cmd *InputCommand) {
+func (s *GameServer) applyInputCommand(player *Session, mapState *MapState, cmd *InputCommand) {
 	switch cmd.Kind {
 	case InputKindPlayerAction:
 		s.handlePlayerActionInput(player, mapState, cmd)
@@ -127,7 +127,7 @@ func (s *GameServer) phaseLifecycle(tick uint32, mapState *MapState) {
 func (s *GameServer) phaseSkills(tick uint32, mapState *MapState) {
 	_ = tick
 	s.handleSkillCollisions(mapState)
-	for _, player := range mapState.players {
+	for player := range s.playersOn(mapState) {
 		s.dispatchHeldSkills(player.ID, mapState)
 	}
 	for id := range mapState.brains {
@@ -150,7 +150,7 @@ func (s *GameServer) phaseAI(tick uint32, mapState *MapState) {
 // Bots are handled inside phaseAI for now (see note above).
 func (s *GameServer) phaseMovement(tick uint32, mapState *MapState) {
 	_ = tick
-	for _, player := range mapState.players {
+	for player := range s.playersOn(mapState) {
 		s.updatePlayerPosition(player, mapState)
 		// TELEPORTING is a one-snapshot-interval signal set by teleportPlayer.
 		// phaseReplication (or the immediate sendAOI in teleportPlayer) delivers
@@ -168,7 +168,7 @@ func (s *GameServer) phaseMovement(tick uint32, mapState *MapState) {
 // when the portal hold time has elapsed.
 func (s *GameServer) phasePortals(tick uint32, mapState *MapState) {
 	_ = tick
-	for _, player := range mapState.players {
+	for player := range s.playersOn(mapState) {
 		s.checkPortal(player, mapState)
 	}
 }
@@ -178,7 +178,7 @@ func (s *GameServer) phasePortals(tick uint32, mapState *MapState) {
 // is the only one that produces server→client AOI frames at steady state
 // (the bootstrap full snapshot on connect is sent from handlers.go).
 func (s *GameServer) phaseReplication(mapState *MapState) {
-	for _, player := range mapState.players {
+	for player := range s.playersOn(mapState) {
 		player.AOI = Rectangle{
 			MinX: mapState.tf(player.ID).Pos.X - s.aoiRadius,
 			MinY: mapState.tf(player.ID).Pos.Y - s.aoiRadius,

@@ -7,28 +7,29 @@ import (
 
 // movementFixture builds the smallest world phaseInput needs: one walkable grid
 // and a player holding a client.
-func movementFixture(t *testing.T) (*GameServer, *MapState, *PlayerState) {
+func movementFixture(t *testing.T) (*GameServer, *MapState, *Session) {
 	t.Helper()
 
 	mapState := &MapState{
 		gridW:      20,
 		gridH:      20,
 		pathfinder: NewPathfinder(20, 20),
-		players:    map[EntityID]*PlayerState{},
+		code:       "test",
 	}
 
 	s := &GameServer{
 		maps:                        map[string]*MapState{"test": mapState},
+		sessions:                    map[EntityID]*Session{},
 		entityBaseSpeed:             5,
 		entityBaseActionCooldown:    500 * time.Millisecond,
 		entityBaseMinActionCooldown: 100 * time.Millisecond,
 	}
 
-	player := &PlayerState{}
+	player := &Session{}
 	player.ID = 1
 	player.MapCode = "test"
 	player.Client = &Client{playerID: player.ID}
-	mapState.players[player.ID] = player
+	s.sessions[player.ID] = player
 	mapState.spawn(player.ID, EntityData{Kind: EntityPlayer}, Transform{Pos: Vec2{X: 1, Y: 1}, Size: Vec2{X: 1, Y: 1}}, Appearance{})
 	mapState.addVitals(player.ID, Vitals{Life: 100, MaxLife: 100})
 	mapState.addMotion(player.ID, Motion{Direction: NONE, Mode: IDLE})
@@ -44,16 +45,19 @@ func testMap(s *GameServer) *MapState {
 		s.maps = map[string]*MapState{}
 	}
 	if s.maps["test"] == nil {
-		s.maps["test"] = &MapState{players: map[EntityID]*PlayerState{}}
+		s.maps["test"] = &MapState{code: "test"}
 	}
 	return s.maps["test"]
 }
 
 // placePlayer puts a player that holds layers on the map "test" of s.
-func placePlayer(s *GameServer, id EntityID, layers []ObjectLayerState) *PlayerState {
+func placePlayer(s *GameServer, id EntityID, layers []ObjectLayerState) *Session {
 	ms := testMap(s)
-	p := &PlayerState{EntityBase: EntityBase{ID: id}, MapCode: "test"}
-	ms.players[id] = p
+	p := &Session{ID: id, MapCode: "test"}
+	if s.sessions == nil {
+		s.sessions = map[EntityID]*Session{}
+	}
+	s.sessions[id] = p
 	ms.spawn(id, EntityData{Kind: EntityPlayer}, Transform{}, Appearance{Layers: layers})
 	ms.addVitals(id, Vitals{})
 	ms.addMortal(id, &Mortal{})
@@ -73,7 +77,7 @@ func placeBot(s *GameServer, id EntityID, v Vitals) EntityID {
 
 // tapTick queues taps and runs one full input phase over them, which is the only
 // path that re-plans movement.
-func tapTick(s *GameServer, mapState *MapState, player *PlayerState, taps ...InputCommand) {
+func tapTick(s *GameServer, mapState *MapState, player *Session, taps ...InputCommand) {
 	EnqueueInputs(player, taps)
 	s.phaseInput(0, mapState)
 }

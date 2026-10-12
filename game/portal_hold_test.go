@@ -7,16 +7,15 @@ import (
 
 // holdingFixture is the movement fixture with a 2 s portal hold and a second
 // player in view that has stood on a portal for 1 s.
-func holdingFixture(t *testing.T) (*GameServer, *MapState, *PlayerState, *PlayerState) {
+func holdingFixture(t *testing.T) (*GameServer, *MapState, *Session, *Session) {
 	t.Helper()
 	s, ms, viewer := movementFixture(t)
 	s.portalHoldTime = 2 * time.Second
 	viewer.AOI = Rectangle{MaxX: 20, MaxY: 20}
-	traveler := &PlayerState{}
-	traveler.ID = 300
+	traveler := &Session{ID: 300, MapCode: viewer.MapCode}
 	traveler.OnPortal = true
 	traveler.TimeOnPortal = time.Now().Add(-time.Second)
-	ms.players[traveler.ID] = traveler
+	s.sessions[traveler.ID] = traveler
 	ms.spawn(traveler.ID, EntityData{Kind: EntityPlayer}, Transform{Pos: Vec2{X: 5, Y: 5}, Size: Vec2{X: 1, Y: 1}}, Appearance{})
 	ms.addVitals(traveler.ID, Vitals{Life: 100, MaxLife: 100})
 	ms.addMortal(traveler.ID, &Mortal{})

@@ -30,7 +30,7 @@ func newWSTestServer(t *testing.T, limits ConnectionLimits) *wsTestServer {
 		gridW:      40,
 		gridH:      40,
 		pathfinder: NewPathfinder(40, 40),
-		players:    map[EntityID]*PlayerState{},
+		code:       "test",
 	}
 
 	s := NewGameServer()
@@ -62,7 +62,7 @@ func (w *wsTestServer) playerCount() int {
 	defer w.game.mu.Unlock()
 	n := 0
 	for _, m := range w.game.maps {
-		n += len(m.players)
+		n += m.count(EntityPlayer)
 	}
 	return n
 }
@@ -421,7 +421,7 @@ func TestWSBatchWithAnInvalidEventIsConsumedWhole(t *testing.T) {
 	queued := func() int {
 		srv.game.mu.Lock()
 		defer srv.game.mu.Unlock()
-		for _, p := range mapState.players {
+		for p := range srv.game.playersOn(mapState) {
 			return len(p.InputQueue)
 		}
 		return 0
@@ -431,7 +431,7 @@ func TestWSBatchWithAnInvalidEventIsConsumedWhole(t *testing.T) {
 	srv.game.mu.Lock()
 	defer srv.game.mu.Unlock()
 	srv.game.phaseInput(0, mapState)
-	for _, p := range mapState.players {
+	for p := range srv.game.playersOn(mapState) {
 		if p.InputConsumedThrough != 3 || len(p.InputQueue) != 0 {
 			t.Fatalf("cursor = %d, queue = %d, want 3, 0", p.InputConsumedThrough, len(p.InputQueue))
 		}

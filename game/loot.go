@@ -119,7 +119,8 @@ func recordDamage(ledger *map[EntityID]float64, mapState *MapState, casterID Ent
 	if ledger == nil || casterID == 0 || amount <= 0 {
 		return
 	}
-	_, isPlayer := mapState.players[casterID]
+	slot, onMap := mapState.index[casterID]
+	isPlayer := onMap && mapState.data[slot].Kind == EntityPlayer
 	_, isBot := mapState.brains[casterID]
 	if !isPlayer && !isBot {
 		return // unknown caster — no claim
@@ -386,7 +387,7 @@ func lootConsumes(drop *Brain, collector *Vitals) bool {
 
 // applyLootToPlayer applies the token's outcome to the collecting player and
 // reports whether the player received what it carries.
-func (s *GameServer) applyLootToPlayer(mapState *MapState, drop *Brain, player *PlayerState) bool {
+func (s *GameServer) applyLootToPlayer(mapState *MapState, drop *Brain, player *Session) bool {
 	logx.Debugf("[LOOT] %s token %s taken by player %s", drop.LootOrigin, drop.DropItemID, player.ID)
 	switch {
 	case drop.LootOutcome == LootOutcomeCoin:
@@ -430,9 +431,9 @@ func lootAdmits(drop *Brain, collectorID EntityID) bool {
 // resolveDropCollector returns the first live, non-frozen player overlapping the
 // token that its policy admits, or nil. Go's random map
 // iteration order fairly breaks ties between simultaneous colliders.
-func (s *GameServer) resolveDropCollector(mapState *MapState, dropID EntityID) *PlayerState {
+func (s *GameServer) resolveDropCollector(mapState *MapState, dropID EntityID) *Session {
 	drop := mapState.br(dropID)
-	for _, player := range mapState.players {
+	for player := range s.playersOn(mapState) {
 		if mapState.vt(player.ID).ghost() || player.Frozen {
 			continue
 		}
@@ -481,7 +482,7 @@ func (s *GameServer) broadcastDropSpawn(mapState *MapState, dropID EntityID, ori
 		ItemID:   drop.DropItemID,
 	}
 	originRect := Rectangle{MinX: origin.X, MinY: origin.Y, MaxX: origin.X, MaxY: origin.Y}
-	for _, player := range mapState.players {
+	for player := range s.playersOn(mapState) {
 		if rectsOverlap(player.AOI, originRect) {
 			sendMessage(player, "drop_spawn", payload)
 		}
@@ -505,7 +506,7 @@ func (s *GameServer) broadcastDropCollect(mapState *MapState, dropID EntityID, c
 		MinX: mapState.tf(dropID).Pos.X, MinY: mapState.tf(dropID).Pos.Y,
 		MaxX: mapState.tf(dropID).Pos.X + mapState.tf(dropID).Size.X, MaxY: mapState.tf(dropID).Pos.Y + mapState.tf(dropID).Size.Y,
 	}
-	for _, player := range mapState.players {
+	for player := range s.playersOn(mapState) {
 		if player.ID == collectorID || rectsOverlap(player.AOI, dropRect) {
 			sendMessage(player, "drop_collect", payload)
 		}

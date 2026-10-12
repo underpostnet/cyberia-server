@@ -54,7 +54,7 @@ func (s *GameServer) entityProgression(id EntityID, ms *MapState) *EntityProgres
 // awardProgression runs under the simulation lock after a gameplay result.
 // XP is private, so its floating text goes to the earner alone; a level gained
 // is public, so its sound reaches every viewer in the earner's area.
-func (s *GameServer) awardProgression(player *PlayerState, event progressionEvent, key string, targetLevel int, now time.Time) uint64 {
+func (s *GameServer) awardProgression(player *Session, event progressionEvent, key string, targetLevel int, now time.Time) uint64 {
 	ms := s.maps[player.MapCode]
 	p := s.entityProgression(player.ID, ms)
 	before := p.Level
@@ -66,7 +66,7 @@ func (s *GameServer) awardProgression(player *PlayerState, event progressionEven
 	tf := ms.tf(player.ID)
 	sendMessage(player, "combat_text", CombatText{Kind: FCTXp, WorldX: tf.Pos.X, WorldY: tf.Pos.Y, Value: int(amount)})
 	if p.Level > before {
-		broadcastAudioEvent(ms, AudioEventLevelUp, Vec2{X: tf.Pos.X + tf.Size.X*0.5, Y: tf.Pos.Y + tf.Size.Y*0.5})
+		s.broadcastAudioEvent(ms, AudioEventLevelUp, Vec2{X: tf.Pos.X + tf.Size.X*0.5, Y: tf.Pos.Y + tf.Size.Y*0.5})
 	}
 	return amount
 }
@@ -94,7 +94,7 @@ func (s *GameServer) awardDefeat(victim EntityID, kind string, ms *MapState) {
 		if id == victim || damage <= 0 || damage < total*0.1 {
 			continue
 		}
-		entity := ms.players[id]
+		entity := s.playerOn(ms, id)
 		if entity == nil || ms.vt(entity.ID).ghost() || entity.Frozen {
 			continue
 		}

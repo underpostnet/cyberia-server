@@ -142,12 +142,12 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// A player is placed by nothing, so its whole stack comes from its default — read the one way
 	// every entity type reads it.
 	playerOLs := s.spawnObjectLayers("player", nil, true)
-	playerState := &PlayerState{
-		EntityBase: EntityBase{ID: playerID},
-		EngineID:   uuid.New().String(),
-		MapCode:    startMapCode,
-		Path:       []Cell{},
-		TargetPos:  Cell{-1, -1},
+	playerState := &Session{
+		ID:        playerID,
+		EngineID:  uuid.New().String(),
+		MapCode:   startMapCode,
+		Path:      []Cell{},
+		TargetPos: Cell{-1, -1},
 	}
 	client := &Client{
 		playerID: playerID,
@@ -164,7 +164,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	slotOwned = false // the Client owns the guard slot from here
 	playerState.Client = client
 
-	startMapState.players[playerID] = playerState
+	s.sessions[playerID] = playerState
 	startMapState.spawn(playerID, EntityData{Kind: EntityPlayer}, Transform{
 		Pos:  Vec2{X: float64(startPosI.X), Y: float64(startPosI.Y)},
 		Size: playerDims,
@@ -246,9 +246,9 @@ func (s *GameServer) detachClient(client *Client) {
 	s.mu.Lock()
 	client.detached = true
 	delete(s.clients, client.playerID)
+	delete(s.sessions, client.playerID)
 	// Sweep every map: a portal can move a player after MapCode was read.
 	for _, mapState := range s.maps {
-		delete(mapState.players, client.playerID)
 		mapState.despawn(client.playerID)
 	}
 	s.mu.Unlock()
@@ -261,7 +261,7 @@ func (s *GameServer) detachClient(client *Client) {
 
 // sendMessage packs a message and queues it for the player. The send never
 // blocks: a full queue drops the message.
-func sendMessage(player *PlayerState, msgType string, payload any) {
+func sendMessage(player *Session, msgType string, payload any) {
 	if player == nil || player.Client == nil || player.Client.sock == nil {
 		return
 	}
@@ -277,7 +277,7 @@ func sendMessage(player *PlayerState, msgType string, payload any) {
 
 // sendAck answers a request with the {ok, reason} pair every ack carries, plus
 // the caller's own fields. An empty reason means success.
-func sendAck(player *PlayerState, msgType, reason string, fields map[string]interface{}) {
+func sendAck(player *Session, msgType, reason string, fields map[string]interface{}) {
 	fields["ok"] = reason == ""
 	fields["reason"] = reason
 	sendMessage(player, msgType, fields)
@@ -496,10 +496,8 @@ func (c *Client) evict(server *GameServer, reason string) {
 func (c *Client) dispatchInputs(server *GameServer, cmds []InputCommand) {
 	fits := true
 	server.mu.Lock()
-	if mapState, ok := server.maps[c.playerState.MapCode]; ok {
-		if player := mapState.players[c.playerID]; player != nil {
-			fits = EnqueueInputs(player, cmds)
-		}
+	if player := server.sessions[c.playerID]; player != nil {
+		fits = EnqueueInputs(player, cmds)
 	}
 	server.mu.Unlock()
 	if !fits {

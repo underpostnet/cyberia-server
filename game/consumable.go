@@ -35,10 +35,10 @@ func canConsume(consumer *Vitals) bool {
 // restores the item's heal, never past max life, and tells every viewer.
 func (s *GameServer) consumeItem(mapState *MapState, id EntityID, itemID string) {
 	pos := mapState.tf(id).Pos
-	restoreLife(mapState, mapState.vt(id), pos, s.consumableHeal(itemID))
+	s.restoreLife(mapState, mapState.vt(id), pos, s.consumableHeal(itemID))
 	build, _ := s.lootBuild(itemID)
 	event := ItemConsume{EntityID: id, ItemID: itemID, Behavior: build.Behavior}
-	broadcastAt(mapState, "item_consume", event, pos.X, pos.Y)
+	s.broadcastAt(mapState, "item_consume", event, pos.X, pos.Y)
 }
 
 // executeZeroWasteHeal consumes one held unit of the trigger item once the

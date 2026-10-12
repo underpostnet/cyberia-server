@@ -195,6 +195,25 @@ func (ms *MapState) destructibles() iter.Seq[EntityID] {
 	}
 }
 
+// playersOn yields the session of every player on ms, in slot order.
+func (s *GameServer) playersOn(ms *MapState) iter.Seq[*Session] {
+	return func(yield func(*Session) bool) {
+		for id := range ms.ofKind(EntityPlayer) {
+			if !yield(s.sessions[id]) {
+				return
+			}
+		}
+	}
+}
+
+// playerOn returns the session of id when id is a player on ms, else nil.
+func (s *GameServer) playerOn(ms *MapState, id EntityID) *Session {
+	if slot, ok := ms.index[id]; ok && ms.data[slot].Kind == EntityPlayer {
+		return s.sessions[id]
+	}
+	return nil
+}
+
 // count returns the number of entities of kind k.
 func (ms *MapState) count(k string) int {
 	n := 0

@@ -111,8 +111,8 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		if mapState.ag(id).Behavior == BehaviorHostile {
 			var nearestID EntityID
 			nearestDist := math.MaxFloat64
-			var nearestPlayer *PlayerState
-			for _, p := range mapState.players {
+			var nearestPlayer *Session
+			for p := range s.playersOn(mapState) {
 				// Don't target dead/ghost players
 				if mapState.vt(p.ID).Life <= 0 || mapState.vt(p.ID).ghost() {
 					continue

@@ -118,16 +118,6 @@ type EntityID uint32
 // ComponentMask holds one bit per component an entity has.
 type ComponentMask uint64
 
-// EntityBase — the identity every world entity shares. Its components are in
-// the MapState arrays.
-type EntityBase struct {
-	ID EntityID `json:"id"`
-}
-
-// Base returns the shared entity block. It gives a generic helper one way to
-// reach the embedded fields of any entity type.
-func (e EntityBase) Base() EntityBase { return e }
-
 // Mortal is the server-only side table row of an entity that can die (player,
 // bot, resource). Life itself is in MapState.vitals.
 type Mortal struct {
@@ -185,8 +175,10 @@ func (m *Mortal) respawnDuration() time.Duration {
 	return respawnDurationDefaultMs * time.Millisecond
 }
 
-type PlayerState struct {
-	EntityBase
+// Session is the server-only side table row of a connected player: its link,
+// its map, its economy, its quests and its input stream.
+type Session struct {
+	ID EntityID
 	// EngineID is the player id the engine knows. It never goes in a snapshot.
 	EngineID     string    `json:"-"`
 	MapCode      string    `json:"MapCode"`
@@ -293,7 +285,6 @@ type MapState struct {
 	mu         sync.RWMutex
 	code       string // the map code; the key of this map in GameServer.maps
 	pathfinder *Pathfinder
-	players    map[EntityID]*PlayerState
 	// lootRespawns are the consumed world tokens waiting to come back (loot.go).
 	lootRespawns []lootRespawn
 	gridW, gridH int
@@ -317,7 +308,7 @@ type MapState struct {
 type Client struct {
 	sock        *socket.Socket
 	playerID    EntityID
-	playerState *PlayerState
+	playerState *Session
 
 	// ip is the address the guard counts this connection against.
 	ip string
@@ -342,6 +333,7 @@ type GameServer struct {
 	questsByCell     map[cellKey][]string // quest codes bound to each action cell
 	clients          map[EntityID]*Client
 	lastEntityID     EntityID // only goes up, so a freed id never comes back
+	sessions         map[EntityID]*Session
 	register         chan *Client
 	unregister       chan *Client
 	aoiRadius        float64

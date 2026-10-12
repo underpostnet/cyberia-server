@@ -106,14 +106,14 @@ func (s *GameServer) RebuildWorld(
 
 	// Snapshot existing players per map so they survive the rebuild.
 	type savedPlayer struct {
-		state *PlayerState
-		row   entityRow
+		id  EntityID
+		row entityRow
 	}
 	savedPlayers := make(map[string][]savedPlayer)
 	for code, ms := range s.maps {
 		ms.mu.RLock()
-		for id, p := range ms.players {
-			savedPlayers[code] = append(savedPlayers[code], savedPlayer{p, ms.take(id)})
+		for id := range ms.ofKind(EntityPlayer) {
+			savedPlayers[code] = append(savedPlayers[code], savedPlayer{id, ms.take(id)})
 		}
 		ms.mu.RUnlock()
 	}
@@ -135,8 +135,7 @@ func (s *GameServer) RebuildWorld(
 		}
 		ms.mu.Lock()
 		for _, p := range players {
-			ms.players[p.state.ID] = p.state
-			ms.put(p.state.ID, p.row)
+			ms.put(p.id, p.row)
 		}
 		ms.mu.Unlock()
 	}
@@ -144,7 +143,7 @@ func (s *GameServer) RebuildWorld(
 	logx.Infof("[InstanceLoader] RebuildWorld complete: %d maps.", len(s.maps))
 	for code, ms := range s.maps {
 		logx.Debugf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots, %d resources, %d statics, %d players",
-			code, ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), ms.sceneryCount("foreground"), ms.count(EntityPortal), len(ms.brains), ms.count(EntityResource), ms.sceneryCount("static"), len(ms.players))
+			code, ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), ms.sceneryCount("foreground"), ms.count(EntityPortal), len(ms.brains), ms.count(EntityResource), ms.sceneryCount("static"), ms.count(EntityPlayer))
 	}
 	printInstanceGraph(instance, s.maps)
 }
@@ -183,7 +182,6 @@ func (s *GameServer) buildMapsFromInstance(
 			code:       mapCode,
 			gridW:      gridW,
 			gridH:      gridH,
-			players:    make(map[EntityID]*PlayerState),
 			pathfinder: NewPathfinder(gridW, gridH),
 		}
 		// Register the map first: a builder reads its components through s.maps.

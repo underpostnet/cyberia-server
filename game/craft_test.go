@@ -138,7 +138,7 @@ func TestCraftTimeMsValidatesTheAuthoredDuration(t *testing.T) {
 func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 	s := &GameServer{coinItemID: "coin"}
 	next := EntityID(0)
-	newPlayer := func() *PlayerState {
+	newPlayer := func() *Session {
 		next++
 		p := placePlayer(s, next, []ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
 		p.Coins = 5
@@ -152,7 +152,7 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 		},
 	}
 	// Stand in for the consume phase handleCraftItem runs before arming a timer.
-	start := func(p *PlayerState, at time.Time) {
+	start := func(p *Session, at time.Time) {
 		for _, in := range recipe.Ingredients {
 			s.removePlayerItem(p, in.ItemID, in.Qty)
 		}

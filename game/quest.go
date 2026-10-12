@@ -249,7 +249,7 @@ func (s *GameServer) providerSkinsAtCell(cell cellKey) []string {
 // and all its prerequisites are completed.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) questAcceptableFor(player *PlayerState, code string) bool {
+func (s *GameServer) questAcceptableFor(player *Session, code string) bool {
 	if _, ok := s.questDefs[code]; !ok {
 		return false
 	}
@@ -263,7 +263,7 @@ func (s *GameServer) questAcceptableFor(player *PlayerState, code string) bool {
 // cell, or "" when none can be started right now.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) resolveAcceptableQuestAtCell(player *PlayerState, cell cellKey) string {
+func (s *GameServer) resolveAcceptableQuestAtCell(player *Session, cell cellKey) string {
 	for _, code := range s.questsByCell[cell] {
 		if s.questAcceptableFor(player, code) {
 			return code
@@ -278,7 +278,7 @@ func (s *GameServer) resolveAcceptableQuestAtCell(player *PlayerState, cell cell
 // grantor NPC can re-offer the quest (prerequisites permitting).
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleQuestAbandon(player *PlayerState, cmd *InputCommand) {
+func (s *GameServer) handleQuestAbandon(player *Session, cmd *InputCommand) {
 	qp, ok := s.playerQuest(player, cmd.ItemID)
 	if !ok || qp.Status != "active" {
 		return
@@ -296,7 +296,7 @@ func (s *GameServer) handleQuestAbandon(player *PlayerState, cmd *InputCommand) 
 // implicitly by reading dialogue.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleQuestAccept(player *PlayerState, cmd *InputCommand) {
+func (s *GameServer) handleQuestAccept(player *Session, cmd *InputCommand) {
 	id := cmd.EntityID
 	ms := s.findBot(id)
 	if ms == nil {
@@ -346,14 +346,14 @@ func questSnapshotContains(entries []QuestSnapshotEntry, code string) bool {
 
 // ── Quest helpers ───────────────────────────────────────────────────────────
 
-func (s *GameServer) ensurePlayerQuests(player *PlayerState) {
+func (s *GameServer) ensurePlayerQuests(player *Session) {
 	if player.Quests == nil {
 		player.Quests = make(map[string]*QuestProgress)
 	}
 }
 
 // playerQuest returns the player's progress for a quest code, if any.
-func (s *GameServer) playerQuest(player *PlayerState, code string) (*QuestProgress, bool) {
+func (s *GameServer) playerQuest(player *Session, code string) (*QuestProgress, bool) {
 	if player.Quests == nil {
 		return nil, false
 	}
@@ -362,7 +362,7 @@ func (s *GameServer) playerQuest(player *PlayerState, code string) (*QuestProgre
 }
 
 // questCompleted reports whether the player has finished a quest.
-func (s *GameServer) questCompleted(player *PlayerState, code string) bool {
+func (s *GameServer) questCompleted(player *Session, code string) bool {
 	qp, ok := s.playerQuest(player, code)
 	return ok && qp.Status == "completed"
 }
@@ -377,7 +377,7 @@ func (s *GameServer) questCompleted(player *PlayerState, code string) bool {
 // by code only when uncached. The non-empty result also drives the quest bit.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botQuestCodes(player *PlayerState, id EntityID, ms *MapState) []string {
+func (s *GameServer) botQuestCodes(player *Session, id EntityID, ms *MapState) []string {
 	seen := map[string]bool{}
 	var codes []string
 	add := func(code string) {
@@ -417,7 +417,7 @@ func (s *GameServer) botQuestCodes(player *PlayerState, id EntityID, ms *MapStat
 // actionable — they light no attention icon.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botHasActionableQuest(player *PlayerState, id EntityID, ms *MapState) bool {
+func (s *GameServer) botHasActionableQuest(player *Session, id EntityID, ms *MapState) bool {
 	for _, code := range s.questsByCell[botSpawnCell(ms, id)] {
 		if s.questAcceptableFor(player, code) {
 			return true
@@ -453,14 +453,14 @@ func stepHasIncompleteTalk(sp *QuestStepProgress, skin string) bool {
 }
 
 // playerQuestActive reports whether the player has this quest in the active state.
-func (s *GameServer) playerQuestActive(player *PlayerState, code string) bool {
+func (s *GameServer) playerQuestActive(player *Session, code string) bool {
 	qp, ok := s.playerQuest(player, code)
 	return ok && qp.Status == "active"
 }
 
 // prerequisitesMet reports whether every prerequisite quest of `code` is
 // completed for the player (AND logic). Unknown quests fail closed.
-func (s *GameServer) prerequisitesMet(player *PlayerState, code string) bool {
+func (s *GameServer) prerequisitesMet(player *Session, code string) bool {
 	def, ok := s.questDefs[code]
 	if !ok {
 		return false
@@ -479,7 +479,7 @@ func (s *GameServer) prerequisitesMet(player *PlayerState, code string) bool {
 // grantQuest creates an active progress record from the quest definition,
 // denormalizing required counts. Best-effort persists to engine REST. Returns
 // nil when the quest is unknown or its prerequisites are unmet.
-func (s *GameServer) grantQuest(player *PlayerState, code string) *QuestProgress {
+func (s *GameServer) grantQuest(player *Session, code string) *QuestProgress {
 	def, ok := s.questDefs[code]
 	if !ok {
 		logx.Warnf("[Quest] grant skipped — unknown quest %q", code)
@@ -560,7 +560,7 @@ func questComplete(qp *QuestProgress) bool {
 //
 // On step/quest completion it delivers rewards. Returns true if it advanced.
 func (s *GameServer) advanceTalkObjectives(
-	player *PlayerState,
+	player *Session,
 	talkedSkin string,
 	action *CyberiaAction,
 	completedDialogCode string,
@@ -619,7 +619,7 @@ func questTalkDialogCode(action *CyberiaAction, questCode string) string {
 // of any newly-completed step, then completing the quest (rewards + unlocks)
 // when all steps are done, otherwise persisting and snapshotting the new
 // progress. Always appends exactly one snapshot entry per advance.
-func (s *GameServer) finalizeQuestProgress(player *PlayerState, qp *QuestProgress, affected *[]QuestSnapshotEntry) {
+func (s *GameServer) finalizeQuestProgress(player *Session, qp *QuestProgress, affected *[]QuestSnapshotEntry) {
 	s.settleCompletedSteps(player, qp)
 	if questComplete(qp) {
 		s.completeQuest(player, qp, affected)
@@ -632,7 +632,7 @@ func (s *GameServer) finalizeQuestProgress(player *PlayerState, qp *QuestProgres
 // settleCompletedSteps removes the `collect` items of every step that is now
 // complete and not yet consumed. A step's collect items are only taken once all
 // of its objectives are satisfied, so partial progress never drains inventory.
-func (s *GameServer) settleCompletedSteps(player *PlayerState, qp *QuestProgress) {
+func (s *GameServer) settleCompletedSteps(player *Session, qp *QuestProgress) {
 	for i := range qp.Steps {
 		sp := &qp.Steps[i]
 		if sp.Consumed || !stepComplete(sp) {
@@ -650,7 +650,7 @@ func (s *GameServer) settleCompletedSteps(player *PlayerState, qp *QuestProgress
 
 // removePlayerItem deducts qty of itemID from the player's inventory. Coins
 // route through the flat balance; other items drain matching ObjectLayer rows.
-func (s *GameServer) removePlayerItem(player *PlayerState, itemID string, qty int) {
+func (s *GameServer) removePlayerItem(player *Session, itemID string, qty int) {
 	if qty <= 0 {
 		return
 	}
@@ -665,7 +665,7 @@ func (s *GameServer) removePlayerItem(player *PlayerState, itemID string, qty in
 
 // playerItemQuantity returns how many of itemID the player holds. Coins route
 // through the flat balance; everything else sums matching ObjectLayer rows.
-func (s *GameServer) playerItemQuantity(player *PlayerState, itemID string) int {
+func (s *GameServer) playerItemQuantity(player *Session, itemID string) int {
 	if itemID == s.coinItemID {
 		return int(player.Coins)
 	}
@@ -676,7 +676,7 @@ func (s *GameServer) playerItemQuantity(player *PlayerState, itemID string) int 
 // skin matches the just-killed entity's skin. Returns true if any advanced.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) advanceKillObjectives(player *PlayerState, killedSkin string, affected *[]QuestSnapshotEntry) bool {
+func (s *GameServer) advanceKillObjectives(player *Session, killedSkin string, affected *[]QuestSnapshotEntry) bool {
 	if player == nil || killedSkin == "" {
 		return false
 	}
@@ -712,7 +712,7 @@ func (s *GameServer) advanceKillObjectives(player *PlayerState, killedSkin strin
 // Run after any inventory gain. Returns true if any objective changed.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) advanceCollectObjectives(player *PlayerState, affected *[]QuestSnapshotEntry) bool {
+func (s *GameServer) advanceCollectObjectives(player *Session, affected *[]QuestSnapshotEntry) bool {
 	if player == nil {
 		return false
 	}
@@ -760,7 +760,7 @@ func (s *GameServer) advanceCollectObjectives(player *PlayerState, affected *[]Q
 // today) and pushes a live quest update to the player when anything changed.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) advancePlayerQuestsOnGain(player *PlayerState) {
+func (s *GameServer) advancePlayerQuestsOnGain(player *Session) {
 	var affected []QuestSnapshotEntry
 	s.advanceCollectObjectives(player, &affected)
 	if len(affected) > 0 {
@@ -772,7 +772,7 @@ func (s *GameServer) advancePlayerQuestsOnGain(player *PlayerState) {
 // the inventory reconcile (loot/coins from the kill), pushing one live update.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) advancePlayerQuestsOnKill(player *PlayerState, killedSkin string) {
+func (s *GameServer) advancePlayerQuestsOnKill(player *Session, killedSkin string) {
 	var affected []QuestSnapshotEntry
 	s.advanceKillObjectives(player, killedSkin, &affected)
 	s.advanceCollectObjectives(player, &affected)
@@ -783,7 +783,7 @@ func (s *GameServer) advancePlayerQuestsOnKill(player *PlayerState, killedSkin s
 
 // completeQuest marks a quest completed, delivers its rewards, unlocks
 // successors, and records the affected snapshot entries.
-func (s *GameServer) completeQuest(player *PlayerState, qp *QuestProgress, affected *[]QuestSnapshotEntry) {
+func (s *GameServer) completeQuest(player *Session, qp *QuestProgress, affected *[]QuestSnapshotEntry) {
 	if qp.Status == "completed" {
 		return
 	}
@@ -801,7 +801,7 @@ func (s *GameServer) completeQuest(player *PlayerState, qp *QuestProgress, affec
 // deliverQuestRewards grants each reward item to the player's inventory. Coins
 // route through the flat coin balance. No gain FCT — reward feedback surfaces in
 // the reward notification modal and the loot grid.
-func (s *GameServer) deliverQuestRewards(player *PlayerState, code string) {
+func (s *GameServer) deliverQuestRewards(player *Session, code string) {
 	def, ok := s.questDefs[code]
 	if !ok {
 		return
@@ -835,7 +835,7 @@ func (s *GameServer) questSnapshot(qp *QuestProgress) QuestSnapshotEntry {
 
 // buildQuestSnapshot projects all of a player's quests for the init_data
 // payload. Returns an empty (non-nil) slice for a fresh guest.
-func (s *GameServer) buildQuestSnapshot(player *PlayerState) []QuestSnapshotEntry {
+func (s *GameServer) buildQuestSnapshot(player *Session) []QuestSnapshotEntry {
 	out := make([]QuestSnapshotEntry, 0, len(player.Quests))
 	for _, qp := range player.Quests {
 		out = append(out, s.questSnapshot(qp))
@@ -845,7 +845,7 @@ func (s *GameServer) buildQuestSnapshot(player *PlayerState) []QuestSnapshotEntr
 
 // sendDlgAck pushes the notify-only dialogue acknowledgement to the player.
 // affected carries any quest entries the client should upsert into its store.
-func (s *GameServer) sendDlgAck(player *PlayerState, questGranted string, objectivesDone bool, affected []QuestSnapshotEntry) {
+func (s *GameServer) sendDlgAck(player *Session, questGranted string, objectivesDone bool, affected []QuestSnapshotEntry) {
 	sendMessage(player, "dialog_ack", map[string]interface{}{
 		"questGranted":   questGranted,
 		"objectivesDone": objectivesDone,
@@ -859,7 +859,7 @@ func (s *GameServer) sendDlgAck(player *PlayerState, questGranted string, object
 // progress landed, so the journal and notification paths fire identically.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) sendQuestUpdate(player *PlayerState, affected []QuestSnapshotEntry) {
+func (s *GameServer) sendQuestUpdate(player *Session, affected []QuestSnapshotEntry) {
 	if player.Client == nil || len(affected) == 0 {
 		return
 	}
@@ -877,7 +877,7 @@ type persistJob struct {
 // only queues the POST; persistLoop sends it. A full queue drops the record.
 //
 // When the Data Server URL is unset the call is a no-op (e.g. for tests).
-func (s *GameServer) persistQuestProgress(player *PlayerState, qp *QuestProgress) {
+func (s *GameServer) persistQuestProgress(player *Session, qp *QuestProgress) {
 	if s.dataServerURL == "" || s.dataServerAPIKey == "" {
 		return
 	}

@@ -14,8 +14,9 @@ import (
 // All configuration must be applied via ApplyInstanceConfig from gRPC data.
 func NewGameServer() *GameServer {
 	gs := &GameServer{
-		maps:    make(map[string]*MapState),
-		clients: make(map[EntityID]*Client),
+		maps:     make(map[string]*MapState),
+		clients:  make(map[EntityID]*Client),
+		sessions: make(map[EntityID]*Session),
 		// Buffer register/unregister so HandleConnections never blocks the
 		// HTTP handler goroutine waiting for listenForClients to win the
 		// world lock against gameLoop. 64 outstanding connect/disconnect
@@ -427,7 +428,7 @@ func stepAlongPath(pos Vec2, path []Cell, speed, dt float64) (Vec2, []Cell, Dire
 	return pos, path, directionFromVector(dirX/norm, dirY/norm), true
 }
 
-func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapState) {
+func (s *GameServer) updatePlayerPosition(player *Session, mapState *MapState) {
 	// Dead players can't move.
 	if mapState.vt(player.ID).ghost() {
 		return
@@ -453,7 +454,7 @@ func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapStat
 }
 
 // ---------- Portals ----------
-func (s *GameServer) checkPortal(player *PlayerState, mapState *MapState) {
+func (s *GameServer) checkPortal(player *Session, mapState *MapState) {
 	// Teleport is only possible while alive. A dead player standing on a portal
 	// neither accrues hold progress nor teleports; entering ghost state cancels
 	// any in-progress hold.
@@ -484,9 +485,9 @@ func (s *GameServer) checkPortal(player *PlayerState, mapState *MapState) {
 	}
 }
 
-func (s *GameServer) teleportPlayer(player *PlayerState, mapState *MapState, portal EntityID) {
+func (s *GameServer) teleportPlayer(player *Session, mapState *MapState, portal EntityID) {
 	// s.mu is held by the caller (phasePortals). Do not release it: map
-	// mutations of mapState.players must not race other readers.
+	// mutations of the map slots must not race other readers.
 
 	target, linked := mapState.pt(portal)
 	if !linked {
@@ -519,14 +520,12 @@ func (s *GameServer) teleportPlayer(player *PlayerState, mapState *MapState, por
 		return
 	}
 	row := currentMapState.take(player.ID)
-	delete(currentMapState.players, player.ID)
 	row.transform.Pos = Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}
 	player.MapCode = destMapCode
 	player.TargetPos = Cell{}
 	player.Path = []Cell{}
 	row.motion.Mode = TELEPORTING
 	player.OnPortal = false
-	destMapState.players[player.ID] = player
 	destMapState.put(player.ID, row)
 	s.sendAOI(player)
 }
@@ -542,7 +541,7 @@ func (s *GameServer) teleportPlayer(player *PlayerState, mapState *MapState, por
 //
 // Outside these two call sites, simulation code MUST NOT send a snapshot —
 // replication is the only path that may produce AOI frames.
-func (s *GameServer) sendAOI(player *PlayerState) {
+func (s *GameServer) sendAOI(player *Session) {
 	mapState, ok := s.maps[player.MapCode]
 	if !ok {
 		logx.Warnf("Map %q not found for player %s.", player.MapCode, player.ID)

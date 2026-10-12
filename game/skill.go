@@ -12,7 +12,7 @@ type SkillDefinition struct {
 }
 
 // HandlePlayerTapAction gates skills and regeneration with the authoritative cooldown.
-func (s *GameServer) HandlePlayerTapAction(player *PlayerState, mapState *MapState, target Vec2) {
+func (s *GameServer) HandlePlayerTapAction(player *Session, mapState *MapState, target Vec2) {
 	if mapState.vt(player.ID).ghost() || player.Frozen {
 		return
 	}

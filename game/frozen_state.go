@@ -24,7 +24,7 @@ import (
 // FreezePlayer puts a player into FrozenInteractionState. No-op when frozen.
 //
 // Caller MUST hold server.mu.
-func FreezePlayer(player *PlayerState, mapState *MapState) {
+func FreezePlayer(player *Session, mapState *MapState) {
 	if player.Frozen {
 		return
 	}
@@ -41,7 +41,7 @@ func FreezePlayer(player *PlayerState, mapState *MapState) {
 // ThawPlayer exits FrozenInteractionState. No-op when not frozen.
 //
 // Caller MUST hold server.mu.
-func ThawPlayer(player *PlayerState) {
+func ThawPlayer(player *Session) {
 	if !player.Frozen {
 		return
 	}
