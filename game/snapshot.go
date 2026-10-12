@@ -33,9 +33,9 @@ type SnapshotEntity struct {
 	Direction int `json:"direction"`
 	Mode      int `json:"mode"`
 
-	Life      float64 `json:"life"`
-	MaxLife   float64 `json:"maxLife"`
-	RespawnIn float64 `json:"respawnIn"` // seconds, 0 when alive
+	Life      int `json:"life"`
+	MaxLife   int `json:"maxLife"`
+	RespawnIn int `json:"respawnIn"` // whole seconds, 0 when alive
 
 	Level          int                 `json:"level,omitempty"`
 	EffectiveStats *[StatCount]float64 `json:"effectiveStats,omitempty"`
@@ -186,17 +186,15 @@ func activeLayers(layers []ObjectLayerState) []ObjectLayerState {
 	return out
 }
 
-// respawnSeconds returns the whole seconds left of a ghost's respawn timer,
-// or 0 when the entity is alive.
-func respawnSeconds(ghost bool, respawnTime time.Time) float64 {
-	if !ghost {
-		return 0
+// setVitals writes v in wire form: whole numbers rounded up, so 0.4 life reads
+// alive and a respawn 0.4 s away has not happened. RespawnIn is 0 while alive.
+func (e *SnapshotEntity) setVitals(v *Vitals) {
+	e.Life = int(math.Ceil(v.Life))
+	e.MaxLife = int(math.Ceil(v.MaxLife))
+	e.RespawnIn = 0
+	if v.ghost() {
+		e.RespawnIn = max(0, int(math.Ceil(time.Until(v.RespawnAt).Seconds())))
 	}
-	remaining := math.Ceil(time.Until(respawnTime).Seconds())
-	if remaining < 0 {
-		return 0
-	}
-	return remaining
 }
 
 // msUntil returns the whole milliseconds left until t, rounded up, or 0 once
@@ -281,12 +279,10 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 			continue
 		}
 		e := baseEntity(mapState, op.ID, op.Direction, op.Mode)
-		e.Life = op.Life
-		e.MaxLife = op.MaxLife
-		e.RespawnIn = respawnSeconds(op.IsGhost(), op.RespawnTime)
+		e.setVitals(mapState.vt(op.ID))
 		s.snapshotStats(&e, op, mapState)
 		s.snapshotPortalHold(&e, op)
-		e.StatusIcon = PlayerStatusIcon(op)
+		e.StatusIcon = PlayerStatusIcon(op, mapState.vt(op.ID))
 		snap.Entities = append(snap.Entities, e)
 	}
 
@@ -303,11 +299,9 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 			continue
 		}
 		e := baseEntity(mapState, id, NONE, IDLE)
-		// Destructible obstacles add their life; an ordinary obstacle sends maxLife 0.
-		if obs, ok := mapState.destructibles[id]; ok {
-			e.Life = obs.Life
-			e.MaxLife = obs.MaxLife
-			e.RespawnIn = respawnSeconds(obs.IsGhost(), obs.RespawnTime)
+		// A destructible obstacle adds its vitals; an ordinary obstacle sends maxLife 0.
+		if mapState.mask[i]&maskVitals != 0 {
+			e.setVitals(&mapState.vitals[i])
 		}
 		snap.Entities = append(snap.Entities, e)
 	}
@@ -357,11 +351,9 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 			continue
 		}
 		e := baseEntity(mapState, r.ID, NONE, IDLE)
-		e.Life = r.Life
-		e.MaxLife = r.MaxLife
-		e.RespawnIn = respawnSeconds(r.IsGhost(), r.RespawnTime)
+		e.setVitals(mapState.vt(r.ID))
 		s.snapshotStats(&e, r, mapState)
-		e.StatusIcon = ResourceStatusIcon(r)
+		e.StatusIcon = ResourceStatusIcon(mapState.vt(r.ID))
 		snap.Entities = append(snap.Entities, e)
 	}
 
@@ -371,11 +363,9 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 			continue
 		}
 		e := baseEntity(mapState, b.ID, b.Direction, b.Mode)
-		e.Life = b.Life
-		e.MaxLife = b.MaxLife
-		e.RespawnIn = respawnSeconds(b.IsGhost(), b.RespawnTime)
+		e.setVitals(mapState.vt(b.ID))
 		s.snapshotStats(&e, b, mapState)
-		e.StatusIcon = BotStatusIcon(b)
+		e.StatusIcon = BotStatusIcon(b, mapState.vt(b.ID))
 		e.Behavior = b.Behavior
 		e.CasterID = b.CasterID
 		// The action code is location-scoped and position-independent. The
@@ -440,11 +430,9 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 		ActionReadyInMs:  msUntil(player.NextSkillAt),
 		ConsumeReadyInMs: msUntil(player.NextConsumeAt),
 	}
-	self.Life = player.Life
-	self.MaxLife = player.MaxLife
-	self.RespawnIn = respawnSeconds(player.IsGhost(), player.RespawnTime)
+	self.setVitals(mapState.vt(player.ID))
 	s.snapshotStats(&self.SnapshotEntity, player, mapState)
 	s.snapshotPortalHold(&self.SnapshotEntity, player)
-	self.StatusIcon = PlayerStatusIcon(player)
+	self.StatusIcon = PlayerStatusIcon(player, mapState.vt(player.ID))
 	return self
 }

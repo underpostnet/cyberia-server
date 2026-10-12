@@ -26,7 +26,7 @@ func healingServer(t *testing.T, life float64, stacks ...ObjectLayerState) (*Gam
 		"gel": {{LogicEventID: "zero-waste-auto-consume-heal", SummonedEntityItemID: "gel"}},
 	}
 	s.InitSkills()
-	player.Life = life
+	ms.vt(player.ID).Life = life
 	ms.ap(player.ID).Layers = stacks
 	return s, ms, player
 }
@@ -39,14 +39,14 @@ func TestAHeldConsumableWaitsUntilTheMissingLifeTakesItsWholeHeal(t *testing.T) 
 	s, ms, player := healingServer(t, 100-gelHeal+1, gel(2))
 
 	s.phaseSkills(0, ms)
-	if player.Life != 100-gelHeal+1 || s.playerItemQuantity(player, "gel") != 2 {
-		t.Fatalf("life=%v gel=%d, want no heal while it would waste life", player.Life, s.playerItemQuantity(player, "gel"))
+	if ms.vt(player.ID).Life != 100-gelHeal+1 || s.playerItemQuantity(player, "gel") != 2 {
+		t.Fatalf("life=%v gel=%d, want no heal while it would waste life", ms.vt(player.ID).Life, s.playerItemQuantity(player, "gel"))
 	}
 
-	player.Life = 100 - gelHeal
+	ms.vt(player.ID).Life = 100 - gelHeal
 	s.phaseSkills(0, ms)
-	if player.Life != 100 || s.playerItemQuantity(player, "gel") != 1 {
-		t.Fatalf("life=%v gel=%d, want one inactive unit consumed to full life", player.Life, s.playerItemQuantity(player, "gel"))
+	if ms.vt(player.ID).Life != 100 || s.playerItemQuantity(player, "gel") != 1 {
+		t.Fatalf("life=%v gel=%d, want one inactive unit consumed to full life", ms.vt(player.ID).Life, s.playerItemQuantity(player, "gel"))
 	}
 	if !player.NextConsumeAt.After(time.Now()) {
 		t.Fatal("a consumed unit must start the consume cooldown")
@@ -58,14 +58,14 @@ func TestTheConsumeCooldownSpacesTwoHeals(t *testing.T) {
 
 	s.phaseSkills(0, ms)
 	s.phaseSkills(0, ms)
-	if player.Life != 10+gelHeal || s.playerItemQuantity(player, "gel") != 2 {
-		t.Fatalf("life=%v gel=%d, want one heal inside the cooldown", player.Life, s.playerItemQuantity(player, "gel"))
+	if ms.vt(player.ID).Life != 10+gelHeal || s.playerItemQuantity(player, "gel") != 2 {
+		t.Fatalf("life=%v gel=%d, want one heal inside the cooldown", ms.vt(player.ID).Life, s.playerItemQuantity(player, "gel"))
 	}
 
 	player.NextConsumeAt = time.Now()
 	s.phaseSkills(0, ms)
-	if player.Life != 10+2*gelHeal || s.playerItemQuantity(player, "gel") != 1 {
-		t.Fatalf("life=%v gel=%d, want a second heal once the cooldown ends", player.Life, s.playerItemQuantity(player, "gel"))
+	if ms.vt(player.ID).Life != 10+2*gelHeal || s.playerItemQuantity(player, "gel") != 1 {
+		t.Fatalf("life=%v gel=%d, want a second heal once the cooldown ends", ms.vt(player.ID).Life, s.playerItemQuantity(player, "gel"))
 	}
 }
 
@@ -81,16 +81,16 @@ func TestTheLastUnitLeavesTheInventory(t *testing.T) {
 
 func TestNothingHealsAGhostOrFromAnItemWithoutTheSkill(t *testing.T) {
 	s, ms, ghost := healingServer(t, 10, gel(1))
-	ghost.RespawnTime = time.Now().Add(time.Minute)
+	ms.vt(ghost.ID).RespawnAt = time.Now().Add(time.Minute)
 	s.phaseSkills(0, ms)
-	if ghost.Life != 10 || s.playerItemQuantity(ghost, "gel") != 1 {
-		t.Fatalf("a ghost healed: life=%v gel=%d", ghost.Life, s.playerItemQuantity(ghost, "gel"))
+	if ms.vt(ghost.ID).Life != 10 || s.playerItemQuantity(ghost, "gel") != 1 {
+		t.Fatalf("a ghost healed: life=%v gel=%d", ms.vt(ghost.ID).Life, s.playerItemQuantity(ghost, "gel"))
 	}
 
 	s, ms, player := healingServer(t, 10, ObjectLayerState{ItemID: "crate", Quantity: 1})
 	s.phaseSkills(0, ms)
-	if player.Life != 10 || s.playerItemQuantity(player, "crate") != 1 {
-		t.Fatalf("an item without the skill healed: life=%v crate=%d", player.Life, s.playerItemQuantity(player, "crate"))
+	if ms.vt(player.ID).Life != 10 || s.playerItemQuantity(player, "crate") != 1 {
+		t.Fatalf("an item without the skill healed: life=%v crate=%d", ms.vt(player.ID).Life, s.playerItemQuantity(player, "crate"))
 	}
 }
 
@@ -99,17 +99,18 @@ func TestOnlyALootCollectingBotHealsFromItsHeldUnits(t *testing.T) {
 	ids := map[string]EntityID{BehaviorHostile: 200, BehaviorDrop: 201, BehaviorProvider: 202}
 	for behavior, id := range ids {
 		ms.bots[id] = &BotState{EntityBase: EntityBase{ID: id},
-			Mortal: Mortal{Life: 10, MaxLife: 100}, Behavior: behavior}
+			Behavior: behavior}
 		ms.spawn(id, EntityData{Kind: EntityBot}, Transform{Size: Vec2{X: 1, Y: 1}}, Appearance{Layers: []ObjectLayerState{gel(1)}})
+		ms.addVitals(id, Vitals{Life: 10, MaxLife: 100})
 	}
 
 	s.phaseSkills(0, ms)
 
-	if raider := ms.bots[ids[BehaviorHostile]]; raider.Life != 10+gelHeal || len(ms.ap(raider.ID).Layers) != 0 {
-		t.Fatalf("the hostile bot must heal from its gel: life=%v layers=%+v", raider.Life, ms.ap(raider.ID).Layers)
+	if raider := ms.bots[ids[BehaviorHostile]]; ms.vt(raider.ID).Life != 10+gelHeal || len(ms.ap(raider.ID).Layers) != 0 {
+		t.Fatalf("the hostile bot must heal from its gel: life=%v layers=%+v", ms.vt(raider.ID).Life, ms.ap(raider.ID).Layers)
 	}
 	for _, behavior := range []string{BehaviorDrop, BehaviorProvider} {
-		if bot := ms.bots[ids[behavior]]; bot.Life != 10 || len(ms.ap(bot.ID).Layers) != 1 {
+		if bot := ms.bots[ids[behavior]]; ms.vt(bot.ID).Life != 10 || len(ms.ap(bot.ID).Layers) != 1 {
 			t.Fatalf("a %s bot consumed its gel", behavior)
 		}
 	}

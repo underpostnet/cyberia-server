@@ -37,7 +37,7 @@ func (s *GameServer) randomPointWithinRadius(ms *MapState, center Vec2, radius f
 func (s *GameServer) updateBots(mapState *MapState) {
 	for botID, bot := range mapState.bots {
 		// If bot is dead, skip all AI logic.
-		if bot.IsGhost() {
+		if mapState.vt(bot.ID).ghost() {
 			continue
 		}
 
@@ -116,7 +116,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			var nearestPlayer *PlayerState
 			for _, p := range mapState.players {
 				// Don't target dead/ghost players
-				if p.Life <= 0 || p.IsGhost() {
+				if mapState.vt(p.ID).Life <= 0 || mapState.vt(p.ID).ghost() {
 					continue
 				}
 

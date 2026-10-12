@@ -66,7 +66,7 @@ func craftRecipeAt(action *CyberiaAction, index int) *ActionCraftRecipe {
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) botHasCraft(bot *BotState) bool {
-	if bot == nil || bot.IsGhost() {
+	if bot == nil || s.vt(bot.ID, bot.MapCode).ghost() {
 		return false
 	}
 	action := s.actionCache[bot.ID]
@@ -96,7 +96,7 @@ func (s *GameServer) playerCanCraft(player *PlayerState, recipe *ActionCraftReci
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) handleCraftItem(player *PlayerState, cmd *InputCommand) {
-	if player.IsGhost() {
+	if s.vt(player.ID, player.MapCode).ghost() {
 		return
 	}
 	if player.ActiveCraft != nil {

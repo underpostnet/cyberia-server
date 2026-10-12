@@ -146,8 +146,6 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		EntityBase: EntityBase{ID: playerID},
 		Mortal: Mortal{
 			Progression: NewEntityProgression(1, false, s.progressionConfig()),
-			MaxLife:     s.entityBaseMaxLife,
-			Life:        s.entityBaseMaxLife * s.initialLifeFraction,
 		},
 		EngineID:  uuid.New().String(),
 		MapCode:   startMapCode,
@@ -177,13 +175,15 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		Pos:  Vec2{X: float64(startPosI.X), Y: float64(startPosI.Y)},
 		Size: playerDims,
 	}, Appearance{Layers: playerOLs})
+	startMapState.addVitals(playerID, Vitals{MaxLife: s.entityBaseMaxLife})
 
 	// Economy: credit the player's starting wallet (Fountain: playerSpawnCoins).
 	s.FountainInitPlayer(playerState)
 
 	// Apply initial stats (like Resistance for MaxLife) after creation.
 	s.ApplyResistanceStat(playerState, startMapState)
-	playerState.Life = playerState.MaxLife * s.initialLifeFraction // Set life based on config fraction
+	v := startMapState.vt(playerID)
+	v.Life = v.MaxLife * s.initialLifeFraction // Set life based on config fraction
 
 	// Every join spawns frozen. The client loading overlay is its first open
 	// modal; Tap-to-Start closes it and sends player_stasis false.

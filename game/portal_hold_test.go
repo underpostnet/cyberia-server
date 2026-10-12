@@ -14,11 +14,11 @@ func holdingFixture(t *testing.T) (*GameServer, *MapState, *PlayerState, *Player
 	viewer.AOI = Rectangle{MaxX: 20, MaxY: 20}
 	traveler := &PlayerState{}
 	traveler.ID = 300
-	traveler.Life, traveler.MaxLife = 100, 100
 	traveler.OnPortal = true
 	traveler.TimeOnPortal = time.Now().Add(-time.Second)
 	ms.players[traveler.ID] = traveler
 	ms.spawn(traveler.ID, EntityData{Kind: EntityPlayer}, Transform{Pos: Vec2{X: 5, Y: 5}, Size: Vec2{X: 1, Y: 1}}, Appearance{})
+	ms.addVitals(traveler.ID, Vitals{Life: 100, MaxLife: 100})
 	return s, ms, viewer, traveler
 }
 

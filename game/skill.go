@@ -13,7 +13,7 @@ type SkillDefinition struct {
 
 // HandlePlayerTapAction gates skills and regeneration with the authoritative cooldown.
 func (s *GameServer) HandlePlayerTapAction(player *PlayerState, mapState *MapState, target Vec2) {
-	if player.IsGhost() || player.Frozen {
+	if mapState.vt(player.ID).ghost() || player.Frozen {
 		return
 	}
 	if !s.acceptSkillAction(player, mapState, time.Now()) {
@@ -25,7 +25,7 @@ func (s *GameServer) HandlePlayerTapAction(player *PlayerState, mapState *MapSta
 
 func (s *GameServer) acceptSkillAction(entity statSource, mapState *MapState, now time.Time) bool {
 	state := entity.StatState()
-	if state.IsGhost() || now.Before(state.NextSkillAt) {
+	if mapState.vt(entity.Base().ID).ghost() || now.Before(state.NextSkillAt) {
 		return false
 	}
 	state.NextSkillAt = now.Add(s.CalculateActionCooldown(s.CalculateStats(entity, mapState)))

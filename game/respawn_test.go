@@ -7,10 +7,10 @@ import (
 	pb "cyberia-server/gen/proto"
 )
 
-// waitsAbout fails unless the mortal respawns want after now.
-func waitsAbout(t *testing.T, kind string, mortal *Mortal, now time.Time, want time.Duration) {
+// waitsAbout fails unless the entity respawns want after now.
+func waitsAbout(t *testing.T, kind string, v *Vitals, now time.Time, want time.Duration) {
 	t.Helper()
-	if wait := mortal.RespawnTime.Sub(now); wait < want || wait > want+time.Second {
+	if wait := v.RespawnAt.Sub(now); wait < want || wait > want+time.Second {
 		t.Errorf("%s waits %v, want %v", kind, wait, want)
 	}
 }
@@ -34,18 +34,18 @@ func TestEachPlacedEntityWaitsItsOwnRespawnTime(t *testing.T) {
 	now := time.Now()
 	for _, bot := range ms.bots {
 		s.handleBotDeath(bot, ms)
-		waitsAbout(t, "bot", &bot.Mortal, now, 7*time.Second)
+		waitsAbout(t, "bot", ms.vt(bot.ID), now, 7*time.Second)
 	}
 	for _, res := range ms.resources {
 		s.handleResourceDeath(res, ms)
-		waitsAbout(t, "resource", &res.Mortal, now, 8*time.Second)
+		waitsAbout(t, "resource", ms.vt(res.ID), now, 8*time.Second)
 	}
 	for _, obs := range ms.destructibles {
 		s.handleDestructibleDeath(obs, ms)
-		waitsAbout(t, "destructible", &obs.Mortal, now, 9*time.Second)
+		waitsAbout(t, "destructible", ms.vt(obs.ID), now, 9*time.Second)
 	}
 	s.handlePlayerDeath(player, ms)
-	waitsAbout(t, "player", &player.Mortal, now, respawnDurationDefaultMs*time.Millisecond)
+	waitsAbout(t, "player", ms.vt(player.ID), now, respawnDurationDefaultMs*time.Millisecond)
 }
 
 func TestAPlacedEntityWithoutARespawnTimeTakesTheDefault(t *testing.T) {
@@ -54,6 +54,6 @@ func TestAPlacedEntityWithoutARespawnTimeTakesTheDefault(t *testing.T) {
 	now := time.Now()
 	for _, res := range s.maps["m"].resources {
 		s.handleResourceDeath(res, s.maps["m"])
-		waitsAbout(t, "resource", &res.Mortal, now, respawnDurationDefaultMs*time.Millisecond)
+		waitsAbout(t, "resource", s.maps["m"].vt(res.ID), now, respawnDurationDefaultMs*time.Millisecond)
 	}
 }

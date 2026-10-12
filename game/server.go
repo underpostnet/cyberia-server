@@ -429,7 +429,7 @@ func stepAlongPath(pos Vec2, path []PointI, speed, dt float64) (Vec2, []PointI, 
 
 func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapState) {
 	// Dead players can't move.
-	if player.IsGhost() {
+	if mapState.vt(player.ID).ghost() {
 		return
 	}
 
@@ -457,7 +457,7 @@ func (s *GameServer) checkPortal(player *PlayerState, mapState *MapState) {
 	// Teleport is only possible while alive. A dead player standing on a portal
 	// neither accrues hold progress nor teleports; entering ghost state cancels
 	// any in-progress hold.
-	if player.IsGhost() {
+	if mapState.vt(player.ID).ghost() {
 		player.OnPortal = false
 		return
 	}
@@ -533,16 +533,16 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 		logx.Warnf("Could not find a walkable spawn point: %v", err)
 		return
 	}
-	ap := *currentMapState.ap(player.ID)
+	row := currentMapState.take(player.ID)
 	delete(currentMapState.players, player.ID)
-	currentMapState.despawn(player.ID)
+	row.transform.Pos = Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}
 	player.MapCode = destMapCode
 	player.TargetPos = PointI{}
 	player.Path = []PointI{}
 	player.Mode = TELEPORTING
 	player.OnPortal = false
 	destMapState.players[player.ID] = player
-	destMapState.spawn(player.ID, EntityData{Kind: EntityPlayer}, Transform{Pos: Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}, Size: size}, ap)
+	destMapState.put(player.ID, row)
 	s.sendAOI(player)
 }
 

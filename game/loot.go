@@ -187,11 +187,7 @@ func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Vec2,
 // caller spawns it with its transform and lootAppearance.
 func (s *GameServer) newLootToken(mapCode string, itemID string, quantity int) *BotState {
 	return &BotState{
-		EntityBase: EntityBase{ID: s.newEntityID()},
-		Mortal: Mortal{
-			MaxLife: s.entityBaseMaxLife,
-			Life:    s.entityBaseMaxLife,
-		},
+		EntityBase:   EntityBase{ID: s.newEntityID()},
 		MapCode:      mapCode,
 		Behavior:     BehaviorDrop,
 		Direction:    NONE,
@@ -246,6 +242,7 @@ func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center V
 	drop.ExpiresAt = now.Add(lootLifetime)
 	mapState.bots[drop.ID] = drop
 	mapState.spawn(drop.ID, EntityData{Kind: EntityBot}, Transform{Pos: pos, Size: tokenDims}, lootAppearance(itemID, quantity))
+	mapState.addVitals(drop.ID, Vitals{MaxLife: s.entityBaseMaxLife, Life: s.entityBaseMaxLife})
 
 	// Announce the launch so viewers play the corpse→cell parabola. The landing
 	// point is the token center.
@@ -305,6 +302,7 @@ func (s *GameServer) placeWorldLoot(mapState *MapState, mapCode string, pos Vec2
 	}
 	mapState.bots[drop.ID] = drop
 	mapState.spawn(drop.ID, EntityData{Kind: EntityBot}, Transform{Pos: pos, Size: worldTokenDims}, lootAppearance(itemID, 1))
+	mapState.addVitals(drop.ID, Vitals{MaxLife: s.entityBaseMaxLife, Life: s.entityBaseMaxLife})
 }
 
 // scheduleLootRespawn brings a consumed world token back on its cell after its
@@ -383,7 +381,7 @@ func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 
 // lootConsumes reports whether the collector consumes the token at once: a
 // consuming token heals a collector that misses life; one at full life keeps the item.
-func lootConsumes(drop *BotState, collector *Mortal) bool {
+func lootConsumes(drop *BotState, collector *Vitals) bool {
 	return drop.LootOutcome == LootOutcomeConsume && canConsume(collector)
 }
 
@@ -395,8 +393,8 @@ func (s *GameServer) applyLootToPlayer(mapState *MapState, drop *BotState, playe
 	case drop.LootOutcome == LootOutcomeCoin:
 		// No coin-gain FCT — the amount is shown on the grid loot counter.
 		s.addCoins(player, drop.DropQuantity)
-	case lootConsumes(drop, &player.Mortal):
-		s.consumeItem(mapState, &player.EntityBase, &player.Mortal, drop.DropItemID)
+	case lootConsumes(drop, mapState.vt(player.ID)):
+		s.consumeItem(mapState, player.ID, drop.DropItemID)
 		return false
 	default:
 		s.addPlayerItem(player, drop.DropItemID, drop.DropQuantity)
@@ -412,8 +410,8 @@ func (s *GameServer) applyLootToBot(mapState *MapState, drop *BotState, bot *Bot
 	switch {
 	case drop.LootOutcome == LootOutcomeCoin:
 		s.addCoins(bot, drop.DropQuantity)
-	case lootConsumes(drop, &bot.Mortal):
-		s.consumeItem(mapState, &bot.EntityBase, &bot.Mortal, drop.DropItemID)
+	case lootConsumes(drop, mapState.vt(bot.ID)):
+		s.consumeItem(mapState, bot.ID, drop.DropItemID)
 		return false
 	default:
 		s.grantItemToBot(bot, drop.DropItemID, drop.DropQuantity)
@@ -435,7 +433,7 @@ func lootAdmits(drop *BotState, collectorID EntityID) bool {
 // iteration order fairly breaks ties between simultaneous colliders.
 func (s *GameServer) resolveDropCollector(mapState *MapState, drop *BotState) *PlayerState {
 	for _, player := range mapState.players {
-		if player.IsGhost() || player.Frozen {
+		if mapState.vt(player.ID).ghost() || player.Frozen {
 			continue
 		}
 		if !checkAABBCollision(mapState.tf(drop.ID).Pos, mapState.tf(drop.ID).Size, mapState.tf(player.ID).Pos, mapState.tf(player.ID).Size) {
@@ -452,7 +450,7 @@ func (s *GameServer) resolveDropCollector(mapState *MapState, drop *BotState) *P
 // the token that its policy admits, or nil.
 func (s *GameServer) resolveBotDropCollector(mapState *MapState, drop *BotState) *BotState {
 	for id, bot := range mapState.bots {
-		if bot.IsGhost() || !behaviorCollectsLoot(bot.Behavior) {
+		if mapState.vt(bot.ID).ghost() || !behaviorCollectsLoot(bot.Behavior) {
 			continue
 		}
 		if !lootAdmits(drop, id) {

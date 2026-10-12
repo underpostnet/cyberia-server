@@ -89,18 +89,15 @@ func TestShopBuyQuantityClampsToRange(t *testing.T) {
 // botHasShop drives the action-provider capability bit, so a vendor advertises
 // itself overhead exactly like a pending action-talk does.
 func TestBotHasShopGatesTheCapabilityBit(t *testing.T) {
-	vendor := &BotState{EntityBase: EntityBase{ID: 1}}
-	plain := &BotState{EntityBase: EntityBase{ID: 2}}
-	dead := &BotState{
-		EntityBase: EntityBase{ID: 3},
-		Mortal:     Mortal{RespawnTime: time.Now().Add(time.Second)},
-	}
 	catalog := &CyberiaAction{ShopItems: []ActionShopItem{{ItemID: "tim-knife", PriceQty: 10}}}
 	s := &GameServer{actionCache: map[EntityID]*CyberiaAction{
 		1: catalog,
 		2: {DialogCode: "default-lain"},
 		3: catalog,
 	}}
+	vendor := placeBot(s, 1, Vitals{})
+	plain := placeBot(s, 2, Vitals{})
+	dead := placeBot(s, 3, Vitals{RespawnAt: time.Now().Add(time.Second)})
 
 	if !s.botHasShop(vendor) {
 		t.Fatal("a live bot with a catalog is a vendor")
@@ -111,7 +108,7 @@ func TestBotHasShopGatesTheCapabilityBit(t *testing.T) {
 	if s.botHasShop(dead) {
 		t.Fatal("a dead vendor must not advertise")
 	}
-	if s.botHasShop(&BotState{EntityBase: EntityBase{ID: 4}}) {
+	if s.botHasShop(placeBot(s, 4, Vitals{})) {
 		t.Fatal("a bot with no bound action is not a vendor")
 	}
 	if s.botHasShop(nil) {

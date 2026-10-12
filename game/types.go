@@ -59,6 +59,7 @@ const (
 	maskData       ComponentMask = 1 << 0
 	maskTransform  ComponentMask = 1 << 1
 	maskAppearance ComponentMask = 1 << 2
+	maskVitals     ComponentMask = 1 << 3
 )
 
 type PointI struct {
@@ -123,23 +124,29 @@ type EntityBase struct {
 // reach the embedded fields of any entity type.
 func (e EntityBase) Base() EntityBase { return e }
 
-// Mortal — life/respawn block for entities that can die (Player, Bot, Resource).
+// Mortal — the server-only block of entities that can die (Player, Bot,
+// Resource). Life itself is in MapState.vitals.
 type Mortal struct {
-	NextSkillAt        time.Time
-	NextConsumeAt      time.Time // ends the cooldown a consumed held item starts (consumable.go)
-	BaseMaxLife        float64
-	Progression        EntityProgression   `json:"progression"`
-	TemporaryModifiers []TemporaryModifier `json:"-"`
-	MaxLife            float64             `json:"maxLife"`
-	Life               float64             `json:"life"`
-	RespawnTime        time.Time           `json:"-"`
+	NextSkillAt            time.Time
+	NextConsumeAt          time.Time // ends the cooldown a consumed held item starts (consumable.go)
+	BaseMaxLife            float64
+	Progression            EntityProgression   `json:"progression"`
+	TemporaryModifiers     []TemporaryModifier `json:"-"`
+	PreRespawnObjectLayers []ObjectLayerState  `json:"-"`
 	// RespawnDuration is the wait before the entity comes back; 0 takes respawnDurationDefaultMs.
-	RespawnDuration        time.Duration      `json:"-"`
-	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
+	RespawnDuration time.Duration `json:"-"`
 }
 
-// IsGhost reports whether the entity is dead and waiting to respawn.
-func (m *Mortal) IsGhost() bool { return !m.RespawnTime.IsZero() }
+// Vitals is the vitals component. The server keeps the respawn instant; the
+// encoder sends the seconds left.
+type Vitals struct {
+	Life      float64
+	MaxLife   float64
+	RespawnAt time.Time // zero while alive
+}
+
+// ghost reports whether the entity is dead and waiting to respawn.
+func (v *Vitals) ghost() bool { return !v.RespawnAt.IsZero() }
 
 // respawnDuration is the wait before the entity comes back.
 func (m *Mortal) respawnDuration() time.Duration {
@@ -343,6 +350,7 @@ type MapState struct {
 	data       []EntityData
 	transform  []Transform
 	appearance []Appearance
+	vitals     []Vitals
 	cursor     int // next slot the allocator tests
 }
 

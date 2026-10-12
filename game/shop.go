@@ -51,7 +51,7 @@ func shopItemFor(action *CyberiaAction, itemID string) *ActionShopItem {
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) botHasShop(bot *BotState) bool {
-	if bot == nil || bot.IsGhost() {
+	if bot == nil || s.vt(bot.ID, bot.MapCode).ghost() {
 		return false
 	}
 	action := s.actionCache[bot.ID]
@@ -88,7 +88,7 @@ func shopBuyQuantity(requested int) int {
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) handleShopBuy(player *PlayerState, cmd *InputCommand) {
-	if player.IsGhost() {
+	if s.vt(player.ID, player.MapCode).ghost() {
 		return
 	}
 	qty := shopBuyQuantity(cmd.Quantity)

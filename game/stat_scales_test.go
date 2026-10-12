@@ -46,22 +46,22 @@ func TestRegenAmountFollowsResistance(t *testing.T) {
 	s, ms, p := movementFixture(t)
 	s.lifeRegenChance, s.maxChance = 1, 1
 	p.LifeRegen = 1
-	p.Life, p.MaxLife = 50, 100
+	ms.vt(p.ID).Life, ms.vt(p.ID).MaxLife = 50, 100
 	p.Progression = NewEntityProgression(1, false, s.progressionConfig())
 	base := s.progressionConfig().BaseAtLevel(1).Resistance
 	s.handleProbabilisticRegen(p, ms)
-	if want := 50 + 1 + base*statRegenPerResistance; p.Life != want {
-		t.Fatalf("life after regen = %v, want %v", p.Life, want)
+	if want := 50 + 1 + base*statRegenPerResistance; ms.vt(p.ID).Life != want {
+		t.Fatalf("life after regen = %v, want %v", ms.vt(p.ID).Life, want)
 	}
-	p.Life = 99.9
+	ms.vt(p.ID).Life = 99.9
 	s.handleProbabilisticRegen(p, ms)
-	if p.Life != 100 {
-		t.Fatalf("regen passed the maximum: %v", p.Life)
+	if ms.vt(p.ID).Life != 100 {
+		t.Fatalf("regen passed the maximum: %v", ms.vt(p.ID).Life)
 	}
 	s.lifeRegenChance = 0
-	p.Life = 50
+	ms.vt(p.ID).Life = 50
 	s.handleProbabilisticRegen(p, ms)
-	if p.Life != 50 {
+	if ms.vt(p.ID).Life != 50 {
 		t.Fatal("regen fired at zero chance")
 	}
 }

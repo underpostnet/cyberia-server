@@ -79,14 +79,14 @@ func TestTemporaryStatsAndExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.refreshEntityStats(p, ms, now)
-	if p.MaxLife != 130 || len(p.TemporaryModifiers) != 1 {
+	if ms.vt(p.ID).MaxLife != 130 || len(p.TemporaryModifiers) != 1 {
 		t.Fatalf("temporary stats: %+v", p.Mortal)
 	}
 	if got := s.statBreakdown(p, ms, now.Add(time.Second), map[EntityID]bool{}).Effective.Effect; got != 5 {
 		t.Fatalf("expired effect = %v", got)
 	}
 	s.refreshEntityStats(p, ms, now.Add(2*time.Second))
-	if p.MaxLife != 110 || len(p.TemporaryModifiers) != 0 {
+	if ms.vt(p.ID).MaxLife != 110 || len(p.TemporaryModifiers) != 0 {
 		t.Fatal("expiry did not refresh life")
 	}
 	modifier.Stats.Effect = math.NaN()
@@ -185,6 +185,8 @@ func TestRawTapSpamDoesNotAwardXP(t *testing.T) {
 func TestDefeatAwardsOnlyEligibleContributors(t *testing.T) {
 	s, ms, p := movementFixture(t)
 	victim := &BotState{EntityBase: EntityBase{ID: 10}, Behavior: "hostile"}
+	ms.spawn(victim.ID, EntityData{Kind: EntityBot}, Transform{}, Appearance{})
+	ms.addVitals(victim.ID, Vitals{})
 	victim.Progression = NewEntityProgression(1, true, s.progressionConfig())
 	ms.bots[victim.ID] = victim
 	s.awardDefeat(&victim.EntityBase, &victim.Mortal, "bot", map[EntityID]float64{p.ID: 100}, ms)
@@ -299,7 +301,7 @@ func TestAuthoredLevelsUseCommonBaseCurve(t *testing.T) {
 	ms.resources = make(map[EntityID]*ResourceState)
 	s.buildResource(ms, "test", &pb.EntityMessage{Level: 7, MaxLife: 50, ColorA: 255})
 	for _, resource := range ms.resources {
-		if !resource.Progression.Frozen || resource.Progression.Level != 7 || resource.MaxLife != 90 {
+		if !resource.Progression.Frozen || resource.Progression.Level != 7 || ms.vt(resource.ID).MaxLife != 90 {
 			t.Fatalf("resource curve: %+v", resource.Mortal)
 		}
 	}

@@ -73,8 +73,8 @@ const (
 //  1. Dead/respawning → StatusDead
 //  2. Frozen (modal)  → StatusFrozen
 //  3. Alive           → StatusPlayer
-func PlayerStatusIcon(p *PlayerState) uint8 {
-	if p.IsGhost() {
+func PlayerStatusIcon(p *PlayerState, v *Vitals) uint8 {
+	if v.ghost() {
 		return StatusDead
 	}
 	if p.Frozen {
@@ -90,11 +90,11 @@ func PlayerStatusIcon(p *PlayerState) uint8 {
 //  2. Dead/respawning → StatusDead
 //  3. Hostile         → StatusHostile
 //  4. Default         → StatusPassive
-func BotStatusIcon(b *BotState) uint8 {
+func BotStatusIcon(b *BotState, v *Vitals) uint8 {
 	if b.Behavior == BehaviorSkill || b.Behavior == BehaviorCoin || b.Behavior == BehaviorDrop {
 		return StatusNone
 	}
-	if b.IsGhost() {
+	if v.ghost() {
 		return StatusDead
 	}
 	if b.Behavior == BehaviorHostile {
@@ -108,8 +108,8 @@ func BotStatusIcon(b *BotState) uint8 {
 // Priority chain:
 //  1. Dead/destroyed  → StatusResourceExtracted
 //  2. Alive           → StatusResource
-func ResourceStatusIcon(r *ResourceState) uint8 {
-	if r.IsGhost() {
+func ResourceStatusIcon(v *Vitals) uint8 {
+	if v.ghost() {
 		return StatusResourceExtracted
 	}
 	return StatusResource

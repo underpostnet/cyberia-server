@@ -6,18 +6,18 @@ import "math/rand"
 // action: a player's tap or a bot's new path. Utility raises the chance,
 // resistance the amount, on top of the entity's own base regeneration.
 func (s *GameServer) handleProbabilisticRegen(entity interface{}, mapState *MapState) {
-	var mortal *Mortal
 	var base *EntityBase
 	var lifeRegen float64
 	switch e := entity.(type) {
 	case *PlayerState:
-		mortal, base, lifeRegen = &e.Mortal, &e.EntityBase, e.LifeRegen
+		base, lifeRegen = &e.EntityBase, e.LifeRegen
 	case *BotState:
-		mortal, base, lifeRegen = &e.Mortal, &e.EntityBase, e.LifeRegen
+		base, lifeRegen = &e.EntityBase, e.LifeRegen
 	default:
 		return
 	}
-	if mortal.Life >= mortal.MaxLife {
+	v := mapState.vt(base.ID)
+	if v.Life >= v.MaxLife {
 		return
 	}
 	stats := s.CalculateStats(entity, mapState)
@@ -28,17 +28,17 @@ func (s *GameServer) handleProbabilisticRegen(entity interface{}, mapState *MapS
 	if amount <= 0 {
 		return
 	}
-	restoreLife(mapState, mortal, mapState.tf(base.ID).Pos, amount)
+	restoreLife(mapState, v, mapState.tf(base.ID).Pos, amount)
 }
 
 // restoreLife adds up to amount life, never past MaxLife. Every AOI viewer sees the same green
 // "+N" for the life actually restored, for players and bots alike.
-func restoreLife(mapState *MapState, mortal *Mortal, at Vec2, amount float64) {
-	gained := min(mortal.Life+amount, mortal.MaxLife) - mortal.Life
+func restoreLife(mapState *MapState, v *Vitals, at Vec2, amount float64) {
+	gained := min(v.Life+amount, v.MaxLife) - v.Life
 	if gained <= 0 {
 		return
 	}
-	mortal.Life += gained
+	v.Life += gained
 	if shown := int(gained + 0.5); shown > 0 {
 		broadcastFCT(mapState, FCTRegen, at.X, at.Y, shown)
 	}

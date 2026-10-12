@@ -107,14 +107,13 @@ func (s *GameServer) RebuildWorld(
 	// Snapshot existing players per map so they survive the rebuild.
 	type savedPlayer struct {
 		state *PlayerState
-		tf    Transform
-		ap    Appearance
+		row   entityRow
 	}
 	savedPlayers := make(map[string][]savedPlayer)
 	for code, ms := range s.maps {
 		ms.mu.RLock()
 		for id, p := range ms.players {
-			savedPlayers[code] = append(savedPlayers[code], savedPlayer{p, *ms.tf(id), *ms.ap(id)})
+			savedPlayers[code] = append(savedPlayers[code], savedPlayer{p, ms.take(id)})
 		}
 		ms.mu.RUnlock()
 	}
@@ -137,7 +136,7 @@ func (s *GameServer) RebuildWorld(
 		ms.mu.Lock()
 		for _, p := range players {
 			ms.players[p.state.ID] = p.state
-			ms.spawn(p.state.ID, EntityData{Kind: EntityPlayer}, p.tf, p.ap)
+			ms.put(p.state.ID, p.row)
 		}
 		ms.mu.Unlock()
 	}
@@ -337,9 +336,7 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 	bot := &BotState{
 		EntityBase: EntityBase{ID: s.newEntityID()},
 		Mortal: Mortal{
-			MaxLife:         maxLife,
 			BaseMaxLife:     maxLife,
-			Life:            maxLife * s.initialLifeFraction,
 			RespawnDuration: placedRespawnDuration(ent),
 		},
 		MapCode:     mapCode,
@@ -355,10 +352,11 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 	}
 	ms.bots[bot.ID] = bot
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: startPos, Size: dims}, Appearance{Layers: objectLayers})
+	ms.addVitals(bot.ID, Vitals{MaxLife: maxLife, Life: maxLife * s.initialLifeFraction})
 
 	bot.Progression = NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig())
 	s.ApplyResistanceStat(bot, ms)
-	bot.Life = bot.MaxLife * s.initialLifeFraction
+	ms.vt(bot.ID).Life = ms.vt(bot.ID).MaxLife * s.initialLifeFraction
 
 	// Fountain: credit the bot's starting coin supply (same path as respawn).
 	s.FountainInitBot(bot)
@@ -398,20 +396,19 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 	res := &ResourceState{
 		EntityBase: EntityBase{ID: s.newEntityID()},
 		Mortal: Mortal{
-			MaxLife:         maxLife,
 			BaseMaxLife:     maxLife,
-			Life:            maxLife,
 			RespawnDuration: placedRespawnDuration(ent),
 		},
 		MapCode: mapCode,
 	}
 	ms.resources[res.ID] = res
 	ms.spawn(res.ID, EntityData{Kind: EntityResource}, Transform{Pos: startPos, Size: dims}, Appearance{Layers: objectLayers})
+	ms.addVitals(res.ID, Vitals{MaxLife: maxLife, Life: maxLife})
 
 	// Apply stats (resistance may increase MaxLife)
 	res.Progression = NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig())
 	s.ApplyResistanceStat(res, ms)
-	res.Life = res.MaxLife
+	ms.vt(res.ID).Life = ms.vt(res.ID).MaxLife
 }
 
 // placedMaxLife is the max life a map entity names, or the instance base when it
@@ -448,9 +445,10 @@ func (s *GameServer) buildObstacle(ms *MapState, mapCode string, ent *pb.EntityM
 	maxLife := s.placedMaxLife(ent)
 	ms.destructibles[id] = &DestructibleState{
 		EntityBase: EntityBase{ID: id},
-		Mortal:     Mortal{MaxLife: maxLife, BaseMaxLife: maxLife, Life: maxLife, RespawnDuration: placedRespawnDuration(ent)},
+		Mortal:     Mortal{BaseMaxLife: maxLife, RespawnDuration: placedRespawnDuration(ent)},
 		MapCode:    mapCode,
 	}
+	ms.addVitals(id, Vitals{Life: maxLife, MaxLife: maxLife})
 }
 
 // entAppearance gives an entity of `kind` its layers. One that carries neither

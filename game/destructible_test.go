@@ -38,12 +38,12 @@ func placeObstacle(s *GameServer, ms *MapState, maxLife float64, itemIDs ...stri
 func shot(ms *MapState, caster *PlayerState, at Vec2) *BotState {
 	bullet := &BotState{
 		EntityBase: EntityBase{ID: 900},
-		Mortal:     Mortal{MaxLife: 100, Life: 100},
 		Behavior:   BehaviorSkill,
 		CasterID:   caster.ID,
 	}
 	ms.spawn(bullet.ID, EntityData{Kind: EntityBot}, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}},
 		Appearance{Layers: []ObjectLayerState{{ItemID: "bullet", Active: true, Quantity: 1}}})
+	ms.addVitals(bullet.ID, Vitals{MaxLife: 100, Life: 100})
 	return bullet
 }
 
@@ -121,7 +121,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	maxLife := 2.5 * s.CalculateStats(probe, ms).Effect
 	ms.despawn(probe.ID)
 	obs := ms.destructibles[placeObstacle(s, ms, maxLife, "crystal")]
-	if obs == nil || obs.Life != maxLife || obs.MaxLife != maxLife {
+	if obs == nil || ms.vt(obs.ID).Life != maxLife || ms.vt(obs.ID).MaxLife != maxLife {
 		t.Fatalf("placed life: %+v", obs)
 	}
 	cell := Vec2{X: 1, Y: 1}
@@ -130,16 +130,16 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	}
 
 	fire(s, ms, player, Vec2{X: 10, Y: 10})
-	if obs.Life >= maxLife || obs.IsGhost() || ms.pathfinder.isWalkable(11, 11, cell) {
+	if ms.vt(obs.ID).Life >= maxLife || ms.vt(obs.ID).ghost() || ms.pathfinder.isWalkable(11, 11, cell) {
 		t.Fatalf("a hit damages it and it keeps blocking: %+v", obs.Mortal)
 	}
-	for hits := 1; !obs.IsGhost(); hits++ {
+	for hits := 1; !ms.vt(obs.ID).ghost(); hits++ {
 		if hits > 3 {
 			t.Fatal("three hits deplete the obstacle")
 		}
 		fire(s, ms, player, Vec2{X: 10, Y: 10})
 	}
-	if !obs.IsGhost() || obs.Life != 0 || !ms.pathfinder.isWalkable(10, 10, Vec2{X: 2, Y: 2}) {
+	if !ms.vt(obs.ID).ghost() || ms.vt(obs.ID).Life != 0 || !ms.pathfinder.isWalkable(10, 10, Vec2{X: 2, Y: 2}) {
 		t.Fatalf("depletion frees the cells: %+v", obs.Mortal)
 	}
 	if active := activeObjectLayerItemIDs(ms.ap(obs.ID).Layers); len(active) != 1 || active[0] != "rubble" {
@@ -157,25 +157,26 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	}
 
 	fire(s, ms, player, Vec2{X: 10, Y: 10})
-	if len(drops(ms)) != 1 || obs.Life != 0 {
+	if len(drops(ms)) != 1 || ms.vt(obs.ID).Life != 0 {
 		t.Fatal("a depleted obstacle takes no hit and drops nothing again")
 	}
 
-	obs.RespawnTime = time.Now().Add(-time.Second)
+	ms.vt(obs.ID).RespawnAt = time.Now().Add(-time.Second)
 	ptf := ms.tf(player.ID)
 	ptf.Pos, player.Path, player.Mode = Vec2{X: 10, Y: 10}, []PointI{{X: 12, Y: 12}}, WALKING
 	bot := &BotState{
 		EntityBase: EntityBase{ID: 901},
-		Mortal:     Mortal{Life: 100, MaxLife: 100}, Behavior: BehaviorHostile,
-		Path: []PointI{{X: 11, Y: 11}}, Mode: WALKING, CurrentTargetPlayer: player.ID,
+		Behavior:   BehaviorHostile,
+		Path:       []PointI{{X: 11, Y: 11}}, Mode: WALKING, CurrentTargetPlayer: player.ID,
 	}
 	ms.bots[bot.ID] = bot
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: 10.5, Y: 10.5}, Size: cell}, Appearance{})
+	ms.addVitals(bot.ID, Vitals{Life: 100, MaxLife: 100})
 	projectile := shot(ms, player, Vec2{X: 10, Y: 10})
 	ms.bots[projectile.ID] = projectile
 	ptf = ms.tf(player.ID) // a spawn may move the transform array
 	s.handleRespawns(ms)
-	if obs.IsGhost() || obs.Life != obs.MaxLife || ms.pathfinder.isWalkable(10, 10, cell) {
+	if ms.vt(obs.ID).ghost() || ms.vt(obs.ID).Life != ms.vt(obs.ID).MaxLife || ms.pathfinder.isWalkable(10, 10, cell) {
 		t.Fatalf("the obstacle respawns on its timer and blocks again: %+v", obs.Mortal)
 	}
 	otf := ms.tf(obs.ID)
@@ -214,25 +215,26 @@ func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 	otf := *ms.tf(obs.ID)
 	ptf := ms.tf(player.ID)
 	fire(s, ms, player, otf.Pos)
-	obs.RespawnTime = time.Now().Add(time.Minute)
+	ms.vt(obs.ID).RespawnAt = time.Now().Add(time.Minute)
 	tapTick(s, ms, player, tap(7, 15, 15))
 	if !pathCrossesObstacle(player.Path, ptf.Size, otf) {
 		t.Fatal("the initial route crosses the depleted obstacle")
 	}
 	bot := &BotState{
 		EntityBase: EntityBase{ID: 902},
-		Mortal:     Mortal{Life: 100, MaxLife: 100}, Behavior: BehaviorHostile,
-		Path: []PointI{{X: 10, Y: 10}, {X: 12, Y: 10}}, Mode: WALKING,
+		Behavior:   BehaviorHostile,
+		Path:       []PointI{{X: 10, Y: 10}, {X: 12, Y: 10}}, Mode: WALKING,
 		CurrentTargetPlayer: player.ID,
 	}
 	ms.bots[bot.ID] = bot
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: 9, Y: 10}, Size: ptf.Size}, Appearance{})
+	ms.addVitals(bot.ID, Vitals{Life: 100, MaxLife: 100})
 	ptf = ms.tf(player.ID) // a spawn may move the transform array
 	s.handleRespawns(ms)
-	if !obs.IsGhost() || !pathCrossesObstacle(player.Path, ptf.Size, otf) {
+	if !ms.vt(obs.ID).ghost() || !pathCrossesObstacle(player.Path, ptf.Size, otf) {
 		t.Fatal("the obstacle stays passable until its timer ends")
 	}
-	obs.RespawnTime = time.Now().Add(-time.Second)
+	ms.vt(obs.ID).RespawnAt = time.Now().Add(-time.Second)
 	before := ptf.Pos
 	s.handleRespawns(ms)
 	if ptf.Pos != before || player.Mode != WALKING || player.TargetPos != (PointI{X: 15, Y: 15}) ||
@@ -345,7 +347,7 @@ func TestResourceDepletionKeepsItsObjectiveXP(t *testing.T) {
 	s, ms, player := destructibleFixture(t)
 	s.buildResource(ms, "test", &pb.EntityMessage{InitCellX: 10, InitCellY: 10, DimX: 2, DimY: 2, MaxLife: 1, ColorA: 255})
 	for _, res := range ms.resources {
-		for hits := 0; !res.IsGhost(); hits++ {
+		for hits := 0; !ms.vt(res.ID).ghost(); hits++ {
 			if hits == 100 {
 				t.Fatal("the resource never depletes")
 			}
@@ -367,7 +369,7 @@ func TestDestructibleObstacleDropsOnlyWhatItsDefaultRolls(t *testing.T) {
 		s, ms, player := destructibleFixture(t, build)
 		obs := ms.destructibles[placeObstacle(s, ms, 1, build.LiveItemIDs[0])]
 		fire(s, ms, player, Vec2{X: 10, Y: 10})
-		if !obs.IsGhost() || len(drops(ms)) != 0 {
+		if !ms.vt(obs.ID).ghost() || len(drops(ms)) != 0 {
 			t.Fatalf("%v: depleted with drops %v", build.LiveItemIDs, drops(ms))
 		}
 	}
@@ -379,7 +381,7 @@ func TestSnapshotCarriesOnlyTheDestructibleLife(t *testing.T) {
 	wall := placeObstacle(s, ms, 0, "wall")
 	crystal := placeObstacle(s, ms, 9, "crystal")
 
-	life := map[EntityID]float64{}
+	life := map[EntityID]int{}
 	for _, e := range s.buildSnapshot(player, ms).Entities {
 		if e.Kind == EntityScenery {
 			life[e.ID] = e.MaxLife

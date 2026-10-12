@@ -29,7 +29,7 @@ import (
 
 // Taps record movement and request cooldown-limited skills.
 func (s *GameServer) handlePlayerActionInput(player *PlayerState, mapState *MapState, cmd *InputCommand) {
-	if player.IsGhost() {
+	if mapState.vt(player.ID).ghost() {
 		return
 	}
 	if player.Frozen {
@@ -55,7 +55,7 @@ func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
 	// Re-check the refusals the recording handler already applied: a player_stasis
 	// or a death later in the same queue lands between the record and this
 	// flush, and the tap must not outlive it.
-	if player.IsGhost() || player.Frozen {
+	if mapState.vt(player.ID).ghost() || player.Frozen {
 		return
 	}
 
@@ -128,7 +128,8 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 	itemID := cmd.ItemID
 	active := cmd.Active
 
-	isDead := player.IsGhost() || player.Life <= 0
+	v := s.vt(player.ID, player.MapCode)
+	isDead := v.ghost() || v.Life <= 0
 	isDeadItem := s.deadItemIDs[itemID]
 
 	// Dead-state items are the Fragmented State's aesthetic loadout — they

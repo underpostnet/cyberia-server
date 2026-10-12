@@ -84,8 +84,9 @@ func (s *GameServer) ApplyResistanceStat(entity interface{}, mapState *MapState)
 	if base <= 0 {
 		base = s.entityBaseMaxLife
 	}
-	state.MaxLife = max(1, base+s.CalculateStats(entity, mapState).Resistance)
-	state.Life = min(state.Life, state.MaxLife)
+	v := mapState.vt(source.Base().ID)
+	v.MaxLife = max(1, base+s.CalculateStats(entity, mapState).Resistance)
+	v.Life = min(v.Life, v.MaxLife)
 }
 
 // chance is a probability the stats raised from `base`, capped so nothing the

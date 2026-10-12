@@ -211,7 +211,7 @@ func (s *GameServer) botActiveSkinOf(bot *BotState) string {
 	// still validates against a quest-giver that just died — the interaction
 	// context is independent of the entity's alive/AOI state.
 	layers := s.ap(bot.ID, bot.MapCode).Layers
-	if bot.IsGhost() && len(bot.PreRespawnObjectLayers) > 0 {
+	if s.vt(bot.ID, bot.MapCode).ghost() && len(bot.PreRespawnObjectLayers) > 0 {
 		layers = bot.PreRespawnObjectLayers
 	}
 	for _, ol := range layers {
@@ -317,7 +317,7 @@ func (s *GameServer) botInPlayerRange(player *PlayerState, bot *BotState) bool {
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) handleTalkDone(player *PlayerState, cmd *InputCommand) {
-	if player.IsGhost() {
+	if s.vt(player.ID, player.MapCode).ghost() {
 		return
 	}
 	var affected []QuestSnapshotEntry

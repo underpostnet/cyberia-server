@@ -82,7 +82,7 @@ func (s *GameServer) awardProgression(player *PlayerState, event progressionEven
 // awardDefeat uses damage shares and excludes summoned entities, self kills
 // and obstacles.
 func (s *GameServer) awardDefeat(base *EntityBase, mortal *Mortal, kind string, ledger map[EntityID]float64, ms *MapState) {
-	if ms == nil || mortal.IsGhost() || kind == "obstacle" {
+	if ms == nil || ms.vt(base.ID).ghost() || kind == "obstacle" {
 		return
 	}
 	if b := ms.bots[base.ID]; b != nil && (b.CasterID != 0 || behaviorIsProvider(b.Behavior) || b.Behavior == BehaviorDrop) {
@@ -99,7 +99,7 @@ func (s *GameServer) awardDefeat(base *EntityBase, mortal *Mortal, kind string, 
 			continue
 		}
 		entity := ms.players[id]
-		if entity == nil || entity.IsGhost() || entity.Frozen {
+		if entity == nil || ms.vt(entity.ID).ghost() || entity.Frozen {
 			continue
 		}
 		key := fmt.Sprintf("%s:%d", kind, base.ID)

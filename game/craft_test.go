@@ -100,12 +100,9 @@ func TestBotHasCraftGatesTheCapabilityBit(t *testing.T) {
 		3: book,
 	}}
 
-	assembler := &BotState{EntityBase: EntityBase{ID: 1}}
-	talker := &BotState{EntityBase: EntityBase{ID: 2}}
-	dead := &BotState{
-		EntityBase: EntityBase{ID: 3},
-		Mortal:     Mortal{RespawnTime: time.Now().Add(time.Second)},
-	}
+	assembler := placeBot(s, 1, Vitals{})
+	talker := placeBot(s, 2, Vitals{})
+	dead := placeBot(s, 3, Vitals{RespawnAt: time.Now().Add(time.Second)})
 
 	if !s.botHasCraft(assembler) || !s.botHasUsableAction(assembler) {
 		t.Fatal("a live bot with a recipe book is an assembler")

@@ -27,17 +27,17 @@ func (s *GameServer) consumableHeal(itemID string) float64 {
 
 // canConsume reports whether a consumable changes anything for the consumer: a
 // heal needs missing life.
-func canConsume(consumer *Mortal) bool {
+func canConsume(consumer *Vitals) bool {
 	return consumer.Life < consumer.MaxLife
 }
 
 // consumeItem applies the effect of one unit of itemID to the consumer: it
 // restores the item's heal, never past max life, and tells every viewer.
-func (s *GameServer) consumeItem(mapState *MapState, base *EntityBase, consumer *Mortal, itemID string) {
-	pos := mapState.tf(base.ID).Pos
-	restoreLife(mapState, consumer, pos, s.consumableHeal(itemID))
+func (s *GameServer) consumeItem(mapState *MapState, id EntityID, itemID string) {
+	pos := mapState.tf(id).Pos
+	restoreLife(mapState, mapState.vt(id), pos, s.consumableHeal(itemID))
 	build, _ := s.lootBuild(itemID)
-	event := ItemConsume{EntityID: base.ID, ItemID: itemID, Behavior: build.Behavior}
+	event := ItemConsume{EntityID: id, ItemID: itemID, Behavior: build.Behavior}
 	broadcastAt(mapState, "item_consume", event, pos.X, pos.Y)
 }
 
@@ -51,13 +51,14 @@ func (s *GameServer) executeZeroWasteHeal(ctx SkillContext) {
 	}
 	now := time.Now()
 	heal := s.consumableHeal(ctx.TriggerItemID)
-	if mortal.IsGhost() || now.Before(mortal.NextConsumeAt) || heal <= 0 || mortal.MaxLife-mortal.Life < heal {
+	vitals := ctx.MapState.vt(base.ID)
+	if vitals.ghost() || now.Before(mortal.NextConsumeAt) || heal <= 0 || vitals.MaxLife-vitals.Life < heal {
 		return
 	}
 	if layerQuantity(ctx.MapState.ap(base.ID).Layers, ctx.TriggerItemID) < 1 {
 		return
 	}
-	s.consumeItem(ctx.MapState, base, mortal, ctx.TriggerItemID)
+	s.consumeItem(ctx.MapState, base.ID, ctx.TriggerItemID)
 	removeLayerItem(&ctx.MapState.ap(base.ID).Layers, ctx.TriggerItemID, 1)
 	mortal.NextConsumeAt = now.Add(s.CalculateActionCooldown(s.CalculateStats(ctx.Caster, ctx.MapState)))
 }

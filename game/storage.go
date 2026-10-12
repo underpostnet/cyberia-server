@@ -58,7 +58,7 @@ func storageCapacity(slots int) int {
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) storageVault(player *PlayerState, bot *BotState) (storageKey, int, bool) {
-	if bot == nil || bot.IsGhost() {
+	if bot == nil || s.vt(bot.ID, bot.MapCode).ghost() {
 		return storageKey{}, 0, false
 	}
 	action := s.actionCache[bot.ID]
@@ -77,7 +77,7 @@ func (s *GameServer) storageVault(player *PlayerState, bot *BotState) (storageKe
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) botHasStorage(bot *BotState) bool {
-	if bot == nil || bot.IsGhost() {
+	if bot == nil || s.vt(bot.ID, bot.MapCode).ghost() {
 		return false
 	}
 	action := s.actionCache[bot.ID]
@@ -99,7 +99,7 @@ func storageStackOf(slots []StorageSlot, itemID string) int {
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) resolveStorage(player *PlayerState, entityID EntityID) (storageKey, int, bool) {
-	if player.IsGhost() {
+	if s.vt(player.ID, player.MapCode).ghost() {
 		return storageKey{}, 0, false
 	}
 	bot := s.findBot(entityID)

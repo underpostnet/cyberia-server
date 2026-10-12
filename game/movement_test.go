@@ -28,28 +28,42 @@ func movementFixture(t *testing.T) (*GameServer, *MapState, *PlayerState) {
 	player := &PlayerState{}
 	player.ID = 1
 	player.MapCode = "test"
-	player.Life, player.MaxLife = 100, 100
 	player.Client = &Client{playerID: player.ID}
 	mapState.players[player.ID] = player
 	mapState.spawn(player.ID, EntityData{Kind: EntityPlayer}, Transform{Pos: Vec2{X: 1, Y: 1}, Size: Vec2{X: 1, Y: 1}}, Appearance{})
+	mapState.addVitals(player.ID, Vitals{Life: 100, MaxLife: 100})
 
 	return s, mapState, player
 }
 
-// placePlayer puts a player that holds layers on the map "test" of s.
-func placePlayer(s *GameServer, id EntityID, layers []ObjectLayerState) *PlayerState {
+// testMap returns the map "test" of s, made on first use.
+func testMap(s *GameServer) *MapState {
 	if s.maps == nil {
 		s.maps = map[string]*MapState{}
 	}
-	ms := s.maps["test"]
-	if ms == nil {
-		ms = &MapState{players: map[EntityID]*PlayerState{}}
-		s.maps["test"] = ms
+	if s.maps["test"] == nil {
+		s.maps["test"] = &MapState{players: map[EntityID]*PlayerState{}}
 	}
+	return s.maps["test"]
+}
+
+// placePlayer puts a player that holds layers on the map "test" of s.
+func placePlayer(s *GameServer, id EntityID, layers []ObjectLayerState) *PlayerState {
+	ms := testMap(s)
 	p := &PlayerState{EntityBase: EntityBase{ID: id}, MapCode: "test"}
 	ms.players[id] = p
 	ms.spawn(id, EntityData{Kind: EntityPlayer}, Transform{}, Appearance{Layers: layers})
+	ms.addVitals(id, Vitals{})
 	return p
+}
+
+// placeBot puts a bot with vitals v on the map "test" of s.
+func placeBot(s *GameServer, id EntityID, v Vitals) *BotState {
+	ms := testMap(s)
+	b := &BotState{EntityBase: EntityBase{ID: id}, MapCode: "test"}
+	ms.spawn(id, EntityData{Kind: EntityBot}, Transform{}, Appearance{})
+	ms.addVitals(id, v)
+	return b
 }
 
 // tapTick queues taps and runs one full input phase over them, which is the only
