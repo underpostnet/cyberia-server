@@ -1,6 +1,10 @@
 package game
 
-import "cyberia-server/logx"
+import (
+	"slices"
+
+	"cyberia-server/logx"
+)
 
 func (s *GameServer) buildEntityDefaultsSlice() []EntityTypeDefaultConfig {
 	result := make([]EntityTypeDefaultConfig, len(s.entityDefaultBuilds))
@@ -20,14 +24,6 @@ func (s *GameServer) resolveEntityDefaultBuild(entityType string, itemIDs []stri
 	bestIndex := -1
 	bestSize := 0
 
-	itemSet := make(map[string]struct{}, len(itemIDs))
-	for _, itemID := range itemIDs {
-		if itemID == "" {
-			continue
-		}
-		itemSet[itemID] = struct{}{}
-	}
-
 	for i := range s.entityDefaultBuilds {
 		build := s.entityDefaultBuilds[i]
 		if build.EntityType != entityType {
@@ -36,18 +32,7 @@ func (s *GameServer) resolveEntityDefaultBuild(entityType string, itemIDs []stri
 		if firstTypeBuild == nil {
 			firstTypeBuild = &s.entityDefaultBuilds[i]
 		}
-		if len(itemSet) == 0 || len(build.LiveItemIDs) == 0 {
-			continue
-		}
-
-		contained := true
-		for _, itemID := range build.LiveItemIDs {
-			if _, ok := itemSet[itemID]; !ok {
-				contained = false
-				break
-			}
-		}
-		if !contained {
+		if !matchesLiveItems(build, itemIDs) {
 			continue
 		}
 		// Most specific wins: the largest fully-contained liveItemIds set. Ties
@@ -66,6 +51,21 @@ func (s *GameServer) resolveEntityDefaultBuild(entityType string, itemIDs []stri
 	}
 	build, ok := s.entityDefaults[entityType]
 	return build, ok
+}
+
+// matchesLiveItems reports whether every live item of the build is among
+// itemIDs. A build with no live items matches nothing; it only stands in as
+// the first build of its type.
+func matchesLiveItems(build EntityTypeDefaultConfig, itemIDs []string) bool {
+	if len(build.LiveItemIDs) == 0 {
+		return false
+	}
+	for _, itemID := range build.LiveItemIDs {
+		if !slices.Contains(itemIDs, itemID) {
+			return false
+		}
+	}
+	return true
 }
 
 // stackQuantity is the stack size a build carries for itemID, taken from the
@@ -98,6 +98,16 @@ func dropChance(build EntityTypeDefaultConfig, itemID string) float64 {
 		return 1
 	}
 	return chance
+}
+
+// buffFactor is the fraction of max life itemID restores when it is consumed, in [0,1]. An id the
+// build says nothing about takes buffFactorDefault.
+func buffFactor(build EntityTypeDefaultConfig, itemID string) float64 {
+	factor, ok := build.BuffFactors[itemID]
+	if !ok {
+		return buffFactorDefault
+	}
+	return min(max(factor, 0), 1)
 }
 
 // buildLayer is a placed id as the build states it: its row when the build carries one, and a

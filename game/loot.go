@@ -1,26 +1,33 @@
 package game
 
-// loot.go — Damage-contribution ledger, scattered world drops, and
+// loot.go — Damage-contribution ledger, scattered and world drops, and
 // authoritative collection.
 //
 // ┌─────────────────────────────────────────────────────────────────────────┐
 // │  DROP LIFECYCLE                                                         │
 // │                                                                         │
-// │  1. Contribution  — every projectile hit on a bot/resource records the  │
-// │     firing player into the victim's DamageLedger (skill collision path).│
+// │  1. Contribution  — every projectile hit on a bot, resource or          │
+// │     destructible obstacle records the firing player into the victim's   │
+// │     DamageLedger (skill collision path).                                │
 // │                                                                         │
 // │  2. Death scatter — the death handler calls spawnDrops: each configured │
 // │     drop item becomes a transient BehaviorDrop token flung a random     │
 // │     distance from the corpse along a random direction vector, carrying  │
 // │     the set of damage contributors eligible to collect it.              │
 // │                                                                         │
-// │  3. Collection   — phaseLoot runs each tick after movement. Once a token│
-// │     settles, collection is a race: the first contributor to overlap it  │
-// │     wins. Collection grants the item, fires the pickup animation event  │
-// │     (drop_collect) to every viewer     , and removes the token. A kill  │
-// │     with no contributor drops nothing at all.                           │
+// │  3. World loot    — every world build places each map's `loot` entities │
+// │     on their cells. A map holds only the tokens it places.              │
 // │                                                                         │
-// │  4. Expiry       — uncollected tokens despawn via ExpiresAt (updateBots)│
+// │  4. Collection    — phaseLoot runs each tick after movement. The token's│
+// │     collection policy picks the collector: the first contributor on a   │
+// │     settled death drop, the first living entity a world token benefits. │
+// │     Its outcome grants the item, credits the coins or consumes the item,│
+// │     then drop_collect plays the pickup animation for every viewer and   │
+// │     the token is removed. A kill with no contributor drops nothing.     │
+// │                                                                         │
+// │  5. Expiry        — uncollected death drops despawn via ExpiresAt       │
+// │     (updateBots). World tokens stay until collected; a consumed one     │
+// │     comes back on its cell after the respawn time of its entity.        │
 // └─────────────────────────────────────────────────────────────────────────┘
 
 import (
@@ -30,6 +37,7 @@ import (
 
 	"github.com/google/uuid"
 
+	pb "cyberia-server/gen/proto"
 	"cyberia-server/logx"
 )
 
@@ -53,6 +61,49 @@ const (
 	// coinTokenSize is the smaller square side used for coin tokens, so currency
 	// reads as more minor loot than item drops.
 	coinTokenSize = 1.0
+)
+
+// worldTokenDims is the footprint of a world token.
+var worldTokenDims = Dimensions{Width: lootTokenSize, Height: lootTokenSize}
+
+// lootRespawn is a consumed world token waiting to come back on its cell.
+type lootRespawn struct {
+	token *BotState
+	at    time.Time
+}
+
+// ── Token semantics ───────────────────────────────────────────────────────
+
+// LootOrigin is where a token comes from.
+type LootOrigin uint8
+
+const (
+	LootOriginDeath LootOrigin = iota // scattered from a dying entity
+	LootOriginWorld                   // placed on the map by the world build
+)
+
+func (o LootOrigin) String() string {
+	if o == LootOriginWorld {
+		return "world"
+	}
+	return "death"
+}
+
+// LootCollection is who may collect a token.
+type LootCollection uint8
+
+const (
+	LootCollectContributors LootCollection = iota // a damage contributor only
+	LootCollectFirstContact                       // any living player or bot it benefits
+)
+
+// LootOutcome is what a collection does.
+type LootOutcome uint8
+
+const (
+	LootOutcomeItem    LootOutcome = iota // the item enters the collector's inventory
+	LootOutcomeCoin                       // the quantity credits the collector's wallet
+	LootOutcomeConsume                    // the collector consumes the item at once (consumable.go)
 )
 
 // ── Contribution ledger ──────────────────────────────────────────────────
@@ -98,7 +149,8 @@ func contributorSet(ledger map[string]float64) map[string]struct{} {
 // token around `center`, and — when the dying entity carried coins — one coin
 // token whose quantity is the looted amount. Every player in `ledger` may race
 // to collect the tokens once they settle. Shared by every dying
-// content-authority entity (bots, resources). Caller holds s.mu.
+// content-authority entity (bots, resources, destructible obstacles). Caller
+// holds s.mu.
 func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point, build EntityTypeDefaultConfig, coinAmount int, ledger map[string]float64) {
 	contributors := contributorSet(ledger)
 	// At least one contributor (player or bot) must have dealt damage for loot to
@@ -131,18 +183,42 @@ func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point
 		scattered, len(build.DropItemIDs), coinAmount, center.X, center.Y, mapCode, len(contributors))
 }
 
-// spawnDropToken creates one BehaviorDrop token carrying (itemID × quantity),
+// newLootToken builds one BehaviorDrop token showing itemID × quantity at pos.
+// Its one active ObjectLayer carries the quantity for the on-grid counter.
+func (s *GameServer) newLootToken(mapCode string, pos Point, dims Dimensions, itemID string, quantity int) *BotState {
+	return &BotState{
+		EntityBase: EntityBase{
+			ID:   uuid.New().String(),
+			Pos:  pos,
+			Dims: dims,
+			ObjectLayers: []ObjectLayerState{
+				{ItemID: itemID, Active: true, Quantity: quantity},
+			},
+		},
+		Mortal: Mortal{
+			MaxLife: s.entityBaseMaxLife,
+			Life:    s.entityBaseMaxLife,
+		},
+		MapCode:      mapCode,
+		Behavior:     BehaviorDrop,
+		Direction:    NONE,
+		Mode:         IDLE,
+		DropItemID:   itemID,
+		DropQuantity: quantity,
+	}
+}
+
+// spawnDropToken creates one death-drop token carrying (itemID × quantity),
 // flings it to a walkable cell a random distance from `center` along a random
-// direction, mirrors the quantity into its active ObjectLayer (for the on-grid
-// counter), and announces the launch. Caller holds s.mu.
+// direction, and announces the launch. Caller holds s.mu.
 func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center Point, itemID string, quantity int, contributors map[string]struct{}) {
 	if itemID == "" || quantity <= 0 {
 		return
 	}
 	now := time.Now()
-	size := lootTokenSize
+	size, outcome := lootTokenSize, LootOutcomeItem
 	if itemID == s.coinItemID {
-		size = coinTokenSize
+		size, outcome = coinTokenSize, LootOutcomeCoin
 	}
 	tokenDims := Dimensions{Width: size, Height: size}
 
@@ -162,29 +238,13 @@ func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center P
 		Y: float64(cell.Y) - tokenDims.Height*0.5,
 	}
 
-	drop := &BotState{
-		EntityBase: EntityBase{
-			ID:   uuid.New().String(),
-			Pos:  pos,
-			Dims: tokenDims,
-			ObjectLayers: []ObjectLayerState{
-				{ItemID: itemID, Active: true, Quantity: quantity},
-			},
-		},
-		Mortal: Mortal{
-			MaxLife: s.entityBaseMaxLife,
-			Life:    s.entityBaseMaxLife,
-		},
-		MapCode:          mapCode,
-		Behavior:         BehaviorDrop,
-		Direction:        NONE,
-		Mode:             IDLE,
-		DropItemID:       itemID,
-		DropQuantity:     quantity,
-		LootContributors: contributors,
-		CollectableAt:    now.Add(lootLandingWindow),
-		ExpiresAt:        now.Add(lootLifetime),
-	}
+	drop := s.newLootToken(mapCode, pos, tokenDims, itemID, quantity)
+	drop.LootOrigin = LootOriginDeath
+	drop.LootCollection = LootCollectContributors
+	drop.LootOutcome = outcome
+	drop.LootContributors = contributors
+	drop.CollectableAt = now.Add(lootLandingWindow)
+	drop.ExpiresAt = now.Add(lootLifetime)
 	mapState.bots[drop.ID] = drop
 
 	// Announce the launch so viewers play the corpse→cell parabola. The landing
@@ -218,16 +278,76 @@ func (s *GameServer) clampDropCell(mapState *MapState, cell PointI, dims Dimensi
 	return cell
 }
 
+// ── World loot ─────────────────────────────────────────────────────────────
+
+// lootBuild is the loot default whose live items itemID matches, or an empty
+// build and false.
+func (s *GameServer) lootBuild(itemID string) (EntityTypeDefaultConfig, bool) {
+	items := []string{itemID}
+	if build, _ := s.resolveEntityDefaultBuild("loot", items); matchesLiveItems(build, items) {
+		return build, true
+	}
+	return EntityTypeDefaultConfig{}, false
+}
+
+// placeWorldLoot puts one world token of itemID at pos: collectable at once by
+// the first living entity it benefits, never expiring, blocking nothing. The
+// loot default its item matches makes it consume on pickup; else it grants the
+// item. Caller holds s.mu.
+func (s *GameServer) placeWorldLoot(mapState *MapState, mapCode string, pos Point, itemID string, respawn time.Duration) {
+	drop := s.newLootToken(mapCode, pos, worldTokenDims, itemID, 1)
+	drop.RespawnDuration = respawn
+	drop.LootOrigin = LootOriginWorld
+	drop.LootCollection = LootCollectFirstContact
+	drop.LootOutcome = LootOutcomeItem
+	if build, ok := s.lootBuild(itemID); ok && build.Behavior == BehaviorConsumeOnPickupHeal {
+		drop.LootOutcome = LootOutcomeConsume
+	}
+	mapState.bots[drop.ID] = drop
+}
+
+// scheduleLootRespawn brings a consumed world token back on its cell after its
+// respawn time. Caller holds s.mu.
+func scheduleLootRespawn(mapState *MapState, drop *BotState, now time.Time) {
+	mapState.lootRespawns = append(mapState.lootRespawns, lootRespawn{token: drop, at: now.Add(drop.respawnDuration())})
+}
+
+// respawnWorldLoot places every consumed world token whose wait ran out.
+func (s *GameServer) respawnWorldLoot(mapState *MapState, now time.Time) {
+	waiting := mapState.lootRespawns[:0]
+	for _, respawn := range mapState.lootRespawns {
+		if now.Before(respawn.at) {
+			waiting = append(waiting, respawn)
+			continue
+		}
+		token := respawn.token
+		s.placeWorldLoot(mapState, token.MapCode, token.Pos, token.DropItemID, token.RespawnDuration)
+	}
+	mapState.lootRespawns = waiting
+}
+
+// buildLoot places a map-authored `loot` entity on its cell. It shows one item.
+func (s *GameServer) buildLoot(mapState *MapState, mapCode string, ent *pb.EntityMessage) {
+	itemIDs := ent.GetObjectLayerItemIds()
+	if len(itemIDs) != 1 {
+		logx.Warnf("[LOOT] skip loot at (%d,%d) on %q: it shows %d items, not one",
+			ent.GetInitCellX(), ent.GetInitCellY(), mapCode, len(itemIDs))
+		return
+	}
+	pos := Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
+	s.placeWorldLoot(mapState, mapCode, pos, itemIDs[0], placedRespawnDuration(ent))
+}
+
 // ── Authoritative collection ─────────────────────────────────────────────
 
-// phaseLoot resolves player↔drop-token collisions for one tick. Once a token has
-// settled, the first eligible overlapping player (the contribution race, see
-// resolveDropCollector) collects it: coins credit the wallet, items enter the
-// inventory — both by the token's quantity. The pickup animation event is
-// broadcast to every viewer and the token removed. Caller holds s.mu.
+// phaseLoot resolves token collisions for one tick. The first collector the
+// token's collection policy admits takes it, players before bots: its outcome
+// applies, the pickup animation event goes to every viewer and the token is
+// removed in the same step, so one token applies once. Caller holds s.mu.
 func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 	_ = tick
 	now := time.Now()
+	s.respawnWorldLoot(mapState, now)
 
 	for dropID, drop := range mapState.bots {
 		if !behaviorIsInert(drop.Behavior) {
@@ -241,38 +361,70 @@ func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 		cx := drop.Pos.X + drop.Dims.Width*0.5
 		cy := drop.Pos.Y + drop.Dims.Height*0.5
 
-		// Contributing players race to collect; a non-contributor can never grab
-		// it. When none is on the token, a contributing bot that collides takes it.
-		if collector := s.resolveDropCollector(mapState, drop); collector != nil {
-			if drop.DropItemID == s.coinItemID {
-				// No coin-gain FCT — the amount is shown on the grid loot counter.
-				s.addCoins(collector, drop.DropQuantity)
-			} else {
-				s.addPlayerItem(collector, drop.DropItemID, drop.DropQuantity)
-				s.advancePlayerQuestsOnGain(collector)
-			}
-			s.broadcastDropCollect(mapState, drop, collector.ID, cx, cy)
-			delete(mapState.bots, dropID)
+		collectorID := ""
+		if player := s.resolveDropCollector(mapState, drop); player != nil {
+			s.applyLootToPlayer(mapState, drop, player)
+			collectorID = player.ID
+		} else if bot := s.resolveBotDropCollector(mapState, drop); bot != nil {
+			s.applyLootToBot(mapState, drop, bot)
+			collectorID = bot.ID
+		} else {
 			continue
 		}
-
-		if bot := s.resolveBotDropCollector(mapState, drop); bot != nil {
-			if drop.DropItemID == s.coinItemID {
-				s.addCoins(bot, drop.DropQuantity)
-			} else {
-				s.grantItemToBot(bot, drop.DropItemID, drop.DropQuantity)
-			}
-			s.broadcastDropCollect(mapState, drop, bot.ID, cx, cy)
-			delete(mapState.bots, dropID)
+		s.broadcastDropCollect(mapState, drop, collectorID, cx, cy)
+		delete(mapState.bots, dropID)
+		if drop.LootOrigin == LootOriginWorld && drop.LootOutcome == LootOutcomeConsume {
+			scheduleLootRespawn(mapState, drop, now)
 		}
 	}
 }
 
+// applyLootToPlayer applies the token's outcome to the collecting player.
+func (s *GameServer) applyLootToPlayer(mapState *MapState, drop *BotState, player *PlayerState) {
+	switch drop.LootOutcome {
+	case LootOutcomeItem:
+		s.addPlayerItem(player, drop.DropItemID, drop.DropQuantity)
+		s.advancePlayerQuestsOnGain(player)
+	case LootOutcomeCoin:
+		// No coin-gain FCT — the amount is shown on the grid loot counter.
+		s.addCoins(player, drop.DropQuantity)
+	case LootOutcomeConsume:
+		s.consumeItem(mapState, &player.EntityBase, &player.Mortal, drop.DropItemID)
+	}
+	logx.Debugf("[LOOT] %s token %s taken by player %s", drop.LootOrigin, drop.DropItemID, player.ID)
+}
+
+// applyLootToBot applies the token's outcome to the collecting bot.
+func (s *GameServer) applyLootToBot(mapState *MapState, drop *BotState, bot *BotState) {
+	switch drop.LootOutcome {
+	case LootOutcomeItem:
+		s.grantItemToBot(bot, drop.DropItemID, drop.DropQuantity)
+	case LootOutcomeCoin:
+		s.addCoins(bot, drop.DropQuantity)
+	case LootOutcomeConsume:
+		s.consumeItem(mapState, &bot.EntityBase, &bot.Mortal, drop.DropItemID)
+	}
+	logx.Debugf("[LOOT] %s token %s taken by bot %s", drop.LootOrigin, drop.DropItemID, bot.ID)
+}
+
+// lootAdmits reports whether the token's collection policy admits collectorID.
+func lootAdmits(drop *BotState, collectorID string) bool {
+	if drop.LootCollection == LootCollectFirstContact {
+		return true
+	}
+	_, ok := drop.LootContributors[collectorID]
+	return ok
+}
+
+// lootBenefits reports whether the outcome changes something for the
+// collector: a token it would consume without effect stays on the map.
+func lootBenefits(drop *BotState, collector *Mortal) bool {
+	return drop.LootOutcome != LootOutcomeConsume || canConsume(collector)
+}
+
 // resolveDropCollector returns the first live, non-frozen player overlapping the
-// token that is eligible to collect it, or nil when none is. Eligibility is the
-// collection race: only a damage contributor may grab the drop (a token always
-// has ≥1 contributor — see spawnDrops). Go's random map iteration order fairly
-// breaks ties between simultaneous colliders.
+// token that its policy admits and its outcome benefits, or nil. Go's random map
+// iteration order fairly breaks ties between simultaneous colliders.
 func (s *GameServer) resolveDropCollector(mapState *MapState, drop *BotState) *PlayerState {
 	for _, player := range mapState.players {
 		if player.IsGhost() || player.Frozen {
@@ -281,23 +433,21 @@ func (s *GameServer) resolveDropCollector(mapState *MapState, drop *BotState) *P
 		if !checkAABBCollision(drop.Pos, drop.Dims, player.Pos, player.Dims) {
 			continue
 		}
-		if _, ok := drop.LootContributors[player.ID]; ok {
+		if lootAdmits(drop, player.ID) && lootBenefits(drop, &player.Mortal) {
 			return player
 		}
 	}
 	return nil
 }
 
-// resolveBotDropCollector returns the first live combat bot that contributed to
-// the kill and now overlaps the token — the loot transfers to it. Contributor IDs
-// are casters (never projectiles/drops), so the membership test already excludes
-// non-combat bots; the guards keep dead bots and the token itself out.
+// resolveBotDropCollector returns the first live loot-collecting bot overlapping
+// the token that its policy admits and its outcome benefits, or nil.
 func (s *GameServer) resolveBotDropCollector(mapState *MapState, drop *BotState) *BotState {
 	for id, bot := range mapState.bots {
-		if id == drop.ID || bot.IsGhost() || behaviorIsInert(bot.Behavior) {
+		if bot.IsGhost() || !behaviorCollectsLoot(bot.Behavior) {
 			continue
 		}
-		if _, ok := drop.LootContributors[id]; !ok {
+		if !lootAdmits(drop, id) || !lootBenefits(drop, &bot.Mortal) {
 			continue
 		}
 		if checkAABBCollision(drop.Pos, drop.Dims, bot.Pos, bot.Dims) {
@@ -340,6 +490,7 @@ func (s *GameServer) broadcastDropCollect(mapState *MapState, drop *BotState, co
 		WorldX:      cx,
 		WorldY:      cy,
 		ItemID:      drop.DropItemID,
+		Granted:     drop.LootOutcome != LootOutcomeConsume,
 	}
 	dropRect := Rectangle{
 		MinX: drop.Pos.X, MinY: drop.Pos.Y,

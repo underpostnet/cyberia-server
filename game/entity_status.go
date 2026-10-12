@@ -62,7 +62,7 @@ const (
 	InteractionFlagAction uint8 = 1 << 0 // ↔ StatusActionProvider
 	InteractionFlagQuest  uint8 = 1 << 1 // ↔ StatusQuestProvider
 	// InteractionFlagLootEligible marks a BehaviorDrop token the viewing player
-	// may collect (damage contributor). Personal per viewer; no overhead icon —
+	// may collect (its collection policy admits the viewer). Personal per viewer; no overhead icon —
 	// the client colors the drop's particles by it (gold vs gray).
 	InteractionFlagLootEligible uint8 = 1 << 2
 )
