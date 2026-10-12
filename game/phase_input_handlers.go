@@ -230,32 +230,33 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 		player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(s.ap(player.ID, player.MapCode).Layers)
 	}
 
-	s.ApplyResistanceStat(player, s.maps[player.MapCode])
+	s.ApplyResistanceStat(player.ID, s.maps[player.MapCode])
 }
 
 // queuePreRespawnActivation marks a pending activation that takes effect
 // when the dead player respawns. Extracted to keep handleItemActivationInput
 // readable.
 func (s *GameServer) queuePreRespawnActivation(player *PlayerState, itemID string) {
-	if player.PreRespawnObjectLayers == nil {
+	layers := s.maps[player.MapCode].mt(player.ID).PreRespawnObjectLayers
+	if layers == nil {
 		return
 	}
-	for i := range player.PreRespawnObjectLayers {
-		if player.PreRespawnObjectLayers[i].ItemID != itemID {
+	for i := range layers {
+		if layers[i].ItemID != itemID {
 			continue
 		}
-		player.PreRespawnObjectLayers[i].Active = true
+		layers[i].Active = true
 		logx.Debugf("Player %s is dead — queued activation of '%s' on revive.", player.ID, itemID)
 		if s.equipmentRules.OnePerType {
 			reqType := s.itemType(itemID)
 			if reqType != "" {
-				for j := range player.PreRespawnObjectLayers {
+				for j := range layers {
 					if j == i {
 						continue
 					}
-					if player.PreRespawnObjectLayers[j].Active &&
-						s.itemType(player.PreRespawnObjectLayers[j].ItemID) == reqType {
-						player.PreRespawnObjectLayers[j].Active = false
+					if layers[j].Active &&
+						s.itemType(layers[j].ItemID) == reqType {
+						layers[j].Active = false
 					}
 				}
 			}

@@ -30,17 +30,10 @@ func (s *GameServer) progressionConfig() ProgressionRules {
 	return s.progressionRules
 }
 
-type statSource interface {
-	Base() EntityBase
-	StatState() *Mortal
-}
-
-func (m *Mortal) StatState() *Mortal { return m }
-
-func (s *GameServer) entityProgression(source statSource) *EntityProgression {
-	p := &source.StatState().Progression
+func (s *GameServer) entityProgression(id EntityID, ms *MapState) *EntityProgression {
+	p := &ms.mt(id).Progression
 	if p.Level == 0 {
-		_, player := source.(*PlayerState)
+		player := ms.has(id, maskPlayer)
 		level := s.progressionConfig().DefaultBotLevel
 		if player {
 			level = 1
@@ -62,14 +55,14 @@ func (s *GameServer) entityProgression(source statSource) *EntityProgression {
 // XP is private, so its floating text goes to the earner alone; a level gained
 // is public, so its sound reaches every viewer in the earner's area.
 func (s *GameServer) awardProgression(player *PlayerState, event progressionEvent, key string, targetLevel int, now time.Time) uint64 {
-	p := s.entityProgression(player)
+	ms := s.maps[player.MapCode]
+	p := s.entityProgression(player.ID, ms)
 	before := p.Level
 	amount := p.award(s.progressionConfig(), event, key, targetLevel, now)
 	if amount == 0 {
 		return 0
 	}
-	ms := s.maps[player.MapCode]
-	s.ApplyResistanceStat(player, ms)
+	s.ApplyResistanceStat(player.ID, ms)
 	tf := ms.tf(player.ID)
 	sendMessage(player, "combat_text", CombatText{Kind: FCTXp, WorldX: tf.Pos.X, WorldY: tf.Pos.Y, Value: int(amount)})
 	if p.Level > before {
@@ -80,13 +73,17 @@ func (s *GameServer) awardProgression(player *PlayerState, event progressionEven
 
 // awardDefeat uses damage shares and excludes summoned entities, self kills
 // and obstacles.
-func (s *GameServer) awardDefeat(base *EntityBase, mortal *Mortal, kind string, ledger map[EntityID]float64, ms *MapState) {
-	if ms == nil || ms.vt(base.ID).ghost() || kind == "obstacle" {
+func (s *GameServer) awardDefeat(victim EntityID, kind string, ms *MapState) {
+	if ms == nil || ms.vt(victim).ghost() || kind == "obstacle" {
 		return
 	}
-	if b := ms.bots[base.ID]; b != nil && (ms.ag(b.ID).CasterID != 0 || behaviorIsProvider(ms.ag(b.ID).Behavior) || ms.ag(b.ID).Behavior == BehaviorDrop) {
-		return
+	if ms.has(victim, maskAgent) {
+		if a := ms.ag(victim); a.CasterID != 0 || behaviorIsProvider(a.Behavior) || a.Behavior == BehaviorDrop {
+			return
+		}
 	}
+	mortal := ms.mt(victim)
+	ledger := mortal.DamageLedger
 	var total float64
 	for _, damage := range ledger {
 		if damage > 0 {
@@ -94,14 +91,14 @@ func (s *GameServer) awardDefeat(base *EntityBase, mortal *Mortal, kind string, 
 		}
 	}
 	for id, damage := range ledger {
-		if id == base.ID || damage <= 0 || damage < total*0.1 {
+		if id == victim || damage <= 0 || damage < total*0.1 {
 			continue
 		}
 		entity := ms.players[id]
 		if entity == nil || ms.vt(entity.ID).ghost() || entity.Frozen {
 			continue
 		}
-		key := fmt.Sprintf("%s:%d", kind, base.ID)
+		key := fmt.Sprintf("%s:%d", kind, victim)
 		event := xpKill
 		if kind == "resource" {
 			event = xpObjective

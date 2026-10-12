@@ -8,9 +8,9 @@ import (
 
 // executeProjectileSkill is the "projectile" skill handler.
 // It spawns a fast-moving "skill" projectile bot towards the caster's target.
-// Works for both PlayerState and BotState via SkillContext.
+// Works for players and bots alike: the context names the caster by id.
 func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
-	casterStats := s.CalculateStats(ctx.Caster, ctx.MapState)
+	casterStats := s.CalculateStats(ctx.CasterID, ctx.MapState)
 
 	projectileItemIDs := []string{ctx.SummonedEntityItemID}
 	if ctx.SummonedEntityItemID == "" {
@@ -23,23 +23,9 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 		return
 	}
 
-	// Extract caster properties via type switch.
-	var casterID EntityID
-	var mapCode string
-	var casterPos Vec2
-	var casterDir Direction
-	switch e := ctx.Caster.(type) {
-	case *PlayerState:
-		casterID = e.ID
-		mapCode = e.MapCode
-		casterPos = ctx.MapState.tf(e.ID).Pos
-		casterDir = ctx.MapState.mo(e.ID).Direction
-	case *BotState:
-		casterID = e.ID
-		mapCode = e.MapCode
-		casterPos = ctx.MapState.tf(e.ID).Pos
-		casterDir = ctx.MapState.mo(e.ID).Direction
-	}
+	casterID := ctx.CasterID
+	casterPos := ctx.MapState.tf(casterID).Pos
+	casterDir := ctx.MapState.mo(casterID).Direction
 
 	// Calculate direction from caster to target.
 	dx := ctx.Target.X - casterPos.X
@@ -87,7 +73,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 		EntityBase: EntityBase{
 			ID: s.newEntityID(),
 		},
-		MapCode:   mapCode,
+		MapCode:   ctx.MapState.code,
 		ExpiresAt: time.Now().Add(projectileLifetime),
 		// One-shot palette lookup at spawn; sim never re-reads.
 	}
@@ -97,6 +83,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 	ctx.MapState.addVitals(projectileBot.ID, Vitals{MaxLife: projectileBaseLife, Life: projectileBaseLife})
 	ctx.MapState.addMotion(projectileBot.ID, Motion{Direction: projectileDirection})
 	ctx.MapState.addAgent(projectileBot.ID, Agent{Behavior: BehaviorSkill, CasterID: casterID})
-	s.ApplyResistanceStat(projectileBot, ctx.MapState)
+	ctx.MapState.addMortal(projectileBot.ID, &Mortal{})
+	s.ApplyResistanceStat(projectileBot.ID, ctx.MapState)
 	ctx.MapState.vt(projectileBot.ID).Life = ctx.MapState.vt(projectileBot.ID).MaxLife
 }

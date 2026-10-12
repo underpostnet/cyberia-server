@@ -117,13 +117,13 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 func (s *GameServer) phaseLifecycle(tick uint32, mapState *MapState) {
 	_ = tick
 	for _, player := range mapState.players {
-		s.ApplyResistanceStat(player, mapState)
+		s.ApplyResistanceStat(player.ID, mapState)
 	}
 	for _, bot := range mapState.bots {
-		s.ApplyResistanceStat(bot, mapState)
+		s.ApplyResistanceStat(bot.ID, mapState)
 	}
 	for _, resource := range mapState.resources {
-		s.ApplyResistanceStat(resource, mapState)
+		s.ApplyResistanceStat(resource.ID, mapState)
 	}
 	s.handleRespawns(mapState)
 	s.completeCrafts(mapState)
@@ -134,11 +134,11 @@ func (s *GameServer) phaseSkills(tick uint32, mapState *MapState) {
 	_ = tick
 	s.handleSkillCollisions(mapState)
 	for _, player := range mapState.players {
-		s.dispatchHeldSkills(player, mapState)
+		s.dispatchHeldSkills(player.ID, mapState)
 	}
 	for _, bot := range mapState.bots {
 		if behaviorCollectsLoot(mapState.ag(bot.ID).Behavior) {
-			s.dispatchHeldSkills(bot, mapState)
+			s.dispatchHeldSkills(bot.ID, mapState)
 		}
 	}
 }

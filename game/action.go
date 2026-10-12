@@ -211,8 +211,8 @@ func (s *GameServer) botActiveSkinOf(bot *BotState) string {
 	// still validates against a quest-giver that just died — the interaction
 	// context is independent of the entity's alive/AOI state.
 	layers := s.ap(bot.ID, bot.MapCode).Layers
-	if s.vt(bot.ID, bot.MapCode).ghost() && len(bot.PreRespawnObjectLayers) > 0 {
-		layers = bot.PreRespawnObjectLayers
+	if s.vt(bot.ID, bot.MapCode).ghost() && len(s.maps[bot.MapCode].mt(bot.ID).PreRespawnObjectLayers) > 0 {
+		layers = s.maps[bot.MapCode].mt(bot.ID).PreRespawnObjectLayers
 	}
 	for _, ol := range layers {
 		if ol.Active && s.itemType(ol.ItemID) == "skin" {

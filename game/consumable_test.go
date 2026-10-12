@@ -48,7 +48,7 @@ func TestAHeldConsumableWaitsUntilTheMissingLifeTakesItsWholeHeal(t *testing.T) 
 	if ms.vt(player.ID).Life != 100 || s.playerItemQuantity(player, "gel") != 1 {
 		t.Fatalf("life=%v gel=%d, want one inactive unit consumed to full life", ms.vt(player.ID).Life, s.playerItemQuantity(player, "gel"))
 	}
-	if !player.NextConsumeAt.After(time.Now()) {
+	if !ms.mt(player.ID).NextConsumeAt.After(time.Now()) {
 		t.Fatal("a consumed unit must start the consume cooldown")
 	}
 }
@@ -62,7 +62,7 @@ func TestTheConsumeCooldownSpacesTwoHeals(t *testing.T) {
 		t.Fatalf("life=%v gel=%d, want one heal inside the cooldown", ms.vt(player.ID).Life, s.playerItemQuantity(player, "gel"))
 	}
 
-	player.NextConsumeAt = time.Now()
+	ms.mt(player.ID).NextConsumeAt = time.Now()
 	s.phaseSkills(0, ms)
 	if ms.vt(player.ID).Life != 10+2*gelHeal || s.playerItemQuantity(player, "gel") != 1 {
 		t.Fatalf("life=%v gel=%d, want a second heal once the cooldown ends", ms.vt(player.ID).Life, s.playerItemQuantity(player, "gel"))
@@ -101,6 +101,7 @@ func TestOnlyALootCollectingBotHealsFromItsHeldUnits(t *testing.T) {
 		ms.bots[id] = &BotState{EntityBase: EntityBase{ID: id}}
 		ms.spawn(id, EntityData{Kind: EntityBot}, Transform{Size: Vec2{X: 1, Y: 1}}, Appearance{Layers: []ObjectLayerState{gel(1)}})
 		ms.addVitals(id, Vitals{Life: 10, MaxLife: 100})
+		ms.addMortal(id, &Mortal{})
 		ms.addAgent(id, Agent{Behavior: behavior})
 	}
 

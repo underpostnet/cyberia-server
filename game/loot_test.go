@@ -72,6 +72,7 @@ func woundedPlayer(ms *MapState, id EntityID, at Vec2, life float64) *PlayerStat
 	ms.spawn(id, EntityData{Kind: EntityPlayer}, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}}, Appearance{})
 	ms.addVitals(id, Vitals{Life: life, MaxLife: 100})
 	ms.addMotion(id, Motion{})
+	ms.addMortal(id, &Mortal{})
 	return player
 }
 
@@ -210,6 +211,7 @@ func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 		ms.spawn(bot.ID, EntityData{Kind: EntityBot}, *ms.tf(token.ID), Appearance{})
 		ms.addVitals(bot.ID, Vitals{Life: 10, MaxLife: 100})
 		ms.addAgent(bot.ID, Agent{Behavior: behavior})
+		ms.addMortal(bot.ID, &Mortal{})
 	}
 
 	s.phaseLoot(0, ms)
@@ -237,6 +239,7 @@ func TestACollectorAtFullLifeKeepsAPickupAndTheTokenComesBack(t *testing.T) {
 	ms.bots[bot.ID] = bot
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: 15, Y: 15}, Size: at.Size}, Appearance{})
 	ms.addVitals(bot.ID, Vitals{Life: 100, MaxLife: 100})
+	ms.addMortal(bot.ID, &Mortal{})
 	ms.addAgent(bot.ID, Agent{Behavior: BehaviorHostile})
 
 	s.phaseLoot(0, ms)
@@ -283,7 +286,7 @@ func TestAPickupHealsByItsResistanceAndComesBackAfterItsRespawnTime(t *testing.T
 	ms.tf(player.ID).Pos = Vec2{X: -10, Y: -10}
 	s.phaseLoot(0, ms)
 	back := onlyToken(t, ms)
-	if ms.tf(back.ID).Pos != cell || back.LootOutcome != LootOutcomeConsume || back.RespawnDuration != 5*time.Second ||
+	if ms.tf(back.ID).Pos != cell || back.LootOutcome != LootOutcomeConsume || ms.mt(back.ID).RespawnDuration != 5*time.Second ||
 		len(ms.lootRespawns) != 0 {
 		t.Fatalf("the token must come back on its cell with its respawn time: %+v", back)
 	}
@@ -315,6 +318,7 @@ func TestABotConsumesAPickup(t *testing.T) {
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, *ms.tf(token.ID), Appearance{})
 	ms.addVitals(bot.ID, Vitals{Life: 30, MaxLife: 100})
 	ms.addAgent(bot.ID, Agent{Behavior: BehaviorHostile})
+	ms.addMortal(bot.ID, &Mortal{})
 
 	s.phaseLoot(0, ms)
 

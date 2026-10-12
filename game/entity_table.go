@@ -131,6 +131,28 @@ func (ms *MapState) pt(id EntityID) (*Portal, bool) {
 	return &ms.portal[slot], ms.mask[slot]&maskPortal != 0
 }
 
+// has reports whether id has every component in m.
+func (ms *MapState) has(id EntityID, m ComponentMask) bool {
+	return ms.mask[ms.slot(id)]&m == m
+}
+
+// addMortal gives id its mortal row.
+func (ms *MapState) addMortal(id EntityID, m *Mortal) {
+	if ms.mortals == nil {
+		ms.mortals = make(map[EntityID]*Mortal)
+	}
+	ms.mortals[id] = m
+}
+
+// mt returns the mortal row of id. The id must have one.
+func (ms *MapState) mt(id EntityID) *Mortal {
+	m, ok := ms.mortals[id]
+	if !ok {
+		panic("entity " + id.String() + " has no mortal row")
+	}
+	return m
+}
+
 // vt returns the vitals of an entity on the map mapCode.
 func (s *GameServer) vt(id EntityID, mapCode string) *Vitals { return s.maps[mapCode].vt(id) }
 
@@ -173,12 +195,13 @@ type entityRow struct {
 	motion     Motion
 	agent      Agent
 	portal     Portal
+	mortal     *Mortal
 }
 
 // take copies the row of id and frees its slot.
 func (ms *MapState) take(id EntityID) entityRow {
 	i := ms.slot(id)
-	row := entityRow{ms.mask[i], ms.data[i], ms.transform[i], ms.appearance[i], ms.vitals[i], ms.motion[i], ms.agent[i], ms.portal[i]}
+	row := entityRow{ms.mask[i], ms.data[i], ms.transform[i], ms.appearance[i], ms.vitals[i], ms.motion[i], ms.agent[i], ms.portal[i], ms.mortals[id]}
 	ms.despawn(id)
 	return row
 }
@@ -191,6 +214,9 @@ func (ms *MapState) put(id EntityID, row entityRow) {
 	ms.agent[i] = row.agent
 	ms.portal[i] = row.portal
 	ms.mask[i] = row.mask
+	if row.mortal != nil {
+		ms.addMortal(id, row.mortal)
+	}
 }
 
 // despawn frees the slot of id. The component arrays keep stale values; the
@@ -203,4 +229,5 @@ func (ms *MapState) despawn(id EntityID) {
 	ms.ids[slot] = 0
 	ms.mask[slot] = 0
 	delete(ms.index, id)
+	delete(ms.mortals, id)
 }

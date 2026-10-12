@@ -433,7 +433,7 @@ func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapStat
 		return
 	}
 
-	playerStats := s.CalculateStats(player, mapState)
+	playerStats := s.CalculateStats(player.ID, mapState)
 	speed := s.CalculatePlayerMovementSpeed(playerStats)
 
 	if mapState.mo(player.ID).Mode != WALKING {

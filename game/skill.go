@@ -16,23 +16,23 @@ func (s *GameServer) HandlePlayerTapAction(player *PlayerState, mapState *MapSta
 	if mapState.vt(player.ID).ghost() || player.Frozen {
 		return
 	}
-	if !s.acceptSkillAction(player, mapState, time.Now()) {
+	if !s.acceptSkillAction(player.ID, mapState, time.Now()) {
 		return
 	}
-	s.handleProbabilisticRegen(player, mapState)
-	s.dispatchSkillsForEntity(player, mapState, target, true)
+	s.handleProbabilisticRegen(player.ID, mapState)
+	s.dispatchSkillsForEntity(player.ID, mapState, target, true)
 }
 
-func (s *GameServer) acceptSkillAction(entity statSource, mapState *MapState, now time.Time) bool {
-	state := entity.StatState()
-	if mapState.vt(entity.Base().ID).ghost() || now.Before(state.NextSkillAt) {
+func (s *GameServer) acceptSkillAction(id EntityID, mapState *MapState, now time.Time) bool {
+	state := mapState.mt(id)
+	if mapState.vt(id).ghost() || now.Before(state.NextSkillAt) {
 		return false
 	}
-	state.NextSkillAt = now.Add(s.CalculateActionCooldown(s.CalculateStats(entity, mapState)))
+	state.NextSkillAt = now.Add(s.CalculateActionCooldown(s.CalculateStats(id, mapState)))
 	return true
 }
 
 // Bot action scheduling owns its cooldown.
-func (s *GameServer) handleBotSkills(bot *BotState, mapState *MapState, target Vec2) {
-	s.dispatchSkillsForEntity(bot, mapState, target, true)
+func (s *GameServer) handleBotSkills(id EntityID, mapState *MapState, target Vec2) {
+	s.dispatchSkillsForEntity(id, mapState, target, true)
 }

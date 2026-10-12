@@ -144,14 +144,10 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	playerOLs := s.spawnObjectLayers("player", nil, true)
 	playerState := &PlayerState{
 		EntityBase: EntityBase{ID: playerID},
-		Mortal: Mortal{
-			Progression: NewEntityProgression(1, false, s.progressionConfig()),
-		},
-		EngineID:  uuid.New().String(),
-		MapCode:   startMapCode,
-		Path:      []Cell{},
-		TargetPos: Cell{-1, -1},
-		LifeRegen: lifeRegen,
+		EngineID:   uuid.New().String(),
+		MapCode:    startMapCode,
+		Path:       []Cell{},
+		TargetPos:  Cell{-1, -1},
 	}
 	client := &Client{
 		playerID: playerID,
@@ -175,13 +171,17 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	}, Appearance{Layers: playerOLs})
 	startMapState.addVitals(playerID, Vitals{MaxLife: s.entityBaseMaxLife})
 	startMapState.addMotion(playerID, Motion{Direction: NONE, Mode: IDLE})
+	startMapState.addMortal(playerID, &Mortal{
+		Progression: NewEntityProgression(1, false, s.progressionConfig()),
+		LifeRegen:   lifeRegen,
+	})
 	startMapState.mask[startMapState.slot(playerID)] |= maskPlayer
 
 	// Economy: credit the player's starting wallet (Fountain: playerSpawnCoins).
 	s.FountainInitPlayer(playerState)
 
 	// Apply initial stats (like Resistance for MaxLife) after creation.
-	s.ApplyResistanceStat(playerState, startMapState)
+	s.ApplyResistanceStat(playerState.ID, startMapState)
 	v := startMapState.vt(playerID)
 	v.Life = v.MaxLife * s.initialLifeFraction // Set life based on config fraction
 

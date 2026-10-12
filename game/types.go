@@ -128,16 +128,22 @@ type EntityBase struct {
 // reach the embedded fields of any entity type.
 func (e EntityBase) Base() EntityBase { return e }
 
-// Mortal — the server-only block of entities that can die (Player, Bot,
-// Resource). Life itself is in MapState.vitals.
+// Mortal is the server-only side table row of an entity that can die (player,
+// bot, resource). Life itself is in MapState.vitals.
 type Mortal struct {
 	NextSkillAt            time.Time
 	NextConsumeAt          time.Time // ends the cooldown a consumed held item starts (consumable.go)
 	BaseMaxLife            float64
-	Progression            EntityProgression  `json:"progression"`
-	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
+	Progression            EntityProgression
+	PreRespawnObjectLayers []ObjectLayerState
+	LifeRegen              float64
 	// RespawnDuration is the wait before the entity comes back; 0 takes respawnDurationDefaultMs.
-	RespawnDuration time.Duration `json:"-"`
+	RespawnDuration time.Duration
+	// DamageLedger is the per-victim threat/contribution ledger: attacker id →
+	// cumulative damage dealt to this entity. Populated by the skill-collision
+	// path for every attacker. Consumed on death to build the loot contributor
+	// set and the XP shares, then reset. Allocated lazily on first hit.
+	DamageLedger map[EntityID]float64
 }
 
 // Vitals is the vitals component. The server keeps the respawn instant; the
@@ -181,7 +187,6 @@ func (m *Mortal) respawnDuration() time.Duration {
 
 type PlayerState struct {
 	EntityBase
-	Mortal
 	// EngineID is the player id the engine knows. It never goes in a snapshot.
 	EngineID     string    `json:"-"`
 	MapCode      string    `json:"MapCode"`
@@ -191,17 +196,11 @@ type PlayerState struct {
 	Client       *Client   `json:"-"`
 	OnPortal     bool      `json:"onPortal"`
 	TimeOnPortal time.Time `json:"-"`
-	LifeRegen    float64   `json:"lifeRegen"`
 	// Coins is the canonical flat coin balance — the single source of truth
 	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
 	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
 	// visualization only and is always Active: false.
 	Coins uint32 `json:"-"`
-	// DamageLedger mirrors BotState.DamageLedger for PvP: attacking player ID →
-	// cumulative damage dealt to this player. Read once on death to build the
-	// coin-drop contributor set (the PvP loot race), then reset. Never sent on
-	// the wire.
-	DamageLedger map[EntityID]float64 `json:"-"`
 	// DeadLoadoutItemIDs remembers the dead-state items active during the
 	// player's last Fragmented State; reapplied on the next death. Never sent
 	// on the wire.
@@ -245,7 +244,6 @@ type PlayerState struct {
 
 type BotState struct {
 	EntityBase
-	Mortal
 	MapCode              string    `json:"MapCode"`
 	Path                 []Cell    `json:"path"`
 	TargetPos            Cell      `json:"targetPos"`
@@ -256,19 +254,11 @@ type BotState struct {
 	lastPursuitTargetPos Cell      `json:"-"` // cached player's last cell to know when to re-path
 	lastAction           time.Time `json:"-"`
 	ExpiresAt            time.Time `json:"-"` // bots with a lifetime will be removed after this time
-	LifeRegen            float64   `json:"lifeRegen"`
 	// Coins is the canonical flat coin balance — the single source of truth
 	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
 	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
 	// visualization only and is always Active: false.
 	Coins uint32 `json:"-"`
-
-	// DamageLedger is the per-victim threat/contribution ledger:
-	// attacking player or bot ID → cumulative damage dealt to this entity.
-	// Populated by the skill-collision path for every attacker (players and bots
-	// alike). Consumed on death to build the loot contributor set, then reset.
-	// Allocated lazily on first hit. Never sent on the wire.
-	DamageLedger map[EntityID]float64 `json:"-"`
 
 	// ── Transient world-item drop fields (BehaviorDrop bots only) ────────────
 	// A drop is a collectible token: scattered on the grid when an entity dies, or
@@ -306,12 +296,7 @@ type BotState struct {
 // They never move.
 type ResourceState struct {
 	EntityBase
-	Mortal
 	MapCode string `json:"MapCode"`
-	// DamageLedger is the per-resource extraction ledger: attacking player ID →
-	// cumulative damage dealt. Mirrors BotState.DamageLedger — read once on
-	// death to grant the top contributor loot priority, then reset. Never wired.
-	DamageLedger map[EntityID]float64 `json:"-"`
 }
 
 // DestructibleState is an obstacle with the destructible behavior. It blocks its
@@ -320,9 +305,7 @@ type ResourceState struct {
 // respawns. An ordinary obstacle is an ObjectState and takes no damage.
 type DestructibleState struct {
 	EntityBase
-	Mortal
-	MapCode      string               `json:"MapCode"`
-	DamageLedger map[EntityID]float64 `json:"-"`
+	MapCode string `json:"MapCode"`
 }
 
 // StaticState represents a non-moving, passable decorator entity (rocks,
@@ -340,12 +323,13 @@ type PortalState struct {
 
 type MapState struct {
 	mu            sync.RWMutex
+	code          string // the map code; the key of this map in GameServer.maps
 	pathfinder    *Pathfinder
-	destructibles map[EntityID]*DestructibleState
 	portals       map[EntityID]*PortalState
 	players       map[EntityID]*PlayerState
 	bots          map[EntityID]*BotState
 	resources     map[EntityID]*ResourceState
+	destructibles map[EntityID]*DestructibleState
 	// lootRespawns are the consumed world tokens waiting to come back (loot.go).
 	lootRespawns []lootRespawn
 	gridW, gridH int
@@ -361,6 +345,8 @@ type MapState struct {
 	agent      []Agent
 	portal     []Portal
 	cursor     int // next slot the allocator tests
+
+	mortals map[EntityID]*Mortal
 }
 
 type Client struct {

@@ -45,22 +45,22 @@ func TestStatScalesApply(t *testing.T) {
 func TestRegenAmountFollowsResistance(t *testing.T) {
 	s, ms, p := movementFixture(t)
 	s.lifeRegenChance, s.maxChance = 1, 1
-	p.LifeRegen = 1
+	ms.mt(p.ID).LifeRegen = 1
 	ms.vt(p.ID).Life, ms.vt(p.ID).MaxLife = 50, 100
-	p.Progression = NewEntityProgression(1, false, s.progressionConfig())
+	ms.mt(p.ID).Progression = NewEntityProgression(1, false, s.progressionConfig())
 	base := s.progressionConfig().BaseAtLevel(1).Resistance
-	s.handleProbabilisticRegen(p, ms)
+	s.handleProbabilisticRegen(p.ID, ms)
 	if want := 50 + 1 + base*statRegenPerResistance; ms.vt(p.ID).Life != want {
 		t.Fatalf("life after regen = %v, want %v", ms.vt(p.ID).Life, want)
 	}
 	ms.vt(p.ID).Life = 99.9
-	s.handleProbabilisticRegen(p, ms)
+	s.handleProbabilisticRegen(p.ID, ms)
 	if ms.vt(p.ID).Life != 100 {
 		t.Fatalf("regen passed the maximum: %v", ms.vt(p.ID).Life)
 	}
 	s.lifeRegenChance = 0
 	ms.vt(p.ID).Life = 50
-	s.handleProbabilisticRegen(p, ms)
+	s.handleProbabilisticRegen(p.ID, ms)
 	if ms.vt(p.ID).Life != 50 {
 		t.Fatal("regen fired at zero chance")
 	}

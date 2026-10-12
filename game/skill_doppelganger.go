@@ -7,34 +7,18 @@ import (
 
 // executeDoppelgangerSkill is the "doppelganger" skill handler.
 // It has a chance to spawn a temporary, wandering clone of the caster.
-// Works for both PlayerState and BotState via SkillContext.
+// Works for players and bots alike: the context names the caster by id.
 func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
-	casterStats := s.CalculateStats(ctx.Caster, ctx.MapState)
+	casterStats := s.CalculateStats(ctx.CasterID, ctx.MapState)
 
 	if rand.Float64() >= s.summonChance(s.doppelgangerSpawnChance, casterStats) {
 		return
 	}
 
-	// Extract caster properties via type switch.
-	var casterID EntityID
-	var mapCode string
-	var casterPos Vec2
-	var casterDims Vec2
-	var casterLayers []ObjectLayerState
-	switch e := ctx.Caster.(type) {
-	case *PlayerState:
-		casterID = e.ID
-		mapCode = e.MapCode
-		casterPos = ctx.MapState.tf(e.ID).Pos
-		casterDims = ctx.MapState.tf(e.ID).Size
-		casterLayers = ctx.MapState.ap(e.ID).Layers
-	case *BotState:
-		casterID = e.ID
-		mapCode = e.MapCode
-		casterPos = ctx.MapState.tf(e.ID).Pos
-		casterDims = ctx.MapState.tf(e.ID).Size
-		casterLayers = ctx.MapState.ap(e.ID).Layers
-	}
+	casterID := ctx.CasterID
+	casterPos := ctx.MapState.tf(casterID).Pos
+	casterDims := ctx.MapState.tf(casterID).Size
+	casterLayers := ctx.MapState.ap(casterID).Layers
 
 	// Acquire the lock only if the caller doesn't already hold it.
 	if !ctx.CallerHoldsLock {
@@ -78,7 +62,7 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 		EntityBase: EntityBase{
 			ID: s.newEntityID(),
 		},
-		MapCode:     mapCode,
+		MapCode:     ctx.MapState.code,
 		SpawnCenter: casterPos,
 		SpawnRadius: s.doppelgangerSpawnRadius,
 		ExpiresAt:   time.Now().Add(botLifetime),
@@ -89,6 +73,7 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 	ctx.MapState.addVitals(doppelgangerBot.ID, Vitals{MaxLife: s.entityBaseMaxLife, Life: s.entityBaseMaxLife * s.doppelgangerInitialLifeFraction})
 	ctx.MapState.addMotion(doppelgangerBot.ID, Motion{})
 	ctx.MapState.addAgent(doppelgangerBot.ID, Agent{Behavior: BehaviorPassive, CasterID: casterID})
-	s.ApplyResistanceStat(doppelgangerBot, ctx.MapState)
+	ctx.MapState.addMortal(doppelgangerBot.ID, &Mortal{})
+	s.ApplyResistanceStat(doppelgangerBot.ID, ctx.MapState)
 	ctx.MapState.vt(doppelgangerBot.ID).Life = ctx.MapState.vt(doppelgangerBot.ID).MaxLife
 }

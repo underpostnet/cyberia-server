@@ -13,18 +13,17 @@ type StatBreakdown struct {
 }
 
 // statBreakdown applies floors once, after all signed contributions.
-func (s *GameServer) statBreakdown(source statSource, mapState *MapState, visited map[EntityID]bool) StatBreakdown {
+func (s *GameServer) statBreakdown(id EntityID, mapState *MapState, visited map[EntityID]bool) StatBreakdown {
 	var out StatBreakdown
-	entity := source.Base()
-	if visited[entity.ID] {
+	if visited[id] {
 		return out
 	}
-	visited[entity.ID] = true
-	defer delete(visited, entity.ID)
-	progression := s.entityProgression(source)
+	visited[id] = true
+	defer delete(visited, id)
+	progression := s.entityProgression(id, mapState)
 	out.Base = s.progressionConfig().BaseAtLevel(progression.Level)
 	var layers, temporary [StatCount]float64
-	for _, layer := range mapState.ap(entity.ID).Layers {
+	for _, layer := range mapState.ap(id).Layers {
 		if !layer.Active || layer.Quantity <= 0 {
 			continue
 		}
@@ -35,14 +34,9 @@ func (s *GameServer) statBreakdown(source statSource, mapState *MapState, visite
 		}
 	}
 	out.Layers = statsFromValues(layers)
-	if bot, ok := source.(*BotState); ok && mapState != nil && mapState.ag(bot.ID).CasterID != 0 {
-		var caster statSource
-		if p := mapState.players[mapState.ag(bot.ID).CasterID]; p != nil {
-			caster = p
-		} else if b := mapState.bots[mapState.ag(bot.ID).CasterID]; b != nil {
-			caster = b
-		}
-		if caster != nil {
+	if mapState.has(id, maskAgent) {
+		// A summon inherits the stats of a caster still on its map.
+		if caster := mapState.ag(id).CasterID; mapState.mortals[caster] != nil {
 			inherited := s.statBreakdown(caster, mapState, visited)
 			out.Base = inherited.Base
 			inheritedLayers, inheritedTemporary := inherited.Layers.Values(), inherited.Temporary.Values()
@@ -56,26 +50,18 @@ func (s *GameServer) statBreakdown(source statSource, mapState *MapState, visite
 	return out
 }
 
-func (s *GameServer) CalculateStats(source interface{}, mapState *MapState) ComputedStats {
-	entity, ok := source.(statSource)
-	if !ok {
-		return ComputedStats{}
-	}
-	return s.statBreakdown(entity, mapState, make(map[EntityID]bool)).Effective
+func (s *GameServer) CalculateStats(id EntityID, mapState *MapState) ComputedStats {
+	return s.statBreakdown(id, mapState, make(map[EntityID]bool)).Effective
 }
 
 // ApplyResistanceStat keeps life within the effective maximum.
-func (s *GameServer) ApplyResistanceStat(entity interface{}, mapState *MapState) {
-	source, ok := entity.(statSource)
-	if !ok {
-		return
-	}
-	base := source.StatState().BaseMaxLife
+func (s *GameServer) ApplyResistanceStat(id EntityID, mapState *MapState) {
+	base := mapState.mt(id).BaseMaxLife
 	if base <= 0 {
 		base = s.entityBaseMaxLife
 	}
-	v := mapState.vt(source.Base().ID)
-	v.MaxLife = max(1, base+s.CalculateStats(entity, mapState).Resistance)
+	v := mapState.vt(id)
+	v.MaxLife = max(1, base+s.CalculateStats(id, mapState).Resistance)
 	v.Life = min(v.Life, v.MaxLife)
 }
 

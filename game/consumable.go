@@ -45,20 +45,17 @@ func (s *GameServer) consumeItem(mapState *MapState, id EntityID, itemID string)
 // caster's missing life takes its whole heal and the consume cooldown is over.
 // The action cooldown rule times the next one.
 func (s *GameServer) executeZeroWasteHeal(ctx SkillContext) {
-	base, mortal := casterBody(ctx.Caster)
-	if base == nil {
-		return
-	}
+	ms, id := ctx.MapState, ctx.CasterID
 	now := time.Now()
 	heal := s.consumableHeal(ctx.TriggerItemID)
-	vitals := ctx.MapState.vt(base.ID)
+	vitals, mortal := ms.vt(id), ms.mt(id)
 	if vitals.ghost() || now.Before(mortal.NextConsumeAt) || heal <= 0 || vitals.MaxLife-vitals.Life < heal {
 		return
 	}
-	if layerQuantity(ctx.MapState.ap(base.ID).Layers, ctx.TriggerItemID) < 1 {
+	if layerQuantity(ms.ap(id).Layers, ctx.TriggerItemID) < 1 {
 		return
 	}
-	s.consumeItem(ctx.MapState, base.ID, ctx.TriggerItemID)
-	removeLayerItem(&ctx.MapState.ap(base.ID).Layers, ctx.TriggerItemID, 1)
-	mortal.NextConsumeAt = now.Add(s.CalculateActionCooldown(s.CalculateStats(ctx.Caster, ctx.MapState)))
+	s.consumeItem(ms, id, ctx.TriggerItemID)
+	removeLayerItem(&ms.ap(id).Layers, ctx.TriggerItemID, 1)
+	mortal.NextConsumeAt = now.Add(s.CalculateActionCooldown(s.CalculateStats(id, ms)))
 }

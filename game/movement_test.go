@@ -33,6 +33,8 @@ func movementFixture(t *testing.T) (*GameServer, *MapState, *PlayerState) {
 	mapState.spawn(player.ID, EntityData{Kind: EntityPlayer}, Transform{Pos: Vec2{X: 1, Y: 1}, Size: Vec2{X: 1, Y: 1}}, Appearance{})
 	mapState.addVitals(player.ID, Vitals{Life: 100, MaxLife: 100})
 	mapState.addMotion(player.ID, Motion{Direction: NONE, Mode: IDLE})
+	mapState.addMortal(player.ID, &Mortal{})
+	mapState.mask[mapState.slot(player.ID)] |= maskPlayer
 
 	return s, mapState, player
 }
@@ -55,6 +57,8 @@ func placePlayer(s *GameServer, id EntityID, layers []ObjectLayerState) *PlayerS
 	ms.players[id] = p
 	ms.spawn(id, EntityData{Kind: EntityPlayer}, Transform{}, Appearance{Layers: layers})
 	ms.addVitals(id, Vitals{})
+	ms.addMortal(id, &Mortal{})
+	ms.mask[ms.slot(id)] |= maskPlayer
 	return p
 }
 
@@ -64,6 +68,7 @@ func placeBot(s *GameServer, id EntityID, v Vitals) *BotState {
 	b := &BotState{EntityBase: EntityBase{ID: id}, MapCode: "test"}
 	ms.spawn(id, EntityData{Kind: EntityBot}, Transform{}, Appearance{})
 	ms.addVitals(id, v)
+	ms.addMortal(id, &Mortal{})
 	return b
 }
 
@@ -209,7 +214,7 @@ func TestSnapshotActionReadyInFollowsTheSkillGate(t *testing.T) {
 	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready <= 0 || ready > 500 {
 		t.Fatalf("actionReadyInMs = %d after a tap, want 1..500", ready)
 	}
-	player.NextSkillAt = time.Now().Add(-time.Millisecond)
+	mapState.mt(player.ID).NextSkillAt = time.Now().Add(-time.Millisecond)
 	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready != 0 {
 		t.Fatalf("actionReadyInMs = %d after the cooldown, want 0", ready)
 	}

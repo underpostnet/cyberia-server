@@ -180,14 +180,16 @@ func (s *GameServer) buildMapsFromInstance(
 		}
 
 		ms := &MapState{
-			gridW:         gridW,
-			gridH:         gridH,
-			players:       make(map[EntityID]*PlayerState),
-			portals:       make(map[EntityID]*PortalState),
+			code:       mapCode,
+			gridW:      gridW,
+			gridH:      gridH,
+			players:    make(map[EntityID]*PlayerState),
+			portals:    make(map[EntityID]*PortalState),
+			pathfinder: NewPathfinder(gridW, gridH),
+			bots:       make(map[EntityID]*BotState),
+			resources:  make(map[EntityID]*ResourceState),
+
 			destructibles: make(map[EntityID]*DestructibleState),
-			pathfinder:    NewPathfinder(gridW, gridH),
-			bots:          make(map[EntityID]*BotState),
-			resources:     make(map[EntityID]*ResourceState),
 		}
 		// Register the map first: a builder reads its components through s.maps.
 		s.maps[mapCode] = ms
@@ -332,27 +334,26 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 	objectLayers := s.spawnObjectLayers("bot", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
 	bot := &BotState{
-		EntityBase: EntityBase{ID: s.newEntityID()},
-		Mortal: Mortal{
-			BaseMaxLife:     maxLife,
-			RespawnDuration: placedRespawnDuration(ent),
-		},
+		EntityBase:  EntityBase{ID: s.newEntityID()},
 		MapCode:     mapCode,
 		Path:        []Cell{},
 		TargetPos:   Cell{-1, -1},
 		SpawnCenter: startPos,
 		SpawnRadius: spawnRadius,
 		AggroRange:  aggroRange,
-		LifeRegen:   lifeRegen,
 	}
 	ms.bots[bot.ID] = bot
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: startPos, Size: dims}, Appearance{Layers: objectLayers})
 	ms.addVitals(bot.ID, Vitals{MaxLife: maxLife, Life: maxLife * s.initialLifeFraction})
 	ms.addMotion(bot.ID, Motion{Direction: NONE, Mode: IDLE})
 	ms.addAgent(bot.ID, Agent{Behavior: s.resolveEntityBehavior("bot", objectLayers)})
-
-	bot.Progression = NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig())
-	s.ApplyResistanceStat(bot, ms)
+	ms.addMortal(bot.ID, &Mortal{
+		BaseMaxLife:     maxLife,
+		Progression:     NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig()),
+		LifeRegen:       lifeRegen,
+		RespawnDuration: placedRespawnDuration(ent),
+	})
+	s.ApplyResistanceStat(bot.ID, ms)
 	ms.vt(bot.ID).Life = ms.vt(bot.ID).MaxLife * s.initialLifeFraction
 
 	// Fountain: credit the bot's starting coin supply (same path as respawn).
@@ -392,19 +393,19 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 
 	res := &ResourceState{
 		EntityBase: EntityBase{ID: s.newEntityID()},
-		Mortal: Mortal{
-			BaseMaxLife:     maxLife,
-			RespawnDuration: placedRespawnDuration(ent),
-		},
-		MapCode: mapCode,
+		MapCode:    mapCode,
 	}
 	ms.resources[res.ID] = res
 	ms.spawn(res.ID, EntityData{Kind: EntityResource}, Transform{Pos: startPos, Size: dims}, Appearance{Layers: objectLayers})
 	ms.addVitals(res.ID, Vitals{MaxLife: maxLife, Life: maxLife})
+	ms.addMortal(res.ID, &Mortal{
+		BaseMaxLife:     maxLife,
+		Progression:     NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig()),
+		RespawnDuration: placedRespawnDuration(ent),
+	})
 
 	// Apply stats (resistance may increase MaxLife)
-	res.Progression = NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig())
-	s.ApplyResistanceStat(res, ms)
+	s.ApplyResistanceStat(res.ID, ms)
 	ms.vt(res.ID).Life = ms.vt(res.ID).MaxLife
 }
 
@@ -440,12 +441,9 @@ func (s *GameServer) buildObstacle(ms *MapState, mapCode string, ent *pb.EntityM
 		return
 	}
 	maxLife := s.placedMaxLife(ent)
-	ms.destructibles[id] = &DestructibleState{
-		EntityBase: EntityBase{ID: id},
-		Mortal:     Mortal{BaseMaxLife: maxLife, RespawnDuration: placedRespawnDuration(ent)},
-		MapCode:    mapCode,
-	}
+	ms.destructibles[id] = &DestructibleState{EntityBase: EntityBase{ID: id}, MapCode: mapCode}
 	ms.addVitals(id, Vitals{Life: maxLife, MaxLife: maxLife})
+	ms.addMortal(id, &Mortal{BaseMaxLife: maxLife, RespawnDuration: placedRespawnDuration(ent)})
 }
 
 // entAppearance gives an entity of `kind` its layers. One that carries neither

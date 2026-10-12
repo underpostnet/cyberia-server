@@ -42,7 +42,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		}
 
 		// Recalculate stats to update MaxLife based on current equipment.
-		s.ApplyResistanceStat(bot, mapState)
+		s.ApplyResistanceStat(bot.ID, mapState)
 
 		// Check for expiration
 		if !bot.ExpiresAt.IsZero() && time.Now().After(bot.ExpiresAt) {
@@ -57,7 +57,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			continue
 		}
 
-		botStats := s.CalculateStats(bot, mapState)
+		botStats := s.CalculateStats(bot.ID, mapState)
 
 		// --- SKILL PROJECTILE BEHAVIOR ---
 		// Skill projectile bots move in a straight line and are removed if they go out of bounds.
@@ -81,7 +81,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				mapState.despawn(botID)
 				continue // Skip further processing for this bot
 			}
-			s.handleBotSkills(bot, mapState, Vec2{X: mapState.tf(bot.ID).Pos.X, Y: mapState.tf(bot.ID).Pos.Y})
+			s.handleBotSkills(bot.ID, mapState, Vec2{X: mapState.tf(bot.ID).Pos.X, Y: mapState.tf(bot.ID).Pos.Y})
 			// For skill projectiles, we don't need to call updateBotPosition or other AI logic
 			// as their movement is simple and direct.
 			continue
@@ -144,7 +144,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				if mapState.mo(bot.ID).Mode == IDLE && bot.ExpiresAt.IsZero() {
 					cooldown := s.CalculateActionCooldown(botStats)
 					if time.Since(bot.lastAction) >= cooldown {
-						s.handleBotSkills(bot, mapState, mapState.tf(nearestPlayer.ID).Pos)
+						s.handleBotSkills(bot.ID, mapState, mapState.tf(nearestPlayer.ID).Pos)
 						bot.lastAction = time.Now()
 					}
 				}
@@ -164,13 +164,13 @@ func (s *GameServer) updateBots(mapState *MapState) {
 							bot.lastPursuitTargetPos = playerCell
 
 							// Trigger probabilistic regen on acquiring a target.
-							s.handleProbabilisticRegen(bot, mapState)
+							s.handleProbabilisticRegen(bot.ID, mapState)
 
 							// Skill activation for permanent bots acquiring a player target
 							if bot.ExpiresAt.IsZero() {
 								cooldown := s.CalculateActionCooldown(botStats)
 								if time.Since(bot.lastAction) >= cooldown {
-									s.handleBotSkills(bot, mapState, mapState.tf(nearestPlayer.ID).Pos)
+									s.handleBotSkills(bot.ID, mapState, mapState.tf(nearestPlayer.ID).Pos)
 									bot.lastAction = time.Now()
 								}
 
@@ -196,13 +196,13 @@ func (s *GameServer) updateBots(mapState *MapState) {
 							mapState.mo(bot.ID).Mode = WALKING
 
 							// Trigger probabilistic regen on wander.
-							s.handleProbabilisticRegen(bot, mapState)
+							s.handleProbabilisticRegen(bot.ID, mapState)
 
 							// Skill activation for permanent bots taking a wander "action"
 							if bot.ExpiresAt.IsZero() {
 								cooldown := s.CalculateActionCooldown(botStats)
 								if time.Since(bot.lastAction) >= cooldown {
-									s.handleBotSkills(bot, mapState, Vec2{X: float64(target.X), Y: float64(target.Y)})
+									s.handleBotSkills(bot.ID, mapState, Vec2{X: float64(target.X), Y: float64(target.Y)})
 									bot.lastAction = time.Now()
 								}
 							}
@@ -226,13 +226,13 @@ func (s *GameServer) updateBots(mapState *MapState) {
 						mapState.mo(bot.ID).Mode = WALKING
 
 						// Trigger probabilistic regen on wander.
-						s.handleProbabilisticRegen(bot, mapState)
+						s.handleProbabilisticRegen(bot.ID, mapState)
 
 						// Skill activation for permanent bots taking a wander "action"
 						if bot.ExpiresAt.IsZero() {
 							cooldown := s.CalculateActionCooldown(botStats)
 							if time.Since(bot.lastAction) >= cooldown {
-								s.handleBotSkills(bot, mapState, Vec2{X: float64(target.X), Y: float64(target.Y)})
+								s.handleBotSkills(bot.ID, mapState, Vec2{X: float64(target.X), Y: float64(target.Y)})
 								bot.lastAction = time.Now()
 							}
 						}

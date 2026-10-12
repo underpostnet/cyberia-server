@@ -5,8 +5,8 @@ import "cyberia-server/logx"
 // SkillContext carries all information needed by a skill handler.
 // It unifies player and bot execution into a single call signature.
 type SkillContext struct {
-	// Caster is the entity that triggered the skill (*PlayerState or *BotState).
-	Caster interface{}
+	// CasterID is the player or bot that triggered the skill.
+	CasterID EntityID
 	// MapState is the map the caster belongs to.
 	MapState *MapState
 	// Target is the world-space point the caster acted upon (tap destination).
@@ -79,33 +79,18 @@ func (s *GameServer) DispatchSkill(logicID string, ctx SkillContext) {
 	handler(s, ctx)
 }
 
-// casterBody is the entity base and the life block of a player or bot caster, or nils.
-func casterBody(caster interface{}) (*EntityBase, *Mortal) {
-	switch e := caster.(type) {
-	case *PlayerState:
-		return &e.EntityBase, &e.Mortal
-	case *BotState:
-		return &e.EntityBase, &e.Mortal
-	}
-	return nil, nil
-}
-
 // dispatchSkillsForEntity iterates the entity's active ObjectLayers, looks up
 // matching entries in skillConfig, and dispatches each logicEventID.
 // This replaces the duplicated switch blocks in HandlePlayerTapAction and handleBotSkills.
-func (s *GameServer) dispatchSkillsForEntity(caster interface{}, mapState *MapState, target Vec2, callerHoldsLock bool) {
-	base, _ := casterBody(caster)
-	if base == nil {
-		return
-	}
-	for _, layer := range mapState.ap(base.ID).Layers {
+func (s *GameServer) dispatchSkillsForEntity(casterID EntityID, mapState *MapState, target Vec2, callerHoldsLock bool) {
+	for _, layer := range mapState.ap(casterID).Layers {
 		if !layer.Active {
 			continue
 		}
 		if skillDefs, ok := s.skillConfig[layer.ItemID]; ok {
 			for _, skillDef := range skillDefs {
 				s.DispatchSkill(skillDef.LogicEventID, SkillContext{
-					Caster:               caster,
+					CasterID:             casterID,
 					MapState:             mapState,
 					Target:               target,
 					TriggerItemID:        layer.ItemID,
@@ -119,20 +104,16 @@ func (s *GameServer) dispatchSkillsForEntity(caster interface{}, mapState *MapSt
 
 // dispatchHeldSkills runs the held-item skills of every stack the caster holds, active or not.
 // A handler may spend units, so each stack is read from the live layers. Caller holds s.mu.
-func (s *GameServer) dispatchHeldSkills(caster interface{}, mapState *MapState) {
-	base, _ := casterBody(caster)
-	if base == nil {
-		return
-	}
-	for i := 0; i < len(mapState.ap(base.ID).Layers); i++ {
-		layer := mapState.ap(base.ID).Layers[i]
+func (s *GameServer) dispatchHeldSkills(casterID EntityID, mapState *MapState) {
+	for i := 0; i < len(mapState.ap(casterID).Layers); i++ {
+		layer := mapState.ap(casterID).Layers[i]
 		if layer.Quantity < 1 {
 			continue
 		}
 		for _, skillDef := range s.skillConfig[layer.ItemID] {
 			if handler, ok := heldSkillRegistry[skillDef.LogicEventID]; ok {
 				handler(s, SkillContext{
-					Caster:               caster,
+					CasterID:             casterID,
 					MapState:             mapState,
 					TriggerItemID:        layer.ItemID,
 					SummonedEntityItemID: skillDef.SummonedEntityItemID,

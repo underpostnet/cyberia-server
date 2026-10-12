@@ -43,6 +43,7 @@ func shot(ms *MapState, caster *PlayerState, at Vec2) *BotState {
 		Appearance{Layers: []ObjectLayerState{{ItemID: "bullet", Active: true, Quantity: 1}}})
 	ms.addVitals(bullet.ID, Vitals{MaxLife: 100, Life: 100})
 	ms.addAgent(bullet.ID, Agent{Behavior: BehaviorSkill, CasterID: caster.ID})
+	ms.addMortal(bullet.ID, &Mortal{})
 	return bullet
 }
 
@@ -117,7 +118,7 @@ func TestAColouredObstacleCarryingItsLiveItemIsDestructible(t *testing.T) {
 func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing.T) {
 	s, ms, player := destructibleFixture(t, crystalRock)
 	probe := shot(ms, player, Vec2{})
-	maxLife := 2.5 * s.CalculateStats(probe, ms).Effect
+	maxLife := 2.5 * s.CalculateStats(probe.ID, ms).Effect
 	ms.despawn(probe.ID)
 	obs := ms.destructibles[placeObstacle(s, ms, maxLife, "crystal")]
 	if obs == nil || ms.vt(obs.ID).Life != maxLife || ms.vt(obs.ID).MaxLife != maxLife {
@@ -130,7 +131,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 
 	fire(s, ms, player, Vec2{X: 10, Y: 10})
 	if ms.vt(obs.ID).Life >= maxLife || ms.vt(obs.ID).ghost() || ms.pathfinder.isWalkable(11, 11, cell) {
-		t.Fatalf("a hit damages it and it keeps blocking: %+v", obs.Mortal)
+		t.Fatalf("a hit damages it and it keeps blocking: %+v", ms.vt(obs.ID))
 	}
 	for hits := 1; !ms.vt(obs.ID).ghost(); hits++ {
 		if hits > 3 {
@@ -139,7 +140,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 		fire(s, ms, player, Vec2{X: 10, Y: 10})
 	}
 	if !ms.vt(obs.ID).ghost() || ms.vt(obs.ID).Life != 0 || !ms.pathfinder.isWalkable(10, 10, Vec2{X: 2, Y: 2}) {
-		t.Fatalf("depletion frees the cells: %+v", obs.Mortal)
+		t.Fatalf("depletion frees the cells: %+v", ms.vt(obs.ID))
 	}
 	if active := activeObjectLayerItemIDs(ms.ap(obs.ID).Layers); len(active) != 1 || active[0] != "rubble" {
 		t.Fatalf("depleted visual: %v", active)
@@ -151,7 +152,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	if _, ok := scattered[0].LootContributors[player.ID]; !ok {
 		t.Fatal("the damage contributor may collect the drop")
 	}
-	if player.Progression.XP != 0 {
+	if ms.mt(player.ID).Progression.XP != 0 {
 		t.Fatal("an obstacle awards no XP")
 	}
 
@@ -171,13 +172,14 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: 10.5, Y: 10.5}, Size: cell}, Appearance{})
 	ms.addMotion(bot.ID, Motion{Mode: WALKING})
 	ms.addAgent(bot.ID, Agent{Behavior: BehaviorHostile})
+	ms.addMortal(bot.ID, &Mortal{})
 	ms.addVitals(bot.ID, Vitals{Life: 100, MaxLife: 100})
 	projectile := shot(ms, player, Vec2{X: 10, Y: 10})
 	ms.bots[projectile.ID] = projectile
 	ptf = ms.tf(player.ID) // a spawn may move the transform array
 	s.handleRespawns(ms)
 	if ms.vt(obs.ID).ghost() || ms.vt(obs.ID).Life != ms.vt(obs.ID).MaxLife || ms.pathfinder.isWalkable(10, 10, cell) {
-		t.Fatalf("the obstacle respawns on its timer and blocks again: %+v", obs.Mortal)
+		t.Fatalf("the obstacle respawns on its timer and blocks again: %+v", ms.vt(obs.ID))
 	}
 	otf := ms.tf(obs.ID)
 	if checkAABBCollision(otf.Pos, otf.Size, ptf.Pos, ptf.Size) ||
@@ -229,6 +231,7 @@ func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: 9, Y: 10}, Size: ptf.Size}, Appearance{})
 	ms.addMotion(bot.ID, Motion{Mode: WALKING})
 	ms.addAgent(bot.ID, Agent{Behavior: BehaviorHostile})
+	ms.addMortal(bot.ID, &Mortal{})
 	ms.addVitals(bot.ID, Vitals{Life: 100, MaxLife: 100})
 	ptf = ms.tf(player.ID) // a spawn may move the transform array
 	s.handleRespawns(ms)
@@ -298,6 +301,7 @@ func TestObstacleRespawnPushesEntitiesOutward(t *testing.T) {
 			ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: tc.pos, Size: ptf.Size}, Appearance{})
 			ms.addMotion(bot.ID, Motion{Direction: UP})
 			ms.addAgent(bot.ID, Agent{})
+			ms.addMortal(bot.ID, &Mortal{})
 			ptf = ms.tf(player.ID) // a spawn may move the transform array
 			s.clearObstacleCells(ms, obs)
 			if ptf.Pos != tc.want || ms.tf(bot.ID).Pos != tc.want {
@@ -357,7 +361,7 @@ func TestResourceDepletionKeepsItsObjectiveXP(t *testing.T) {
 			fire(s, ms, player, Vec2{X: 10, Y: 10})
 		}
 	}
-	if player.Progression.XP == 0 {
+	if ms.mt(player.ID).Progression.XP == 0 {
 		t.Fatal("a depleted resource awards objective XP")
 	}
 }

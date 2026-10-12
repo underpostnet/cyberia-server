@@ -257,10 +257,10 @@ func wholeStats(cs ComputedStats) [StatCount]int {
 	return out
 }
 
-func (s *GameServer) snapshotStats(snapshot *SnapshotEntity, entity statSource, ms *MapState) {
-	stats := s.CalculateStats(entity, ms)
+func (s *GameServer) snapshotStats(snapshot *SnapshotEntity, ms *MapState) {
+	stats := s.CalculateStats(snapshot.ID, ms)
 	values := wholeStats(stats)
-	snapshot.Level = s.entityProgression(entity).Level
+	snapshot.Level = s.entityProgression(snapshot.ID, ms).Level
 	snapshot.Stats = &values
 	snapshot.StatsSum = sumStats(stats)
 }
@@ -301,7 +301,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		}
 		e := baseEntity(mapState, op.ID)
 		e.setVitals(mapState.vt(op.ID))
-		s.snapshotStats(&e, op, mapState)
+		s.snapshotStats(&e, mapState)
 		s.snapshotPortalHold(&e, op)
 		e.StatusIcon = PlayerStatusIcon(op, mapState.vt(op.ID))
 		snap.Entities = append(snap.Entities, e)
@@ -372,7 +372,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		}
 		e := baseEntity(mapState, r.ID)
 		e.setVitals(mapState.vt(r.ID))
-		s.snapshotStats(&e, r, mapState)
+		s.snapshotStats(&e, mapState)
 		e.StatusIcon = ResourceStatusIcon(mapState.vt(r.ID))
 		snap.Entities = append(snap.Entities, e)
 	}
@@ -385,7 +385,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		}
 		e := baseEntity(mapState, b.ID)
 		e.setVitals(mapState.vt(b.ID))
-		s.snapshotStats(&e, b, mapState)
+		s.snapshotStats(&e, mapState)
 		e.StatusIcon = BotStatusIcon(mapState.ag(b.ID), mapState.vt(b.ID))
 		e.Behavior = mapState.ag(b.ID).Behavior
 		e.CasterID = mapState.ag(b.ID).CasterID
@@ -425,9 +425,9 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 
 // buildSnapshotSelf fills the viewing player's own block.
 func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) SnapshotSelf {
-	stats := s.CalculateStats(player, mapState)
-	breakdown := s.statBreakdown(player, mapState, make(map[EntityID]bool))
-	progression := s.entityProgression(player)
+	stats := s.CalculateStats(player.ID, mapState)
+	breakdown := s.statBreakdown(player.ID, mapState, make(map[EntityID]bool))
+	progression := s.entityProgression(player.ID, mapState)
 
 	self := SnapshotSelf{
 		SnapshotEntity: baseEntity(mapState, player.ID),
@@ -452,11 +452,11 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 		Frozen:           player.Frozen,
 		MoveSpeed:        s.CalculatePlayerMovementSpeed(stats),
 		ActionCooldownMs: int(s.CalculateActionCooldown(stats) / time.Millisecond),
-		ActionReadyInMs:  msUntil(player.NextSkillAt),
-		ConsumeReadyInMs: msUntil(player.NextConsumeAt),
+		ActionReadyInMs:  msUntil(mapState.mt(player.ID).NextSkillAt),
+		ConsumeReadyInMs: msUntil(mapState.mt(player.ID).NextConsumeAt),
 	}
 	self.setVitals(mapState.vt(player.ID))
-	s.snapshotStats(&self.SnapshotEntity, player, mapState)
+	s.snapshotStats(&self.SnapshotEntity, mapState)
 	s.snapshotPortalHold(&self.SnapshotEntity, player)
 	self.StatusIcon = PlayerStatusIcon(player, mapState.vt(player.ID))
 	return self

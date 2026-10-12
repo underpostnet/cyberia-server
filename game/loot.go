@@ -67,9 +67,10 @@ var worldTokenDims = Vec2{X: lootTokenSize, Y: lootTokenSize}
 
 // lootRespawn is a consumed world token waiting to come back on its cell.
 type lootRespawn struct {
-	token *BotState
-	pos   Vec2
-	at    time.Time
+	token   *BotState
+	pos     Vec2
+	respawn time.Duration
+	at      time.Time
 }
 
 // ── Token semantics ───────────────────────────────────────────────────────
@@ -242,6 +243,7 @@ func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center V
 	mapState.addVitals(drop.ID, Vitals{MaxLife: s.entityBaseMaxLife, Life: s.entityBaseMaxLife})
 	mapState.addMotion(drop.ID, Motion{Direction: NONE, Mode: IDLE})
 	mapState.addAgent(drop.ID, Agent{Behavior: BehaviorDrop})
+	mapState.addMortal(drop.ID, &Mortal{})
 
 	// Announce the launch so viewers play the corpse→cell parabola. The landing
 	// point is the token center.
@@ -292,7 +294,6 @@ func (s *GameServer) lootBuild(itemID string) (EntityTypeDefaultConfig, bool) {
 // item. Caller holds s.mu.
 func (s *GameServer) placeWorldLoot(mapState *MapState, mapCode string, pos Vec2, itemID string, respawn time.Duration) {
 	drop := s.newLootToken(mapCode, itemID, 1)
-	drop.RespawnDuration = respawn
 	drop.LootOrigin = LootOriginWorld
 	drop.LootCollection = LootCollectFirstContact
 	drop.LootOutcome = LootOutcomeItem
@@ -304,13 +305,15 @@ func (s *GameServer) placeWorldLoot(mapState *MapState, mapCode string, pos Vec2
 	mapState.addVitals(drop.ID, Vitals{MaxLife: s.entityBaseMaxLife, Life: s.entityBaseMaxLife})
 	mapState.addMotion(drop.ID, Motion{Direction: NONE, Mode: IDLE})
 	mapState.addAgent(drop.ID, Agent{Behavior: BehaviorDrop})
+	mapState.addMortal(drop.ID, &Mortal{RespawnDuration: respawn})
 }
 
 // scheduleLootRespawn brings a consumed world token back on its cell after its
 // respawn time. Call it while the token still has its slot. Caller holds s.mu.
 func scheduleLootRespawn(mapState *MapState, drop *BotState, now time.Time) {
-	mapState.lootRespawns = append(mapState.lootRespawns,
-		lootRespawn{token: drop, pos: mapState.tf(drop.ID).Pos, at: now.Add(drop.respawnDuration())})
+	mortal := mapState.mt(drop.ID)
+	mapState.lootRespawns = append(mapState.lootRespawns, lootRespawn{token: drop,
+		pos: mapState.tf(drop.ID).Pos, respawn: mortal.RespawnDuration, at: now.Add(mortal.respawnDuration())})
 }
 
 // respawnWorldLoot places every consumed world token whose wait ran out.
@@ -322,7 +325,7 @@ func (s *GameServer) respawnWorldLoot(mapState *MapState, now time.Time) {
 			continue
 		}
 		token := respawn.token
-		s.placeWorldLoot(mapState, token.MapCode, respawn.pos, token.DropItemID, token.RespawnDuration)
+		s.placeWorldLoot(mapState, token.MapCode, respawn.pos, token.DropItemID, respawn.respawn)
 	}
 	mapState.lootRespawns = waiting
 }
