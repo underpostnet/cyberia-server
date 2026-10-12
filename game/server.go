@@ -15,7 +15,7 @@ import (
 func NewGameServer() *GameServer {
 	gs := &GameServer{
 		maps:    make(map[string]*MapState),
-		clients: make(map[string]*Client),
+		clients: make(map[EntityID]*Client),
 		// Buffer register/unregister so HandleConnections never blocks the
 		// HTTP handler goroutine waiting for listenForClients to win the
 		// world lock against gameLoop. 64 outstanding connect/disconnect
@@ -458,7 +458,6 @@ func (s *GameServer) checkPortal(player *PlayerState, mapState *MapState) {
 	// any in-progress hold.
 	if player.IsGhost() {
 		player.OnPortal = false
-		player.ActivePortalID = ""
 		return
 	}
 
@@ -477,13 +476,11 @@ func (s *GameServer) checkPortal(player *PlayerState, mapState *MapState) {
 		if !player.OnPortal {
 			player.OnPortal = true
 			player.TimeOnPortal = time.Now()
-			player.ActivePortalID = activePortal.ID
 		} else if time.Since(player.TimeOnPortal) > s.portalHoldTime {
 			s.teleportPlayer(player, activePortal)
 		}
 	} else {
 		player.OnPortal = false
-		player.ActivePortalID = ""
 	}
 }
 
@@ -537,6 +534,7 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 	currentMapState, ok := s.maps[player.MapCode]
 	if ok {
 		delete(currentMapState.players, player.ID)
+		currentMapState.despawn(player.ID)
 	}
 	player.MapCode = destMapCode
 	player.Pos = Point{X: float64(destPosI.X), Y: float64(destPosI.Y)}
@@ -545,6 +543,7 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 	player.Mode = TELEPORTING
 	player.OnPortal = false
 	destMapState.players[player.ID] = player
+	destMapState.spawn(player.ID)
 	s.sendAOI(player)
 }
 

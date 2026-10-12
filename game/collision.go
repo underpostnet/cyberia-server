@@ -21,7 +21,7 @@ func checkAABBCollision(pos1 Point, dims1 Dimensions, pos2 Point, dims2 Dimensio
 // It checks for intersections with players and other bots, applies damage,
 // and handles death, removing the projectile upon impact.
 func (s *GameServer) handleSkillCollisions(mapState *MapState) {
-	projectilesToDelete := []string{}
+	projectilesToDelete := []EntityID{}
 
 	for projectileID, projectile := range mapState.bots {
 		if projectile.Behavior != BehaviorSkill {
@@ -150,6 +150,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 
 	for _, id := range projectilesToDelete {
 		delete(mapState.bots, id)
+		mapState.despawn(id)
 	}
 }
 
@@ -157,7 +158,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 // destructible obstacle — and reports whether it hit. A ghost takes no hit. The
 // damage joins the loot race ledger, and `die` runs on the lethal hit.
 func hitStatic(mapState *MapState, projectile *BotState, effect float64,
-	base *EntityBase, mortal *Mortal, ledger *map[string]float64, die func()) bool {
+	base *EntityBase, mortal *Mortal, ledger *map[EntityID]float64, die func()) bool {
 	if mortal.IsGhost() || !checkAABBCollision(projectile.Pos, projectile.Dims, base.Pos, base.Dims) {
 		return false
 	}
@@ -270,7 +271,7 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) 
 // resolved by the pre-death active items (most-specific subset match), so a
 // skin can carry different dead/drop sets depending on its full active set.
 func (s *GameServer) killEntity(base *EntityBase, mortal *Mortal, kind, mapCode string,
-	ledger map[string]float64, coins int, mapState *MapState) {
+	ledger map[EntityID]float64, coins int, mapState *MapState) {
 
 	s.awardDefeat(base, mortal, kind, ledger, mapState)
 	layersToSave := make([]ObjectLayerState, len(base.ObjectLayers))
@@ -401,7 +402,7 @@ func (s *GameServer) clearObstacleCells(ms *MapState, obs EntityBase) {
 			continue
 		}
 		bot.Path, bot.Mode = nil, IDLE
-		bot.CurrentTargetPlayer = ""
+		bot.CurrentTargetPlayer = 0
 		bot.lastPursuitTargetPos = PointI{-1, -1}
 	}
 }

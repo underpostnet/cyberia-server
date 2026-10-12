@@ -234,7 +234,7 @@ func (s *GameServer) providerSkinsAtCell(cell cellKey) []string {
 			if botSpawnCell(bot) == cell {
 				skin := s.botActiveSkinOf(bot)
 				if skin == "" {
-					skin = bot.ID
+					skin = fmt.Sprint(bot.ID)
 				}
 				out = append(out, skin)
 			}
@@ -880,7 +880,7 @@ func (s *GameServer) persistQuestProgress(player *PlayerState, qp *QuestProgress
 		return
 	}
 	buf, err := json.Marshal(map[string]interface{}{
-		"playerId":  player.ID,
+		"playerId":  player.EngineID,
 		"questCode": qp.QuestCode,
 		"status":    qp.Status,
 	})
@@ -895,7 +895,7 @@ func (s *GameServer) persistQuestProgress(player *PlayerState, qp *QuestProgress
 	select {
 	case s.persistQueue <- job:
 	default:
-		logx.Errorf("[Quest] persist queue full, dropped %s/%s", player.ID, qp.QuestCode)
+		logx.Errorf("[Quest] persist queue full, dropped %s/%s", player.EngineID, qp.QuestCode)
 	}
 }
 

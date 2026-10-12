@@ -15,8 +15,6 @@ import (
 	"time"
 
 	pb "cyberia-server/gen/proto"
-
-	"github.com/google/uuid"
 )
 
 // portalEntry tracks a portal entity for cross-map linking.
@@ -107,11 +105,11 @@ func (s *GameServer) RebuildWorld(
 	logx.Infof("[InstanceLoader] RebuildWorld for instance %q (%d maps)", instance.GetCode(), len(mapMsgs))
 
 	// Snapshot existing players per map so they survive the rebuild.
-	savedPlayers := make(map[string]map[string]*PlayerState)
+	savedPlayers := make(map[string]map[EntityID]*PlayerState)
 	for code, ms := range s.maps {
 		ms.mu.RLock()
 		if len(ms.players) > 0 {
-			cp := make(map[string]*PlayerState, len(ms.players))
+			cp := make(map[EntityID]*PlayerState, len(ms.players))
 			for id, p := range ms.players {
 				cp[id] = p
 			}
@@ -138,6 +136,7 @@ func (s *GameServer) RebuildWorld(
 		ms.mu.Lock()
 		for id, p := range players {
 			ms.players[id] = p
+			ms.spawn(id)
 		}
 		ms.mu.Unlock()
 	}
@@ -183,16 +182,16 @@ func (s *GameServer) buildMapsFromInstance(
 		ms := &MapState{
 			gridW:         gridW,
 			gridH:         gridH,
-			players:       make(map[string]*PlayerState),
-			portals:       make(map[string]*PortalState),
-			obstacles:     make(map[string]ObjectState),
-			destructibles: make(map[string]*DestructibleState),
-			foregrounds:   make(map[string]ForegroundState),
-			floors:        make(map[string]*FloorState),
+			players:       make(map[EntityID]*PlayerState),
+			portals:       make(map[EntityID]*PortalState),
+			obstacles:     make(map[EntityID]ObjectState),
+			destructibles: make(map[EntityID]*DestructibleState),
+			foregrounds:   make(map[EntityID]ForegroundState),
+			floors:        make(map[EntityID]*FloorState),
 			pathfinder:    NewPathfinder(gridW, gridH),
-			bots:          make(map[string]*BotState),
-			resources:     make(map[string]*ResourceState),
-			statics:       make(map[string]*StaticState),
+			bots:          make(map[EntityID]*BotState),
+			resources:     make(map[EntityID]*ResourceState),
+			statics:       make(map[EntityID]*StaticState),
 		}
 
 		for _, ent := range mapMsg.GetEntities() {
@@ -278,7 +277,7 @@ func findPortalByCell(entries []portalEntry, cellX, cellY int) *PortalState {
 func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 	floor := &FloorState{
 		EntityBase: EntityBase{
-			ID:   uuid.New().String(),
+			ID:   s.newEntityID(),
 			Pos:  Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
 			Dims: Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
 		},
@@ -300,6 +299,7 @@ func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 		}
 	}
 	ms.floors[floor.ID] = floor
+	ms.spawn(floor.ID)
 }
 
 func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessage) {
@@ -337,7 +337,7 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 
 	bot := &BotState{
 		EntityBase: EntityBase{
-			ID:           uuid.New().String(),
+			ID:           s.newEntityID(),
 			Pos:          startPos,
 			Dims:         dims,
 			ObjectLayers: objectLayers,
@@ -384,6 +384,7 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 	}
 
 	ms.bots[bot.ID] = bot
+	ms.spawn(bot.ID)
 }
 
 func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityMessage) {
@@ -403,7 +404,7 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 
 	res := &ResourceState{
 		EntityBase: EntityBase{
-			ID:           uuid.New().String(),
+			ID:           s.newEntityID(),
 			Pos:          startPos,
 			Dims:         dims,
 			ObjectLayers: objectLayers,
@@ -423,6 +424,7 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 	res.Life = res.MaxLife
 
 	ms.resources[res.ID] = res
+	ms.spawn(res.ID)
 }
 
 // placedMaxLife is the max life a map entity names, or the instance base when it
@@ -446,8 +448,9 @@ func (s *GameServer) buildObstacle(ms *MapState, mapCode string, ent *pb.EntityM
 	dims := Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())}
 	pos := Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
 	objectLayers := s.spawnObjectLayers("obstacle", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
-	base := EntityBase{ID: uuid.New().String(), Pos: pos, Dims: dims, ObjectLayers: objectLayers}
+	base := EntityBase{ID: s.newEntityID(), Pos: pos, Dims: dims, ObjectLayers: objectLayers}
 	ms.pathfinder.occupy(pos, dims, 1)
+	ms.spawn(base.ID)
 
 	activeIDs := activeObjectLayerItemIDs(objectLayers)
 	build, _ := s.resolveEntityDefaultBuild("obstacle", activeIDs)
@@ -470,7 +473,7 @@ func (s *GameServer) buildEntityBase(ent *pb.EntityMessage, kind string) EntityB
 	objectLayers := s.spawnObjectLayers(kind, ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
 	return EntityBase{
-		ID:           uuid.New().String(),
+		ID:           s.newEntityID(),
 		Pos:          Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
 		Dims:         Dimensions{Width: float64(ent.GetDimX()), Height: float64(ent.GetDimY())},
 		ObjectLayers: objectLayers,
@@ -481,12 +484,14 @@ func (s *GameServer) buildForeground(ms *MapState, ent *pb.EntityMessage) {
 	base := s.buildEntityBase(ent, "foreground")
 	fg := ForegroundState{EntityBase: base, Behavior: s.boundBehavior("foreground", base.ObjectLayers)}
 	ms.foregrounds[fg.ID] = fg
+	ms.spawn(fg.ID)
 }
 
 func (s *GameServer) buildStatic(ms *MapState, mapCode string, ent *pb.EntityMessage) {
 	// Statics are passable: no pathfinder cells are blocked.
 	st := &StaticState{EntityBase: s.buildEntityBase(ent, "static"), MapCode: mapCode}
 	ms.statics[st.ID] = st
+	ms.spawn(st.ID)
 }
 
 func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalState {
@@ -507,7 +512,7 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 
 	portal := &PortalState{
 		EntityBase: EntityBase{
-			ID:           uuid.New().String(),
+			ID:           s.newEntityID(),
 			Pos:          Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())},
 			Dims:         dims,
 			ObjectLayers: objectLayers,
@@ -516,6 +521,7 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 		Subtype: subtype,
 	}
 	ms.portals[portal.ID] = portal
+	ms.spawn(portal.ID)
 
 	// Portals are walkable — no grid cells are blocked.
 	// The player must stand on the portal for portalHoldTime to trigger transport.

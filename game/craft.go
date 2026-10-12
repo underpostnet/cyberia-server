@@ -39,7 +39,7 @@ const craftMaxTimeMs = 60000
 // ActiveCraft is one assembly in flight. Ingredients are already consumed, so
 // Refund is what a cancel returns and Outputs is what completion grants.
 type ActiveCraft struct {
-	EntityID    string
+	EntityID    EntityID
 	RecipeIndex int
 	Refund      []ActionCraftItem
 	Outputs     []ActionCraftItem
@@ -187,7 +187,7 @@ func (s *GameServer) completeCrafts(mapState *MapState) {
 // sendCraftAck answers a start request. An empty reason means the assembly is
 // running and `craftTimeMs` is the authoritative duration the client's progress
 // bar adopts; anything else is a rejection code it renders.
-func (s *GameServer) sendCraftAck(player *PlayerState, entityID string, recipeIndex,
+func (s *GameServer) sendCraftAck(player *PlayerState, entityID EntityID, recipeIndex,
 	craftTimeMs int, reason string) {
 	sendAck(player, "craft_ack", reason, map[string]interface{}{
 		"entityId":    entityID,

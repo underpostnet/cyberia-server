@@ -3,8 +3,6 @@ package game
 import (
 	"math/rand"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // executeDoppelgangerSkill is the "doppelganger" skill handler.
@@ -18,7 +16,8 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 	}
 
 	// Extract caster properties via type switch.
-	var casterID, mapCode string
+	var casterID EntityID
+	var mapCode string
 	var casterPos Point
 	var casterDims Dimensions
 	var casterLayers []ObjectLayerState
@@ -77,7 +76,7 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 
 	doppelgangerBot := &BotState{
 		EntityBase: EntityBase{
-			ID:           uuid.New().String(),
+			ID:           s.newEntityID(),
 			Pos:          casterPos,
 			Dims:         casterDims,
 			ObjectLayers: doppelgangerLayers,
@@ -95,6 +94,7 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 	}
 
 	ctx.MapState.bots[doppelgangerBot.ID] = doppelgangerBot
+	ctx.MapState.spawn(doppelgangerBot.ID)
 	s.ApplyResistanceStat(doppelgangerBot, ctx.MapState)
 	doppelgangerBot.Life = doppelgangerBot.MaxLife
 }

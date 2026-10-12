@@ -4,8 +4,6 @@ import (
 	"math"
 	"math/rand"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // executeProjectileSkill is the "projectile" skill handler.
@@ -26,7 +24,8 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 	}
 
 	// Extract caster properties via type switch.
-	var casterID, mapCode string
+	var casterID EntityID
+	var mapCode string
 	var casterPos Point
 	var casterDir Direction
 	switch e := ctx.Caster.(type) {
@@ -86,7 +85,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 
 	projectileBot := &BotState{
 		EntityBase: EntityBase{
-			ID:           uuid.New().String(),
+			ID:           s.newEntityID(),
 			Pos:          Point{X: spawnX, Y: spawnY},
 			Dims:         projectileDims,
 			ObjectLayers: projectileOLs,
@@ -104,6 +103,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 	}
 
 	ctx.MapState.bots[projectileBot.ID] = projectileBot
+	ctx.MapState.spawn(projectileBot.ID)
 	s.ApplyResistanceStat(projectileBot, ctx.MapState)
 	projectileBot.Life = projectileBot.MaxLife
 }

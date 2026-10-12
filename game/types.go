@@ -65,11 +65,18 @@ type ObjectLayerState struct {
 	Quantity int    `json:"quantity"`
 }
 
+// EntityID is the id of an entity on the server, on the wire and on the
+// client. 0 is no entity.
+type EntityID uint32
+
+// ComponentMask holds one bit per component an entity has.
+type ComponentMask uint64
+
 // EntityBase — identity + spatial fields shared by every world entity.
 // Anonymously embedded so field access (e.g. player.Pos) and JSON keys are
 // promoted unchanged.
 type EntityBase struct {
-	ID           string             `json:"id"`
+	ID           EntityID           `json:"id"`
 	Pos          Point              `json:"Pos"`
 	Dims         Dimensions         `json:"Dims"`
 	ObjectLayers []ObjectLayerState `json:"objectLayers"`
@@ -113,17 +120,18 @@ type ObjectState struct {
 type PlayerState struct {
 	EntityBase
 	Mortal
-	MapCode        string          `json:"MapCode"`
-	Path           []PointI        `json:"path"`
-	TargetPos      PointI          `json:"targetPos"`
-	AOI            Rectangle       `json:"AOI"`
-	Client         *Client         `json:"-"`
-	Direction      Direction       `json:"direction"`
-	Mode           ObjectLayerMode `json:"mode"`
-	OnPortal       bool            `json:"onPortal"`
-	TimeOnPortal   time.Time       `json:"-"`
-	ActivePortalID string          `json:"activePortalID"`
-	LifeRegen      float64         `json:"lifeRegen"`
+	// EngineID is the player id the engine knows. It never goes in a snapshot.
+	EngineID     string          `json:"-"`
+	MapCode      string          `json:"MapCode"`
+	Path         []PointI        `json:"path"`
+	TargetPos    PointI          `json:"targetPos"`
+	AOI          Rectangle       `json:"AOI"`
+	Client       *Client         `json:"-"`
+	Direction    Direction       `json:"direction"`
+	Mode         ObjectLayerMode `json:"mode"`
+	OnPortal     bool            `json:"onPortal"`
+	TimeOnPortal time.Time       `json:"-"`
+	LifeRegen    float64         `json:"lifeRegen"`
 	// Coins is the canonical flat coin balance — the single source of truth
 	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
 	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
@@ -133,7 +141,7 @@ type PlayerState struct {
 	// cumulative damage dealt to this player. Read once on death to build the
 	// coin-drop contributor set (the PvP loot race), then reset. Never sent on
 	// the wire.
-	DamageLedger map[string]float64 `json:"-"`
+	DamageLedger map[EntityID]float64 `json:"-"`
 	// DeadLoadoutItemIDs remembers the dead-state items active during the
 	// player's last Fragmented State; reapplied on the next death. Never sent
 	// on the wire.
@@ -192,12 +200,12 @@ type BotState struct {
 	SpawnCenter          Point           `json:"spawnCenter"`
 	SpawnRadius          float64         `json:"spawnRadius"`
 	AggroRange           float64         `json:"aggroRange"`
-	CurrentTargetPlayer  string          `json:"-"` // player ID currently being pursued (if any)
+	CurrentTargetPlayer  EntityID        `json:"-"` // player ID currently being pursued (if any)
 	lastPursuitTargetPos PointI          `json:"-"` // cached player's last cell to know when to re-path
 	lastAction           time.Time       `json:"-"`
 	ExpiresAt            time.Time       `json:"-"` // bots with a lifetime will be removed after this time
 	LifeRegen            float64         `json:"lifeRegen"`
-	CasterID             string          `json:"-"` // ID of the player or bot that created this bot
+	CasterID             EntityID        `json:"-"` // ID of the player or bot that created this bot
 	// Coins is the canonical flat coin balance — the single source of truth
 	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
 	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
@@ -212,7 +220,7 @@ type BotState struct {
 	// Populated by the skill-collision path for every attacker (players and bots
 	// alike). Consumed on death to build the loot contributor set, then reset.
 	// Allocated lazily on first hit. Never sent on the wire.
-	DamageLedger map[string]float64 `json:"-"`
+	DamageLedger map[EntityID]float64 `json:"-"`
 
 	// ── Transient world-item drop fields (BehaviorDrop bots only) ────────────
 	// A drop is a collectible token: scattered on the grid when an entity dies, or
@@ -231,7 +239,7 @@ type BotState struct {
 	// bot has the loot transferred to it on collision. A death drop always has ≥1
 	// contributor (a contributor-less death drops nothing — see spawnDrops); a
 	// world token has none.
-	LootContributors map[string]struct{} `json:"-"`
+	LootContributors map[EntityID]struct{} `json:"-"`
 	// CollectableAt is the instant the spawn-launch settle window ends. Until
 	// then the token is mid-flight from the corpse to its cell and registers no
 	// collision — collection is disabled regardless of loot priority. Matches
@@ -263,7 +271,7 @@ type ResourceState struct {
 	// DamageLedger is the per-resource extraction ledger: attacking player ID →
 	// cumulative damage dealt. Mirrors BotState.DamageLedger — read once on
 	// death to grant the top contributor loot priority, then reset. Never wired.
-	DamageLedger map[string]float64 `json:"-"`
+	DamageLedger map[EntityID]float64 `json:"-"`
 }
 
 // DestructibleState is an obstacle with the destructible behavior. It blocks its
@@ -273,8 +281,8 @@ type ResourceState struct {
 type DestructibleState struct {
 	EntityBase
 	Mortal
-	MapCode      string             `json:"MapCode"`
-	DamageLedger map[string]float64 `json:"-"`
+	MapCode      string               `json:"MapCode"`
+	DamageLedger map[EntityID]float64 `json:"-"`
 }
 
 // StaticState represents a non-moving, passable decorator entity (rocks,
@@ -303,23 +311,28 @@ type PortalState struct {
 type MapState struct {
 	mu            sync.RWMutex
 	pathfinder    *Pathfinder
-	obstacles     map[string]ObjectState
-	destructibles map[string]*DestructibleState
-	foregrounds   map[string]ForegroundState
-	portals       map[string]*PortalState
-	floors        map[string]*FloorState
-	players       map[string]*PlayerState
-	bots          map[string]*BotState
-	resources     map[string]*ResourceState
-	statics       map[string]*StaticState
+	obstacles     map[EntityID]ObjectState
+	destructibles map[EntityID]*DestructibleState
+	foregrounds   map[EntityID]ForegroundState
+	portals       map[EntityID]*PortalState
+	floors        map[EntityID]*FloorState
+	players       map[EntityID]*PlayerState
+	bots          map[EntityID]*BotState
+	resources     map[EntityID]*ResourceState
+	statics       map[EntityID]*StaticState
 	// lootRespawns are the consumed world tokens waiting to come back (loot.go).
 	lootRespawns []lootRespawn
 	gridW, gridH int
+
+	ids    []EntityID // entity id at slot i. 0 = free slot
+	index  map[EntityID]int
+	mask   []ComponentMask
+	cursor int // next slot the allocator tests
 }
 
 type Client struct {
 	sock        *socket.Socket
-	playerID    string
+	playerID    EntityID
 	playerState *PlayerState
 
 	// ip is the address the guard counts this connection against.
@@ -343,7 +356,8 @@ type GameServer struct {
 	instanceCode     string               // INSTANCE_CODE — selects which instance to load
 	playerSpawn      PlayerSpawnConfig    // authoritative initial spawn for new players
 	questsByCell     map[cellKey][]string // quest codes bound to each action cell
-	clients          map[string]*Client
+	clients          map[EntityID]*Client
+	lastEntityID     EntityID // only goes up, so a freed id never comes back
 	register         chan *Client
 	unregister       chan *Client
 	aoiRadius        float64
@@ -448,7 +462,7 @@ type GameServer struct {
 	//                  on every talk_done; the client never declares it).
 	//   questDefs    — questCode → CyberiaQuest definition (steps/rewards).
 	// Both are rebuilt on every world (re)build; access is under s.mu.
-	actionCache map[string]*CyberiaAction
+	actionCache map[EntityID]*CyberiaAction
 	// storage — per (player, action code) vault contents. Session state
 	// only; the slot shape is the future persistence document.
 	storage   map[storageKey][]StorageSlot
@@ -523,6 +537,8 @@ type SkillMapEntry struct {
 // client resolves all of those through /api/v1/cyberia-client-hints using
 // its own CYBERIA_CLIENT_HINTS_CODE.
 type InitPayload struct {
+	// EngineID is the own player id for the client's engine REST calls.
+	EngineID       string                     `json:"engineId"`
 	GridW          int                        `json:"gridW"`
 	GridH          int                        `json:"gridH"`
 	AoiRadius      float64                    `json:"aoiRadius"`

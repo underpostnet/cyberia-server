@@ -47,10 +47,10 @@ type InputCommand struct {
 	// Payload fields — only the ones relevant to Kind are populated.
 	TargetX     float64  // PlayerAction
 	TargetY     float64  // PlayerAction
-	ItemID      string   // ItemActivation, ItemUse, Chat target, ShopBuy
+	ItemID      string   // ItemActivation, ItemUse, ShopBuy
 	Active      bool     // ItemActivation; PlayerStasis — the stasis bool
 	ChatText    string   // Chat
-	EntityID    string   // TalkDone, ShopBuy, CraftItem, StorageOpen, ItemOps — the NPC entity
+	EntityID    EntityID // Chat target; TalkDone, ShopBuy, CraftItem, StorageOpen, ItemOps — the NPC entity
 	DialogCode  string   // TalkDone — the dialogue group the player just read
 	Quantity    int      // ShopBuy — units (clamped server-side)
 	RecipeIndex int      // CraftItem — index into the action's craftRecipes

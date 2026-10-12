@@ -36,8 +36,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/google/uuid"
-
 	pb "cyberia-server/gen/proto"
 	"cyberia-server/logx"
 )
@@ -115,8 +113,8 @@ const (
 // collision; contributing bots have the loot transferred to them on collision
 // (see phaseLoot). Unknown casters (e.g. an already-expired projectile) grant no
 // claim. The ledger is allocated lazily via the pointer. Caller holds s.mu.
-func recordDamage(ledger *map[string]float64, mapState *MapState, casterID string, amount float64) {
-	if ledger == nil || casterID == "" || amount <= 0 {
+func recordDamage(ledger *map[EntityID]float64, mapState *MapState, casterID EntityID, amount float64) {
+	if ledger == nil || casterID == 0 || amount <= 0 {
 		return
 	}
 	_, isPlayer := mapState.players[casterID]
@@ -125,7 +123,7 @@ func recordDamage(ledger *map[string]float64, mapState *MapState, casterID strin
 		return // unknown caster — no claim
 	}
 	if *ledger == nil {
-		*ledger = make(map[string]float64, 4)
+		*ledger = make(map[EntityID]float64, 4)
 	}
 	(*ledger)[casterID] += amount
 }
@@ -133,11 +131,11 @@ func recordDamage(ledger *map[string]float64, mapState *MapState, casterID strin
 // contributorSet copies the ledger's contributor IDs into a membership set — the
 // eligibility list a drop carries for its collection race. Returns nil when no
 // one dealt damage, which suppresses the drop entirely (see spawnDrops).
-func contributorSet(ledger map[string]float64) map[string]struct{} {
+func contributorSet(ledger map[EntityID]float64) map[EntityID]struct{} {
 	if len(ledger) == 0 {
 		return nil
 	}
-	set := make(map[string]struct{}, len(ledger))
+	set := make(map[EntityID]struct{}, len(ledger))
 	for id := range ledger {
 		set[id] = struct{}{}
 	}
@@ -152,7 +150,7 @@ func contributorSet(ledger map[string]float64) map[string]struct{} {
 // to collect the tokens once they settle. Shared by every dying
 // content-authority entity (bots, resources, destructible obstacles). Caller
 // holds s.mu.
-func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point, build EntityTypeDefaultConfig, coinAmount int, ledger map[string]float64) {
+func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point, build EntityTypeDefaultConfig, coinAmount int, ledger map[EntityID]float64) {
 	contributors := contributorSet(ledger)
 	// At least one contributor (player or bot) must have dealt damage for loot to
 	// drop. A death nobody contributed to leaves nothing behind.
@@ -189,7 +187,7 @@ func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point
 func (s *GameServer) newLootToken(mapCode string, pos Point, dims Dimensions, itemID string, quantity int) *BotState {
 	return &BotState{
 		EntityBase: EntityBase{
-			ID:   uuid.New().String(),
+			ID:   s.newEntityID(),
 			Pos:  pos,
 			Dims: dims,
 			ObjectLayers: []ObjectLayerState{
@@ -212,7 +210,7 @@ func (s *GameServer) newLootToken(mapCode string, pos Point, dims Dimensions, it
 // spawnDropToken creates one death-drop token carrying (itemID × quantity),
 // flings it to a walkable cell a random distance from `center` along a random
 // direction, and announces the launch. Caller holds s.mu.
-func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center Point, itemID string, quantity int, contributors map[string]struct{}) {
+func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center Point, itemID string, quantity int, contributors map[EntityID]struct{}) {
 	if itemID == "" || quantity <= 0 {
 		return
 	}
@@ -247,6 +245,7 @@ func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center P
 	drop.CollectableAt = now.Add(lootLandingWindow)
 	drop.ExpiresAt = now.Add(lootLifetime)
 	mapState.bots[drop.ID] = drop
+	mapState.spawn(drop.ID)
 
 	// Announce the launch so viewers play the corpse→cell parabola. The landing
 	// point is the token center.
@@ -305,6 +304,7 @@ func (s *GameServer) placeWorldLoot(mapState *MapState, mapCode string, pos Poin
 		drop.LootOutcome = LootOutcomeConsume
 	}
 	mapState.bots[drop.ID] = drop
+	mapState.spawn(drop.ID)
 }
 
 // scheduleLootRespawn brings a consumed world token back on its cell after its
@@ -362,7 +362,7 @@ func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 		cx := drop.Pos.X + drop.Dims.Width*0.5
 		cy := drop.Pos.Y + drop.Dims.Height*0.5
 
-		var collectorID string
+		var collectorID EntityID
 		var granted bool
 		if player := s.resolveDropCollector(mapState, drop); player != nil {
 			granted, collectorID = s.applyLootToPlayer(mapState, drop, player), player.ID
@@ -373,6 +373,7 @@ func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 		}
 		s.broadcastDropCollect(mapState, drop, collectorID, cx, cy, granted)
 		delete(mapState.bots, dropID)
+		mapState.despawn(dropID)
 		if drop.LootOrigin == LootOriginWorld && drop.LootOutcome == LootOutcomeConsume {
 			scheduleLootRespawn(mapState, drop, now)
 		}
@@ -420,7 +421,7 @@ func (s *GameServer) applyLootToBot(mapState *MapState, drop *BotState, bot *Bot
 }
 
 // lootAdmits reports whether the token's collection policy admits collectorID.
-func lootAdmits(drop *BotState, collectorID string) bool {
+func lootAdmits(drop *BotState, collectorID EntityID) bool {
 	if drop.LootCollection == LootCollectFirstContact {
 		return true
 	}
@@ -489,7 +490,7 @@ func (s *GameServer) broadcastDropSpawn(mapState *MapState, drop *BotState, orig
 // broadcastDropCollect delivers the pickup animation event to every player whose
 // AOI covers the token, so all viewers see the token fly to the collector (a
 // player or a bot).
-func (s *GameServer) broadcastDropCollect(mapState *MapState, drop *BotState, collectorID string, cx, cy float64, granted bool) {
+func (s *GameServer) broadcastDropCollect(mapState *MapState, drop *BotState, collectorID EntityID, cx, cy float64, granted bool) {
 	payload := DropCollect{
 		DropID:      drop.ID,
 		CollectorID: collectorID,

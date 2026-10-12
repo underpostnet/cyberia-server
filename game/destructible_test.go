@@ -17,20 +17,21 @@ func destructibleFixture(t *testing.T, builds ...EntityTypeDefaultConfig) (*Game
 	s.entityDefaults = map[string]EntityTypeDefaultConfig{}
 	s.entityDefaultBuilds = builds
 	s.entityBaseMaxLife = 10
+	s.lastEntityID = player.ID // built entities take ids after the player
 	if err := s.ReplaceObjectLayerCache(map[string]*ObjectLayer{
 		"bullet": {Data: ObjectLayerData{Stats: Stats{Effect: 4}, Item: Item{Type: "skill"}}},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	ms.obstacles = map[string]ObjectState{}
-	ms.destructibles = map[string]*DestructibleState{}
-	ms.resources = map[string]*ResourceState{}
+	ms.obstacles = map[EntityID]ObjectState{}
+	ms.destructibles = map[EntityID]*DestructibleState{}
+	ms.resources = map[EntityID]*ResourceState{}
 	return s, ms, player
 }
 
 // placeObstacle builds one 2×2 obstacle at (10, 10) and returns its id.
-func placeObstacle(s *GameServer, ms *MapState, maxLife float64, itemIDs ...string) string {
-	before := map[string]bool{}
+func placeObstacle(s *GameServer, ms *MapState, maxLife float64, itemIDs ...string) EntityID {
+	before := map[EntityID]bool{}
 	for id := range ms.obstacles {
 		before[id] = true
 	}
@@ -48,13 +49,13 @@ func placeObstacle(s *GameServer, ms *MapState, maxLife float64, itemIDs ...stri
 			return id
 		}
 	}
-	return ""
+	return 0
 }
 
 // shot is one bullet of the caster's at the point.
 func shot(caster *PlayerState, at Point) *BotState {
 	return &BotState{
-		EntityBase: EntityBase{ID: "shot", Pos: at, Dims: Dimensions{Width: 1, Height: 1},
+		EntityBase: EntityBase{ID: 900, Pos: at, Dims: Dimensions{Width: 1, Height: 1},
 			ObjectLayers: []ObjectLayerState{{ItemID: "bullet", Active: true, Quantity: 1}}},
 		Mortal:   Mortal{MaxLife: 100, Life: 100},
 		Behavior: BehaviorSkill,
@@ -176,7 +177,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	obs.RespawnTime = time.Now().Add(-time.Second)
 	player.Pos, player.Path, player.Mode = Point{X: 10, Y: 10}, []PointI{{X: 12, Y: 12}}, WALKING
 	bot := &BotState{
-		EntityBase: EntityBase{ID: "standing-bot", Pos: Point{X: 10.5, Y: 10.5}, Dims: cell},
+		EntityBase: EntityBase{ID: 901, Pos: Point{X: 10.5, Y: 10.5}, Dims: cell},
 		Mortal:     Mortal{Life: 100, MaxLife: 100}, Behavior: BehaviorHostile,
 		Path: []PointI{{X: 11, Y: 11}}, Mode: WALKING, CurrentTargetPlayer: player.ID,
 	}
@@ -200,7 +201,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	if projectile.Pos != (Point{X: 10, Y: 10}) {
 		t.Fatal("a projectile keeps its course")
 	}
-	if bot.Mode != IDLE || len(bot.Path) != 0 || bot.CurrentTargetPlayer != "" ||
+	if bot.Mode != IDLE || len(bot.Path) != 0 || bot.CurrentTargetPlayer != 0 ||
 		bot.lastPursuitTargetPos != (PointI{-1, -1}) ||
 		!ms.pathfinder.isWalkable(int(bot.Pos.X), int(bot.Pos.Y), bot.Dims) {
 		t.Fatalf("the displaced bot clears its movement and pursuit: %+v", bot)
@@ -224,7 +225,7 @@ func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 		t.Fatal("the initial route crosses the depleted obstacle")
 	}
 	bot := &BotState{
-		EntityBase: EntityBase{ID: "walking-bot", Pos: Point{X: 9, Y: 10}, Dims: player.Dims},
+		EntityBase: EntityBase{ID: 902, Pos: Point{X: 9, Y: 10}, Dims: player.Dims},
 		Mortal:     Mortal{Life: 100, MaxLife: 100}, Behavior: BehaviorHostile,
 		Path: []PointI{{X: 10, Y: 10}, {X: 12, Y: 10}}, Mode: WALKING,
 		CurrentTargetPlayer: player.ID,
@@ -246,7 +247,7 @@ func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 			t.Fatalf("the new path crosses blocked cell %v", cell)
 		}
 	}
-	if bot.Mode != IDLE || len(bot.Path) != 0 || bot.CurrentTargetPlayer != "" {
+	if bot.Mode != IDLE || len(bot.Path) != 0 || bot.CurrentTargetPlayer != 0 {
 		t.Fatal("the bot clears its blocked route before its next AI tick")
 	}
 }
@@ -290,7 +291,7 @@ func TestObstacleRespawnPushesEntitiesOutward(t *testing.T) {
 			obs := EntityBase{Pos: Point{10, 10}, Dims: Dimensions{4, 4}}
 			ms.pathfinder.occupy(obs.Pos, obs.Dims, 1)
 			player.Pos, player.Dims, player.Direction = tc.pos, Dimensions{2, 2}, DOWN
-			bot := &BotState{EntityBase: EntityBase{ID: "bot", Pos: tc.pos, Dims: player.Dims}, Direction: UP}
+			bot := &BotState{EntityBase: EntityBase{ID: 903, Pos: tc.pos, Dims: player.Dims}, Direction: UP}
 			ms.bots[bot.ID] = bot
 			s.clearObstacleCells(ms, obs)
 			if player.Pos != tc.want || bot.Pos != tc.want {
@@ -376,7 +377,7 @@ func TestSnapshotCarriesOnlyTheDestructibleLife(t *testing.T) {
 	wall := placeObstacle(s, ms, 0, "wall")
 	crystal := placeObstacle(s, ms, 9, "crystal")
 
-	life := map[string]float64{}
+	life := map[EntityID]float64{}
 	for _, e := range s.buildSnapshot(player, ms).Entities {
 		if e.Type == EntityObstacle {
 			life[e.ID] = e.MaxLife

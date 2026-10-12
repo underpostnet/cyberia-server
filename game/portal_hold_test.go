@@ -13,7 +13,7 @@ func holdingFixture(t *testing.T) (*GameServer, *MapState, *PlayerState, *Player
 	s.portalHoldTime = 2 * time.Second
 	viewer.AOI = Rectangle{MaxX: 20, MaxY: 20}
 	traveler := &PlayerState{}
-	traveler.ID = "traveler"
+	traveler.ID = 300
 	traveler.Pos = Point{X: 5, Y: 5}
 	traveler.Dims = Dimensions{Width: 1, Height: 1}
 	traveler.Life, traveler.MaxLife = 100, 100
@@ -24,10 +24,10 @@ func holdingFixture(t *testing.T) (*GameServer, *MapState, *PlayerState, *Player
 }
 
 func TestEveryViewerSeesThePortalHoldOfAPlayer(t *testing.T) {
-	s, ms, viewer, _ := holdingFixture(t)
+	s, ms, viewer, traveler := holdingFixture(t)
 
 	for _, e := range s.buildSnapshot(viewer, ms).Entities {
-		if e.ID != "traveler" {
+		if e.ID != traveler.ID {
 			continue
 		}
 		if !e.OnPortal || e.PortalHoldProgress < 0.45 || e.PortalHoldProgress > 0.55 {

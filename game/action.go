@@ -117,7 +117,7 @@ func protoToCraftItems(items []*pb.ActionCraftItem) []ActionCraftItem {
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) bindActions(mapCodes []string, actions []*pb.CyberiaActionMessage) {
-	s.actionCache = make(map[string]*CyberiaAction)
+	s.actionCache = make(map[EntityID]*CyberiaAction)
 	if s.storage == nil {
 		s.storage = make(map[storageKey][]StorageSlot)
 	}
@@ -173,7 +173,7 @@ func (s *GameServer) logActionProviders() {
 				label = a.Label
 				quests = s.questsByCell[actionCell(a)]
 			}
-			logx.Debugf("[ActionProviders]   map=%s action=%s label=%q quests=%v entity=%s initPos=(%d,%d)",
+			logx.Debugf("[ActionProviders]   map=%s action=%s label=%q quests=%v entity=%d initPos=(%d,%d)",
 				bot.MapCode, bot.ActionCode, label, quests, bot.ID,
 				int(bot.Pos.X), int(bot.Pos.Y))
 		}
@@ -183,7 +183,7 @@ func (s *GameServer) logActionProviders() {
 // findBot returns the bot with this entity ID across all maps, or nil.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) findBot(entityID string) *BotState {
+func (s *GameServer) findBot(entityID EntityID) *BotState {
 	for _, ms := range s.maps {
 		if b := ms.bots[entityID]; b != nil {
 			return b
@@ -195,7 +195,7 @@ func (s *GameServer) findBot(entityID string) *BotState {
 // botActiveSkin returns the active skin item ID of the bot with this entity ID
 // (searched across maps), or "" if not found. The bot's own active skin — not
 // any action field — is what 'talk' objectives match against.
-func (s *GameServer) botActiveSkin(entityID string) string {
+func (s *GameServer) botActiveSkin(entityID EntityID) string {
 	bot := s.findBot(entityID)
 	if bot == nil {
 		return ""

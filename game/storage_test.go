@@ -27,7 +27,7 @@ func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 		storage: map[storageKey][]StorageSlot{},
 	}
 	player := &PlayerState{
-		EntityBase: EntityBase{ID: "p1", ObjectLayers: []ObjectLayerState{
+		EntityBase: EntityBase{ID: 1, ObjectLayers: []ObjectLayerState{
 			{ItemID: "hatchet", Quantity: 2},
 		}},
 	}
@@ -87,7 +87,7 @@ func TestParseInputBoundsItemOps(t *testing.T) {
 	for i := range full {
 		full[i] = op
 	}
-	if _, ok := parseInput("item_ops", &inputPayload{EntityID: "vault", Ops: full}); !ok {
+	if _, ok := parseInput("item_ops", &inputPayload{EntityID: 7, Ops: full}); !ok {
 		t.Fatal("a list at the cap must pass")
 	}
 	for name, ops := range map[string][]itemOp{
@@ -96,7 +96,7 @@ func TestParseInputBoundsItemOps(t *testing.T) {
 		"zero qty": {{ItemID: "hatchet", Qty: 0}},
 		"no item":  {{Qty: 1}},
 	} {
-		if _, ok := parseInput("item_ops", &inputPayload{EntityID: "vault", Ops: ops}); ok {
+		if _, ok := parseInput("item_ops", &inputPayload{EntityID: 7, Ops: ops}); ok {
 			t.Fatalf("%s: must be rejected", name)
 		}
 	}
@@ -116,7 +116,7 @@ func TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive(t *testing.T) {
 			"punk": {Data: ObjectLayerData{Item: Item{Type: "skin"}}},
 		},
 	}
-	player := &PlayerState{EntityBase: EntityBase{ID: "p1", ObjectLayers: []ObjectLayerState{
+	player := &PlayerState{EntityBase: EntityBase{ID: 1, ObjectLayers: []ObjectLayerState{
 		{ItemID: "anon", Active: true, Quantity: 1},
 		{ItemID: "punk", Active: true, Quantity: 1},
 	}}}

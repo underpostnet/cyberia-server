@@ -13,7 +13,7 @@ type StatBreakdown struct {
 }
 
 // statBreakdown applies floors once, after all signed contributions.
-func (s *GameServer) statBreakdown(source statSource, mapState *MapState, now time.Time, visited map[string]bool) StatBreakdown {
+func (s *GameServer) statBreakdown(source statSource, mapState *MapState, now time.Time, visited map[EntityID]bool) StatBreakdown {
 	var out StatBreakdown
 	entity := source.Base()
 	if visited[entity.ID] {
@@ -44,7 +44,7 @@ func (s *GameServer) statBreakdown(source statSource, mapState *MapState, now ti
 			temporary[i] += value
 		}
 	}
-	if bot, ok := source.(*BotState); ok && bot.CasterID != "" && mapState != nil {
+	if bot, ok := source.(*BotState); ok && bot.CasterID != 0 && mapState != nil {
 		var caster statSource
 		if p := mapState.players[bot.CasterID]; p != nil {
 			caster = p
@@ -70,7 +70,7 @@ func (s *GameServer) CalculateStats(source interface{}, mapState *MapState) Comp
 	if !ok {
 		return ComputedStats{}
 	}
-	return s.statBreakdown(entity, mapState, time.Now(), make(map[string]bool)).Effective
+	return s.statBreakdown(entity, mapState, time.Now(), make(map[EntityID]bool)).Effective
 }
 
 // ApplyResistanceStat keeps life within the effective maximum.

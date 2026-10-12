@@ -5,11 +5,11 @@ import (
 )
 
 func lifecycleServer() (*GameServer, *MapState, *MapState) {
-	home := &MapState{players: map[string]*PlayerState{}, gridW: 20, gridH: 20}
-	away := &MapState{players: map[string]*PlayerState{}, gridW: 20, gridH: 20}
+	home := &MapState{players: map[EntityID]*PlayerState{}, gridW: 20, gridH: 20}
+	away := &MapState{players: map[EntityID]*PlayerState{}, gridW: 20, gridH: 20}
 	s := &GameServer{
 		maps:       map[string]*MapState{"home": home, "away": away},
-		clients:    map[string]*Client{},
+		clients:    map[EntityID]*Client{},
 		register:   make(chan *Client, 4),
 		unregister: make(chan *Client, 4),
 	}
@@ -17,7 +17,7 @@ func lifecycleServer() (*GameServer, *MapState, *MapState) {
 	return s, home, away
 }
 
-func joinedClient(s *GameServer, mapState *MapState, id, mapCode, ip string) *Client {
+func joinedClient(s *GameServer, mapState *MapState, id EntityID, mapCode, ip string) *Client {
 	player := &PlayerState{EntityBase: EntityBase{ID: id}, MapCode: mapCode}
 	client := &Client{playerID: id, playerState: player, ip: ip, limiter: newInputLimiter(s.limits)}
 	player.Client = client
@@ -31,7 +31,7 @@ func joinedClient(s *GameServer, mapState *MapState, id, mapCode, ip string) *Cl
 // slot. Any one of these left behind keeps a dead player in the simulation.
 func TestDetachClientClearsEveryReference(t *testing.T) {
 	s, home, _ := lifecycleServer()
-	client := joinedClient(s, home, "p1", "home", "10.0.0.1")
+	client := joinedClient(s, home, 1, "home", "10.0.0.1")
 
 	if total, _ := s.guard.counts(); total != 1 {
 		t.Fatalf("setup: guard should hold 1 connection, got %d", total)
@@ -39,10 +39,10 @@ func TestDetachClientClearsEveryReference(t *testing.T) {
 
 	s.detachClient(client)
 
-	if _, still := home.players["p1"]; still {
+	if _, still := home.players[1]; still {
 		t.Fatal("the player must leave the map")
 	}
-	if _, still := s.clients["p1"]; still {
+	if _, still := s.clients[1]; still {
 		t.Fatal("the client must leave the registry")
 	}
 	if total, addresses := s.guard.counts(); total != 0 || addresses != 0 {
@@ -54,15 +54,15 @@ func TestDetachClientClearsEveryReference(t *testing.T) {
 // not only on the map its MapCode last named.
 func TestDetachClientFindsPlayerAfterAMapChange(t *testing.T) {
 	s, home, away := lifecycleServer()
-	client := joinedClient(s, home, "p1", "home", "10.0.0.1")
+	client := joinedClient(s, home, 1, "home", "10.0.0.1")
 
 	// Simulate a portal: the player moved but MapCode is stale.
-	delete(home.players, "p1")
-	away.players["p1"] = client.playerState
+	delete(home.players, 1)
+	away.players[1] = client.playerState
 
 	s.detachClient(client)
 
-	if _, still := away.players["p1"]; still {
+	if _, still := away.players[1]; still {
 		t.Fatal("the player must be removed from the map it actually occupies")
 	}
 }
@@ -71,8 +71,8 @@ func TestDetachClientFindsPlayerAfterAMapChange(t *testing.T) {
 // exactly once, or repeated disconnects would corrupt the count.
 func TestDetachClientReleasesTheGuardSlotOnlyOnce(t *testing.T) {
 	s, home, _ := lifecycleServer()
-	other := joinedClient(s, home, "p2", "home", "10.0.0.1")
-	client := joinedClient(s, home, "p1", "home", "10.0.0.1")
+	other := joinedClient(s, home, 2, "home", "10.0.0.1")
+	client := joinedClient(s, home, 1, "home", "10.0.0.1")
 
 	if total, _ := s.guard.counts(); total != 2 {
 		t.Fatalf("setup: want 2 connections, got %d", total)
@@ -96,7 +96,7 @@ func TestDetachClientReleasesTheGuardSlotOnlyOnce(t *testing.T) {
 // in the world, so it must take it back out.
 func TestRegisterTimeoutLeavesNoPlayerBehind(t *testing.T) {
 	s, home, _ := lifecycleServer()
-	client := joinedClient(s, home, "p1", "home", "10.0.0.1")
+	client := joinedClient(s, home, 1, "home", "10.0.0.1")
 
 	// This is what HandleConnections runs when the register send times out.
 	s.detachClient(client)
@@ -113,10 +113,10 @@ func TestRegisterTimeoutLeavesNoPlayerBehind(t *testing.T) {
 // to a direct teardown, which must be equivalent.
 func TestUnregisterFallbackTearsDownWhenQueueIsFull(t *testing.T) {
 	s, home, _ := lifecycleServer()
-	client := joinedClient(s, home, "p1", "home", "10.0.0.1")
+	client := joinedClient(s, home, 1, "home", "10.0.0.1")
 
 	for i := 0; i < cap(s.unregister); i++ {
-		s.unregister <- &Client{playerID: "filler"}
+		s.unregister <- &Client{playerID: 99}
 	}
 
 	// The select in readPump's defer, with a full queue.
@@ -127,7 +127,7 @@ func TestUnregisterFallbackTearsDownWhenQueueIsFull(t *testing.T) {
 		s.detachClient(client)
 	}
 
-	if _, still := home.players["p1"]; still {
+	if _, still := home.players[1]; still {
 		t.Fatal("the fallback path must remove the player")
 	}
 	if total, _ := s.guard.counts(); total != 0 {

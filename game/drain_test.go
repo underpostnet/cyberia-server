@@ -32,7 +32,7 @@ func TestWaitDrainedEndsWithoutClientsOrAtTheDeadline(t *testing.T) {
 		t.Fatalf("an empty server reported %d players", remaining)
 	}
 
-	s.clients["held"] = &Client{}
+	s.clients[1] = &Client{}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	started := time.Now()

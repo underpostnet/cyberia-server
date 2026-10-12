@@ -42,9 +42,9 @@ func TestSignedAggregationAcrossEntities(t *testing.T) {
 	}
 	layers := []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 20}, {ItemID: "buff", Active: true, Quantity: 1}}
 	entities := []statSource{
-		&PlayerState{EntityBase: EntityBase{ID: "p", ObjectLayers: layers}},
-		&BotState{EntityBase: EntityBase{ID: "b", ObjectLayers: layers}, Behavior: "provider"},
-		&ResourceState{EntityBase: EntityBase{ID: "r", ObjectLayers: layers}},
+		&PlayerState{EntityBase: EntityBase{ID: 1, ObjectLayers: layers}},
+		&BotState{EntityBase: EntityBase{ID: 2, ObjectLayers: layers}, Behavior: "provider"},
+		&ResourceState{EntityBase: EntityBase{ID: 3, ObjectLayers: layers}},
 	}
 	for _, entity := range entities {
 		entity.StatState().Progression = NewEntityProgression(4, true, s.progressionConfig())
@@ -64,7 +64,7 @@ func TestSignedAggregationAcrossEntities(t *testing.T) {
 
 func TestTemporaryStatsAndExpiry(t *testing.T) {
 	s := &GameServer{entityBaseMaxLife: 100}
-	p := &PlayerState{EntityBase: EntityBase{ID: "p"}}
+	p := &PlayerState{EntityBase: EntityBase{ID: 1}}
 	now := time.Now()
 	modifier := TemporaryModifier{ID: "buff", Stats: ComputedStats{Effect: 10, Resistance: 20}, ExpiresAt: now.Add(time.Second)}
 	if err := s.SetTemporaryModifier(p, modifier, now); err != nil {
@@ -77,7 +77,7 @@ func TestTemporaryStatsAndExpiry(t *testing.T) {
 	if p.MaxLife != 130 || len(p.TemporaryModifiers) != 1 {
 		t.Fatalf("temporary stats: %+v", p.Mortal)
 	}
-	if got := s.statBreakdown(p, nil, now.Add(time.Second), map[string]bool{}).Effective.Effect; got != 5 {
+	if got := s.statBreakdown(p, nil, now.Add(time.Second), map[EntityID]bool{}).Effective.Effect; got != 5 {
 		t.Fatalf("expired effect = %v", got)
 	}
 	s.refreshEntityStats(p, nil, now.Add(2*time.Second))
@@ -179,21 +179,21 @@ func TestRawTapSpamDoesNotAwardXP(t *testing.T) {
 
 func TestDefeatAwardsOnlyEligibleContributors(t *testing.T) {
 	s, ms, p := movementFixture(t)
-	victim := &BotState{EntityBase: EntityBase{ID: "victim"}, Behavior: "hostile"}
+	victim := &BotState{EntityBase: EntityBase{ID: 10}, Behavior: "hostile"}
 	victim.Progression = NewEntityProgression(1, true, s.progressionConfig())
 	ms.bots[victim.ID] = victim
-	s.awardDefeat(&victim.EntityBase, &victim.Mortal, "bot", map[string]float64{p.ID: 100}, ms)
+	s.awardDefeat(&victim.EntityBase, &victim.Mortal, "bot", map[EntityID]float64{p.ID: 100}, ms)
 	if p.Progression.XP != 25 {
 		t.Fatalf("kill XP = %d", p.Progression.XP)
 	}
 	p.Progression = NewEntityProgression(1, false, s.progressionConfig())
 	victim.CasterID = p.ID
-	s.awardDefeat(&victim.EntityBase, &victim.Mortal, "bot", map[string]float64{p.ID: 100}, ms)
+	s.awardDefeat(&victim.EntityBase, &victim.Mortal, "bot", map[EntityID]float64{p.ID: 100}, ms)
 	if p.Progression.XP != 0 {
 		t.Fatal("summon farming awards XP")
 	}
-	victim.CasterID = ""
-	s.awardDefeat(&victim.EntityBase, &victim.Mortal, "bot", map[string]float64{p.ID: 1, "other": 100}, ms)
+	victim.CasterID = 0
+	s.awardDefeat(&victim.EntityBase, &victim.Mortal, "bot", map[EntityID]float64{p.ID: 1, 999: 100}, ms)
 	if p.Progression.XP != 0 {
 		t.Fatal("low contribution awards XP")
 	}
@@ -248,7 +248,7 @@ func TestSummonFloorsAfterAllContributions(t *testing.T) {
 		"buff": {Data: ObjectLayerData{Stats: Stats{Effect: 100}}},
 	})
 	p.ObjectLayers = []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
-	summon := &BotState{EntityBase: EntityBase{ID: "summon", ObjectLayers: []ObjectLayerState{{ItemID: "buff", Active: true, Quantity: 1}}}, CasterID: p.ID}
+	summon := &BotState{EntityBase: EntityBase{ID: 11, ObjectLayers: []ObjectLayerState{{ItemID: "buff", Active: true, Quantity: 1}}}, CasterID: p.ID}
 	if got := s.CalculateStats(summon, ms).Effect; got != 5 {
 		t.Fatalf("floor applied before full sum: %v", got)
 	}
@@ -261,7 +261,7 @@ func TestSummonFloorsAfterAllContributions(t *testing.T) {
 
 func TestProgressionNormalizesAfterCurveChange(t *testing.T) {
 	s := &GameServer{progressionRules: defaultProgressionRules()}
-	p := &PlayerState{EntityBase: EntityBase{ID: "player"}}
+	p := &PlayerState{EntityBase: EntityBase{ID: 1}}
 	p.Progression = NewEntityProgression(3, false, s.progressionConfig())
 	s.progressionRules.XpPerLevel = 200
 	if got := s.entityProgression(p); got.Level != 2 || got.XP != 400 {
@@ -290,7 +290,7 @@ func TestQuestCompletionAwardsAfterKillAndRejectsReplay(t *testing.T) {
 
 func TestAuthoredLevelsUseCommonBaseCurve(t *testing.T) {
 	s, ms, _ := movementFixture(t)
-	ms.resources = make(map[string]*ResourceState)
+	ms.resources = make(map[EntityID]*ResourceState)
 	s.buildResource(ms, "test", &pb.EntityMessage{Level: 7, MaxLife: 50, ColorA: 255})
 	for _, resource := range ms.resources {
 		if !resource.Progression.Frozen || resource.Progression.Level != 7 || resource.MaxLife != 90 {

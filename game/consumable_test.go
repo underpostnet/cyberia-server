@@ -96,18 +96,19 @@ func TestNothingHealsAGhostOrFromAnItemWithoutTheSkill(t *testing.T) {
 
 func TestOnlyALootCollectingBotHealsFromItsHeldUnits(t *testing.T) {
 	s, ms, _ := healingServer(t, 100)
-	for _, behavior := range []string{BehaviorHostile, BehaviorDrop, BehaviorProvider} {
-		ms.bots[behavior] = &BotState{EntityBase: EntityBase{ID: behavior, ObjectLayers: []ObjectLayerState{gel(1)}},
+	ids := map[string]EntityID{BehaviorHostile: 200, BehaviorDrop: 201, BehaviorProvider: 202}
+	for behavior, id := range ids {
+		ms.bots[id] = &BotState{EntityBase: EntityBase{ID: id, ObjectLayers: []ObjectLayerState{gel(1)}},
 			Mortal: Mortal{Life: 10, MaxLife: 100}, Behavior: behavior}
 	}
 
 	s.phaseSkills(0, ms)
 
-	if raider := ms.bots[BehaviorHostile]; raider.Life != 10+gelHeal || len(raider.ObjectLayers) != 0 {
+	if raider := ms.bots[ids[BehaviorHostile]]; raider.Life != 10+gelHeal || len(raider.ObjectLayers) != 0 {
 		t.Fatalf("the hostile bot must heal from its gel: life=%v layers=%+v", raider.Life, raider.ObjectLayers)
 	}
 	for _, behavior := range []string{BehaviorDrop, BehaviorProvider} {
-		if bot := ms.bots[behavior]; bot.Life != 10 || len(bot.ObjectLayers) != 1 {
+		if bot := ms.bots[ids[behavior]]; bot.Life != 10 || len(bot.ObjectLayers) != 1 {
 			t.Fatalf("a %s bot consumed its gel", behavior)
 		}
 	}

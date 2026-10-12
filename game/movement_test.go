@@ -14,8 +14,8 @@ func movementFixture(t *testing.T) (*GameServer, *MapState, *PlayerState) {
 		gridW:      20,
 		gridH:      20,
 		pathfinder: NewPathfinder(20, 20),
-		players:    map[string]*PlayerState{},
-		bots:       map[string]*BotState{},
+		players:    map[EntityID]*PlayerState{},
+		bots:       map[EntityID]*BotState{},
 	}
 
 	s := &GameServer{
@@ -26,7 +26,7 @@ func movementFixture(t *testing.T) (*GameServer, *MapState, *PlayerState) {
 	}
 
 	player := &PlayerState{}
-	player.ID = "p1"
+	player.ID = 1
 	player.Pos = Point{X: 1, Y: 1}
 	player.Dims = Dimensions{Width: 1, Height: 1}
 	player.MapCode = "test"

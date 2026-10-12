@@ -116,7 +116,7 @@ func TestResourceSpawnedFromInstanceConfigCarriesTheOverriddenItem(t *testing.T)
 		}},
 	})
 
-	mapState := &MapState{resources: map[string]*ResourceState{}}
+	mapState := &MapState{resources: map[EntityID]*ResourceState{}}
 	server.buildResource(mapState, "fallback-map-0", &pb.EntityMessage{
 		ObjectLayerItemIds: []string{"wood-1"},
 		DimX:               2,

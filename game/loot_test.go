@@ -64,7 +64,7 @@ func onlyToken(t *testing.T, ms *MapState) *BotState {
 }
 
 // woundedPlayer stands a player with the given life on the token.
-func woundedPlayer(ms *MapState, id string, token *BotState, life float64) *PlayerState {
+func woundedPlayer(ms *MapState, id EntityID, token *BotState, life float64) *PlayerState {
 	player := &PlayerState{}
 	player.ID = id
 	player.Pos = token.Pos
@@ -165,8 +165,8 @@ func TestWorldLootShowsOneItemBoundOrNot(t *testing.T) {
 func TestConsumingAPickupHealsByTheItemOnceAndGrantsNothing(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
-	first := woundedPlayer(ms, "first", token, 50)
-	second := woundedPlayer(ms, "second", token, 50)
+	first := woundedPlayer(ms, 101, token, 50)
+	second := woundedPlayer(ms, 102, token, 50)
 
 	for range 3 {
 		s.phaseLoot(0, ms)
@@ -186,7 +186,7 @@ func TestConsumingAPickupHealsByTheItemOnceAndGrantsNothing(t *testing.T) {
 func TestConsumingAPickupNeverPassesMaxLife(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
-	player := woundedPlayer(ms, "p", token, 95)
+	player := woundedPlayer(ms, 103, token, 95)
 
 	s.phaseLoot(0, ms)
 
@@ -199,12 +199,12 @@ func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
 
-	ghost := woundedPlayer(ms, "ghost", token, 10)
+	ghost := woundedPlayer(ms, 105, token, 10)
 	ghost.RespawnTime = time.Now().Add(time.Minute)
-	frozen := woundedPlayer(ms, "frozen", token, 10)
+	frozen := woundedPlayer(ms, 106, token, 10)
 	frozen.Frozen = true
-	for _, behavior := range []string{BehaviorSkill, BehaviorCoin, BehaviorDrop, BehaviorProvider} {
-		bot := &BotState{EntityBase: EntityBase{ID: behavior, Pos: token.Pos, Dims: token.Dims},
+	for i, behavior := range []string{BehaviorSkill, BehaviorCoin, BehaviorDrop, BehaviorProvider} {
+		bot := &BotState{EntityBase: EntityBase{ID: EntityID(200 + i), Pos: token.Pos, Dims: token.Dims},
 			Mortal: Mortal{Life: 10, MaxLife: 100}, Behavior: behavior}
 		ms.bots[bot.ID] = bot
 	}
@@ -218,7 +218,7 @@ func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 		t.Fatalf("ineligible players healed: ghost=%v frozen=%v", ghost.Life, frozen.Life)
 	}
 
-	wounded := woundedPlayer(ms, "wounded", token, 60)
+	wounded := woundedPlayer(ms, 108, token, 60)
 	s.phaseLoot(0, ms)
 	if _, ok := ms.bots[token.ID]; ok || wounded.Life != 70 {
 		t.Fatalf("a wounded player must consume the token: life=%v", wounded.Life)
@@ -228,8 +228,8 @@ func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 func TestACollectorAtFullLifeKeepsAPickupAndTheTokenComesBack(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
-	player := woundedPlayer(ms, "full", token, 100)
-	bot := &BotState{EntityBase: EntityBase{ID: "raider", Pos: Point{X: 15, Y: 15}, Dims: token.Dims},
+	player := woundedPlayer(ms, 104, token, 100)
+	bot := &BotState{EntityBase: EntityBase{ID: 109, Pos: Point{X: 15, Y: 15}, Dims: token.Dims},
 		Mortal: Mortal{Life: 100, MaxLife: 100}, Behavior: BehaviorHostile}
 	ms.bots[bot.ID] = bot
 
@@ -257,7 +257,7 @@ func TestAPickupHealsByItsResistanceAndComesBackAfterItsRespawnTime(t *testing.T
 	buildWorld(s, []string{"m"}, placed)
 	ms := s.maps["m"]
 	token := onlyToken(t, ms)
-	player := woundedPlayer(ms, "p", token, 50)
+	player := woundedPlayer(ms, 103, token, 50)
 
 	now := time.Now()
 	s.phaseLoot(0, ms)
@@ -287,7 +287,7 @@ func TestAPickupWithoutARespawnTimeTakesTheDefault(t *testing.T) {
 	buildWorld(s, []string{"m"}, lootEntity(4, 4, "gel"), lootEntity(10, 10, "salve"))
 	ms := s.maps["m"]
 	for _, token := range worldTokens(ms) {
-		woundedPlayer(ms, token.DropItemID, token, 50)
+		woundedPlayer(ms, 1000+token.ID, token, 50)
 	}
 
 	now := time.Now()
@@ -303,7 +303,7 @@ func TestAPickupWithoutARespawnTimeTakesTheDefault(t *testing.T) {
 func TestABotConsumesAPickup(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
-	bot := &BotState{EntityBase: EntityBase{ID: "raider", Pos: token.Pos, Dims: token.Dims},
+	bot := &BotState{EntityBase: EntityBase{ID: 300, Pos: token.Pos, Dims: token.Dims},
 		Mortal: Mortal{Life: 30, MaxLife: 100}, Behavior: BehaviorHostile}
 	ms.bots[bot.ID] = bot
 
@@ -318,7 +318,7 @@ func TestAGrantPickupEntersTheInventoryUnused(t *testing.T) {
 	s := lootServer(t)
 	buildWorld(s, []string{"m"}, lootEntity(4, 4, "salve"))
 	ms := s.maps["m"]
-	player := woundedPlayer(ms, "p", onlyToken(t, ms), 100)
+	player := woundedPlayer(ms, 103, onlyToken(t, ms), 100)
 
 	s.phaseLoot(0, ms)
 
@@ -331,8 +331,8 @@ func TestAGrantPickupEntersTheInventoryUnused(t *testing.T) {
 func TestDeathDropsKeepTheContributorRace(t *testing.T) {
 	s, ms, contributor := movementFixture(t)
 	s.coinItemID = "coin"
-	outsider := woundedPlayer(ms, "outsider", &BotState{}, 50)
-	ledger := map[string]float64{contributor.ID: 5}
+	outsider := woundedPlayer(ms, 107, &BotState{}, 50)
+	ledger := map[EntityID]float64{contributor.ID: 5}
 	s.spawnDrops(ms, "test", Point{X: 10, Y: 10},
 		EntityTypeDefaultConfig{DropItemIDs: []string{"shard"}}, 7, ledger)
 
@@ -378,8 +378,8 @@ func TestDeathDropsKeepTheContributorRace(t *testing.T) {
 
 func TestOnlyAWorldTokenAdmitsEveryViewer(t *testing.T) {
 	world := &BotState{LootCollection: LootCollectFirstContact}
-	death := &BotState{LootCollection: LootCollectContributors, LootContributors: map[string]struct{}{"a": {}}}
-	if !lootAdmits(world, "anyone") || !lootAdmits(death, "a") || lootAdmits(death, "b") {
+	death := &BotState{LootCollection: LootCollectContributors, LootContributors: map[EntityID]struct{}{1: {}}}
+	if !lootAdmits(world, 99) || !lootAdmits(death, 1) || lootAdmits(death, 2) {
 		t.Fatal("collection policy admits the wrong viewers")
 	}
 	consuming := &BotState{LootOutcome: LootOutcomeConsume}

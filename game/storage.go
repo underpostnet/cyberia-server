@@ -40,7 +40,7 @@ type itemOp struct {
 // storageKey scopes a vault to one player at one action cell — storage is
 // personal, so two players at the same terminal never see each other's stock.
 type storageKey struct {
-	PlayerID   string
+	PlayerID   EntityID
 	ActionCode string
 }
 
@@ -98,7 +98,7 @@ func storageStackOf(slots []StorageSlot, itemID string) int {
 // the vault's key, capacity and liveness. Every handler starts here.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) resolveStorage(player *PlayerState, entityID string) (storageKey, int, bool) {
+func (s *GameServer) resolveStorage(player *PlayerState, entityID EntityID) (storageKey, int, bool) {
 	if player.IsGhost() {
 		return storageKey{}, 0, false
 	}
@@ -251,7 +251,7 @@ func (s *GameServer) storageWithdraw(player *PlayerState, slots []StorageSlot,
 }
 
 // sendStorageState pushes the vault. The client seeds its grid from it.
-func (s *GameServer) sendStorageState(player *PlayerState, entityID string, capacity int,
+func (s *GameServer) sendStorageState(player *PlayerState, entityID EntityID, capacity int,
 	slots []StorageSlot) {
 	if slots == nil {
 		slots = []StorageSlot{}

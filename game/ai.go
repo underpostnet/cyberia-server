@@ -47,6 +47,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		// Check for expiration
 		if !bot.ExpiresAt.IsZero() && time.Now().After(bot.ExpiresAt) {
 			delete(mapState.bots, botID)
+			mapState.despawn(botID)
 			continue
 		}
 
@@ -77,6 +78,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			if bot.Pos.X < 0 || bot.Pos.X > float64(mapState.gridW) ||
 				bot.Pos.Y < 0 || bot.Pos.Y > float64(mapState.gridH) {
 				delete(mapState.bots, botID)
+				mapState.despawn(botID)
 				continue // Skip further processing for this bot
 			}
 			s.handleBotSkills(bot, mapState, Point{X: bot.Pos.X, Y: bot.Pos.Y})
@@ -109,7 +111,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 		// Hostile logic: check for nearest player in aggro range
 		if bot.Behavior == BehaviorHostile {
-			nearestID := ""
+			var nearestID EntityID
 			nearestDist := math.MaxFloat64
 			var nearestPlayer *PlayerState
 			for _, p := range mapState.players {
@@ -178,8 +180,8 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				}
 			} else {
 				// No player in range: clear pursuit (if any) and ensure wandering behavior
-				if bot.CurrentTargetPlayer != "" {
-					bot.CurrentTargetPlayer = ""
+				if bot.CurrentTargetPlayer != 0 {
+					bot.CurrentTargetPlayer = 0
 					bot.lastPursuitTargetPos = PointI{-1, -1}
 				}
 

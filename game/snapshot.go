@@ -28,14 +28,14 @@ const (
 
 // SnapshotEntity is one entity inside a player's area of interest.
 type SnapshotEntity struct {
-	Type      string  `json:"type"`
-	ID        string  `json:"id"`
-	PosX      float64 `json:"posX"`
-	PosY      float64 `json:"posY"`
-	DimW      float64 `json:"dimW"`
-	DimH      float64 `json:"dimH"`
-	Direction int     `json:"direction"`
-	Mode      int     `json:"mode"`
+	Type      string   `json:"type"`
+	ID        EntityID `json:"id"`
+	PosX      float64  `json:"posX"`
+	PosY      float64  `json:"posY"`
+	DimW      float64  `json:"dimW"`
+	DimH      float64  `json:"dimH"`
+	Direction int      `json:"direction"`
+	Mode      int      `json:"mode"`
 
 	Life      float64 `json:"life"`
 	MaxLife   float64 `json:"maxLife"`
@@ -54,7 +54,7 @@ type SnapshotEntity struct {
 	Behavior string `json:"behavior"`
 
 	// Bot fields.
-	CasterID string `json:"casterId"`
+	CasterID EntityID `json:"casterId"`
 	// InteractionFlags resolve per viewing player. Each bit enables an
 	// overlay icon and its interact-modal tab.
 	InteractionFlags uint8 `json:"interactionFlags"`
@@ -95,11 +95,10 @@ type SnapshotSelf struct {
 	LayerStats     [StatCount]float64 `json:"layerStats"`
 	TemporaryStats [StatCount]float64 `json:"temporaryStats"`
 
-	MapCode        string   `json:"mapCode"`
-	Path           []PointI `json:"path"`
-	TargetPosX     int      `json:"targetPosX"`
-	TargetPosY     int      `json:"targetPosY"`
-	ActivePortalID string   `json:"activePortalId"`
+	MapCode    string   `json:"mapCode"`
+	Path       []PointI `json:"path"`
+	TargetPosX int      `json:"targetPosX"`
+	TargetPosY int      `json:"targetPosY"`
 
 	CoinBalance uint32 `json:"coinBalance"`
 	// Inventory carries every visible layer, active and inactive.
@@ -154,30 +153,30 @@ type CombatText struct {
 
 // DropSpawn is the `drop_spawn` message payload — a loot token leaves a corpse.
 type DropSpawn struct {
-	DropID   string  `json:"dropId"`
-	OriginX  float64 `json:"originX"`
-	OriginY  float64 `json:"originY"`
-	LandingX float64 `json:"landingX"`
-	LandingY float64 `json:"landingY"`
-	LaunchMs int     `json:"launchMs"` // settle window; client animation length
-	ItemID   string  `json:"itemId"`
+	DropID   EntityID `json:"dropId"`
+	OriginX  float64  `json:"originX"`
+	OriginY  float64  `json:"originY"`
+	LandingX float64  `json:"landingX"`
+	LandingY float64  `json:"landingY"`
+	LaunchMs int      `json:"launchMs"` // settle window; client animation length
+	ItemID   string   `json:"itemId"`
 }
 
 // DropCollect is the `drop_collect` message payload — a token was collected.
 type DropCollect struct {
-	DropID      string  `json:"dropId"`
-	CollectorID string  `json:"collectorId"`
-	WorldX      float64 `json:"worldX"`
-	WorldY      float64 `json:"worldY"`
-	ItemID      string  `json:"itemId"`
-	Granted     bool    `json:"granted"` // the collector received the item; false for an effect such as a heal
+	DropID      EntityID `json:"dropId"`
+	CollectorID EntityID `json:"collectorId"`
+	WorldX      float64  `json:"worldX"`
+	WorldY      float64  `json:"worldY"`
+	ItemID      string   `json:"itemId"`
+	Granted     bool     `json:"granted"` // the collector received the item; false for an effect such as a heal
 }
 
 // ItemConsume tells viewers an entity consumed an item; Behavior is the loot behavior of the item.
 type ItemConsume struct {
-	EntityID string `json:"entityId"`
-	ItemID   string `json:"itemId"`
-	Behavior string `json:"behavior"`
+	EntityID EntityID `json:"entityId"`
+	ItemID   string   `json:"itemId"`
+	Behavior string   `json:"behavior"`
 }
 
 // activeLayers returns the active object layers — what the client draws.
@@ -219,7 +218,7 @@ type hasBase interface{ Base() EntityBase }
 
 // appendPassive appends every entity of src inside the AOI. Passive entities
 // never act, so they always report facing NONE and mode IDLE.
-func appendPassive[T hasBase](snap *Snapshot, kind string, src map[string]T,
+func appendPassive[T hasBase](snap *Snapshot, kind string, src map[EntityID]T,
 	inAOI func(Point, Dimensions) bool) {
 	for _, entity := range src {
 		e := entity.Base()
@@ -231,7 +230,7 @@ func appendPassive[T hasBase](snap *Snapshot, kind string, src map[string]T,
 }
 
 // baseEntity fills the fields every entity type carries.
-func baseEntity(entityType, id string, pos Point, dims Dimensions,
+func baseEntity(entityType string, id EntityID, pos Point, dims Dimensions,
 	dir Direction, mode ObjectLayerMode, layers []ObjectLayerState) SnapshotEntity {
 	return SnapshotEntity{
 		Type:         entityType,
@@ -442,7 +441,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 // buildSnapshotSelf fills the viewing player's own block.
 func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) SnapshotSelf {
 	stats := s.CalculateStats(player, mapState)
-	breakdown := s.statBreakdown(player, mapState, time.Now(), make(map[string]bool))
+	breakdown := s.statBreakdown(player, mapState, time.Now(), make(map[EntityID]bool))
 	progression := s.entityProgression(player)
 
 	self := SnapshotSelf{
@@ -459,11 +458,10 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 		LayerStats:     breakdown.Layers.Values(),
 		TemporaryStats: breakdown.Temporary.Values(),
 
-		MapCode:        player.MapCode,
-		Path:           player.Path,
-		TargetPosX:     player.TargetPos.X,
-		TargetPosY:     player.TargetPos.Y,
-		ActivePortalID: player.ActivePortalID,
+		MapCode:    player.MapCode,
+		Path:       player.Path,
+		TargetPosX: player.TargetPos.X,
+		TargetPosY: player.TargetPos.Y,
 		// player.Coins is the canonical flat balance — read it directly.
 		CoinBalance:      player.Coins,
 		Inventory:        s.visibleInventory(player.ObjectLayers),

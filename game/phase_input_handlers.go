@@ -275,9 +275,9 @@ func (s *GameServer) itemType(itemID string) string {
 // handleChatInput is a pure relay — no game-state mutation. Forwards a
 // chat message to the target player on the same map.
 func (s *GameServer) handleChatInput(sender *PlayerState, mapState *MapState, cmd *InputCommand) {
-	toID := cmd.ItemID // chat target id reuses the ItemID slot
+	toID := cmd.EntityID
 	text := cmd.ChatText
-	if toID == "" || text == "" {
+	if toID == 0 || text == "" {
 		return
 	}
 	if len(text) > 256 {

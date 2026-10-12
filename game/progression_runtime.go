@@ -83,11 +83,11 @@ func (s *GameServer) awardProgression(source statSource, event progressionEvent,
 
 // awardDefeat uses damage shares and excludes summoned entities, self kills
 // and obstacles.
-func (s *GameServer) awardDefeat(base *EntityBase, mortal *Mortal, kind string, ledger map[string]float64, ms *MapState) {
+func (s *GameServer) awardDefeat(base *EntityBase, mortal *Mortal, kind string, ledger map[EntityID]float64, ms *MapState) {
 	if ms == nil || mortal.IsGhost() || kind == EntityObstacle {
 		return
 	}
-	if b := ms.bots[base.ID]; b != nil && (b.CasterID != "" || behaviorIsProvider(b.Behavior) || b.Behavior == BehaviorDrop) {
+	if b := ms.bots[base.ID]; b != nil && (b.CasterID != 0 || behaviorIsProvider(b.Behavior) || b.Behavior == BehaviorDrop) {
 		return
 	}
 	var total float64
@@ -107,7 +107,7 @@ func (s *GameServer) awardDefeat(base *EntityBase, mortal *Mortal, kind string, 
 		if entity == nil {
 			continue
 		}
-		key := kind + ":" + base.ID
+		key := fmt.Sprintf("%s:%d", kind, base.ID)
 		event := xpKill
 		if kind == "resource" {
 			event = xpObjective

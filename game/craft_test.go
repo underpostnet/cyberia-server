@@ -61,7 +61,7 @@ func TestCraftRecipeAtBoundsTheIndex(t *testing.T) {
 func TestPlayerCanCraftChecksEveryIngredient(t *testing.T) {
 	s := &GameServer{coinItemID: "coin"}
 	player := &PlayerState{
-		EntityBase: EntityBase{ID: "p1", ObjectLayers: []ObjectLayerState{
+		EntityBase: EntityBase{ID: 1, ObjectLayers: []ObjectLayerState{
 			{ItemID: "wood-drop-1", Quantity: 2},
 		}},
 		Coins: 5,
@@ -98,16 +98,16 @@ func TestBotHasCraftGatesTheCapabilityBit(t *testing.T) {
 	book := &CyberiaAction{CraftRecipes: []ActionCraftRecipe{
 		{OutputItems: []ActionCraftItem{{ItemID: "hatchet", Qty: 1}}},
 	}}
-	s := &GameServer{actionCache: map[string]*CyberiaAction{
-		"assembler": book,
-		"talker":    {DialogCode: "default-lain"},
-		"dead":      book,
+	s := &GameServer{actionCache: map[EntityID]*CyberiaAction{
+		1: book,
+		2: {DialogCode: "default-lain"},
+		3: book,
 	}}
 
-	assembler := &BotState{EntityBase: EntityBase{ID: "assembler"}}
-	talker := &BotState{EntityBase: EntityBase{ID: "talker"}}
+	assembler := &BotState{EntityBase: EntityBase{ID: 1}}
+	talker := &BotState{EntityBase: EntityBase{ID: 2}}
 	dead := &BotState{
-		EntityBase: EntityBase{ID: "dead"},
+		EntityBase: EntityBase{ID: 3},
 		Mortal:     Mortal{RespawnTime: time.Now().Add(time.Second)},
 	}
 
@@ -146,7 +146,7 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 	s := &GameServer{coinItemID: "coin"}
 	newPlayer := func() *PlayerState {
 		return &PlayerState{
-			EntityBase: EntityBase{ID: "p1", ObjectLayers: []ObjectLayerState{
+			EntityBase: EntityBase{ID: 1, ObjectLayers: []ObjectLayerState{
 				{ItemID: "wood-drop-1", Quantity: 2},
 			}},
 			Coins: 5,
@@ -198,7 +198,7 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 	start(pending, time.Now().Add(time.Hour))
 	elapsed := newPlayer()
 	start(elapsed, time.Now().Add(-time.Millisecond))
-	mapState := &MapState{players: map[string]*PlayerState{"pending": pending, "elapsed": elapsed}}
+	mapState := &MapState{players: map[EntityID]*PlayerState{1: pending, 2: elapsed}}
 
 	s.completeCrafts(mapState)
 	if pending.ActiveCraft == nil || s.playerItemQuantity(pending, "hatchet") != 0 {

@@ -97,7 +97,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	playerID := uuid.New().String()
+	playerID := s.newEntityID()
 	playerDims := Dimensions{Width: s.defaultPlayerWidth, Height: s.defaultPlayerHeight}
 
 	// Resolve the starting map + cell from the instance's PlayerSpawn config. A
@@ -154,6 +154,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 			MaxLife:     s.entityBaseMaxLife,
 			Life:        s.entityBaseMaxLife * s.initialLifeFraction,
 		},
+		EngineID:  uuid.New().String(),
 		MapCode:   startMapCode,
 		Path:      []PointI{},
 		TargetPos: PointI{-1, -1},
@@ -177,6 +178,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	playerState.Client = client
 
 	startMapState.players[playerID] = playerState
+	startMapState.spawn(playerID)
 
 	// Economy: credit the player's starting wallet (Fountain: playerSpawnCoins).
 	s.FountainInitPlayer(playerState)
@@ -196,6 +198,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// every visual value through /api/v1/cyberia-client-hints using its own
 	// CYBERIA_CLIENT_HINTS_CODE.
 	initPayload := InitPayload{
+		EngineID:       playerState.EngineID,
 		GridW:          startMapState.gridW,
 		GridH:          startMapState.gridH,
 		AoiRadius:      s.aoiRadius,
@@ -248,6 +251,7 @@ func (s *GameServer) detachClient(client *Client) {
 	// Sweep every map: a portal can move a player after MapCode was read.
 	for _, mapState := range s.maps {
 		delete(mapState.players, client.playerID)
+		mapState.despawn(client.playerID)
 	}
 	s.mu.Unlock()
 
@@ -332,12 +336,12 @@ type inputPayload struct {
 
 	Stasis bool `json:"stasis"` // player_stasis
 
-	ToID string `json:"toId"` // chat
-	Text string `json:"text"`
+	ToID EntityID `json:"toId"` // chat
+	Text string   `json:"text"`
 
-	EntityID   string `json:"entityId"`   // talk_done, quest_accept, shop_buy, storage_open, item_ops
-	DialogCode string `json:"dialogCode"` // talk_done
-	QuestCode  string `json:"questCode"`  // quest_*
+	EntityID   EntityID `json:"entityId"`   // talk_done, quest_accept, shop_buy, storage_open, item_ops
+	DialogCode string   `json:"dialogCode"` // talk_done
+	QuestCode  string   `json:"questCode"`  // quest_*
 
 	Quantity    int `json:"quantity"`    // shop_buy
 	RecipeIndex int `json:"recipeIndex"` // craft_item
@@ -430,13 +434,13 @@ func parseInput(msgType string, p *inputPayload) (InputCommand, bool) {
 	case InputKindPlayerStasis:
 		cmd.Active = p.Stasis
 	case InputKindChat:
-		if p.ToID == "" || p.Text == "" || !validIdentifier(p.ToID) {
+		if p.ToID == 0 || p.Text == "" {
 			return InputCommand{}, false
 		}
-		cmd.ItemID = p.ToID // chat target id
+		cmd.EntityID = p.ToID
 		cmd.ChatText = truncateRunes(p.Text, maxChatRunes)
 	case InputKindTalkDone:
-		if p.EntityID == "" || !validIdentifier(p.EntityID) || !validIdentifier(p.DialogCode) {
+		if p.EntityID == 0 || !validIdentifier(p.DialogCode) {
 			return InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
@@ -447,35 +451,32 @@ func parseInput(msgType string, p *inputPayload) (InputCommand, bool) {
 		}
 		cmd.ItemID = p.QuestCode
 	case InputKindQuestAccept:
-		if p.EntityID == "" || p.QuestCode == "" ||
-			!validIdentifier(p.EntityID) || !validIdentifier(p.QuestCode) {
+		if p.EntityID == 0 || p.QuestCode == "" || !validIdentifier(p.QuestCode) {
 			return InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.QuestCode
 	case InputKindShopBuy:
-		if p.EntityID == "" || p.ItemID == "" ||
-			!validIdentifier(p.EntityID) || !validIdentifier(p.ItemID) {
+		if p.EntityID == 0 || p.ItemID == "" || !validIdentifier(p.ItemID) {
 			return InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.ItemID
 		cmd.Quantity = clampQuantity(p.Quantity)
 	case InputKindCraftItem:
-		if p.EntityID == "" || !validIdentifier(p.EntityID) || p.RecipeIndex < 0 {
+		if p.EntityID == 0 || p.RecipeIndex < 0 {
 			return InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.RecipeIndex = p.RecipeIndex
 	case InputKindStorageOpen:
-		if p.EntityID == "" || !validIdentifier(p.EntityID) {
+		if p.EntityID == 0 {
 			return InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 	case InputKindItemOps:
 		// Trust boundary: the list replays under s.mu, so its length is capped.
-		if p.EntityID == "" || !validIdentifier(p.EntityID) ||
-			len(p.Ops) == 0 || len(p.Ops) > storageMaxSlots {
+		if p.EntityID == 0 || len(p.Ops) == 0 || len(p.Ops) > storageMaxSlots {
 			return InputCommand{}, false
 		}
 		for _, op := range p.Ops {

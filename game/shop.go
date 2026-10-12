@@ -128,7 +128,7 @@ func (s *GameServer) handleShopBuy(player *PlayerState, cmd *InputCommand) {
 
 // sendShopAck notifies the buyer of the outcome. An empty reason means the
 // purchase was applied; anything else is a rejection code the client renders.
-func (s *GameServer) sendShopAck(player *PlayerState, entityID, itemID string, quantity int, reason string) {
+func (s *GameServer) sendShopAck(player *PlayerState, entityID EntityID, itemID string, quantity int, reason string) {
 	sendAck(player, "shop_ack", reason, map[string]interface{}{
 		"entityId": entityID,
 		"itemId":   itemID,

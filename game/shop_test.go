@@ -89,17 +89,17 @@ func TestShopBuyQuantityClampsToRange(t *testing.T) {
 // botHasShop drives the action-provider capability bit, so a vendor advertises
 // itself overhead exactly like a pending action-talk does.
 func TestBotHasShopGatesTheCapabilityBit(t *testing.T) {
-	vendor := &BotState{EntityBase: EntityBase{ID: "vendor"}}
-	plain := &BotState{EntityBase: EntityBase{ID: "plain"}}
+	vendor := &BotState{EntityBase: EntityBase{ID: 1}}
+	plain := &BotState{EntityBase: EntityBase{ID: 2}}
 	dead := &BotState{
-		EntityBase: EntityBase{ID: "dead"},
+		EntityBase: EntityBase{ID: 3},
 		Mortal:     Mortal{RespawnTime: time.Now().Add(time.Second)},
 	}
 	catalog := &CyberiaAction{ShopItems: []ActionShopItem{{ItemID: "tim-knife", PriceQty: 10}}}
-	s := &GameServer{actionCache: map[string]*CyberiaAction{
-		"vendor": catalog,
-		"plain":  {DialogCode: "default-lain"},
-		"dead":   catalog,
+	s := &GameServer{actionCache: map[EntityID]*CyberiaAction{
+		1: catalog,
+		2: {DialogCode: "default-lain"},
+		3: catalog,
 	}}
 
 	if !s.botHasShop(vendor) {
@@ -111,7 +111,7 @@ func TestBotHasShopGatesTheCapabilityBit(t *testing.T) {
 	if s.botHasShop(dead) {
 		t.Fatal("a dead vendor must not advertise")
 	}
-	if s.botHasShop(&BotState{EntityBase: EntityBase{ID: "unbound"}}) {
+	if s.botHasShop(&BotState{EntityBase: EntityBase{ID: 4}}) {
 		t.Fatal("a bot with no bound action is not a vendor")
 	}
 	if s.botHasShop(nil) {

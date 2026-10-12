@@ -14,7 +14,7 @@ func TestForegroundCarriesOnlyTheBehaviorItsDefaultBinds(t *testing.T) {
 			{EntityType: "foreground", LiveItemIDs: []string{"roof"}, Behavior: "overhead-occlusion"},
 		},
 	}
-	ms := &MapState{foregrounds: map[string]ForegroundState{}}
+	ms := &MapState{foregrounds: map[EntityID]ForegroundState{}}
 	s.buildForeground(ms, &pb.EntityMessage{ObjectLayerItemIds: []string{"roof"}, DimX: 4, DimY: 3})
 	s.buildForeground(ms, &pb.EntityMessage{ObjectLayerItemIds: []string{"canopy"}, DimX: 2, DimY: 2})
 
