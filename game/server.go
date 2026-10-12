@@ -477,22 +477,23 @@ func (s *GameServer) checkPortal(player *PlayerState, mapState *MapState) {
 			player.OnPortal = true
 			player.TimeOnPortal = time.Now()
 		} else if time.Since(player.TimeOnPortal) > s.portalHoldTime {
-			s.teleportPlayer(player, activePortal)
+			s.teleportPlayer(player, mapState, activePortal)
 		}
 	} else {
 		player.OnPortal = false
 	}
 }
 
-func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
+func (s *GameServer) teleportPlayer(player *PlayerState, mapState *MapState, portal *PortalState) {
 	// s.mu is held by the caller (phasePortals). Do not release it: map
 	// mutations of mapState.players must not race other readers.
 
-	if portal.PortalConfig == nil {
-		logx.Warnf("Teleportation failed: portal config is nil.")
+	target, linked := mapState.pt(portal.ID)
+	if !linked {
+		logx.Warnf("Teleportation failed: portal %s has no target.", portal.ID)
 		return
 	}
-	destMapCode := portal.PortalConfig.DestMapCode
+	destMapCode := target.TargetMap
 	destMapState, ok := s.maps[destMapCode]
 	if !ok {
 		logx.Warnf("Teleportation failed: destination map %q not found.", destMapCode)
@@ -501,7 +502,7 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 
 	// Determine spawn position based on portal mode
 	var spawnX, spawnY float64
-	mode := portal.PortalConfig.PortalMode
+	mode := portal.Mode
 	if mode == "" {
 		mode = "inter-portal"
 	}
@@ -509,8 +510,8 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 	switch mode {
 	case "inter-portal", "intra-portal":
 		// Spawn at the destination portal's position
-		spawnX = portal.PortalConfig.DestCellX
-		spawnY = portal.PortalConfig.DestCellY
+		spawnX = float64(target.TargetCell.X)
+		spawnY = float64(target.TargetCell.Y)
 	case "inter-random", "intra-random":
 		// Spawn at a random position within the destination map
 		spawnX = rand.Float64() * float64(destMapState.gridW)
@@ -522,8 +523,8 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 
 	// Apply spawn radius jitter for portal-to-portal modes
 	if mode == "inter-portal" || mode == "intra-portal" {
-		spawnX += rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
-		spawnY += rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
+		spawnX += rand.Float64()*s.portalSpawnRadius*2 - s.portalSpawnRadius
+		spawnY += rand.Float64()*s.portalSpawnRadius*2 - s.portalSpawnRadius
 	}
 
 	currentMapState := s.maps[player.MapCode]

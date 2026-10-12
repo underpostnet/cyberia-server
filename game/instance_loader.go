@@ -249,13 +249,11 @@ func (s *GameServer) buildMapsFromInstance(
 			portalMode = "inter-portal"
 		}
 
-		srcPortal.PortalConfig = &PortalConfig{
-			DestMapCode: dstMapCode,
-			SpawnRadius: s.portalSpawnRadius,
-			PortalMode:  portalMode,
-			DestCellX:   float64(edge.GetTargetCellX()),
-			DestCellY:   float64(edge.GetTargetCellY()),
-		}
+		srcPortal.Mode = portalMode
+		s.maps[srcMapCode].addPortal(srcPortal.ID, Portal{
+			TargetMap:  dstMapCode,
+			TargetCell: Cell{X: int(edge.GetTargetCellX()), Y: int(edge.GetTargetCellY())},
+		})
 	}
 }
 

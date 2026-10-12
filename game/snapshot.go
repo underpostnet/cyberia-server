@@ -64,9 +64,8 @@ type SnapshotEntity struct {
 	QuestTalkDialogCodes []string `json:"questTalkDialogCodes"`
 
 	// Portal fields. A negative target cell marks a random portal.
-	TargetMapCode string `json:"targetMapCode"`
-	TargetCellX   int    `json:"targetCellX"`
-	TargetCellY   int    `json:"targetCellY"`
+	TargetMap  string `json:"targetMap"`
+	TargetCell Cell   `json:"targetCell"`
 
 	// Layers carries the active layers only.
 	Layers []ObjectLayerState `json:"layers"`
@@ -343,15 +342,14 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 			continue
 		}
 		e := baseEntity(mapState, p.ID)
-		if p.PortalConfig != nil {
-			e.TargetMapCode = p.PortalConfig.DestMapCode
-			e.TargetCellX = int(p.PortalConfig.DestCellX)
-			e.TargetCellY = int(p.PortalConfig.DestCellY)
+		if target, linked := mapState.pt(p.ID); linked {
+			e.TargetMap = target.TargetMap
+			e.TargetCell = target.TargetCell
 		}
 		// A negative target cell marks a random portal: it carries the
 		// 'portal-random' icon and the client omits the cell from the label.
 		e.StatusIcon = StatusPortal
-		if e.TargetCellX < 0 || e.TargetCellY < 0 {
+		if e.TargetCell.X < 0 || e.TargetCell.Y < 0 {
 			e.StatusIcon = StatusPortalRandom
 		}
 		snap.Entities = append(snap.Entities, e)

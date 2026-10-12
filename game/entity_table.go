@@ -37,6 +37,7 @@ func (ms *MapState) spawn(id EntityID, data EntityData, tf Transform, ap Appeara
 		ms.vitals = append(ms.vitals, Vitals{})
 		ms.motion = append(ms.motion, Motion{})
 		ms.agent = append(ms.agent, Agent{})
+		ms.portal = append(ms.portal, Portal{})
 	}
 	ms.ids[slot] = id
 	ms.mask[slot] = maskData | maskTransform | maskAppearance
@@ -117,6 +118,19 @@ func (ms *MapState) ag(id EntityID) *Agent {
 // ag returns the agent of a bot on the map mapCode.
 func (s *GameServer) ag(id EntityID, mapCode string) *Agent { return s.maps[mapCode].ag(id) }
 
+// addPortal links portal id to its target.
+func (ms *MapState) addPortal(id EntityID, p Portal) {
+	slot := ms.slot(id)
+	ms.portal[slot] = p
+	ms.mask[slot] |= maskPortal
+}
+
+// pt returns the target of portal id, and false while it is unlinked.
+func (ms *MapState) pt(id EntityID) (*Portal, bool) {
+	slot := ms.slot(id)
+	return &ms.portal[slot], ms.mask[slot]&maskPortal != 0
+}
+
 // vt returns the vitals of an entity on the map mapCode.
 func (s *GameServer) vt(id EntityID, mapCode string) *Vitals { return s.maps[mapCode].vt(id) }
 
@@ -158,12 +172,13 @@ type entityRow struct {
 	vitals     Vitals
 	motion     Motion
 	agent      Agent
+	portal     Portal
 }
 
 // take copies the row of id and frees its slot.
 func (ms *MapState) take(id EntityID) entityRow {
 	i := ms.slot(id)
-	row := entityRow{ms.mask[i], ms.data[i], ms.transform[i], ms.appearance[i], ms.vitals[i], ms.motion[i], ms.agent[i]}
+	row := entityRow{ms.mask[i], ms.data[i], ms.transform[i], ms.appearance[i], ms.vitals[i], ms.motion[i], ms.agent[i], ms.portal[i]}
 	ms.despawn(id)
 	return row
 }
@@ -174,6 +189,7 @@ func (ms *MapState) put(id EntityID, row entityRow) {
 	ms.vitals[i] = row.vitals
 	ms.motion[i] = row.motion
 	ms.agent[i] = row.agent
+	ms.portal[i] = row.portal
 	ms.mask[i] = row.mask
 }
 

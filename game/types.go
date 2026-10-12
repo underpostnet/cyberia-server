@@ -62,6 +62,7 @@ const (
 	maskVitals     ComponentMask = 1 << 3
 	maskMotion     ComponentMask = 1 << 5
 	maskAgent      ComponentMask = 1 << 6
+	maskPortal     ComponentMask = 1 << 7
 )
 
 type Cell struct {
@@ -158,6 +159,13 @@ type Agent struct {
 	Behavior   string   // canonical bot behavior (see behavior.go)
 	CasterID   EntityID // the player or bot that made this bot; 0 for none
 	ActionCode string   // the bound CyberiaAction (see actionCache); "" for none
+}
+
+// Portal is the portal component: where a linked portal sends the player. A
+// negative TargetCell marks a random spawn on the target map.
+type Portal struct {
+	TargetMap  string
+	TargetCell Cell
 }
 
 // ghost reports whether the entity is dead and waiting to respawn.
@@ -291,14 +299,6 @@ type BotState struct {
 	LootOutcome    LootOutcome    `json:"-"`
 }
 
-type PortalConfig struct {
-	DestMapCode string
-	SpawnRadius float64
-	PortalMode  string  // inter-portal | inter-random | intra-random | intra-portal
-	DestCellX   float64 // target cell position (used by portal-to-portal modes)
-	DestCellY   float64
-}
-
 // ResourceState represents a static exploitable entity on the map
 // (wood, minerals, organic matter, etc.). Resources have life, can be
 // destroyed by projectile impact, transfer configured drop items to the
@@ -333,9 +333,9 @@ type DestructibleState struct {
 
 type PortalState struct {
 	EntityBase
-	Type         string        `json:"Type"`
-	Subtype      string        `json:"Subtype"` // inter-portal | inter-random | intra-random | intra-portal
-	PortalConfig *PortalConfig `json:"-"`
+	Type    string `json:"Type"`
+	Subtype string `json:"Subtype"` // inter-portal | inter-random | intra-random | intra-portal
+	Mode    string `json:"-"`       // the linked edge's portal mode; "" while unlinked
 }
 
 type MapState struct {
@@ -359,6 +359,7 @@ type MapState struct {
 	vitals     []Vitals
 	motion     []Motion
 	agent      []Agent
+	portal     []Portal
 	cursor     int // next slot the allocator tests
 }
 
