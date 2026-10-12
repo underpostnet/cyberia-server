@@ -31,9 +31,25 @@ func movementFixture(t *testing.T) (*GameServer, *MapState, *PlayerState) {
 	player.Life, player.MaxLife = 100, 100
 	player.Client = &Client{playerID: player.ID}
 	mapState.players[player.ID] = player
-	mapState.spawn(player.ID, Transform{Pos: Vec2{X: 1, Y: 1}, Size: Vec2{X: 1, Y: 1}})
+	mapState.spawn(player.ID, Transform{Pos: Vec2{X: 1, Y: 1}, Size: Vec2{X: 1, Y: 1}}, Appearance{})
 
 	return s, mapState, player
+}
+
+// placePlayer puts a player that holds layers on the map "test" of s.
+func placePlayer(s *GameServer, id EntityID, layers []ObjectLayerState) *PlayerState {
+	if s.maps == nil {
+		s.maps = map[string]*MapState{}
+	}
+	ms := s.maps["test"]
+	if ms == nil {
+		ms = &MapState{players: map[EntityID]*PlayerState{}}
+		s.maps["test"] = ms
+	}
+	p := &PlayerState{EntityBase: EntityBase{ID: id}, MapCode: "test"}
+	ms.players[id] = p
+	ms.spawn(id, Transform{}, Appearance{Layers: layers})
+	return p
 }
 
 // tapTick queues taps and runs one full input phase over them, which is the only

@@ -25,7 +25,7 @@ func (s *GameServer) statBreakdown(source statSource, mapState *MapState, now ti
 	progression := s.entityProgression(source)
 	out.Base = s.progressionConfig().BaseAtLevel(progression.Level)
 	var layers, temporary [StatCount]float64
-	for _, layer := range entity.ObjectLayers {
+	for _, layer := range mapState.ap(entity.ID).Layers {
 		if !layer.Active || layer.Quantity <= 0 {
 			continue
 		}

@@ -60,12 +60,8 @@ func TestCraftRecipeAtBoundsTheIndex(t *testing.T) {
 
 func TestPlayerCanCraftChecksEveryIngredient(t *testing.T) {
 	s := &GameServer{coinItemID: "coin"}
-	player := &PlayerState{
-		EntityBase: EntityBase{ID: 1, ObjectLayers: []ObjectLayerState{
-			{ItemID: "wood-drop-1", Quantity: 2},
-		}},
-		Coins: 5,
-	}
+	player := placePlayer(s, 1, []ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
+	player.Coins = 5
 	recipe := &ActionCraftRecipe{Ingredients: []ActionCraftItem{
 		{ItemID: "wood-drop-1", Qty: 2},
 		{ItemID: "coin", Qty: 5},
@@ -80,7 +76,7 @@ func TestPlayerCanCraftChecksEveryIngredient(t *testing.T) {
 		t.Fatal("a short currency line must block the synthesis")
 	}
 	player.Coins = 5
-	player.ObjectLayers[0].Quantity = 1
+	s.ap(player.ID, player.MapCode).Layers[0].Quantity = 1
 	if s.playerCanCraft(player, recipe) {
 		t.Fatal("a short component line must block the synthesis")
 	}
@@ -144,13 +140,12 @@ func TestCraftTimeMsValidatesTheAuthoredDuration(t *testing.T) {
 // the timer elapses has to put every one of them back and pay out nothing.
 func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 	s := &GameServer{coinItemID: "coin"}
+	next := EntityID(0)
 	newPlayer := func() *PlayerState {
-		return &PlayerState{
-			EntityBase: EntityBase{ID: 1, ObjectLayers: []ObjectLayerState{
-				{ItemID: "wood-drop-1", Quantity: 2},
-			}},
-			Coins: 5,
-		}
+		next++
+		p := placePlayer(s, next, []ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
+		p.Coins = 5
+		return p
 	}
 	recipe := &ActionCraftRecipe{
 		OutputItems: []ActionCraftItem{{ItemID: "hatchet", Qty: 1}},
@@ -198,7 +193,7 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 	start(pending, time.Now().Add(time.Hour))
 	elapsed := newPlayer()
 	start(elapsed, time.Now().Add(-time.Millisecond))
-	mapState := &MapState{players: map[EntityID]*PlayerState{1: pending, 2: elapsed}}
+	mapState := s.maps["test"]
 
 	s.completeCrafts(mapState)
 	if pending.ActiveCraft == nil || s.playerItemQuantity(pending, "hatchet") != 0 {

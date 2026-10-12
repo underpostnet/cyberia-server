@@ -143,10 +143,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// every entity type reads it.
 	playerOLs := s.spawnObjectLayers("player", nil, true)
 	playerState := &PlayerState{
-		EntityBase: EntityBase{
-			ID:           playerID,
-			ObjectLayers: playerOLs,
-		},
+		EntityBase: EntityBase{ID: playerID},
 		Mortal: Mortal{
 			Progression: NewEntityProgression(1, false, s.progressionConfig()),
 			MaxLife:     s.entityBaseMaxLife,
@@ -179,7 +176,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	startMapState.spawn(playerID, Transform{
 		Pos:  Vec2{X: float64(startPosI.X), Y: float64(startPosI.Y)},
 		Size: playerDims,
-	})
+	}, Appearance{Layers: playerOLs})
 
 	// Economy: credit the player's starting wallet (Fountain: playerSpawnCoins).
 	s.FountainInitPlayer(playerState)
@@ -203,7 +200,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		GridW:          startMapState.gridW,
 		GridH:          startMapState.gridH,
 		AoiRadius:      s.aoiRadius,
-		ObjectLayers:   s.visibleInventory(playerState.ObjectLayers),
+		ObjectLayers:   s.visibleInventory(startMapState.ap(playerID).Layers),
 		SkillMap:       s.buildSkillMap(),
 		EntityDefaults: s.buildEntityDefaultsSlice(),
 		DeadItemIds:    s.deadItemIDList(),

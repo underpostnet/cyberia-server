@@ -98,7 +98,7 @@ func (s *GameServer) dispatchSkillsForEntity(caster interface{}, mapState *MapSt
 	if base == nil {
 		return
 	}
-	for _, layer := range base.ObjectLayers {
+	for _, layer := range mapState.ap(base.ID).Layers {
 		if !layer.Active {
 			continue
 		}
@@ -124,8 +124,8 @@ func (s *GameServer) dispatchHeldSkills(caster interface{}, mapState *MapState) 
 	if base == nil {
 		return
 	}
-	for i := 0; i < len(base.ObjectLayers); i++ {
-		layer := base.ObjectLayers[i]
+	for i := 0; i < len(mapState.ap(base.ID).Layers); i++ {
+		layer := mapState.ap(base.ID).Layers[i]
 		if layer.Quantity < 1 {
 			continue
 		}

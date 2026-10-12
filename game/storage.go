@@ -146,9 +146,9 @@ func (s *GameServer) handleItemOps(player *PlayerState, cmd *InputCommand) {
 
 // playerItemActive reports whether the player currently has this item equipped.
 // An active layer is worn, not stock, so it can never be banked.
-func playerItemActive(player *PlayerState, itemID string) bool {
-	for i := range player.ObjectLayers {
-		if player.ObjectLayers[i].ItemID == itemID && player.ObjectLayers[i].Active {
+func (s *GameServer) playerItemActive(player *PlayerState, itemID string) bool {
+	for i := range s.ap(player.ID, player.MapCode).Layers {
+		if s.ap(player.ID, player.MapCode).Layers[i].ItemID == itemID && s.ap(player.ID, player.MapCode).Layers[i].Active {
 			return true
 		}
 	}
@@ -164,8 +164,8 @@ func (s *GameServer) bankableWhileWorn(player *PlayerState, itemID string) bool 
 	if !s.equipmentRules.RequireSkin || s.itemType(itemID) != "skin" {
 		return true
 	}
-	for i := range player.ObjectLayers {
-		layer := player.ObjectLayers[i]
+	for i := range s.ap(player.ID, player.MapCode).Layers {
+		layer := s.ap(player.ID, player.MapCode).Layers[i]
 		if layer.ItemID == itemID || !layer.Active {
 			continue
 		}
@@ -198,12 +198,12 @@ func (s *GameServer) storageDeposit(player *PlayerState, slots []StorageSlot, ca
 	if at < 0 && len(slots) >= capacity {
 		return slots
 	}
-	if playerItemActive(player, itemID) {
+	if s.playerItemActive(player, itemID) {
 		if !s.bankableWhileWorn(player, itemID) {
 			return slots
 		}
 		// Putting something away is taking it off: what is banked is no longer worn.
-		setLayerActive(player.ObjectLayers, itemID, false)
+		setLayerActive(s.ap(player.ID, player.MapCode).Layers, itemID, false)
 	}
 	if held := s.playerItemQuantity(player, itemID); qty > held {
 		qty = held

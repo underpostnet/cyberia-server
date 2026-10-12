@@ -27,7 +27,7 @@ func healingServer(t *testing.T, life float64, stacks ...ObjectLayerState) (*Gam
 	}
 	s.InitSkills()
 	player.Life = life
-	player.ObjectLayers = stacks
+	ms.ap(player.ID).Layers = stacks
 	return s, ms, player
 }
 
@@ -74,8 +74,8 @@ func TestTheLastUnitLeavesTheInventory(t *testing.T) {
 
 	s.phaseSkills(0, ms)
 
-	if len(player.ObjectLayers) != 0 {
-		t.Fatalf("an emptied stack stays: %+v", player.ObjectLayers)
+	if len(ms.ap(player.ID).Layers) != 0 {
+		t.Fatalf("an emptied stack stays: %+v", ms.ap(player.ID).Layers)
 	}
 }
 
@@ -98,18 +98,18 @@ func TestOnlyALootCollectingBotHealsFromItsHeldUnits(t *testing.T) {
 	s, ms, _ := healingServer(t, 100)
 	ids := map[string]EntityID{BehaviorHostile: 200, BehaviorDrop: 201, BehaviorProvider: 202}
 	for behavior, id := range ids {
-		ms.bots[id] = &BotState{EntityBase: EntityBase{ID: id, ObjectLayers: []ObjectLayerState{gel(1)}},
+		ms.bots[id] = &BotState{EntityBase: EntityBase{ID: id},
 			Mortal: Mortal{Life: 10, MaxLife: 100}, Behavior: behavior}
-		ms.spawn(id, Transform{Size: Vec2{X: 1, Y: 1}})
+		ms.spawn(id, Transform{Size: Vec2{X: 1, Y: 1}}, Appearance{Layers: []ObjectLayerState{gel(1)}})
 	}
 
 	s.phaseSkills(0, ms)
 
-	if raider := ms.bots[ids[BehaviorHostile]]; raider.Life != 10+gelHeal || len(raider.ObjectLayers) != 0 {
-		t.Fatalf("the hostile bot must heal from its gel: life=%v layers=%+v", raider.Life, raider.ObjectLayers)
+	if raider := ms.bots[ids[BehaviorHostile]]; raider.Life != 10+gelHeal || len(ms.ap(raider.ID).Layers) != 0 {
+		t.Fatalf("the hostile bot must heal from its gel: life=%v layers=%+v", raider.Life, ms.ap(raider.ID).Layers)
 	}
 	for _, behavior := range []string{BehaviorDrop, BehaviorProvider} {
-		if bot := ms.bots[ids[behavior]]; bot.Life != 10 || len(bot.ObjectLayers) != 1 {
+		if bot := ms.bots[ids[behavior]]; bot.Life != 10 || len(ms.ap(bot.ID).Layers) != 1 {
 			t.Fatalf("a %s bot consumed its gel", behavior)
 		}
 	}

@@ -533,6 +533,7 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 		logx.Warnf("Could not find a walkable spawn point: %v", err)
 		return
 	}
+	ap := *currentMapState.ap(player.ID)
 	delete(currentMapState.players, player.ID)
 	currentMapState.despawn(player.ID)
 	player.MapCode = destMapCode
@@ -541,7 +542,7 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 	player.Mode = TELEPORTING
 	player.OnPortal = false
 	destMapState.players[player.ID] = player
-	destMapState.spawn(player.ID, Transform{Pos: Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}, Size: size})
+	destMapState.spawn(player.ID, Transform{Pos: Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}, Size: size}, ap)
 	s.sendAOI(player)
 }
 

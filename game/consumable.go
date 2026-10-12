@@ -54,10 +54,10 @@ func (s *GameServer) executeZeroWasteHeal(ctx SkillContext) {
 	if mortal.IsGhost() || now.Before(mortal.NextConsumeAt) || heal <= 0 || mortal.MaxLife-mortal.Life < heal {
 		return
 	}
-	if layerQuantity(base.ObjectLayers, ctx.TriggerItemID) < 1 {
+	if layerQuantity(ctx.MapState.ap(base.ID).Layers, ctx.TriggerItemID) < 1 {
 		return
 	}
 	s.consumeItem(ctx.MapState, base, mortal, ctx.TriggerItemID)
-	removeLayerItem(&base.ObjectLayers, ctx.TriggerItemID, 1)
+	removeLayerItem(&ctx.MapState.ap(base.ID).Layers, ctx.TriggerItemID, 1)
 	mortal.NextConsumeAt = now.Add(s.CalculateActionCooldown(s.CalculateStats(ctx.Caster, ctx.MapState)))
 }

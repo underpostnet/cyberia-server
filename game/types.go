@@ -23,8 +23,17 @@ type Transform struct {
 	Size Vec2 `json:"size"`
 }
 
+// Appearance is the appearance component: every layer the entity holds. The
+// encoder sends the active ones.
+type Appearance struct {
+	Layers []ObjectLayerState
+}
+
 // Component bits of MapState.mask, in the §4 order.
-const maskTransform ComponentMask = 1 << 1
+const (
+	maskTransform  ComponentMask = 1 << 1
+	maskAppearance ComponentMask = 1 << 2
+)
 
 type PointI struct {
 	X int `json:"x"`
@@ -78,11 +87,10 @@ type EntityID uint32
 // ComponentMask holds one bit per component an entity has.
 type ComponentMask uint64
 
-// EntityBase — identity and layers shared by every world entity. The position
-// and the size are in MapState.transform.
+// EntityBase — the identity every world entity shares. Its components are in
+// the MapState arrays.
 type EntityBase struct {
-	ID           EntityID           `json:"id"`
-	ObjectLayers []ObjectLayerState `json:"objectLayers"`
+	ID EntityID `json:"id"`
 }
 
 // Base returns the shared entity block. It gives a generic helper one way to
@@ -327,11 +335,12 @@ type MapState struct {
 	lootRespawns []lootRespawn
 	gridW, gridH int
 
-	ids       []EntityID // entity id at slot i. 0 = free slot
-	index     map[EntityID]int
-	mask      []ComponentMask
-	transform []Transform
-	cursor    int // next slot the allocator tests
+	ids        []EntityID // entity id at slot i. 0 = free slot
+	index      map[EntityID]int
+	mask       []ComponentMask
+	transform  []Transform
+	appearance []Appearance
+	cursor     int // next slot the allocator tests
 }
 
 type Client struct {

@@ -190,28 +190,28 @@ func (s *GameServer) EntityCensus() map[string]EntityTypeCensus {
 
 	for _, m := range s.maps {
 		for _, p := range m.players {
-			addObj("player", p.ObjectLayers)
+			addObj("player", m.ap(p.ID).Layers)
 		}
 		for _, b := range m.bots {
-			addObj("bot", b.ObjectLayers)
+			addObj("bot", m.ap(b.ID).Layers)
 		}
 		for _, f := range m.floors {
-			addObj("floor", f.ObjectLayers)
+			addObj("floor", m.ap(f.ID).Layers)
 		}
 		for _, o := range m.obstacles {
-			addObj("obstacle", o.ObjectLayers)
+			addObj("obstacle", m.ap(o.ID).Layers)
 		}
 		for _, o := range m.destructibles {
-			addObj("obstacle", o.ObjectLayers)
+			addObj("obstacle", m.ap(o.ID).Layers)
 		}
 		for _, fg := range m.foregrounds {
-			addObj("foreground", fg.ObjectLayers)
+			addObj("foreground", m.ap(fg.ID).Layers)
 		}
 		for _, p := range m.portals {
-			addObj("portal", p.ObjectLayers)
+			addObj("portal", m.ap(p.ID).Layers)
 		}
 		for _, r := range m.resources {
-			addObj("resource", r.ObjectLayers)
+			addObj("resource", m.ap(r.ID).Layers)
 		}
 	}
 	return out

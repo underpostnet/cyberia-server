@@ -42,20 +42,24 @@ func TestSignedAggregationAcrossEntities(t *testing.T) {
 	}
 	layers := []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 20}, {ItemID: "buff", Active: true, Quantity: 1}}
 	entities := []statSource{
-		&PlayerState{EntityBase: EntityBase{ID: 1, ObjectLayers: layers}},
-		&BotState{EntityBase: EntityBase{ID: 2, ObjectLayers: layers}, Behavior: "provider"},
-		&ResourceState{EntityBase: EntityBase{ID: 3, ObjectLayers: layers}},
+		&PlayerState{EntityBase: EntityBase{ID: 1}},
+		&BotState{EntityBase: EntityBase{ID: 2}, Behavior: "provider"},
+		&ResourceState{EntityBase: EntityBase{ID: 3}},
+	}
+	ms := &MapState{}
+	for _, entity := range entities {
+		ms.spawn(entity.Base().ID, Transform{}, Appearance{Layers: layers})
 	}
 	for _, entity := range entities {
 		entity.StatState().Progression = NewEntityProgression(4, true, s.progressionConfig())
 		expected := s.progressionConfig().BaseAtLevel(4)
-		if got := s.CalculateStats(entity, nil); got != expected {
+		if got := s.CalculateStats(entity, ms); got != expected {
 			t.Fatalf("%T: %v != %v", entity, got, expected)
 		}
 	}
 	layers[1].Active = false
 	for _, entity := range entities {
-		got := s.CalculateStats(entity, nil)
+		got := s.CalculateStats(entity, ms)
 		if got.Effect != 1 || got.Resistance != 0 || got.Agility != -90 {
 			t.Fatalf("floors: %v", got)
 		}
@@ -64,7 +68,8 @@ func TestSignedAggregationAcrossEntities(t *testing.T) {
 
 func TestTemporaryStatsAndExpiry(t *testing.T) {
 	s := &GameServer{entityBaseMaxLife: 100}
-	p := &PlayerState{EntityBase: EntityBase{ID: 1}}
+	p := placePlayer(s, 1, nil)
+	ms := s.maps["test"]
 	now := time.Now()
 	modifier := TemporaryModifier{ID: "buff", Stats: ComputedStats{Effect: 10, Resistance: 20}, ExpiresAt: now.Add(time.Second)}
 	if err := s.SetTemporaryModifier(p, modifier, now); err != nil {
@@ -73,14 +78,14 @@ func TestTemporaryStatsAndExpiry(t *testing.T) {
 	if err := s.SetTemporaryModifier(p, modifier, now); err != nil {
 		t.Fatal(err)
 	}
-	s.refreshEntityStats(p, nil, now)
+	s.refreshEntityStats(p, ms, now)
 	if p.MaxLife != 130 || len(p.TemporaryModifiers) != 1 {
 		t.Fatalf("temporary stats: %+v", p.Mortal)
 	}
-	if got := s.statBreakdown(p, nil, now.Add(time.Second), map[EntityID]bool{}).Effective.Effect; got != 5 {
+	if got := s.statBreakdown(p, ms, now.Add(time.Second), map[EntityID]bool{}).Effective.Effect; got != 5 {
 		t.Fatalf("expired effect = %v", got)
 	}
-	s.refreshEntityStats(p, nil, now.Add(2*time.Second))
+	s.refreshEntityStats(p, ms, now.Add(2*time.Second))
 	if p.MaxLife != 110 || len(p.TemporaryModifiers) != 0 {
 		t.Fatal("expiry did not refresh life")
 	}
@@ -222,7 +227,7 @@ func TestSnapshotCarriesProgressionAndSignedBreakdown(t *testing.T) {
 	if err := s.ReplaceObjectLayerCache(map[string]*ObjectLayer{"nerf": {Data: ObjectLayerData{Stats: Stats{Agility: -100}}}}); err != nil {
 		t.Fatal(err)
 	}
-	p.ObjectLayers = []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
+	ms.ap(p.ID).Layers = []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
 	p.Progression = NewEntityProgression(2, false, s.progressionConfig())
 	snap := s.buildSnapshotSelf(p, ms)
 	if snap.Level != 2 || snap.XP != 100 || snap.LevelXP != 100 || snap.NextLevelXP != 400 || snap.LayerStats[2] != -100 || snap.EffectiveStats[2] != -90 {
@@ -247,8 +252,9 @@ func TestSummonFloorsAfterAllContributions(t *testing.T) {
 		"nerf": {Data: ObjectLayerData{Stats: Stats{Effect: -100}}},
 		"buff": {Data: ObjectLayerData{Stats: Stats{Effect: 100}}},
 	})
-	p.ObjectLayers = []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
-	summon := &BotState{EntityBase: EntityBase{ID: 11, ObjectLayers: []ObjectLayerState{{ItemID: "buff", Active: true, Quantity: 1}}}, CasterID: p.ID}
+	ms.ap(p.ID).Layers = []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
+	summon := &BotState{EntityBase: EntityBase{ID: 11}, CasterID: p.ID}
+	ms.spawn(summon.ID, Transform{}, Appearance{Layers: []ObjectLayerState{{ItemID: "buff", Active: true, Quantity: 1}}})
 	if got := s.CalculateStats(summon, ms).Effect; got != 5 {
 		t.Fatalf("floor applied before full sum: %v", got)
 	}

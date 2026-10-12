@@ -210,7 +210,7 @@ func (s *GameServer) botActiveSkinOf(bot *BotState) string {
 	// is preserved in PreRespawnObjectLayers. Read from there so a talk objective
 	// still validates against a quest-giver that just died — the interaction
 	// context is independent of the entity's alive/AOI state.
-	layers := bot.ObjectLayers
+	layers := s.ap(bot.ID, bot.MapCode).Layers
 	if bot.IsGhost() && len(bot.PreRespawnObjectLayers) > 0 {
 		layers = bot.PreRespawnObjectLayers
 	}

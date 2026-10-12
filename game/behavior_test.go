@@ -20,7 +20,7 @@ func TestForegroundCarriesOnlyTheBehaviorItsDefaultBinds(t *testing.T) {
 
 	want := map[string]string{"roof": "overhead-occlusion", "canopy": ""}
 	for _, fg := range ms.foregrounds {
-		item := fg.ObjectLayers[0].ItemID
+		item := ms.ap(fg.ID).Layers[0].ItemID
 		if fg.Behavior != want[item] {
 			t.Fatalf("foreground %q: want behavior %q, got %q", item, want[item], fg.Behavior)
 		}

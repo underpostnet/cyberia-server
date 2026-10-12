@@ -147,8 +147,8 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 	}
 
 	targetItemIndex := -1
-	for i := range player.ObjectLayers {
-		if player.ObjectLayers[i].ItemID == itemID {
+	for i := range s.ap(player.ID, player.MapCode).Layers {
+		if s.ap(player.ID, player.MapCode).Layers[i].ItemID == itemID {
 			targetItemIndex = i
 			break
 		}
@@ -158,8 +158,8 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 		return
 	}
 
-	originalState := player.ObjectLayers[targetItemIndex].Active
-	player.ObjectLayers[targetItemIndex].Active = active
+	originalState := s.ap(player.ID, player.MapCode).Layers[targetItemIndex].Active
+	s.ap(player.ID, player.MapCode).Layers[targetItemIndex].Active = active
 
 	// Type guard — only activeItemTypes may be turned active.
 	if active && len(s.equipmentRules.ActiveItemTypes) > 0 {
@@ -167,7 +167,7 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 		if reqType != "" && !s.equipmentRules.ActiveItemTypes[reqType] {
 			logx.Debugf("Player %s tried to activate '%s' (type=%q) — not in activeItemTypes; rejecting.",
 				player.ID, itemID, reqType)
-			player.ObjectLayers[targetItemIndex].Active = originalState
+			s.ap(player.ID, player.MapCode).Layers[targetItemIndex].Active = originalState
 			return
 		}
 	}
@@ -180,15 +180,15 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 	if active && s.equipmentRules.OnePerType {
 		requested := s.itemType(itemID)
 		if requested != "" {
-			for i := range player.ObjectLayers {
+			for i := range s.ap(player.ID, player.MapCode).Layers {
 				if i == targetItemIndex {
 					continue
 				}
-				if !player.ObjectLayers[i].Active || !inState(player.ObjectLayers[i].ItemID) {
+				if !s.ap(player.ID, player.MapCode).Layers[i].Active || !inState(s.ap(player.ID, player.MapCode).Layers[i].ItemID) {
 					continue
 				}
-				if s.itemType(player.ObjectLayers[i].ItemID) == requested {
-					player.ObjectLayers[i].Active = false
+				if s.itemType(s.ap(player.ID, player.MapCode).Layers[i].ItemID) == requested {
+					s.ap(player.ID, player.MapCode).Layers[i].Active = false
 				}
 			}
 		}
@@ -196,7 +196,7 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 
 	// RequireSkin / maxActiveLayers corrections, scoped to in-state items.
 	activeLayerCount, activeSkinCount, hasAnySkin, firstSkinIndex := 0, 0, false, -1
-	for i, layer := range player.ObjectLayers {
+	for i, layer := range s.ap(player.ID, player.MapCode).Layers {
 		isSkin := inState(layer.ItemID) && s.itemType(layer.ItemID) == "skin"
 		if isSkin {
 			hasAnySkin = true
@@ -215,18 +215,18 @@ func (s *GameServer) handleItemActivationInput(player *PlayerState, cmd *InputCo
 		if isDead && s.ghostItemID != "" {
 			// Unequipping the last dead skin is allowed: the ghost item from
 			// gRPC config takes over as the Fragmented State visual.
-			activateOrAppendLayer(&player.ObjectLayers, s.ghostItemID)
+			activateOrAppendLayer(&s.ap(player.ID, player.MapCode).Layers, s.ghostItemID)
 		} else if hasAnySkin && firstSkinIndex != -1 {
-			player.ObjectLayers[firstSkinIndex].Active = true
+			s.ap(player.ID, player.MapCode).Layers[firstSkinIndex].Active = true
 		}
 	}
 	if activeLayerCount > s.maxActiveLayers {
-		player.ObjectLayers[targetItemIndex].Active = originalState
+		s.ap(player.ID, player.MapCode).Layers[targetItemIndex].Active = originalState
 	}
 
 	// The Fragmented State loadout persists across deaths.
 	if isDead {
-		player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(player.ObjectLayers)
+		player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(s.ap(player.ID, player.MapCode).Layers)
 	}
 
 	s.ApplyResistanceStat(player, s.maps[player.MapCode])

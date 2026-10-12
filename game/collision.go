@@ -209,7 +209,7 @@ func (s *GameServer) grantItemToBot(bot *BotState, itemID string, qty int) {
 	if itemID == "" || qty <= 0 {
 		return
 	}
-	ol := getOrCreateItemOL(&bot.ObjectLayers, itemID)
+	ol := getOrCreateItemOL(&s.ap(bot.ID, bot.MapCode).Layers, itemID)
 	ol.Quantity += qty
 }
 
@@ -227,8 +227,8 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) 
 
 	// Snapshot the pre-death layers (restored on respawn) and resolve the build
 	// from them, before the death swap deactivates the live items.
-	layersToSave := make([]ObjectLayerState, len(player.ObjectLayers))
-	copy(layersToSave, player.ObjectLayers)
+	layersToSave := make([]ObjectLayerState, len(mapState.ap(player.ID).Layers))
+	copy(layersToSave, mapState.ap(player.ID).Layers)
 	player.PreRespawnObjectLayers = layersToSave
 	build, _ := s.resolveEntityDefaultBuild("player", activeObjectLayerItemIDs(layersToSave))
 
@@ -254,8 +254,8 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) 
 		deadLoadout = s.resolveDeadItemIDs(build)
 	}
 	deadLoadout = s.normalizeDeadLoadout(deadLoadout)
-	player.ObjectLayers = applyDeadItems(player.ObjectLayers, deadLoadout)
-	player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(player.ObjectLayers)
+	mapState.ap(player.ID).Layers = applyDeadItems(mapState.ap(player.ID).Layers, deadLoadout)
+	player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(mapState.ap(player.ID).Layers)
 
 	player.RespawnTime = time.Now().Add(player.respawnDuration())
 	// Recalculate stats for the ghost state to ensure consistency (mainly MaxLife).
@@ -275,8 +275,8 @@ func (s *GameServer) killEntity(base *EntityBase, mortal *Mortal, kind, mapCode 
 	ledger map[EntityID]float64, coins int, mapState *MapState) {
 
 	s.awardDefeat(base, mortal, kind, ledger, mapState)
-	layersToSave := make([]ObjectLayerState, len(base.ObjectLayers))
-	copy(layersToSave, base.ObjectLayers)
+	layersToSave := make([]ObjectLayerState, len(mapState.ap(base.ID).Layers))
+	copy(layersToSave, mapState.ap(base.ID).Layers)
 	mortal.PreRespawnObjectLayers = layersToSave
 	build, _ := s.resolveEntityDefaultBuild(kind, activeObjectLayerItemIDs(layersToSave))
 
@@ -284,7 +284,7 @@ func (s *GameServer) killEntity(base *EntityBase, mortal *Mortal, kind, mapCode 
 	s.spawnDrops(mapState, mapCode, center, build, coins, ledger)
 	broadcastAudioEvent(mapState, AudioEventDeath, center)
 
-	base.ObjectLayers = applyDeadItems(base.ObjectLayers, s.resolveDeadItemIDs(build))
+	mapState.ap(base.ID).Layers = applyDeadItems(mapState.ap(base.ID).Layers, s.resolveDeadItemIDs(build))
 	mortal.RespawnTime = time.Now().Add(mortal.respawnDuration())
 }
 
@@ -322,13 +322,13 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 	// Respawn players
 	for _, player := range mapState.players {
 		if !player.RespawnTime.IsZero() && time.Now().After(player.RespawnTime) {
-			player.ObjectLayers = player.PreRespawnObjectLayers
+			mapState.ap(player.ID).Layers = player.PreRespawnObjectLayers
 			player.PreRespawnObjectLayers = nil
 			// The restored loadout was snapshotted before the death coin drop, so
 			// its coin slot is stale. Re-sync the display-only slot to the flat
 			// balance (the source of truth) — otherwise the client sees a bogus
 			// +N as the coin quantity jumps back up on respawn.
-			s.syncCoinOL(&player.ObjectLayers, player.Coins)
+			s.syncCoinOL(&mapState.ap(player.ID).Layers, player.Coins)
 			s.ApplyResistanceStat(player, mapState) // Recalculate stats with restored items.
 			player.Life = player.MaxLife
 			player.RespawnTime = time.Time{}
@@ -338,7 +338,7 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 	// Respawn bots
 	for _, bot := range mapState.bots {
 		if !bot.RespawnTime.IsZero() && time.Now().After(bot.RespawnTime) {
-			bot.ObjectLayers = bot.PreRespawnObjectLayers
+			mapState.ap(bot.ID).Layers = bot.PreRespawnObjectLayers
 			bot.PreRespawnObjectLayers = nil
 			s.ApplyResistanceStat(bot, mapState) // Recalculate stats with restored items.
 			bot.Life = bot.MaxLife
@@ -352,7 +352,7 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 	// Respawn resources — restore original OLs and reset life.
 	for _, res := range mapState.resources {
 		if !res.RespawnTime.IsZero() && time.Now().After(res.RespawnTime) {
-			res.ObjectLayers = res.PreRespawnObjectLayers
+			mapState.ap(res.ID).Layers = res.PreRespawnObjectLayers
 			res.PreRespawnObjectLayers = nil
 			s.ApplyResistanceStat(res, mapState)
 			res.Life = res.MaxLife
@@ -365,7 +365,7 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 		if !obs.IsGhost() || time.Now().Before(obs.RespawnTime) {
 			continue
 		}
-		obs.ObjectLayers = obs.PreRespawnObjectLayers
+		mapState.ap(obs.ID).Layers = obs.PreRespawnObjectLayers
 		obs.PreRespawnObjectLayers = nil
 		obs.Life = obs.MaxLife
 		obs.RespawnTime = time.Time{}

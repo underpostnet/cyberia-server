@@ -183,17 +183,11 @@ func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Vec2,
 		scattered, len(build.DropItemIDs), coinAmount, center.X, center.Y, mapCode, len(contributors))
 }
 
-// newLootToken builds one BehaviorDrop token showing itemID × quantity. Its one
-// active ObjectLayer carries the quantity for the on-grid counter. The caller
-// spawns it with its transform.
+// newLootToken builds one BehaviorDrop token carrying itemID × quantity. The
+// caller spawns it with its transform and lootAppearance.
 func (s *GameServer) newLootToken(mapCode string, itemID string, quantity int) *BotState {
 	return &BotState{
-		EntityBase: EntityBase{
-			ID: s.newEntityID(),
-			ObjectLayers: []ObjectLayerState{
-				{ItemID: itemID, Active: true, Quantity: quantity},
-			},
-		},
+		EntityBase: EntityBase{ID: s.newEntityID()},
 		Mortal: Mortal{
 			MaxLife: s.entityBaseMaxLife,
 			Life:    s.entityBaseMaxLife,
@@ -205,6 +199,12 @@ func (s *GameServer) newLootToken(mapCode string, itemID string, quantity int) *
 		DropItemID:   itemID,
 		DropQuantity: quantity,
 	}
+}
+
+// lootAppearance shows itemID × quantity. Its one active layer carries the
+// quantity for the on-grid counter.
+func lootAppearance(itemID string, quantity int) Appearance {
+	return Appearance{Layers: []ObjectLayerState{{ItemID: itemID, Active: true, Quantity: quantity}}}
 }
 
 // spawnDropToken creates one death-drop token carrying (itemID × quantity),
@@ -245,7 +245,7 @@ func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center V
 	drop.CollectableAt = now.Add(lootLandingWindow)
 	drop.ExpiresAt = now.Add(lootLifetime)
 	mapState.bots[drop.ID] = drop
-	mapState.spawn(drop.ID, Transform{Pos: pos, Size: tokenDims})
+	mapState.spawn(drop.ID, Transform{Pos: pos, Size: tokenDims}, lootAppearance(itemID, quantity))
 
 	// Announce the launch so viewers play the corpse→cell parabola. The landing
 	// point is the token center.
@@ -304,7 +304,7 @@ func (s *GameServer) placeWorldLoot(mapState *MapState, mapCode string, pos Vec2
 		drop.LootOutcome = LootOutcomeConsume
 	}
 	mapState.bots[drop.ID] = drop
-	mapState.spawn(drop.ID, Transform{Pos: pos, Size: worldTokenDims})
+	mapState.spawn(drop.ID, Transform{Pos: pos, Size: worldTokenDims}, lootAppearance(itemID, 1))
 }
 
 // scheduleLootRespawn brings a consumed world token back on its cell after its

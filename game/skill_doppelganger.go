@@ -27,13 +27,13 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 		mapCode = e.MapCode
 		casterPos = ctx.MapState.tf(e.ID).Pos
 		casterDims = ctx.MapState.tf(e.ID).Size
-		casterLayers = e.ObjectLayers
+		casterLayers = ctx.MapState.ap(e.ID).Layers
 	case *BotState:
 		casterID = e.ID
 		mapCode = e.MapCode
 		casterPos = ctx.MapState.tf(e.ID).Pos
 		casterDims = ctx.MapState.tf(e.ID).Size
-		casterLayers = e.ObjectLayers
+		casterLayers = ctx.MapState.ap(e.ID).Layers
 	}
 
 	// Acquire the lock only if the caller doesn't already hold it.
@@ -76,8 +76,7 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 
 	doppelgangerBot := &BotState{
 		EntityBase: EntityBase{
-			ID:           s.newEntityID(),
-			ObjectLayers: doppelgangerLayers,
+			ID: s.newEntityID(),
 		},
 		Mortal: Mortal{
 			MaxLife: s.entityBaseMaxLife,
@@ -92,7 +91,7 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 	}
 
 	ctx.MapState.bots[doppelgangerBot.ID] = doppelgangerBot
-	ctx.MapState.spawn(doppelgangerBot.ID, Transform{Pos: casterPos, Size: casterDims})
+	ctx.MapState.spawn(doppelgangerBot.ID, Transform{Pos: casterPos, Size: casterDims}, Appearance{Layers: doppelgangerLayers})
 	s.ApplyResistanceStat(doppelgangerBot, ctx.MapState)
 	doppelgangerBot.Life = doppelgangerBot.MaxLife
 }

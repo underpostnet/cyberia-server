@@ -18,7 +18,7 @@ func holdingFixture(t *testing.T) (*GameServer, *MapState, *PlayerState, *Player
 	traveler.OnPortal = true
 	traveler.TimeOnPortal = time.Now().Add(-time.Second)
 	ms.players[traveler.ID] = traveler
-	ms.spawn(traveler.ID, Transform{Pos: Vec2{X: 5, Y: 5}, Size: Vec2{X: 1, Y: 1}})
+	ms.spawn(traveler.ID, Transform{Pos: Vec2{X: 5, Y: 5}, Size: Vec2{X: 1, Y: 1}}, Appearance{})
 	return s, ms, viewer, traveler
 }
 

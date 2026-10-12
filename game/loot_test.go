@@ -63,13 +63,14 @@ func onlyToken(t *testing.T, ms *MapState) *BotState {
 	return tokens[0]
 }
 
-// woundedPlayer stands a player with the given life at the point.
+// woundedPlayer stands a player with the given life at the point, on map "m".
 func woundedPlayer(ms *MapState, id EntityID, at Vec2, life float64) *PlayerState {
 	player := &PlayerState{}
 	player.ID = id
+	player.MapCode = "m"
 	player.Life, player.MaxLife = life, 100
 	ms.players[id] = player
-	ms.spawn(id, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}})
+	ms.spawn(id, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}}, Appearance{})
 	return player
 }
 
@@ -102,7 +103,7 @@ func TestAMapHoldsOnlyTheLootItPlaces(t *testing.T) {
 				t.Fatalf("a token left its placed cell: %+v", at)
 			}
 			if token.LootOutcome != LootOutcomeConsume || token.LootCollection != LootCollectFirstContact ||
-				len(activeLayers(token.ObjectLayers)) != 1 {
+				len(activeLayers(s.maps[code].ap(token.ID).Layers)) != 1 {
 				t.Fatalf("map %q gel token = %+v", code, token)
 			}
 			if !token.CollectableAt.IsZero() || !token.ExpiresAt.IsZero() || len(token.LootContributors) != 0 {
@@ -177,7 +178,7 @@ func TestConsumingAPickupHealsByTheItemOnceAndGrantsNothing(t *testing.T) {
 	if healed := first.Life + second.Life - 100; healed != 10 {
 		t.Fatalf("one gel restored %v life, want its resistance 10", healed)
 	}
-	if len(first.ObjectLayers)+len(second.ObjectLayers) != 0 {
+	if len(ms.ap(first.ID).Layers)+len(ms.ap(second.ID).Layers) != 0 {
 		t.Fatal("a consumed pickup entered an inventory")
 	}
 }
@@ -206,7 +207,7 @@ func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 		bot := &BotState{EntityBase: EntityBase{ID: EntityID(200 + i)},
 			Mortal: Mortal{Life: 10, MaxLife: 100}, Behavior: behavior}
 		ms.bots[bot.ID] = bot
-		ms.spawn(bot.ID, *ms.tf(token.ID))
+		ms.spawn(bot.ID, *ms.tf(token.ID), Appearance{})
 	}
 
 	s.phaseLoot(0, ms)
@@ -231,9 +232,9 @@ func TestACollectorAtFullLifeKeepsAPickupAndTheTokenComesBack(t *testing.T) {
 	at := *ms.tf(token.ID)
 	player := woundedPlayer(ms, 104, at.Pos, 100)
 	bot := &BotState{EntityBase: EntityBase{ID: 109},
-		Mortal: Mortal{Life: 100, MaxLife: 100}, Behavior: BehaviorHostile}
+		Mortal: Mortal{Life: 100, MaxLife: 100}, Behavior: BehaviorHostile, MapCode: "m"}
 	ms.bots[bot.ID] = bot
-	ms.spawn(bot.ID, Transform{Pos: Vec2{X: 15, Y: 15}, Size: at.Size})
+	ms.spawn(bot.ID, Transform{Pos: Vec2{X: 15, Y: 15}, Size: at.Size}, Appearance{})
 
 	s.phaseLoot(0, ms)
 	if _, ok := ms.bots[token.ID]; ok || player.Life != 100 || s.playerItemQuantity(player, "gel") != 1 {
@@ -247,8 +248,8 @@ func TestACollectorAtFullLifeKeepsAPickupAndTheTokenComesBack(t *testing.T) {
 	ms.tf(player.ID).Pos = Vec2{X: -10, Y: -10}
 	ms.tf(bot.ID).Pos = at.Pos
 	s.phaseLoot(0, ms)
-	if layerQuantity(bot.ObjectLayers, "gel") != 1 || bot.Life != 100 {
-		t.Fatalf("a full-life bot must keep the gel: life=%v layers=%+v", bot.Life, bot.ObjectLayers)
+	if layerQuantity(ms.ap(bot.ID).Layers, "gel") != 1 || bot.Life != 100 {
+		t.Fatalf("a full-life bot must keep the gel: life=%v layers=%+v", bot.Life, ms.ap(bot.ID).Layers)
 	}
 }
 
@@ -307,9 +308,9 @@ func TestABotConsumesAPickup(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
 	bot := &BotState{EntityBase: EntityBase{ID: 300},
-		Mortal: Mortal{Life: 30, MaxLife: 100}, Behavior: BehaviorHostile}
+		Mortal: Mortal{Life: 30, MaxLife: 100}, Behavior: BehaviorHostile, MapCode: "m"}
 	ms.bots[bot.ID] = bot
-	ms.spawn(bot.ID, *ms.tf(token.ID))
+	ms.spawn(bot.ID, *ms.tf(token.ID), Appearance{})
 
 	s.phaseLoot(0, ms)
 

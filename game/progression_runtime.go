@@ -62,22 +62,19 @@ func (s *GameServer) entityProgression(source statSource) *EntityProgression {
 // awardProgression runs under the simulation lock after a gameplay result.
 // XP is private, so its floating text goes to the earner alone; a level gained
 // is public, so its sound reaches every viewer in the earner's area.
-func (s *GameServer) awardProgression(source statSource, event progressionEvent, key string, targetLevel int, now time.Time) uint64 {
-	p := s.entityProgression(source)
+func (s *GameServer) awardProgression(player *PlayerState, event progressionEvent, key string, targetLevel int, now time.Time) uint64 {
+	p := s.entityProgression(player)
 	before := p.Level
 	amount := p.award(s.progressionConfig(), event, key, targetLevel, now)
 	if amount == 0 {
 		return 0
 	}
-	s.ApplyResistanceStat(source, nil)
-	if player, ok := source.(*PlayerState); ok {
-		if ms := s.maps[player.MapCode]; ms != nil {
-			tf := ms.tf(player.ID)
-			sendMessage(player, "combat_text", CombatText{Kind: FCTXp, WorldX: tf.Pos.X, WorldY: tf.Pos.Y, Value: int(amount)})
-			if p.Level > before {
-				broadcastAudioEvent(ms, AudioEventLevelUp, Vec2{X: tf.Pos.X + tf.Size.X*0.5, Y: tf.Pos.Y + tf.Size.Y*0.5})
-			}
-		}
+	ms := s.maps[player.MapCode]
+	s.ApplyResistanceStat(player, ms)
+	tf := ms.tf(player.ID)
+	sendMessage(player, "combat_text", CombatText{Kind: FCTXp, WorldX: tf.Pos.X, WorldY: tf.Pos.Y, Value: int(amount)})
+	if p.Level > before {
+		broadcastAudioEvent(ms, AudioEventLevelUp, Vec2{X: tf.Pos.X + tf.Size.X*0.5, Y: tf.Pos.Y + tf.Size.Y*0.5})
 	}
 	return amount
 }
@@ -101,11 +98,8 @@ func (s *GameServer) awardDefeat(base *EntityBase, mortal *Mortal, kind string, 
 		if id == base.ID || damage <= 0 || damage < total*0.1 {
 			continue
 		}
-		var entity statSource
-		if p := ms.players[id]; p != nil && !p.IsGhost() && !p.Frozen {
-			entity = p
-		}
-		if entity == nil {
+		entity := ms.players[id]
+		if entity == nil || entity.IsGhost() || entity.Frozen {
 			continue
 		}
 		key := fmt.Sprintf("%s:%d", kind, base.ID)

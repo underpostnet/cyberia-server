@@ -131,7 +131,7 @@ func TestResourceSpawnedFromInstanceConfigCarriesTheOverriddenItem(t *testing.T)
 		spawned = resource
 	}
 	// What the wire carries to the client is the active set, in stack order.
-	sent := activeLayers(spawned.ObjectLayers)
+	sent := activeLayers(mapState.ap(spawned.ID).Layers)
 	if len(sent) != 2 || sent[0].ItemID != "wood-1" || sent[1].ItemID != "tim-knife" {
 		t.Fatalf("the client must receive the skin and the item worn over it, got %+v", sent)
 	}

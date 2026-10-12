@@ -117,10 +117,10 @@ func (s *GameServer) setCoinQuantity(entity interface{}, amount uint32) {
 	switch e := entity.(type) {
 	case *PlayerState:
 		e.Coins = amount
-		s.syncCoinOL(&e.ObjectLayers, amount)
+		s.syncCoinOL(&s.ap(e.ID, e.MapCode).Layers, amount)
 	case *BotState:
 		e.Coins = amount
-		s.syncCoinOL(&e.ObjectLayers, amount)
+		s.syncCoinOL(&s.ap(e.ID, e.MapCode).Layers, amount)
 	}
 }
 
@@ -195,7 +195,7 @@ func (s *GameServer) addPlayerItem(player *PlayerState, itemID string, qty int) 
 	if itemID == s.coinItemID {
 		s.addCoins(player, qty)
 	} else {
-		getOrCreateItemOL(&player.ObjectLayers, itemID).Quantity += qty
+		getOrCreateItemOL(&s.ap(player.ID, player.MapCode).Layers, itemID).Quantity += qty
 	}
 	// Either branch can append a slot, so the cached stat block is stale.
 }

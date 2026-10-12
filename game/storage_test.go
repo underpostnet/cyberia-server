@@ -26,11 +26,7 @@ func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 
 		storage: map[storageKey][]StorageSlot{},
 	}
-	player := &PlayerState{
-		EntityBase: EntityBase{ID: 1, ObjectLayers: []ObjectLayerState{
-			{ItemID: "hatchet", Quantity: 2},
-		}},
-	}
+	player := placePlayer(s, 1, []ObjectLayerState{{ItemID: "hatchet", Quantity: 2}})
 
 	// Deposit more than held → clamped to the 2 the player actually has.
 	slots := s.storageDeposit(player, nil, 2, "hatchet", 9)
@@ -42,7 +38,7 @@ func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 	}
 
 	// A second deposit of the same item merges into its stack.
-	player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: "hatchet", Quantity: 1})
+	s.ap(player.ID, player.MapCode).Layers = append(s.ap(player.ID, player.MapCode).Layers, ObjectLayerState{ItemID: "hatchet", Quantity: 1})
 	slots = s.storageDeposit(player, slots, 2, "hatchet", 1)
 	if len(slots) != 1 || slots[0].Qty != 3 {
 		t.Fatalf("same-item deposit must merge, got %+v", slots)
@@ -50,7 +46,7 @@ func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 
 	// A worn item is taken off as it is banked; only the equipment rules hold one back, and this
 	// server configures none. See TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive.
-	player.ObjectLayers = append(player.ObjectLayers,
+	s.ap(player.ID, player.MapCode).Layers = append(s.ap(player.ID, player.MapCode).Layers,
 		ObjectLayerState{ItemID: "helmet", Quantity: 1, Active: true})
 	if slots = s.storageDeposit(player, slots, 2, "helmet", 1); len(slots) != 2 {
 		t.Fatalf("a worn item with nothing holding it back is storable, got %+v", slots)
@@ -60,7 +56,7 @@ func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 	}
 
 	// A full vault refuses a new stack and keeps the item with the player.
-	player.ObjectLayers = append(player.ObjectLayers, ObjectLayerState{ItemID: "gem", Quantity: 4})
+	s.ap(player.ID, player.MapCode).Layers = append(s.ap(player.ID, player.MapCode).Layers, ObjectLayerState{ItemID: "gem", Quantity: 4})
 	if got := s.storageDeposit(player, slots, 2, "gem", 4); len(got) != 2 {
 		t.Fatalf("a full vault must refuse a new stack, got %+v", got)
 	}
@@ -116,18 +112,18 @@ func TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive(t *testing.T) {
 			"punk": {Data: ObjectLayerData{Item: Item{Type: "skin"}}},
 		},
 	}
-	player := &PlayerState{EntityBase: EntityBase{ID: 1, ObjectLayers: []ObjectLayerState{
+	player := placePlayer(server, 1, []ObjectLayerState{
 		{ItemID: "anon", Active: true, Quantity: 1},
 		{ItemID: "punk", Active: true, Quantity: 1},
-	}}}
+	})
 
 	slots := server.storageDeposit(player, nil, 8, "anon", 1)
 	if len(slots) != 1 || slots[0].ItemID != "anon" {
 		t.Fatalf("the skin belongs in the vault: %+v", slots)
 	}
-	for _, layer := range player.ObjectLayers {
+	for _, layer := range server.ap(player.ID, player.MapCode).Layers {
 		if layer.ItemID == "anon" {
-			t.Fatalf("a banked skin is no longer carried: %+v", player.ObjectLayers)
+			t.Fatalf("a banked skin is no longer carried: %+v", server.ap(player.ID, player.MapCode).Layers)
 		}
 	}
 

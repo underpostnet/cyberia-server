@@ -658,7 +658,7 @@ func (s *GameServer) removePlayerItem(player *PlayerState, itemID string, qty in
 		s.addCoins(player, -qty)
 		return
 	}
-	removeLayerItem(&player.ObjectLayers, itemID, qty)
+	removeLayerItem(&s.ap(player.ID, player.MapCode).Layers, itemID, qty)
 }
 
 // playerItemQuantity returns how many of itemID the player holds. Coins route
@@ -667,7 +667,7 @@ func (s *GameServer) playerItemQuantity(player *PlayerState, itemID string) int 
 	if itemID == s.coinItemID {
 		return int(player.Coins)
 	}
-	return layerQuantity(player.ObjectLayers, itemID)
+	return layerQuantity(s.ap(player.ID, player.MapCode).Layers, itemID)
 }
 
 // advanceKillObjectives advances any active-step `kill` objective whose target

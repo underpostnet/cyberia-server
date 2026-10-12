@@ -55,13 +55,13 @@ func placeObstacle(s *GameServer, ms *MapState, maxLife float64, itemIDs ...stri
 // shot is one bullet of the caster's at the point, with a slot in the map.
 func shot(ms *MapState, caster *PlayerState, at Vec2) *BotState {
 	bullet := &BotState{
-		EntityBase: EntityBase{ID: 900,
-			ObjectLayers: []ObjectLayerState{{ItemID: "bullet", Active: true, Quantity: 1}}},
-		Mortal:   Mortal{MaxLife: 100, Life: 100},
-		Behavior: BehaviorSkill,
-		CasterID: caster.ID,
+		EntityBase: EntityBase{ID: 900},
+		Mortal:     Mortal{MaxLife: 100, Life: 100},
+		Behavior:   BehaviorSkill,
+		CasterID:   caster.ID,
 	}
-	ms.spawn(bullet.ID, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}})
+	ms.spawn(bullet.ID, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}},
+		Appearance{Layers: []ObjectLayerState{{ItemID: "bullet", Active: true, Quantity: 1}}})
 	return bullet
 }
 
@@ -160,11 +160,11 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	if !obs.IsGhost() || obs.Life != 0 || !ms.pathfinder.isWalkable(10, 10, Vec2{X: 2, Y: 2}) {
 		t.Fatalf("depletion frees the cells: %+v", obs.Mortal)
 	}
-	if active := activeObjectLayerItemIDs(obs.ObjectLayers); len(active) != 1 || active[0] != "rubble" {
+	if active := activeObjectLayerItemIDs(ms.ap(obs.ID).Layers); len(active) != 1 || active[0] != "rubble" {
 		t.Fatalf("depleted visual: %v", active)
 	}
 	scattered := drops(ms)
-	if len(scattered) != 1 || scattered[0].ObjectLayers[0].ItemID != "shard" || scattered[0].ObjectLayers[0].Quantity != 3 {
+	if len(scattered) != 1 || ms.ap(scattered[0].ID).Layers[0].ItemID != "shard" || ms.ap(scattered[0].ID).Layers[0].Quantity != 3 {
 		t.Fatalf("drops: %v", scattered)
 	}
 	if _, ok := scattered[0].LootContributors[player.ID]; !ok {
@@ -188,7 +188,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 		Path: []PointI{{X: 11, Y: 11}}, Mode: WALKING, CurrentTargetPlayer: player.ID,
 	}
 	ms.bots[bot.ID] = bot
-	ms.spawn(bot.ID, Transform{Pos: Vec2{X: 10.5, Y: 10.5}, Size: cell})
+	ms.spawn(bot.ID, Transform{Pos: Vec2{X: 10.5, Y: 10.5}, Size: cell}, Appearance{})
 	projectile := shot(ms, player, Vec2{X: 10, Y: 10})
 	ms.bots[projectile.ID] = projectile
 	ptf = ms.tf(player.ID) // a spawn may move the transform array
@@ -217,7 +217,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 		!ms.pathfinder.isWalkable(int(btf.Pos.X), int(btf.Pos.Y), btf.Size) {
 		t.Fatalf("the displaced bot clears its movement and pursuit: %+v", bot)
 	}
-	if active := activeObjectLayerItemIDs(obs.ObjectLayers); len(active) != 1 || active[0] != "crystal" {
+	if active := activeObjectLayerItemIDs(ms.ap(obs.ID).Layers); len(active) != 1 || active[0] != "crystal" {
 		t.Fatalf("respawned visual: %v", active)
 	}
 	s.handleRespawns(ms)
@@ -244,7 +244,7 @@ func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 		CurrentTargetPlayer: player.ID,
 	}
 	ms.bots[bot.ID] = bot
-	ms.spawn(bot.ID, Transform{Pos: Vec2{X: 9, Y: 10}, Size: ptf.Size})
+	ms.spawn(bot.ID, Transform{Pos: Vec2{X: 9, Y: 10}, Size: ptf.Size}, Appearance{})
 	ptf = ms.tf(player.ID) // a spawn may move the transform array
 	s.handleRespawns(ms)
 	if !obs.IsGhost() || !pathCrossesObstacle(player.Path, ptf.Size, otf) {
@@ -310,7 +310,7 @@ func TestObstacleRespawnPushesEntitiesOutward(t *testing.T) {
 			ptf.Pos, ptf.Size, player.Direction = tc.pos, Vec2{2, 2}, DOWN
 			bot := &BotState{EntityBase: EntityBase{ID: 903}, Direction: UP}
 			ms.bots[bot.ID] = bot
-			ms.spawn(bot.ID, Transform{Pos: tc.pos, Size: ptf.Size})
+			ms.spawn(bot.ID, Transform{Pos: tc.pos, Size: ptf.Size}, Appearance{})
 			ptf = ms.tf(player.ID) // a spawn may move the transform array
 			s.clearObstacleCells(ms, obs)
 			if ptf.Pos != tc.want || ms.tf(bot.ID).Pos != tc.want {
