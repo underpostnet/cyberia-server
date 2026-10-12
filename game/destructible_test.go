@@ -23,7 +23,6 @@ func destructibleFixture(t *testing.T, builds ...EntityTypeDefaultConfig) (*Game
 	}); err != nil {
 		t.Fatal(err)
 	}
-	ms.obstacles = map[EntityID]ObjectState{}
 	ms.destructibles = map[EntityID]*DestructibleState{}
 	ms.resources = map[EntityID]*ResourceState{}
 	return s, ms, player
@@ -31,25 +30,8 @@ func destructibleFixture(t *testing.T, builds ...EntityTypeDefaultConfig) (*Game
 
 // placeObstacle builds one 2×2 obstacle at (10, 10) and returns its id.
 func placeObstacle(s *GameServer, ms *MapState, maxLife float64, itemIDs ...string) EntityID {
-	before := map[EntityID]bool{}
-	for id := range ms.obstacles {
-		before[id] = true
-	}
-	for id := range ms.destructibles {
-		before[id] = true
-	}
 	s.buildObstacle(ms, "test", &pb.EntityMessage{ObjectLayerItemIds: itemIDs, InitCellX: 10, InitCellY: 10, DimX: 2, DimY: 2, MaxLife: maxLife})
-	for id := range ms.obstacles {
-		if !before[id] {
-			return id
-		}
-	}
-	for id := range ms.destructibles {
-		if !before[id] {
-			return id
-		}
-	}
-	return 0
+	return s.lastEntityID
 }
 
 // shot is one bullet of the caster's at the point, with a slot in the map.
@@ -60,7 +42,7 @@ func shot(ms *MapState, caster *PlayerState, at Vec2) *BotState {
 		Behavior:   BehaviorSkill,
 		CasterID:   caster.ID,
 	}
-	ms.spawn(bullet.ID, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}},
+	ms.spawn(bullet.ID, EntityData{Kind: EntityBot}, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}},
 		Appearance{Layers: []ObjectLayerState{{ItemID: "bullet", Active: true, Quantity: 1}}})
 	return bullet
 }
@@ -99,7 +81,7 @@ func TestOrdinaryObstacleBlocksAndTakesNoDamage(t *testing.T) {
 	s, ms, player := destructibleFixture(t, crystalRock)
 	id := placeObstacle(s, ms, 0, "wall")
 
-	if _, ok := ms.obstacles[id]; !ok || len(ms.destructibles) != 0 {
+	if ms.data[ms.slot(id)].Flags&FlagBlocks == 0 || len(ms.destructibles) != 0 {
 		t.Fatal("an unmatched obstacle became destructible")
 	}
 	fire(s, ms, player, Vec2{X: 10, Y: 10})
@@ -116,7 +98,7 @@ func TestTheMostSpecificObstacleDefaultDecidesDestructibility(t *testing.T) {
 	if _, ok := ms.destructibles[placeObstacle(s, ms, 0, "crystal")]; !ok {
 		t.Fatal("the crystal default binds destructible")
 	}
-	if _, ok := ms.obstacles[placeObstacle(s, ms, 0, "crystal", "moss")]; !ok {
+	if _, ok := ms.destructibles[placeObstacle(s, ms, 0, "crystal", "moss")]; ok {
 		t.Fatal("the more specific mossy default binds no behavior")
 	}
 }
@@ -128,7 +110,7 @@ func TestAColouredObstacleCarryingItsLiveItemIsDestructible(t *testing.T) {
 	s.buildObstacle(ms, "test", &pb.EntityMessage{
 		ObjectLayerItemIds: []string{"crystal"}, InitCellX: 4, InitCellY: 4, DimX: 2, DimY: 2, ColorA: 255,
 	})
-	if len(ms.destructibles) != 1 || len(ms.obstacles) != 0 {
+	if len(ms.destructibles) != 1 {
 		t.Fatal("a coloured crystal obstacle must bind destructible")
 	}
 }
@@ -188,7 +170,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 		Path: []PointI{{X: 11, Y: 11}}, Mode: WALKING, CurrentTargetPlayer: player.ID,
 	}
 	ms.bots[bot.ID] = bot
-	ms.spawn(bot.ID, Transform{Pos: Vec2{X: 10.5, Y: 10.5}, Size: cell}, Appearance{})
+	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: 10.5, Y: 10.5}, Size: cell}, Appearance{})
 	projectile := shot(ms, player, Vec2{X: 10, Y: 10})
 	ms.bots[projectile.ID] = projectile
 	ptf = ms.tf(player.ID) // a spawn may move the transform array
@@ -244,7 +226,7 @@ func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 		CurrentTargetPlayer: player.ID,
 	}
 	ms.bots[bot.ID] = bot
-	ms.spawn(bot.ID, Transform{Pos: Vec2{X: 9, Y: 10}, Size: ptf.Size}, Appearance{})
+	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: 9, Y: 10}, Size: ptf.Size}, Appearance{})
 	ptf = ms.tf(player.ID) // a spawn may move the transform array
 	s.handleRespawns(ms)
 	if !obs.IsGhost() || !pathCrossesObstacle(player.Path, ptf.Size, otf) {
@@ -310,7 +292,7 @@ func TestObstacleRespawnPushesEntitiesOutward(t *testing.T) {
 			ptf.Pos, ptf.Size, player.Direction = tc.pos, Vec2{2, 2}, DOWN
 			bot := &BotState{EntityBase: EntityBase{ID: 903}, Direction: UP}
 			ms.bots[bot.ID] = bot
-			ms.spawn(bot.ID, Transform{Pos: tc.pos, Size: ptf.Size}, Appearance{})
+			ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: tc.pos, Size: ptf.Size}, Appearance{})
 			ptf = ms.tf(player.ID) // a spawn may move the transform array
 			s.clearObstacleCells(ms, obs)
 			if ptf.Pos != tc.want || ms.tf(bot.ID).Pos != tc.want {
@@ -399,7 +381,7 @@ func TestSnapshotCarriesOnlyTheDestructibleLife(t *testing.T) {
 
 	life := map[EntityID]float64{}
 	for _, e := range s.buildSnapshot(player, ms).Entities {
-		if e.Type == EntityObstacle {
+		if e.Kind == EntityScenery {
 			life[e.ID] = e.MaxLife
 		}
 	}

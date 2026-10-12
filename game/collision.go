@@ -310,7 +310,7 @@ func (s *GameServer) handleResourceDeath(res *ResourceState, mapState *MapState)
 // handleDestructibleDeath depletes a destructible obstacle. It carries no coins
 // and earns no XP; it frees its cells until it respawns.
 func (s *GameServer) handleDestructibleDeath(obs *DestructibleState, mapState *MapState) {
-	s.killEntity(&obs.EntityBase, &obs.Mortal, EntityObstacle, obs.MapCode,
+	s.killEntity(&obs.EntityBase, &obs.Mortal, "obstacle", obs.MapCode,
 		obs.DamageLedger, 0, mapState)
 	obs.DamageLedger = nil
 	tf := mapState.tf(obs.ID)

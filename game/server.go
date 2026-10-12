@@ -542,7 +542,7 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 	player.Mode = TELEPORTING
 	player.OnPortal = false
 	destMapState.players[player.ID] = player
-	destMapState.spawn(player.ID, Transform{Pos: Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}, Size: size}, ap)
+	destMapState.spawn(player.ID, EntityData{Kind: EntityPlayer}, Transform{Pos: Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}, Size: size}, ap)
 	s.sendAOI(player)
 }
 

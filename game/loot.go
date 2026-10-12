@@ -245,7 +245,7 @@ func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center V
 	drop.CollectableAt = now.Add(lootLandingWindow)
 	drop.ExpiresAt = now.Add(lootLifetime)
 	mapState.bots[drop.ID] = drop
-	mapState.spawn(drop.ID, Transform{Pos: pos, Size: tokenDims}, lootAppearance(itemID, quantity))
+	mapState.spawn(drop.ID, EntityData{Kind: EntityBot}, Transform{Pos: pos, Size: tokenDims}, lootAppearance(itemID, quantity))
 
 	// Announce the launch so viewers play the corpse→cell parabola. The landing
 	// point is the token center.
@@ -304,7 +304,7 @@ func (s *GameServer) placeWorldLoot(mapState *MapState, mapCode string, pos Vec2
 		drop.LootOutcome = LootOutcomeConsume
 	}
 	mapState.bots[drop.ID] = drop
-	mapState.spawn(drop.ID, Transform{Pos: pos, Size: worldTokenDims}, lootAppearance(itemID, 1))
+	mapState.spawn(drop.ID, EntityData{Kind: EntityBot}, Transform{Pos: pos, Size: worldTokenDims}, lootAppearance(itemID, 1))
 }
 
 // scheduleLootRespawn brings a consumed world token back on its cell after its

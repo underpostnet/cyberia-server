@@ -7,16 +7,13 @@ import (
 	"time"
 )
 
-// Entity type names on the wire.
+// Entity kinds on the wire.
 const (
-	EntityPlayer     = "player"
-	EntityBot        = "bot"
-	EntityFloor      = "floor"
-	EntityObstacle   = "obstacle"
-	EntityPortal     = "portal"
-	EntityForeground = "foreground"
-	EntityResource   = "resource"
-	EntityStatic     = "static"
+	EntityPlayer   = "player"
+	EntityBot      = "bot"
+	EntityPortal   = "portal"
+	EntityResource = "resource"
+	EntityScenery  = "scenery"
 )
 
 // Floating combat text kinds.
@@ -28,8 +25,10 @@ const (
 
 // SnapshotEntity is one entity inside a player's area of interest.
 type SnapshotEntity struct {
-	Type string   `json:"type"`
-	ID   EntityID `json:"id"`
+	ID        EntityID    `json:"id"`
+	Kind      string      `json:"kind"`
+	DrawOrder DrawOrder   `json:"drawOrder"`
+	Flags     EntityFlags `json:"flags"`
 	Transform
 	Direction int `json:"direction"`
 	Mode      int `json:"mode"`
@@ -47,7 +46,7 @@ type SnapshotEntity struct {
 	OnPortal           bool    `json:"onPortal,omitempty"`
 	PortalHoldProgress float64 `json:"portalHoldProgress,omitempty"`
 
-	// Behavior is set on bots and foregrounds.
+	// Behavior is set on bots.
 	Behavior string `json:"behavior"`
 
 	// Bot fields.
@@ -210,32 +209,20 @@ func msUntil(t time.Time) int {
 	return int((left + time.Millisecond - 1) / time.Millisecond)
 }
 
-// hasBase is satisfied by every type that embeds EntityBase.
-type hasBase interface{ Base() EntityBase }
-
-// appendPassive appends every entity of src inside the AOI. Passive entities
-// never act, so they always report facing NONE and mode IDLE.
-func appendPassive[T hasBase](snap *Snapshot, kind string, src map[EntityID]T,
-	mapState *MapState, inAOI func(EntityID) bool) {
-	for _, entity := range src {
-		e := entity.Base()
-		if inAOI(e.ID) {
-			snap.Entities = append(snap.Entities,
-				baseEntity(kind, e.ID, *mapState.tf(e.ID), NONE, IDLE, mapState.ap(e.ID).Layers))
-		}
-	}
-}
-
-// baseEntity fills the fields every entity type carries.
-func baseEntity(entityType string, id EntityID, tf Transform,
-	dir Direction, mode ObjectLayerMode, layers []ObjectLayerState) SnapshotEntity {
+// baseEntity fills the fields every entity carries: its data, transform and
+// active layers.
+func baseEntity(ms *MapState, id EntityID, dir Direction, mode ObjectLayerMode) SnapshotEntity {
+	slot := ms.slot(id)
+	data := ms.data[slot]
 	return SnapshotEntity{
-		Type:      entityType,
 		ID:        id,
-		Transform: tf,
+		Kind:      data.Kind,
+		DrawOrder: data.DrawOrder,
+		Flags:     data.Flags,
+		Transform: ms.transform[slot],
 		Direction: int(dir),
 		Mode:      int(mode),
-		Layers:    activeLayers(layers),
+		Layers:    activeLayers(ms.appearance[slot].Layers),
 	}
 }
 
@@ -293,7 +280,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		if op.ID == player.ID || !inAOI(op.ID) {
 			continue
 		}
-		e := baseEntity(EntityPlayer, op.ID, *mapState.tf(op.ID), op.Direction, op.Mode, mapState.ap(op.ID).Layers)
+		e := baseEntity(mapState, op.ID, op.Direction, op.Mode)
 		e.Life = op.Life
 		e.MaxLife = op.MaxLife
 		e.RespawnIn = respawnSeconds(op.IsGhost(), op.RespawnTime)
@@ -303,46 +290,45 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		snap.Entities = append(snap.Entities, e)
 	}
 
-	appendPassive(&snap, EntityObstacle, mapState.obstacles, mapState, inAOI)
-	// Destructible obstacles add their life; an ordinary obstacle sends maxLife 0.
-	for _, obs := range mapState.destructibles {
-		if !inAOI(obs.ID) {
+	// Scenery. The client draws floors in wire order, so floors are sorted:
+	// layered floors first (background), then solid-colour floors on top, then
+	// Y→X→ID for stability.
+	var floors []int
+	for i, id := range mapState.ids {
+		if id == 0 || mapState.data[i].Kind != EntityScenery || !inAOI(id) {
 			continue
 		}
-		e := baseEntity(EntityObstacle, obs.ID, *mapState.tf(obs.ID), NONE, IDLE, mapState.ap(obs.ID).Layers)
-		e.Life = obs.Life
-		e.MaxLife = obs.MaxLife
-		e.RespawnIn = respawnSeconds(obs.IsGhost(), obs.RespawnTime)
+		if mapState.data[i].DrawOrder == DrawFloor {
+			floors = append(floors, i)
+			continue
+		}
+		e := baseEntity(mapState, id, NONE, IDLE)
+		// Destructible obstacles add their life; an ordinary obstacle sends maxLife 0.
+		if obs, ok := mapState.destructibles[id]; ok {
+			e.Life = obs.Life
+			e.MaxLife = obs.MaxLife
+			e.RespawnIn = respawnSeconds(obs.IsGhost(), obs.RespawnTime)
+		}
 		snap.Entities = append(snap.Entities, e)
 	}
-
-	// Floors — sorted: layered floors first (background), then solid-colour
-	// floors on top. Within each group sort by Y→X→ID for stability. Go maps
-	// iterate at random, and overlapping floors would flicker without this.
-	var aoiFloors []*FloorState
-	for _, f := range mapState.floors {
-		if inAOI(f.ID) {
-			aoiFloors = append(aoiFloors, f)
-		}
-	}
-	sort.Slice(aoiFloors, func(i, j int) bool {
-		iOL := len(mapState.ap(aoiFloors[i].ID).Layers) > 0
-		jOL := len(mapState.ap(aoiFloors[j].ID).Layers) > 0
+	sort.Slice(floors, func(a, b int) bool {
+		i, j := floors[a], floors[b]
+		iOL := len(mapState.appearance[i].Layers) > 0
+		jOL := len(mapState.appearance[j].Layers) > 0
 		if iOL != jOL {
 			return iOL // layered floors drawn first (underneath)
 		}
-		pi, pj := mapState.tf(aoiFloors[i].ID).Pos, mapState.tf(aoiFloors[j].ID).Pos
+		pi, pj := mapState.transform[i].Pos, mapState.transform[j].Pos
 		if pi.Y != pj.Y {
 			return pi.Y < pj.Y
 		}
 		if pi.X != pj.X {
 			return pi.X < pj.X
 		}
-		return aoiFloors[i].ID < aoiFloors[j].ID
+		return mapState.ids[i] < mapState.ids[j]
 	})
-	for _, f := range aoiFloors {
-		snap.Entities = append(snap.Entities,
-			baseEntity(EntityFloor, f.ID, *mapState.tf(f.ID), NONE, IDLE, mapState.ap(f.ID).Layers))
+	for _, i := range floors {
+		snap.Entities = append(snap.Entities, baseEntity(mapState, mapState.ids[i], NONE, IDLE))
 	}
 
 	// Portals
@@ -350,7 +336,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		if !inAOI(p.ID) {
 			continue
 		}
-		e := baseEntity(EntityPortal, p.ID, *mapState.tf(p.ID), NONE, IDLE, mapState.ap(p.ID).Layers)
+		e := baseEntity(mapState, p.ID, NONE, IDLE)
 		if p.PortalConfig != nil {
 			e.TargetMapCode = p.PortalConfig.DestMapCode
 			e.TargetCellX = int(p.PortalConfig.DestCellX)
@@ -365,21 +351,12 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		snap.Entities = append(snap.Entities, e)
 	}
 
-	for _, fg := range mapState.foregrounds {
-		if !inAOI(fg.ID) {
-			continue
-		}
-		e := baseEntity(EntityForeground, fg.ID, *mapState.tf(fg.ID), NONE, IDLE, mapState.ap(fg.ID).Layers)
-		e.Behavior = fg.Behavior
-		snap.Entities = append(snap.Entities, e)
-	}
-
 	// Resources — static exploitable entities
 	for _, r := range mapState.resources {
 		if !inAOI(r.ID) {
 			continue
 		}
-		e := baseEntity(EntityResource, r.ID, *mapState.tf(r.ID), NONE, IDLE, mapState.ap(r.ID).Layers)
+		e := baseEntity(mapState, r.ID, NONE, IDLE)
 		e.Life = r.Life
 		e.MaxLife = r.MaxLife
 		e.RespawnIn = respawnSeconds(r.IsGhost(), r.RespawnTime)
@@ -388,15 +365,12 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		snap.Entities = append(snap.Entities, e)
 	}
 
-	// Statics — non-moving, passable decorators
-	appendPassive(&snap, EntityStatic, mapState.statics, mapState, inAOI)
-
 	// Bots
 	for _, b := range mapState.bots {
 		if !inAOI(b.ID) {
 			continue
 		}
-		e := baseEntity(EntityBot, b.ID, *mapState.tf(b.ID), b.Direction, b.Mode, mapState.ap(b.ID).Layers)
+		e := baseEntity(mapState, b.ID, b.Direction, b.Mode)
 		e.Life = b.Life
 		e.MaxLife = b.MaxLife
 		e.RespawnIn = respawnSeconds(b.IsGhost(), b.RespawnTime)
@@ -441,8 +415,7 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 	progression := s.entityProgression(player)
 
 	self := SnapshotSelf{
-		SnapshotEntity: baseEntity(EntityPlayer, player.ID, *mapState.tf(player.ID),
-			player.Direction, player.Mode, mapState.ap(player.ID).Layers),
+		SnapshotEntity: baseEntity(mapState, player.ID, player.Direction, player.Mode),
 		AoiMinX:        player.AOI.MinX,
 		AoiMinY:        player.AOI.MinY,
 		AoiMaxX:        player.AOI.MaxX,

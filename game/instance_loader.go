@@ -68,7 +68,7 @@ func (s *GameServer) BuildWorldFromInstance(
 	// Log entity counts per map
 	for code, ms := range s.maps {
 		logx.Debugf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots",
-			code, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots))
+			code, ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), ms.sceneryCount("foreground"), len(ms.portals), len(ms.bots))
 	}
 
 	// Print ASCII graph of portal topology
@@ -137,7 +137,7 @@ func (s *GameServer) RebuildWorld(
 		ms.mu.Lock()
 		for _, p := range players {
 			ms.players[p.state.ID] = p.state
-			ms.spawn(p.state.ID, p.tf, p.ap)
+			ms.spawn(p.state.ID, EntityData{Kind: EntityPlayer}, p.tf, p.ap)
 		}
 		ms.mu.Unlock()
 	}
@@ -145,7 +145,7 @@ func (s *GameServer) RebuildWorld(
 	logx.Infof("[InstanceLoader] RebuildWorld complete: %d maps.", len(s.maps))
 	for code, ms := range s.maps {
 		logx.Debugf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots, %d resources, %d statics, %d players",
-			code, len(ms.floors), len(ms.obstacles), len(ms.foregrounds), len(ms.portals), len(ms.bots), len(ms.resources), len(ms.statics), len(ms.players))
+			code, ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), ms.sceneryCount("foreground"), len(ms.portals), len(ms.bots), len(ms.resources), ms.sceneryCount("static"), len(ms.players))
 	}
 	printInstanceGraph(instance, s.maps)
 }
@@ -185,14 +185,10 @@ func (s *GameServer) buildMapsFromInstance(
 			gridH:         gridH,
 			players:       make(map[EntityID]*PlayerState),
 			portals:       make(map[EntityID]*PortalState),
-			obstacles:     make(map[EntityID]ObjectState),
 			destructibles: make(map[EntityID]*DestructibleState),
-			foregrounds:   make(map[EntityID]ForegroundState),
-			floors:        make(map[EntityID]*FloorState),
 			pathfinder:    NewPathfinder(gridW, gridH),
 			bots:          make(map[EntityID]*BotState),
 			resources:     make(map[EntityID]*ResourceState),
-			statics:       make(map[EntityID]*StaticState),
 		}
 		// Register the map first: a builder reads its components through s.maps.
 		s.maps[mapCode] = ms
@@ -206,7 +202,7 @@ func (s *GameServer) buildMapsFromInstance(
 			case "resource":
 				s.buildResource(ms, mapCode, ent)
 			case "static":
-				s.buildStatic(ms, mapCode, ent)
+				s.buildStatic(ms, ent)
 			case "obstacle":
 				s.buildObstacle(ms, mapCode, ent)
 			case "foreground":
@@ -287,7 +283,6 @@ func entTransform(ent *pb.EntityMessage, size Vec2) Transform {
 }
 
 func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
-	floor := &FloorState{EntityBase: EntityBase{ID: s.newEntityID()}, Type: "floor"}
 	var layers []ObjectLayerState
 	for _, itemID := range ent.GetObjectLayerItemIds() {
 		layers = append(layers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
@@ -302,8 +297,8 @@ func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 			}
 		}
 	}
-	ms.floors[floor.ID] = floor
-	ms.spawn(floor.ID, entTransform(ent, entSize(ent)), Appearance{Layers: layers})
+	ms.spawn(s.newEntityID(), EntityData{Kind: EntityScenery, DrawOrder: DrawFloor},
+		entTransform(ent, entSize(ent)), Appearance{Layers: layers})
 }
 
 func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessage) {
@@ -359,7 +354,7 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 		LifeRegen:   lifeRegen,
 	}
 	ms.bots[bot.ID] = bot
-	ms.spawn(bot.ID, Transform{Pos: startPos, Size: dims}, Appearance{Layers: objectLayers})
+	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: startPos, Size: dims}, Appearance{Layers: objectLayers})
 
 	bot.Progression = NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig())
 	s.ApplyResistanceStat(bot, ms)
@@ -411,7 +406,7 @@ func (s *GameServer) buildResource(ms *MapState, mapCode string, ent *pb.EntityM
 		MapCode: mapCode,
 	}
 	ms.resources[res.ID] = res
-	ms.spawn(res.ID, Transform{Pos: startPos, Size: dims}, Appearance{Layers: objectLayers})
+	ms.spawn(res.ID, EntityData{Kind: EntityResource}, Transform{Pos: startPos, Size: dims}, Appearance{Layers: objectLayers})
 
 	// Apply stats (resistance may increase MaxLife)
 	res.Progression = NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig())
@@ -440,19 +435,19 @@ func (s *GameServer) buildObstacle(ms *MapState, mapCode string, ent *pb.EntityM
 	dims := Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
 	pos := Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
 	objectLayers := s.spawnObjectLayers("obstacle", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
-	base := EntityBase{ID: s.newEntityID()}
+	id := s.newEntityID()
 	ms.pathfinder.occupy(pos, dims, 1)
-	ms.spawn(base.ID, Transform{Pos: pos, Size: dims}, Appearance{Layers: objectLayers})
+	ms.spawn(id, EntityData{Kind: EntityScenery, Flags: FlagBlocks},
+		Transform{Pos: pos, Size: dims}, Appearance{Layers: objectLayers})
 
 	activeIDs := activeObjectLayerItemIDs(objectLayers)
 	build, _ := s.resolveEntityDefaultBuild("obstacle", activeIDs)
 	if build.Behavior != BehaviorDestructible || !matchesLiveItems(build, activeIDs) {
-		ms.obstacles[base.ID] = ObjectState{EntityBase: base, Type: "obstacle"}
 		return
 	}
 	maxLife := s.placedMaxLife(ent)
-	ms.destructibles[base.ID] = &DestructibleState{
-		EntityBase: base,
+	ms.destructibles[id] = &DestructibleState{
+		EntityBase: EntityBase{ID: id},
 		Mortal:     Mortal{MaxLife: maxLife, BaseMaxLife: maxLife, Life: maxLife, RespawnDuration: placedRespawnDuration(ent)},
 		MapCode:    mapCode,
 	}
@@ -466,16 +461,17 @@ func (s *GameServer) entAppearance(ent *pb.EntityMessage, kind string) Appearanc
 
 func (s *GameServer) buildForeground(ms *MapState, ent *pb.EntityMessage) {
 	ap := s.entAppearance(ent, "foreground")
-	fg := ForegroundState{EntityBase: EntityBase{ID: s.newEntityID()}, Behavior: s.boundBehavior("foreground", ap.Layers)}
-	ms.foregrounds[fg.ID] = fg
-	ms.spawn(fg.ID, entTransform(ent, entSize(ent)), ap)
+	data := EntityData{Kind: EntityScenery, DrawOrder: DrawForeground}
+	if s.boundBehavior("foreground", ap.Layers) == BehaviorOverheadOcclusion {
+		data.Flags |= FlagOverheadOcclusion
+	}
+	ms.spawn(s.newEntityID(), data, entTransform(ent, entSize(ent)), ap)
 }
 
-func (s *GameServer) buildStatic(ms *MapState, mapCode string, ent *pb.EntityMessage) {
+func (s *GameServer) buildStatic(ms *MapState, ent *pb.EntityMessage) {
 	// Statics are passable: no pathfinder cells are blocked.
-	st := &StaticState{EntityBase: EntityBase{ID: s.newEntityID()}, MapCode: mapCode}
-	ms.statics[st.ID] = st
-	ms.spawn(st.ID, entTransform(ent, entSize(ent)), s.entAppearance(ent, "static"))
+	ms.spawn(s.newEntityID(), EntityData{Kind: EntityScenery},
+		entTransform(ent, entSize(ent)), s.entAppearance(ent, "static"))
 }
 
 func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalState {
@@ -500,7 +496,7 @@ func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) *PortalSta
 		Subtype:    subtype,
 	}
 	ms.portals[portal.ID] = portal
-	ms.spawn(portal.ID, entTransform(ent, dims), Appearance{Layers: objectLayers})
+	ms.spawn(portal.ID, EntityData{Kind: EntityPortal}, entTransform(ent, dims), Appearance{Layers: objectLayers})
 
 	// Portals are walkable — no grid cells are blocked.
 	// The player must stand on the portal for portalHoldTime to trigger transport.
@@ -553,7 +549,7 @@ func printInstanceGraph(instance *pb.InstanceMessage, maps map[string]*MapState)
 		line := fmt.Sprintf("    [%s]", code)
 		if ms, ok := maps[code]; ok {
 			line += fmt.Sprintf("  [F:%d O:%d B:%d P:%d]",
-				len(ms.floors), len(ms.obstacles), len(ms.bots), len(ms.portals))
+				ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), len(ms.bots), len(ms.portals))
 		}
 		content = append(content, line)
 	}

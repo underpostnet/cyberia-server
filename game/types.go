@@ -29,8 +29,34 @@ type Appearance struct {
 	Layers []ObjectLayerState
 }
 
+// EntityData is the data component: the kind and the small flags that do not
+// earn an array of their own.
+type EntityData struct {
+	Kind      string
+	DrawOrder DrawOrder
+	Flags     EntityFlags
+}
+
+// DrawOrder places an entity in the client draw passes.
+type DrawOrder uint8
+
+const (
+	DrawSorted     DrawOrder = iota // depth-sorted with the other entities
+	DrawFloor                       // under every entity
+	DrawForeground                  // over every entity
+)
+
+// EntityFlags are the yes/no facts of an entity.
+type EntityFlags uint8
+
+const (
+	FlagBlocks            EntityFlags = 1 << iota // the pathfinder cannot cross it
+	FlagOverheadOcclusion                         // fades while the own player is under it
+)
+
 // Component bits of MapState.mask, in the §4 order.
 const (
+	maskData       ComponentMask = 1 << 0
 	maskTransform  ComponentMask = 1 << 1
 	maskAppearance ComponentMask = 1 << 2
 )
@@ -123,11 +149,6 @@ func (m *Mortal) respawnDuration() time.Duration {
 	return respawnDurationDefaultMs * time.Millisecond
 }
 
-type ObjectState struct {
-	EntityBase
-	Type string `json:"Type"`
-}
-
 type PlayerState struct {
 	EntityBase
 	Mortal
@@ -192,11 +213,6 @@ type PlayerState struct {
 	// simulation ticks. Drained in fixed order by phaseInput. nil-safe: the
 	// queue is allocated lazily when the first command is enqueued.
 	InputQueue []InputCommand `json:"-"`
-}
-
-type FloorState struct {
-	EntityBase
-	Type string `json:"Type"`
 }
 
 type BotState struct {
@@ -301,16 +317,6 @@ type DestructibleState struct {
 // but no life, no AI, and no collision: it never blocks movement and is never
 // exploitable. The client depth-sorts it with bots/players (Y-axis ordering)
 // so the player can pass behind or in front of it.
-type StaticState struct {
-	EntityBase
-	MapCode string `json:"MapCode"`
-}
-
-// ForegroundState is a decoration the client draws over every entity.
-type ForegroundState struct {
-	EntityBase
-	Behavior string `json:"behavior"`
-}
 
 type PortalState struct {
 	EntityBase
@@ -322,15 +328,11 @@ type PortalState struct {
 type MapState struct {
 	mu            sync.RWMutex
 	pathfinder    *Pathfinder
-	obstacles     map[EntityID]ObjectState
 	destructibles map[EntityID]*DestructibleState
-	foregrounds   map[EntityID]ForegroundState
 	portals       map[EntityID]*PortalState
-	floors        map[EntityID]*FloorState
 	players       map[EntityID]*PlayerState
 	bots          map[EntityID]*BotState
 	resources     map[EntityID]*ResourceState
-	statics       map[EntityID]*StaticState
 	// lootRespawns are the consumed world tokens waiting to come back (loot.go).
 	lootRespawns []lootRespawn
 	gridW, gridH int
@@ -338,6 +340,7 @@ type MapState struct {
 	ids        []EntityID // entity id at slot i. 0 = free slot
 	index      map[EntityID]int
 	mask       []ComponentMask
+	data       []EntityData
 	transform  []Transform
 	appearance []Appearance
 	cursor     int // next slot the allocator tests

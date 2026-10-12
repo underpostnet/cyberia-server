@@ -31,7 +31,7 @@ func movementFixture(t *testing.T) (*GameServer, *MapState, *PlayerState) {
 	player.Life, player.MaxLife = 100, 100
 	player.Client = &Client{playerID: player.ID}
 	mapState.players[player.ID] = player
-	mapState.spawn(player.ID, Transform{Pos: Vec2{X: 1, Y: 1}, Size: Vec2{X: 1, Y: 1}}, Appearance{})
+	mapState.spawn(player.ID, EntityData{Kind: EntityPlayer}, Transform{Pos: Vec2{X: 1, Y: 1}, Size: Vec2{X: 1, Y: 1}}, Appearance{})
 
 	return s, mapState, player
 }
@@ -48,7 +48,7 @@ func placePlayer(s *GameServer, id EntityID, layers []ObjectLayerState) *PlayerS
 	}
 	p := &PlayerState{EntityBase: EntityBase{ID: id}, MapCode: "test"}
 	ms.players[id] = p
-	ms.spawn(id, Transform{}, Appearance{Layers: layers})
+	ms.spawn(id, EntityData{Kind: EntityPlayer}, Transform{}, Appearance{Layers: layers})
 	return p
 }
 

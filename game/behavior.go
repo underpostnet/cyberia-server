@@ -4,7 +4,7 @@ package game
 // SharedDefaultsCyberia.ENTITY_BEHAVIORS. A bot's behavior is content-authored on its matched
 // entity-type default (resolved by active itemId), or derived when unset. `skill` / `coin` are
 // assigned by the runtime (skill engine / economy), never authored.
-// A foreground behavior is presentation only: the server sends it and the client runs it.
+// A foreground behavior becomes a flag on the entity data; the client runs it.
 const (
 	BehaviorPassive        = "passive"
 	BehaviorHostile        = "hostile"
@@ -22,6 +22,9 @@ const (
 	// BehaviorConsumeOnPickupHeal makes its collector consume a world-loot token's item at once,
 	// restoring life, instead of receiving it (see loot.go).
 	BehaviorConsumeOnPickupHeal = "consume-on-pickup-heal"
+	// BehaviorOverheadOcclusion is the one foreground behavior: the entity fades
+	// while the own player stands under it.
+	BehaviorOverheadOcclusion = "overhead-occlusion"
 )
 
 // behaviorIsInert reports whether entities with behavior b run no AI: they hold

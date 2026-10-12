@@ -48,7 +48,7 @@ func TestSignedAggregationAcrossEntities(t *testing.T) {
 	}
 	ms := &MapState{}
 	for _, entity := range entities {
-		ms.spawn(entity.Base().ID, Transform{}, Appearance{Layers: layers})
+		ms.spawn(entity.Base().ID, EntityData{}, Transform{}, Appearance{Layers: layers})
 	}
 	for _, entity := range entities {
 		entity.StatState().Progression = NewEntityProgression(4, true, s.progressionConfig())
@@ -254,7 +254,7 @@ func TestSummonFloorsAfterAllContributions(t *testing.T) {
 	})
 	ms.ap(p.ID).Layers = []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
 	summon := &BotState{EntityBase: EntityBase{ID: 11}, CasterID: p.ID}
-	ms.spawn(summon.ID, Transform{}, Appearance{Layers: []ObjectLayerState{{ItemID: "buff", Active: true, Quantity: 1}}})
+	ms.spawn(summon.ID, EntityData{Kind: EntityBot}, Transform{}, Appearance{Layers: []ObjectLayerState{{ItemID: "buff", Active: true, Quantity: 1}}})
 	if got := s.CalculateStats(summon, ms).Effect; got != 5 {
 		t.Fatalf("floor applied before full sum: %v", got)
 	}

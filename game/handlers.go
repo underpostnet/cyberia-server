@@ -173,7 +173,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	playerState.Client = client
 
 	startMapState.players[playerID] = playerState
-	startMapState.spawn(playerID, Transform{
+	startMapState.spawn(playerID, EntityData{Kind: EntityPlayer}, Transform{
 		Pos:  Vec2{X: float64(startPosI.X), Y: float64(startPosI.Y)},
 		Size: playerDims,
 	}, Appearance{Layers: playerOLs})

@@ -14,15 +14,15 @@ func TestForegroundCarriesOnlyTheBehaviorItsDefaultBinds(t *testing.T) {
 			{EntityType: "foreground", LiveItemIDs: []string{"roof"}, Behavior: "overhead-occlusion"},
 		},
 	}
-	ms := &MapState{foregrounds: map[EntityID]ForegroundState{}}
+	ms := &MapState{}
 	s.buildForeground(ms, &pb.EntityMessage{ObjectLayerItemIds: []string{"roof"}, DimX: 4, DimY: 3})
 	s.buildForeground(ms, &pb.EntityMessage{ObjectLayerItemIds: []string{"canopy"}, DimX: 2, DimY: 2})
 
-	want := map[string]string{"roof": "overhead-occlusion", "canopy": ""}
-	for _, fg := range ms.foregrounds {
-		item := ms.ap(fg.ID).Layers[0].ItemID
-		if fg.Behavior != want[item] {
-			t.Fatalf("foreground %q: want behavior %q, got %q", item, want[item], fg.Behavior)
+	want := map[string]bool{"roof": true, "canopy": false}
+	for i := range ms.ids {
+		item := ms.appearance[i].Layers[0].ItemID
+		if got := ms.data[i].Flags&FlagOverheadOcclusion != 0; got != want[item] {
+			t.Fatalf("foreground %q: want occlusion %v, got %v", item, want[item], got)
 		}
 	}
 }

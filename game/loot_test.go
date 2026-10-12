@@ -70,7 +70,7 @@ func woundedPlayer(ms *MapState, id EntityID, at Vec2, life float64) *PlayerStat
 	player.MapCode = "m"
 	player.Life, player.MaxLife = life, 100
 	ms.players[id] = player
-	ms.spawn(id, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}}, Appearance{})
+	ms.spawn(id, EntityData{Kind: EntityPlayer}, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}}, Appearance{})
 	return player
 }
 
@@ -207,7 +207,7 @@ func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 		bot := &BotState{EntityBase: EntityBase{ID: EntityID(200 + i)},
 			Mortal: Mortal{Life: 10, MaxLife: 100}, Behavior: behavior}
 		ms.bots[bot.ID] = bot
-		ms.spawn(bot.ID, *ms.tf(token.ID), Appearance{})
+		ms.spawn(bot.ID, EntityData{Kind: EntityBot}, *ms.tf(token.ID), Appearance{})
 	}
 
 	s.phaseLoot(0, ms)
@@ -234,7 +234,7 @@ func TestACollectorAtFullLifeKeepsAPickupAndTheTokenComesBack(t *testing.T) {
 	bot := &BotState{EntityBase: EntityBase{ID: 109},
 		Mortal: Mortal{Life: 100, MaxLife: 100}, Behavior: BehaviorHostile, MapCode: "m"}
 	ms.bots[bot.ID] = bot
-	ms.spawn(bot.ID, Transform{Pos: Vec2{X: 15, Y: 15}, Size: at.Size}, Appearance{})
+	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: 15, Y: 15}, Size: at.Size}, Appearance{})
 
 	s.phaseLoot(0, ms)
 	if _, ok := ms.bots[token.ID]; ok || player.Life != 100 || s.playerItemQuantity(player, "gel") != 1 {
@@ -310,7 +310,7 @@ func TestABotConsumesAPickup(t *testing.T) {
 	bot := &BotState{EntityBase: EntityBase{ID: 300},
 		Mortal: Mortal{Life: 30, MaxLife: 100}, Behavior: BehaviorHostile, MapCode: "m"}
 	ms.bots[bot.ID] = bot
-	ms.spawn(bot.ID, *ms.tf(token.ID), Appearance{})
+	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, *ms.tf(token.ID), Appearance{})
 
 	s.phaseLoot(0, ms)
 

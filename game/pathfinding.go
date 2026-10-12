@@ -45,7 +45,6 @@ func (pq *PriorityQueue) Pop() interface{} {
 
 type Pathfinder struct {
 	gridW, gridH int
-	obstacles    map[string]ObjectState
 	grid         [][]int
 
 	// Search scratch, one cell per grid cell, reused by every Astar call.

@@ -100,7 +100,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 	}
 
 	ctx.MapState.bots[projectileBot.ID] = projectileBot
-	ctx.MapState.spawn(projectileBot.ID, Transform{Pos: Vec2{X: spawnX, Y: spawnY}, Size: projectileDims}, Appearance{Layers: projectileOLs})
+	ctx.MapState.spawn(projectileBot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: spawnX, Y: spawnY}, Size: projectileDims}, Appearance{Layers: projectileOLs})
 	s.ApplyResistanceStat(projectileBot, ctx.MapState)
 	projectileBot.Life = projectileBot.MaxLife
 }

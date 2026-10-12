@@ -14,7 +14,7 @@ func (s *GameServer) newEntityID() EntityID {
 // spawn gives id a slot with its universal components and returns the slot.
 // Only the owner of the entity lifetime calls it: the loader, the spawner and
 // the portal.
-func (ms *MapState) spawn(id EntityID, tf Transform, ap Appearance) int {
+func (ms *MapState) spawn(id EntityID, data EntityData, tf Transform, ap Appearance) int {
 	if ms.index == nil {
 		ms.index = make(map[EntityID]int)
 	}
@@ -31,11 +31,13 @@ func (ms *MapState) spawn(id EntityID, tf Transform, ap Appearance) int {
 		slot = len(ms.ids)
 		ms.ids = append(ms.ids, 0)
 		ms.mask = append(ms.mask, 0)
+		ms.data = append(ms.data, EntityData{})
 		ms.transform = append(ms.transform, Transform{})
 		ms.appearance = append(ms.appearance, Appearance{})
 	}
 	ms.ids[slot] = id
-	ms.mask[slot] = maskTransform | maskAppearance
+	ms.mask[slot] = maskData | maskTransform | maskAppearance
+	ms.data[slot] = data
 	ms.transform[slot] = tf
 	ms.appearance[slot] = ap
 	ms.index[id] = slot
@@ -60,6 +62,30 @@ func (ms *MapState) ap(id EntityID) *Appearance { return &ms.appearance[ms.slot(
 
 // ap returns the appearance of an entity on the map mapCode.
 func (s *GameServer) ap(id EntityID, mapCode string) *Appearance { return s.maps[mapCode].ap(id) }
+
+// sceneryClass names a scenery entity by its flags, for logs and the dashboard.
+func sceneryClass(d EntityData) string {
+	switch {
+	case d.DrawOrder == DrawFloor:
+		return "floor"
+	case d.DrawOrder == DrawForeground:
+		return "foreground"
+	case d.Flags&FlagBlocks != 0:
+		return "obstacle"
+	}
+	return "static"
+}
+
+// sceneryCount counts the scenery entities of one class.
+func (ms *MapState) sceneryCount(class string) int {
+	n := 0
+	for i, id := range ms.ids {
+		if id != 0 && ms.data[i].Kind == EntityScenery && sceneryClass(ms.data[i]) == class {
+			n++
+		}
+	}
+	return n
+}
 
 // rect is the box the transform covers.
 func (t *Transform) rect() Rectangle {
