@@ -242,9 +242,9 @@ type PlayerState struct {
 	InputQueue []InputCommand `json:"-"`
 }
 
-type BotState struct {
-	EntityBase
-	MapCode              string    `json:"MapCode"`
+// Brain is the server-only side table row of a bot: its AI, its lifetime and,
+// for a drop, its loot.
+type Brain struct {
 	Path                 []Cell    `json:"path"`
 	TargetPos            Cell      `json:"targetPos"`
 	SpawnCenter          Vec2      `json:"spawnCenter"`
@@ -289,47 +289,11 @@ type BotState struct {
 	LootOutcome    LootOutcome    `json:"-"`
 }
 
-// ResourceState represents a static exploitable entity on the map
-// (wood, minerals, organic matter, etc.). Resources have life, can be
-// destroyed by projectile impact, transfer configured drop items to the
-// extractor on death, switch to dead/extracted visuals, and respawn later.
-// They never move.
-type ResourceState struct {
-	EntityBase
-	MapCode string `json:"MapCode"`
-}
-
-// DestructibleState is an obstacle with the destructible behavior. It blocks its
-// cells while alive and takes projectile damage like a resource. Depleted, it
-// scatters its drops, wears its dead items, and frees its cells until it
-// respawns. An ordinary obstacle is an ObjectState and takes no damage.
-type DestructibleState struct {
-	EntityBase
-	MapCode string `json:"MapCode"`
-}
-
-// StaticState represents a non-moving, passable decorator entity (rocks,
-// bushes, signage, etc.). It has a position, dimensions, and object layers,
-// but no life, no AI, and no collision: it never blocks movement and is never
-// exploitable. The client depth-sorts it with bots/players (Y-axis ordering)
-// so the player can pass behind or in front of it.
-
-type PortalState struct {
-	EntityBase
-	Type    string `json:"Type"`
-	Subtype string `json:"Subtype"` // inter-portal | inter-random | intra-random | intra-portal
-	Mode    string `json:"-"`       // the linked edge's portal mode; "" while unlinked
-}
-
 type MapState struct {
-	mu            sync.RWMutex
-	code          string // the map code; the key of this map in GameServer.maps
-	pathfinder    *Pathfinder
-	portals       map[EntityID]*PortalState
-	players       map[EntityID]*PlayerState
-	bots          map[EntityID]*BotState
-	resources     map[EntityID]*ResourceState
-	destructibles map[EntityID]*DestructibleState
+	mu         sync.RWMutex
+	code       string // the map code; the key of this map in GameServer.maps
+	pathfinder *Pathfinder
+	players    map[EntityID]*PlayerState
 	// lootRespawns are the consumed world tokens waiting to come back (loot.go).
 	lootRespawns []lootRespawn
 	gridW, gridH int
@@ -347,6 +311,7 @@ type MapState struct {
 	cursor     int // next slot the allocator tests
 
 	mortals map[EntityID]*Mortal
+	brains  map[EntityID]*Brain
 }
 
 type Client struct {

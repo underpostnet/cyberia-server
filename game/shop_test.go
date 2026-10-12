@@ -99,19 +99,19 @@ func TestBotHasShopGatesTheCapabilityBit(t *testing.T) {
 	plain := placeBot(s, 2, Vitals{})
 	dead := placeBot(s, 3, Vitals{RespawnAt: time.Now().Add(time.Second)})
 
-	if !s.botHasShop(vendor) {
+	if !s.botHasShop(vendor, testMap(s)) {
 		t.Fatal("a live bot with a catalog is a vendor")
 	}
-	if s.botHasShop(plain) {
+	if s.botHasShop(plain, testMap(s)) {
 		t.Fatal("an action with no catalog is not a vendor")
 	}
-	if s.botHasShop(dead) {
+	if s.botHasShop(dead, testMap(s)) {
 		t.Fatal("a dead vendor must not advertise")
 	}
-	if s.botHasShop(placeBot(s, 4, Vitals{})) {
+	if s.botHasShop(placeBot(s, 4, Vitals{}), testMap(s)) {
 		t.Fatal("a bot with no bound action is not a vendor")
 	}
-	if s.botHasShop(nil) {
+	if s.botHasShop(5, nil) {
 		t.Fatal("nil bot is not a vendor")
 	}
 

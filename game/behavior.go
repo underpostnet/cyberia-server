@@ -17,7 +17,7 @@ const (
 	// and are removed on collection or lifetime expiry. Runtime-assigned only.
 	BehaviorDrop = "drop"
 	// BehaviorDestructible marks an obstacle that takes damage, drops its loot and
-	// stops blocking while depleted (see DestructibleState).
+	// stops blocking while depleted (see buildObstacle).
 	BehaviorDestructible = "destructible"
 	// BehaviorConsumeOnPickupHeal makes its collector consume a world-loot token's item at once,
 	// restoring life, instead of receiving it (see loot.go).

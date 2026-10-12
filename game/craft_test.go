@@ -104,13 +104,13 @@ func TestBotHasCraftGatesTheCapabilityBit(t *testing.T) {
 	talker := placeBot(s, 2, Vitals{})
 	dead := placeBot(s, 3, Vitals{RespawnAt: time.Now().Add(time.Second)})
 
-	if !s.botHasCraft(assembler) || !s.botHasUsableAction(assembler) {
+	if !s.botHasCraft(assembler, testMap(s)) || !s.botHasUsableAction(assembler, testMap(s)) {
 		t.Fatal("a live bot with a recipe book is an assembler")
 	}
-	if s.botHasCraft(talker) || s.botHasUsableAction(talker) {
+	if s.botHasCraft(talker, testMap(s)) || s.botHasUsableAction(talker, testMap(s)) {
 		t.Fatal("an action with no recipes is not an assembler")
 	}
-	if s.botHasCraft(dead) {
+	if s.botHasCraft(dead, testMap(s)) {
 		t.Fatal("a dead assembler must not advertise")
 	}
 	if flags := s.botInteractionFlags(false, false, true); flags&InteractionFlagAction == 0 {

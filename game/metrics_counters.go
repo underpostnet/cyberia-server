@@ -189,25 +189,17 @@ func (s *GameServer) EntityCensus() map[string]EntityTypeCensus {
 	}
 
 	for _, m := range s.maps {
-		for _, p := range m.players {
-			addObj("player", m.ap(p.ID).Layers)
-		}
-		for _, b := range m.bots {
-			addObj("bot", m.ap(b.ID).Layers)
-		}
 		for i, id := range m.ids {
-			if id == 0 || m.data[i].Kind != EntityScenery {
+			if id == 0 {
 				continue
 			}
-			if class := sceneryClass(m.data[i]); class != "static" {
-				addObj(class, m.appearance[i].Layers)
+			class := m.data[i].Kind
+			if class == EntityScenery {
+				if class = sceneryClass(m.data[i]); class == "static" {
+					continue
+				}
 			}
-		}
-		for _, p := range m.portals {
-			addObj("portal", m.ap(p.ID).Layers)
-		}
-		for _, r := range m.resources {
-			addObj("resource", m.ap(r.ID).Layers)
+			addObj(class, m.appearance[i].Layers)
 		}
 	}
 	return out
@@ -226,12 +218,12 @@ func (s *GameServer) MapBreakdowns() []MapBreakdown {
 			GridW:       m.gridW,
 			GridH:       m.gridH,
 			Players:     len(m.players),
-			Bots:        len(m.bots),
+			Bots:        len(m.brains),
 			Floors:      m.sceneryCount("floor"),
 			Obstacles:   m.sceneryCount("obstacle"),
 			Foregrounds: m.sceneryCount("foreground"),
-			Portals:     len(m.portals),
-			Resources:   len(m.resources),
+			Portals:     m.count(EntityPortal),
+			Resources:   m.count(EntityResource),
 		}
 		b.Total = b.Players + b.Bots + b.Floors + b.Obstacles + b.Foregrounds + b.Portals + b.Resources
 		out = append(out, b)
@@ -254,12 +246,12 @@ func (s *GameServer) MapBreakdownByCode(code string) (MapBreakdown, bool) {
 		GridW:       m.gridW,
 		GridH:       m.gridH,
 		Players:     len(m.players),
-		Bots:        len(m.bots),
+		Bots:        len(m.brains),
 		Floors:      m.sceneryCount("floor"),
 		Obstacles:   m.sceneryCount("obstacle"),
 		Foregrounds: m.sceneryCount("foreground"),
-		Portals:     len(m.portals),
-		Resources:   len(m.resources),
+		Portals:     m.count(EntityPortal),
+		Resources:   m.count(EntityResource),
 	}
 	b.Total = b.Players + b.Bots + b.Floors + b.Obstacles + b.Foregrounds + b.Portals + b.Resources
 	return b, true

@@ -347,12 +347,12 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 	}
 
 	// Portals
-	for _, p := range mapState.portals {
-		if !inAOI(p.ID) {
+	for p := range mapState.ofKind(EntityPortal) {
+		if !inAOI(p) {
 			continue
 		}
-		e := baseEntity(mapState, p.ID)
-		if target, linked := mapState.pt(p.ID); linked {
+		e := baseEntity(mapState, p)
+		if target, linked := mapState.pt(p); linked {
 			e.TargetMap = target.TargetMap
 			e.TargetCell = target.TargetCell
 		}
@@ -366,38 +366,38 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 	}
 
 	// Resources — static exploitable entities
-	for _, r := range mapState.resources {
-		if !inAOI(r.ID) {
+	for r := range mapState.ofKind(EntityResource) {
+		if !inAOI(r) {
 			continue
 		}
-		e := baseEntity(mapState, r.ID)
-		e.setVitals(mapState.vt(r.ID))
+		e := baseEntity(mapState, r)
+		e.setVitals(mapState.vt(r))
 		s.snapshotStats(&e, mapState)
-		e.StatusIcon = ResourceStatusIcon(mapState.vt(r.ID))
+		e.StatusIcon = ResourceStatusIcon(mapState.vt(r))
 		snap.Entities = append(snap.Entities, e)
 	}
 
 	// Bots
 	var interaction []SnapshotInteraction
-	for _, b := range mapState.bots {
-		if !inAOI(b.ID) {
+	for b, brain := range mapState.brains {
+		if !inAOI(b) {
 			continue
 		}
-		e := baseEntity(mapState, b.ID)
-		e.setVitals(mapState.vt(b.ID))
+		e := baseEntity(mapState, b)
+		e.setVitals(mapState.vt(b))
 		s.snapshotStats(&e, mapState)
-		e.StatusIcon = BotStatusIcon(mapState.ag(b.ID), mapState.vt(b.ID))
-		e.Behavior = mapState.ag(b.ID).Behavior
-		e.CasterID = mapState.ag(b.ID).CasterID
+		e.StatusIcon = BotStatusIcon(mapState.ag(b), mapState.vt(b))
+		e.Behavior = mapState.ag(b).Behavior
+		e.CasterID = mapState.ag(b).CasterID
 		// The action code is location-scoped and position-independent. The
 		// client fetches the metadata by code; quests come from the quest API
 		// by the bot's binding cell.
-		e.ActionCode = mapState.ag(b.ID).ActionCode
+		e.ActionCode = mapState.ag(b).ActionCode
 		// Quests resolve per viewing player and per cell. QuestCodes carries
 		// every surfaced quest for the interact modal; the capability bits
 		// light only for actionable content.
-		row := SnapshotInteraction{ID: b.ID, QuestCodes: s.botQuestCodes(player, b)}
-		row.QuestTalkDialogCodes = s.pendingActionTalkDialogs(player, b, row.QuestCodes)
+		row := SnapshotInteraction{ID: b, QuestCodes: s.botQuestCodes(player, b, mapState)}
+		row.QuestTalkDialogCodes = s.pendingActionTalkDialogs(player, b, mapState, row.QuestCodes)
 		hasPendingTalk := false
 		for _, d := range row.QuestTalkDialogCodes {
 			if d != "" {
@@ -405,11 +405,11 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 				break
 			}
 		}
-		row.Flags = s.botInteractionFlags(s.botHasActionableQuest(player, b),
-			hasPendingTalk, s.botHasUsableAction(b))
+		row.Flags = s.botInteractionFlags(s.botHasActionableQuest(player, b, mapState),
+			hasPendingTalk, s.botHasUsableAction(b, mapState))
 		// Loot eligibility is personal: the token's collection policy decides who
 		// may collect it, and the client colours the particles by this bit.
-		if mapState.ag(b.ID).Behavior == BehaviorDrop && lootAdmits(b, player.ID) {
+		if mapState.ag(b).Behavior == BehaviorDrop && lootAdmits(brain, player.ID) {
 			row.Flags |= InteractionFlagLootEligible
 		}
 		if row.Flags != 0 || len(row.QuestCodes) > 0 {

@@ -98,20 +98,18 @@ func TestOnlyALootCollectingBotHealsFromItsHeldUnits(t *testing.T) {
 	s, ms, _ := healingServer(t, 100)
 	ids := map[string]EntityID{BehaviorHostile: 200, BehaviorDrop: 201, BehaviorProvider: 202}
 	for behavior, id := range ids {
-		ms.bots[id] = &BotState{EntityBase: EntityBase{ID: id}}
-		ms.spawn(id, EntityData{Kind: EntityBot}, Transform{Size: Vec2{X: 1, Y: 1}}, Appearance{Layers: []ObjectLayerState{gel(1)}})
-		ms.addVitals(id, Vitals{Life: 10, MaxLife: 100})
-		ms.addMortal(id, &Mortal{})
-		ms.addAgent(id, Agent{Behavior: behavior})
+		addBot(ms, id, Transform{Size: Vec2{X: 1, Y: 1}}, &Brain{}, Motion{}, behavior)
+		ms.ap(id).Layers = []ObjectLayerState{gel(1)}
+		ms.vt(id).Life = 10
 	}
 
 	s.phaseSkills(0, ms)
 
-	if raider := ms.bots[ids[BehaviorHostile]]; ms.vt(raider.ID).Life != 10+gelHeal || len(ms.ap(raider.ID).Layers) != 0 {
-		t.Fatalf("the hostile bot must heal from its gel: life=%v layers=%+v", ms.vt(raider.ID).Life, ms.ap(raider.ID).Layers)
+	if raider := ids[BehaviorHostile]; ms.vt(raider).Life != 10+gelHeal || len(ms.ap(raider).Layers) != 0 {
+		t.Fatalf("the hostile bot must heal from its gel: life=%v layers=%+v", ms.vt(raider).Life, ms.ap(raider).Layers)
 	}
 	for _, behavior := range []string{BehaviorDrop, BehaviorProvider} {
-		if bot := ms.bots[ids[behavior]]; ms.vt(bot.ID).Life != 10 || len(ms.ap(bot.ID).Layers) != 1 {
+		if bot := ids[behavior]; ms.vt(bot).Life != 10 || len(ms.ap(bot).Layers) != 1 {
 			t.Fatalf("a %s bot consumed its gel", behavior)
 		}
 	}

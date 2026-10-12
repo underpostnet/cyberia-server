@@ -35,53 +35,51 @@ func (s *GameServer) randomPointWithinRadius(ms *MapState, center Vec2, radius f
 
 // update bots per map
 func (s *GameServer) updateBots(mapState *MapState) {
-	for botID, bot := range mapState.bots {
+	for id, bot := range mapState.brains {
 		// If bot is dead, skip all AI logic.
-		if mapState.vt(bot.ID).ghost() {
+		if mapState.vt(id).ghost() {
 			continue
 		}
 
 		// Recalculate stats to update MaxLife based on current equipment.
-		s.ApplyResistanceStat(bot.ID, mapState)
+		s.ApplyResistanceStat(id, mapState)
 
 		// Check for expiration
 		if !bot.ExpiresAt.IsZero() && time.Now().After(bot.ExpiresAt) {
-			delete(mapState.bots, botID)
-			mapState.despawn(botID)
+			mapState.despawn(id)
 			continue
 		}
 
 		// Inert tokens (scattered loot drops) hold position: no wander, aggro,
 		// or skills. Collection and lifetime are handled elsewhere (loot.go).
-		if behaviorIsInert(mapState.ag(bot.ID).Behavior) {
+		if behaviorIsInert(mapState.ag(id).Behavior) {
 			continue
 		}
 
-		botStats := s.CalculateStats(bot.ID, mapState)
+		botStats := s.CalculateStats(id, mapState)
 
 		// --- SKILL PROJECTILE BEHAVIOR ---
 		// Skill projectile bots move in a straight line and are removed if they go out of bounds.
-		if mapState.ag(bot.ID).Behavior == BehaviorSkill {
+		if mapState.ag(id).Behavior == BehaviorSkill {
 			// dt-based integration. entityBaseSpeed is cells/second; one tick
 			// is s.tickDuration. (The old code used `... / s.fps` which is a
 			// frame-count integration that silently misbehaves when the loop
 			// runs slow or tickRate changes.)
 			projectileStep := s.entityBaseSpeed * s.projectileSpeedMultiplier * s.tickDuration.Seconds()
 			// Calculate movement vector from bot's direction
-			dirX, dirY := getDirectionVector(mapState.mo(bot.ID).Direction)
+			dirX, dirY := getDirectionVector(mapState.mo(id).Direction)
 
 			// Update position
-			mapState.tf(bot.ID).Pos.X += dirX * projectileStep
-			mapState.tf(bot.ID).Pos.Y += dirY * projectileStep
+			mapState.tf(id).Pos.X += dirX * projectileStep
+			mapState.tf(id).Pos.Y += dirY * projectileStep
 
 			// Remove projectile if it goes out of map bounds
-			if mapState.tf(bot.ID).Pos.X < 0 || mapState.tf(bot.ID).Pos.X > float64(mapState.gridW) ||
-				mapState.tf(bot.ID).Pos.Y < 0 || mapState.tf(bot.ID).Pos.Y > float64(mapState.gridH) {
-				delete(mapState.bots, botID)
-				mapState.despawn(botID)
+			if mapState.tf(id).Pos.X < 0 || mapState.tf(id).Pos.X > float64(mapState.gridW) ||
+				mapState.tf(id).Pos.Y < 0 || mapState.tf(id).Pos.Y > float64(mapState.gridH) {
+				mapState.despawn(id)
 				continue // Skip further processing for this bot
 			}
-			s.handleBotSkills(bot.ID, mapState, Vec2{X: mapState.tf(bot.ID).Pos.X, Y: mapState.tf(bot.ID).Pos.Y})
+			s.handleBotSkills(id, mapState, Vec2{X: mapState.tf(id).Pos.X, Y: mapState.tf(id).Pos.Y})
 			// For skill projectiles, we don't need to call updateBotPosition or other AI logic
 			// as their movement is simple and direct.
 			continue
@@ -91,26 +89,26 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		// --- PROVIDER BEHAVIOR (mission/action givers) ---
 		// Immortal and near-stationary: never aggroes or casts. provider-static
 		// stays put; provider takes an occasional short step near its spawn.
-		if behaviorIsProvider(mapState.ag(bot.ID).Behavior) {
-			if !behaviorIsStationary(mapState.ag(bot.ID).Behavior) {
-				if (mapState.mo(bot.ID).Mode != WALKING || len(bot.Path) == 0) && rand.Float64() < providerWanderChancePerTick {
-					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, providerWanderRadius, mapState.tf(bot.ID).Size)
+		if behaviorIsProvider(mapState.ag(id).Behavior) {
+			if !behaviorIsStationary(mapState.ag(id).Behavior) {
+				if (mapState.mo(id).Mode != WALKING || len(bot.Path) == 0) && rand.Float64() < providerWanderChancePerTick {
+					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, providerWanderRadius, mapState.tf(id).Size)
 					if target.X >= 0 {
-						if pth, err := mapState.pathfinder.Astar(Cell{X: int(math.Round(mapState.tf(bot.ID).Pos.X)), Y: int(math.Round(mapState.tf(bot.ID).Pos.Y))}, target, mapState.tf(bot.ID).Size); err == nil && len(pth) > 0 {
+						if pth, err := mapState.pathfinder.Astar(Cell{X: int(math.Round(mapState.tf(id).Pos.X)), Y: int(math.Round(mapState.tf(id).Pos.Y))}, target, mapState.tf(id).Size); err == nil && len(pth) > 0 {
 							bot.Path = pth
 							bot.TargetPos = target
-							mapState.mo(bot.ID).Mode = WALKING
+							mapState.mo(id).Mode = WALKING
 						}
 					}
 				}
-				s.updateBotPosition(bot, mapState, botStats)
+				s.updateBotPosition(id, mapState, botStats)
 			}
 			continue
 		}
 		// --- END PROVIDER BEHAVIOR ---
 
 		// Hostile logic: check for nearest player in aggro range
-		if mapState.ag(bot.ID).Behavior == BehaviorHostile {
+		if mapState.ag(id).Behavior == BehaviorHostile {
 			var nearestID EntityID
 			nearestDist := math.MaxFloat64
 			var nearestPlayer *PlayerState
@@ -120,8 +118,8 @@ func (s *GameServer) updateBots(mapState *MapState) {
 					continue
 				}
 
-				dx := mapState.tf(p.ID).Pos.X - mapState.tf(bot.ID).Pos.X
-				dy := mapState.tf(p.ID).Pos.Y - mapState.tf(bot.ID).Pos.Y
+				dx := mapState.tf(p.ID).Pos.X - mapState.tf(id).Pos.X
+				dy := mapState.tf(p.ID).Pos.Y - mapState.tf(id).Pos.Y
 				dist := math.Sqrt(dx*dx + dy*dy)
 				if dist < nearestDist {
 					nearestDist = dist
@@ -134,17 +132,17 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				// This makes the bot appear to be "aiming", especially when idle.
 				// If the bot is walking, this direction will be updated by updateBotPosition
 				// to follow the path, which is the desired behavior.
-				dirX := mapState.tf(nearestPlayer.ID).Pos.X - mapState.tf(bot.ID).Pos.X
-				dirY := mapState.tf(nearestPlayer.ID).Pos.Y - mapState.tf(bot.ID).Pos.Y
+				dirX := mapState.tf(nearestPlayer.ID).Pos.X - mapState.tf(id).Pos.X
+				dirY := mapState.tf(nearestPlayer.ID).Pos.Y - mapState.tf(id).Pos.Y
 				if dirX != 0 || dirY != 0 {
-					mapState.mo(bot.ID).Direction = directionFromVector(dirX, dirY)
+					mapState.mo(id).Direction = directionFromVector(dirX, dirY)
 				}
 
 				// Hostile bots that are idle (not moving) have a chance to use a skill.
-				if mapState.mo(bot.ID).Mode == IDLE && bot.ExpiresAt.IsZero() {
+				if mapState.mo(id).Mode == IDLE && bot.ExpiresAt.IsZero() {
 					cooldown := s.CalculateActionCooldown(botStats)
 					if time.Since(bot.lastAction) >= cooldown {
-						s.handleBotSkills(bot.ID, mapState, mapState.tf(nearestPlayer.ID).Pos)
+						s.handleBotSkills(id, mapState, mapState.tf(nearestPlayer.ID).Pos)
 						bot.lastAction = time.Now()
 					}
 				}
@@ -153,24 +151,24 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				playerCell := Cell{X: int(math.Round(mapState.tf(nearestPlayer.ID).Pos.X)), Y: int(math.Round(mapState.tf(nearestPlayer.ID).Pos.Y))}
 				needRepath := bot.CurrentTargetPlayer != nearestID || bot.lastPursuitTargetPos != playerCell
 				if needRepath {
-					start := Cell{X: int(math.Round(mapState.tf(bot.ID).Pos.X)), Y: int(math.Round(mapState.tf(bot.ID).Pos.Y))}
-					target, err := mapState.pathfinder.findClosestWalkablePoint(playerCell, mapState.tf(bot.ID).Size)
+					start := Cell{X: int(math.Round(mapState.tf(id).Pos.X)), Y: int(math.Round(mapState.tf(id).Pos.Y))}
+					target, err := mapState.pathfinder.findClosestWalkablePoint(playerCell, mapState.tf(id).Size)
 					if err == nil {
-						if p, err2 := mapState.pathfinder.Astar(start, target, mapState.tf(bot.ID).Size); err2 == nil && len(p) > 0 {
+						if p, err2 := mapState.pathfinder.Astar(start, target, mapState.tf(id).Size); err2 == nil && len(p) > 0 {
 							bot.Path = p
 							bot.TargetPos = target
-							mapState.mo(bot.ID).Mode = WALKING
+							mapState.mo(id).Mode = WALKING
 							bot.CurrentTargetPlayer = nearestID
 							bot.lastPursuitTargetPos = playerCell
 
 							// Trigger probabilistic regen on acquiring a target.
-							s.handleProbabilisticRegen(bot.ID, mapState)
+							s.handleProbabilisticRegen(id, mapState)
 
 							// Skill activation for permanent bots acquiring a player target
 							if bot.ExpiresAt.IsZero() {
 								cooldown := s.CalculateActionCooldown(botStats)
 								if time.Since(bot.lastAction) >= cooldown {
-									s.handleBotSkills(bot.ID, mapState, mapState.tf(nearestPlayer.ID).Pos)
+									s.handleBotSkills(id, mapState, mapState.tf(nearestPlayer.ID).Pos)
 									bot.lastAction = time.Now()
 								}
 
@@ -187,29 +185,29 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 				// IMPORTANT CHANGE: When not pursuing, hostile bots behave like passive bots:
 				// - if they have no current walking path, generate a new random wander target within spawn radius.
-				if mapState.mo(bot.ID).Mode != WALKING || len(bot.Path) == 0 {
-					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, mapState.tf(bot.ID).Size)
+				if mapState.mo(id).Mode != WALKING || len(bot.Path) == 0 {
+					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, mapState.tf(id).Size)
 					if target.X >= 0 {
-						if pth, err := mapState.pathfinder.Astar(Cell{X: int(math.Round(mapState.tf(bot.ID).Pos.X)), Y: int(math.Round(mapState.tf(bot.ID).Pos.Y))}, target, mapState.tf(bot.ID).Size); err == nil && len(pth) > 0 {
+						if pth, err := mapState.pathfinder.Astar(Cell{X: int(math.Round(mapState.tf(id).Pos.X)), Y: int(math.Round(mapState.tf(id).Pos.Y))}, target, mapState.tf(id).Size); err == nil && len(pth) > 0 {
 							bot.Path = pth
 							bot.TargetPos = target
-							mapState.mo(bot.ID).Mode = WALKING
+							mapState.mo(id).Mode = WALKING
 
 							// Trigger probabilistic regen on wander.
-							s.handleProbabilisticRegen(bot.ID, mapState)
+							s.handleProbabilisticRegen(id, mapState)
 
 							// Skill activation for permanent bots taking a wander "action"
 							if bot.ExpiresAt.IsZero() {
 								cooldown := s.CalculateActionCooldown(botStats)
 								if time.Since(bot.lastAction) >= cooldown {
-									s.handleBotSkills(bot.ID, mapState, Vec2{X: float64(target.X), Y: float64(target.Y)})
+									s.handleBotSkills(id, mapState, Vec2{X: float64(target.X), Y: float64(target.Y)})
 									bot.lastAction = time.Now()
 								}
 							}
 						} else {
 							// if we can't path to a target, remain idle until next tick tries again
 							if len(bot.Path) == 0 {
-								mapState.mo(bot.ID).Mode = IDLE
+								mapState.mo(id).Mode = IDLE
 							}
 						}
 					}
@@ -217,22 +215,22 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			}
 		} else {
 			// Passive: if no path, create wandering path
-			if len(bot.Path) == 0 || mapState.mo(bot.ID).Mode != WALKING {
-				target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, mapState.tf(bot.ID).Size)
+			if len(bot.Path) == 0 || mapState.mo(id).Mode != WALKING {
+				target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, mapState.tf(id).Size)
 				if target.X >= 0 {
-					if pth, err := mapState.pathfinder.Astar(Cell{X: int(math.Round(mapState.tf(bot.ID).Pos.X)), Y: int(math.Round(mapState.tf(bot.ID).Pos.Y))}, target, mapState.tf(bot.ID).Size); err == nil && len(pth) > 0 {
+					if pth, err := mapState.pathfinder.Astar(Cell{X: int(math.Round(mapState.tf(id).Pos.X)), Y: int(math.Round(mapState.tf(id).Pos.Y))}, target, mapState.tf(id).Size); err == nil && len(pth) > 0 {
 						bot.Path = pth
 						bot.TargetPos = target
-						mapState.mo(bot.ID).Mode = WALKING
+						mapState.mo(id).Mode = WALKING
 
 						// Trigger probabilistic regen on wander.
-						s.handleProbabilisticRegen(bot.ID, mapState)
+						s.handleProbabilisticRegen(id, mapState)
 
 						// Skill activation for permanent bots taking a wander "action"
 						if bot.ExpiresAt.IsZero() {
 							cooldown := s.CalculateActionCooldown(botStats)
 							if time.Since(bot.lastAction) >= cooldown {
-								s.handleBotSkills(bot.ID, mapState, Vec2{X: float64(target.X), Y: float64(target.Y)})
+								s.handleBotSkills(id, mapState, Vec2{X: float64(target.X), Y: float64(target.Y)})
 								bot.lastAction = time.Now()
 							}
 						}
@@ -241,24 +239,25 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			}
 		}
 		// Move bot along its path
-		s.updateBotPosition(bot, mapState, botStats)
+		s.updateBotPosition(id, mapState, botStats)
 	}
 }
 
 // update bot movement similar to players
-func (s *GameServer) updateBotPosition(bot *BotState, mapState *MapState, stats ComputedStats) {
-	if mapState.mo(bot.ID).Mode != WALKING {
+func (s *GameServer) updateBotPosition(id EntityID, mapState *MapState, stats ComputedStats) {
+	bot := mapState.br(id)
+	if mapState.mo(id).Mode != WALKING {
 		return
 	}
 	speed := s.CalculateMovementSpeed(stats)
 
-	pos, path, dir, facing := stepAlongPath(mapState.tf(bot.ID).Pos, bot.Path, speed, s.tickDuration.Seconds())
-	mapState.tf(bot.ID).Pos, bot.Path = pos, path
+	pos, path, dir, facing := stepAlongPath(mapState.tf(id).Pos, bot.Path, speed, s.tickDuration.Seconds())
+	mapState.tf(id).Pos, bot.Path = pos, path
 	if facing {
-		mapState.mo(bot.ID).Direction = dir
+		mapState.mo(id).Direction = dir
 	}
 	if len(bot.Path) == 0 {
-		mapState.mo(bot.ID).Mode = IDLE
+		mapState.mo(id).Mode = IDLE
 	}
 }
 

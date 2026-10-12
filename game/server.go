@@ -463,10 +463,10 @@ func (s *GameServer) checkPortal(player *PlayerState, mapState *MapState) {
 	}
 
 	onPortal := false
-	var activePortal *PortalState
+	var activePortal EntityID
 	playerRect := mapState.tf(player.ID).rect()
-	for _, portal := range mapState.portals {
-		if rectsOverlap(playerRect, mapState.tf(portal.ID).rect()) {
+	for portal := range mapState.ofKind(EntityPortal) {
+		if rectsOverlap(playerRect, mapState.tf(portal).rect()) {
 			onPortal = true
 			activePortal = portal
 			break
@@ -484,13 +484,13 @@ func (s *GameServer) checkPortal(player *PlayerState, mapState *MapState) {
 	}
 }
 
-func (s *GameServer) teleportPlayer(player *PlayerState, mapState *MapState, portal *PortalState) {
+func (s *GameServer) teleportPlayer(player *PlayerState, mapState *MapState, portal EntityID) {
 	// s.mu is held by the caller (phasePortals). Do not release it: map
 	// mutations of mapState.players must not race other readers.
 
-	target, linked := mapState.pt(portal.ID)
+	target, linked := mapState.pt(portal)
 	if !linked {
-		logx.Warnf("Teleportation failed: portal %s has no target.", portal.ID)
+		logx.Warnf("Teleportation failed: portal %s has no target.", portal)
 		return
 	}
 	destMapCode := target.TargetMap
@@ -500,31 +500,15 @@ func (s *GameServer) teleportPlayer(player *PlayerState, mapState *MapState, por
 		return
 	}
 
-	// Determine spawn position based on portal mode
+	// A negative target cell is a random portal: spawn anywhere on the target
+	// map. Otherwise spawn near the target cell, inside the spawn radius.
 	var spawnX, spawnY float64
-	mode := portal.Mode
-	if mode == "" {
-		mode = "inter-portal"
-	}
-
-	switch mode {
-	case "inter-portal", "intra-portal":
-		// Spawn at the destination portal's position
-		spawnX = float64(target.TargetCell.X)
-		spawnY = float64(target.TargetCell.Y)
-	case "inter-random", "intra-random":
-		// Spawn at a random position within the destination map
+	if target.TargetCell.X < 0 || target.TargetCell.Y < 0 {
 		spawnX = rand.Float64() * float64(destMapState.gridW)
 		spawnY = rand.Float64() * float64(destMapState.gridH)
-	default:
-		spawnX = float64(destMapState.gridW) / 2.0
-		spawnY = float64(destMapState.gridH) / 2.0
-	}
-
-	// Apply spawn radius jitter for portal-to-portal modes
-	if mode == "inter-portal" || mode == "intra-portal" {
-		spawnX += rand.Float64()*s.portalSpawnRadius*2 - s.portalSpawnRadius
-		spawnY += rand.Float64()*s.portalSpawnRadius*2 - s.portalSpawnRadius
+	} else {
+		spawnX = float64(target.TargetCell.X) + rand.Float64()*s.portalSpawnRadius*2 - s.portalSpawnRadius
+		spawnY = float64(target.TargetCell.Y) + rand.Float64()*s.portalSpawnRadius*2 - s.portalSpawnRadius
 	}
 
 	currentMapState := s.maps[player.MapCode]

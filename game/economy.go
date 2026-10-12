@@ -98,42 +98,26 @@ func (s *GameServer) syncCoinOL(layers *[]ObjectLayerState, amount uint32) {
 	ol.Active = false // coins are never activable — enforced here
 }
 
-// coinQuantity returns the entity's flat coin balance.  O(1).
-// entity must be *PlayerState or *BotState.
-func coinQuantity(entity interface{}) uint32 {
-	switch e := entity.(type) {
-	case *PlayerState:
-		return e.Coins
-	case *BotState:
-		return e.Coins
+// wallet returns the flat coin balance of player or bot id on ms.
+func (s *GameServer) wallet(id EntityID, ms *MapState) *uint32 {
+	if b, ok := ms.brains[id]; ok {
+		return &b.Coins
 	}
-	return 0
+	return &ms.players[id].Coins
 }
 
-// setCoinQuantity sets the flat Coins field and synchronises the display-only
-// coin ObjectLayer slot (Active: false, Quantity = amount).
-// entity must be *PlayerState or *BotState.
-func (s *GameServer) setCoinQuantity(entity interface{}, amount uint32) {
-	switch e := entity.(type) {
-	case *PlayerState:
-		e.Coins = amount
-		s.syncCoinOL(&s.ap(e.ID, e.MapCode).Layers, amount)
-	case *BotState:
-		e.Coins = amount
-		s.syncCoinOL(&s.ap(e.ID, e.MapCode).Layers, amount)
-	}
+// setCoins sets the flat balance of id and synchronises the display-only coin
+// ObjectLayer slot (Active: false, Quantity = amount).
+func (s *GameServer) setCoins(id EntityID, ms *MapState, amount uint32) {
+	*s.wallet(id, ms) = amount
+	s.syncCoinOL(&ms.ap(id).Layers, amount)
 }
 
-// addCoins adds delta to entity.Coins (clamped to [0, MaxUint32]) and syncs
-// the display coin OL slot.  Returns the new balance.
-func (s *GameServer) addCoins(entity interface{}, delta int) uint32 {
-	cur := int(coinQuantity(entity))
-	cur += delta
-	if cur < 0 {
-		cur = 0
-	}
-	next := uint32(cur)
-	s.setCoinQuantity(entity, next)
+// addCoins adds delta to the balance of id (clamped to [0, MaxUint32]) and
+// syncs the display coin OL slot. Returns the new balance.
+func (s *GameServer) addCoins(id EntityID, ms *MapState, delta int) uint32 {
+	next := uint32(max(int(*s.wallet(id, ms))+delta, 0))
+	s.setCoins(id, ms, next)
 	return next
 }
 
@@ -193,7 +177,7 @@ func (s *GameServer) addPlayerItem(player *PlayerState, itemID string, qty int) 
 		return
 	}
 	if itemID == s.coinItemID {
-		s.addCoins(player, qty)
+		s.addCoins(player.ID, s.maps[player.MapCode], qty)
 	} else {
 		getOrCreateItemOL(&s.ap(player.ID, player.MapCode).Layers, itemID).Quantity += qty
 	}
@@ -205,13 +189,13 @@ func (s *GameServer) addPlayerItem(player *PlayerState, itemID string, qty int) 
 // FountainInitPlayer credits the player's starting wallet on first connect.
 // It always runs, so the seeded coin slot mirrors the balance even at zero.
 func (s *GameServer) FountainInitPlayer(player *PlayerState) {
-	s.setCoinQuantity(player, uint32(max(s.playerSpawnCoins, 0)))
+	s.setCoins(player.ID, s.maps[player.MapCode], uint32(max(s.playerSpawnCoins, 0)))
 }
 
 // FountainInitBot credits a bot's coin pool at spawn / respawn time.
 // Implements the botSpawnCoins fountain (infinite mint bounded by kill rate).
-func (s *GameServer) FountainInitBot(bot *BotState) {
-	s.setCoinQuantity(bot, uint32(max(s.botSpawnCoins, 0)))
+func (s *GameServer) FountainInitBot(id EntityID, ms *MapState) {
+	s.setCoins(id, ms, uint32(max(s.botSpawnCoins, 0)))
 }
 
 // ── Kill loot amounts ─────────────────────────────────────────────────────
@@ -221,7 +205,7 @@ func (s *GameServer) FountainInitBot(bot *BotState) {
 // balance, floored, with the configured minimum, capped at the balance.
 // Players carry only what they hold (no mint). Caller holds s.mu.
 func (s *GameServer) pvpCoinDropAmount(player *PlayerState) int {
-	effectiveBalance := int(coinQuantity(player))
+	effectiveBalance := int(player.Coins)
 	if effectiveBalance <= 0 {
 		return 0
 	}
@@ -238,8 +222,8 @@ func (s *GameServer) pvpCoinDropAmount(player *PlayerState) int {
 // botCoinDropAmount computes how many coins a dead bot scatters, mirroring the
 // PvE kill-transfer formula: the bot's balance (minted up to botSpawnCoins) at
 // the vs-bot rate, floored, with the configured minimum. Caller holds s.mu.
-func (s *GameServer) botCoinDropAmount(bot *BotState) int {
-	effectiveBalance := int(coinQuantity(bot))
+func (s *GameServer) botCoinDropAmount(id EntityID, ms *MapState) int {
+	effectiveBalance := int(ms.br(id).Coins)
 	if effectiveBalance < s.botSpawnCoins {
 		effectiveBalance = s.botSpawnCoins
 	}
@@ -264,13 +248,13 @@ func (s *GameServer) SinkRespawnCost(player *PlayerState) {
 	if s.respawnCostPercent <= 0 {
 		return
 	}
-	balance := int(coinQuantity(player))
+	balance := int(player.Coins)
 	burn := int(math.Floor(float64(balance) * s.respawnCostPercent))
 	if burn <= 0 {
 		return
 	}
 	// No coin FCT — balance changes surface in the inventory-bar quantity FX.
-	s.addCoins(player, -burn)
+	s.addCoins(player.ID, s.maps[player.MapCode], -burn)
 	logx.Debugf("[ECONOMY] Respawn sink: %s burned %d coins (%.0f%%)",
 		player.ID, burn, s.respawnCostPercent*100)
 }

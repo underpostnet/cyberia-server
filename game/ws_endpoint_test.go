@@ -31,9 +31,6 @@ func newWSTestServer(t *testing.T, limits ConnectionLimits) *wsTestServer {
 		gridH:      40,
 		pathfinder: NewPathfinder(40, 40),
 		players:    map[EntityID]*PlayerState{},
-		bots:       map[EntityID]*BotState{},
-		portals:    map[EntityID]*PortalState{},
-		resources:  map[EntityID]*ResourceState{},
 	}
 
 	s := NewGameServer()

@@ -1,6 +1,9 @@
 package game
 
-import "strconv"
+import (
+	"iter"
+	"strconv"
+)
 
 // String lets a log print an id with %s.
 func (id EntityID) String() string { return strconv.FormatUint(uint64(id), 10) }
@@ -153,6 +156,54 @@ func (ms *MapState) mt(id EntityID) *Mortal {
 	return m
 }
 
+// addBrain gives bot id its brain.
+func (ms *MapState) addBrain(id EntityID, b *Brain) {
+	if ms.brains == nil {
+		ms.brains = make(map[EntityID]*Brain)
+	}
+	ms.brains[id] = b
+}
+
+// br returns the brain of bot id. The id must have one.
+func (ms *MapState) br(id EntityID) *Brain {
+	b, ok := ms.brains[id]
+	if !ok {
+		panic("entity " + id.String() + " has no brain")
+	}
+	return b
+}
+
+// ofKind yields the id of every entity of kind k, in slot order.
+func (ms *MapState) ofKind(k string) iter.Seq[EntityID] {
+	return func(yield func(EntityID) bool) {
+		for i, id := range ms.ids {
+			if id != 0 && ms.data[i].Kind == k && !yield(id) {
+				return
+			}
+		}
+	}
+}
+
+// destructibles yields every destructible obstacle: the scenery that has vitals.
+func (ms *MapState) destructibles() iter.Seq[EntityID] {
+	return func(yield func(EntityID) bool) {
+		for i, id := range ms.ids {
+			if id != 0 && ms.data[i].Kind == EntityScenery && ms.mask[i]&maskVitals != 0 && !yield(id) {
+				return
+			}
+		}
+	}
+}
+
+// count returns the number of entities of kind k.
+func (ms *MapState) count(k string) int {
+	n := 0
+	for range ms.ofKind(k) {
+		n++
+	}
+	return n
+}
+
 // vt returns the vitals of an entity on the map mapCode.
 func (s *GameServer) vt(id EntityID, mapCode string) *Vitals { return s.maps[mapCode].vt(id) }
 
@@ -196,12 +247,13 @@ type entityRow struct {
 	agent      Agent
 	portal     Portal
 	mortal     *Mortal
+	brain      *Brain
 }
 
 // take copies the row of id and frees its slot.
 func (ms *MapState) take(id EntityID) entityRow {
 	i := ms.slot(id)
-	row := entityRow{ms.mask[i], ms.data[i], ms.transform[i], ms.appearance[i], ms.vitals[i], ms.motion[i], ms.agent[i], ms.portal[i], ms.mortals[id]}
+	row := entityRow{ms.mask[i], ms.data[i], ms.transform[i], ms.appearance[i], ms.vitals[i], ms.motion[i], ms.agent[i], ms.portal[i], ms.mortals[id], ms.brains[id]}
 	ms.despawn(id)
 	return row
 }
@@ -217,6 +269,9 @@ func (ms *MapState) put(id EntityID, row entityRow) {
 	if row.mortal != nil {
 		ms.addMortal(id, row.mortal)
 	}
+	if row.brain != nil {
+		ms.addBrain(id, row.brain)
+	}
 }
 
 // despawn frees the slot of id. The component arrays keep stale values; the
@@ -230,4 +285,5 @@ func (ms *MapState) despawn(id EntityID) {
 	ms.mask[slot] = 0
 	delete(ms.index, id)
 	delete(ms.mortals, id)
+	delete(ms.brains, id)
 }

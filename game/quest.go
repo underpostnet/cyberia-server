@@ -112,8 +112,9 @@ type QuestSnapshotEntry struct {
 // stable as it wanders). Quests bind to entities by this cell, independently of
 // any cyberia-action: a bot standing on a quest's source cell offers that quest
 // even when it carries no action.
-func botSpawnCell(b *BotState) cellKey {
-	return cellKey{b.MapCode, int(b.SpawnCenter.X), int(b.SpawnCenter.Y)}
+func botSpawnCell(ms *MapState, id EntityID) cellKey {
+	c := ms.br(id).SpawnCenter
+	return cellKey{ms.code, int(c.X), int(c.Y)}
 }
 
 func protoToQuest(q *pb.CyberiaQuestMessage) *CyberiaQuest {
@@ -230,11 +231,11 @@ func (s *GameServer) logQuestProviders() {
 func (s *GameServer) providerSkinsAtCell(cell cellKey) []string {
 	var out []string
 	for _, ms := range s.maps {
-		for _, bot := range ms.bots {
-			if botSpawnCell(bot) == cell {
-				skin := s.botActiveSkinOf(bot)
+		for id := range ms.brains {
+			if botSpawnCell(ms, id) == cell {
+				skin := s.botActiveSkinOf(id, ms)
 				if skin == "" {
-					skin = fmt.Sprint(bot.ID)
+					skin = fmt.Sprint(id)
 				}
 				out = append(out, skin)
 			}
@@ -296,15 +297,16 @@ func (s *GameServer) handleQuestAbandon(player *PlayerState, cmd *InputCommand) 
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) handleQuestAccept(player *PlayerState, cmd *InputCommand) {
-	bot := s.findBot(cmd.EntityID)
-	if bot == nil {
+	id := cmd.EntityID
+	ms := s.findBot(id)
+	if ms == nil {
 		return
 	}
 	// The client names which mission to accept (an NPC can offer several). It
 	// must be a quest bound to this NPC's cell and acceptable right now; when the
 	// client sends no code, fall back to the first acceptable one. Acceptance is
 	// cell-based and independent of any cyberia-action on the entity.
-	cell := botSpawnCell(bot)
+	cell := botSpawnCell(ms, id)
 	code := cmd.ItemID
 	if code != "" {
 		if !containsStr(s.questsByCell[cell], code) || !s.questAcceptableFor(player, code) {
@@ -375,7 +377,7 @@ func (s *GameServer) questCompleted(player *PlayerState, code string) bool {
 // by code only when uncached. The non-empty result also drives the quest bit.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botQuestCodes(player *PlayerState, bot *BotState) []string {
+func (s *GameServer) botQuestCodes(player *PlayerState, id EntityID, ms *MapState) []string {
 	seen := map[string]bool{}
 	var codes []string
 	add := func(code string) {
@@ -384,13 +386,13 @@ func (s *GameServer) botQuestCodes(player *PlayerState, bot *BotState) []string 
 			codes = append(codes, code)
 		}
 	}
-	for _, code := range s.questsByCell[botSpawnCell(bot)] {
+	for _, code := range s.questsByCell[botSpawnCell(ms, id)] {
 		switch {
 		case s.questCompleted(player, code), s.playerQuestActive(player, code), s.questAcceptableFor(player, code):
 			add(code)
 		}
 	}
-	skin := s.botActiveSkinOf(bot)
+	skin := s.botActiveSkinOf(id, ms)
 	if skin != "" {
 		for _, qp := range player.Quests {
 			if qp.Status != "active" {
@@ -415,13 +417,13 @@ func (s *GameServer) botQuestCodes(player *PlayerState, bot *BotState) []string 
 // actionable — they light no attention icon.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botHasActionableQuest(player *PlayerState, bot *BotState) bool {
-	for _, code := range s.questsByCell[botSpawnCell(bot)] {
+func (s *GameServer) botHasActionableQuest(player *PlayerState, id EntityID, ms *MapState) bool {
+	for _, code := range s.questsByCell[botSpawnCell(ms, id)] {
 		if s.questAcceptableFor(player, code) {
 			return true
 		}
 	}
-	skin := s.botActiveSkinOf(bot)
+	skin := s.botActiveSkinOf(id, ms)
 	if skin == "" {
 		return false
 	}
@@ -655,7 +657,7 @@ func (s *GameServer) removePlayerItem(player *PlayerState, itemID string, qty in
 	if itemID == s.coinItemID {
 		// Through the economy helper so the display-only coin ObjectLayer slot
 		// stays equal to the flat balance (economy.go invariant).
-		s.addCoins(player, -qty)
+		s.addCoins(player.ID, s.maps[player.MapCode], -qty)
 		return
 	}
 	removeLayerItem(&s.ap(player.ID, player.MapCode).Layers, itemID, qty)

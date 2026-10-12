@@ -138,13 +138,13 @@ func (s *GameServer) bindActions(mapCodes []string, actions []*pb.CyberiaActionM
 
 	bound := 0
 	for _, ms := range s.maps {
-		for _, bot := range ms.bots {
-			action, ok := byCell[botSpawnCell(bot)]
+		for id := range ms.brains {
+			action, ok := byCell[botSpawnCell(ms, id)]
 			if !ok {
 				continue
 			}
-			ms.ag(bot.ID).ActionCode = action.Code
-			s.actionCache[bot.ID] = action
+			ms.ag(id).ActionCode = action.Code
+			s.actionCache[id] = action
 			bound++
 		}
 	}
@@ -162,11 +162,11 @@ func (s *GameServer) logActionProviders() {
 	}
 	logx.Debugf("[ActionProviders] %d action-provider entities:", len(s.actionCache))
 	for _, ms := range s.maps {
-		for _, bot := range ms.bots {
-			if ms.ag(bot.ID).ActionCode == "" {
+		for id := range ms.brains {
+			if ms.ag(id).ActionCode == "" {
 				continue
 			}
-			a := s.actionCache[bot.ID]
+			a := s.actionCache[id]
 			label := ""
 			var quests []string
 			if a != nil {
@@ -174,19 +174,19 @@ func (s *GameServer) logActionProviders() {
 				quests = s.questsByCell[actionCell(a)]
 			}
 			logx.Debugf("[ActionProviders]   map=%s action=%s label=%q quests=%v entity=%d initPos=(%d,%d)",
-				bot.MapCode, ms.ag(bot.ID).ActionCode, label, quests, bot.ID,
-				int(ms.tf(bot.ID).Pos.X), int(ms.tf(bot.ID).Pos.Y))
+				ms.code, ms.ag(id).ActionCode, label, quests, id,
+				int(ms.tf(id).Pos.X), int(ms.tf(id).Pos.Y))
 		}
 	}
 }
 
-// findBot returns the bot with this entity ID across all maps, or nil.
+// findBot returns the map that holds the bot with this entity ID, or nil.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) findBot(entityID EntityID) *BotState {
+func (s *GameServer) findBot(id EntityID) *MapState {
 	for _, ms := range s.maps {
-		if b := ms.bots[entityID]; b != nil {
-			return b
+		if ms.brains[id] != nil {
+			return ms
 		}
 	}
 	return nil
@@ -195,24 +195,24 @@ func (s *GameServer) findBot(entityID EntityID) *BotState {
 // botActiveSkin returns the active skin item ID of the bot with this entity ID
 // (searched across maps), or "" if not found. The bot's own active skin — not
 // any action field — is what 'talk' objectives match against.
-func (s *GameServer) botActiveSkin(entityID EntityID) string {
-	bot := s.findBot(entityID)
-	if bot == nil {
+func (s *GameServer) botActiveSkin(id EntityID) string {
+	ms := s.findBot(id)
+	if ms == nil {
 		return ""
 	}
-	return s.botActiveSkinOf(bot)
+	return s.botActiveSkinOf(id, ms)
 }
 
 // botActiveSkinOf reads a bot's active skin directly (no lookup), so the AOI
 // path that already holds the bot avoids an O(N) per-entity map search.
-func (s *GameServer) botActiveSkinOf(bot *BotState) string {
+func (s *GameServer) botActiveSkinOf(id EntityID, ms *MapState) string {
 	// When the NPC is dead its active layers hold the ghost skin; the live skin
 	// is preserved in PreRespawnObjectLayers. Read from there so a talk objective
 	// still validates against a quest-giver that just died — the interaction
 	// context is independent of the entity's alive/AOI state.
-	layers := s.ap(bot.ID, bot.MapCode).Layers
-	if s.vt(bot.ID, bot.MapCode).ghost() && len(s.maps[bot.MapCode].mt(bot.ID).PreRespawnObjectLayers) > 0 {
-		layers = s.maps[bot.MapCode].mt(bot.ID).PreRespawnObjectLayers
+	layers := ms.ap(id).Layers
+	if ms.vt(id).ghost() && len(ms.mt(id).PreRespawnObjectLayers) > 0 {
+		layers = ms.mt(id).PreRespawnObjectLayers
 	}
 	for _, ol := range layers {
 		if ol.Active && s.itemType(ol.ItemID) == "skin" {
@@ -256,13 +256,13 @@ func (s *GameServer) botInteractionFlags(hasActionableQuest, hasPendingActionTal
 // capability lives in shop.go.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) pendingActionTalkDialogs(player *PlayerState, bot *BotState, questCodes []string) []string {
+func (s *GameServer) pendingActionTalkDialogs(player *PlayerState, id EntityID, ms *MapState, questCodes []string) []string {
 	dialogs := make([]string, len(questCodes))
-	action := s.actionCache[bot.ID]
+	action := s.actionCache[id]
 	if action == nil || len(action.QuestDialogueCodes) == 0 {
 		return dialogs
 	}
-	skin := s.botActiveSkinOf(bot)
+	skin := s.botActiveSkinOf(id, ms)
 	if skin == "" {
 		return dialogs
 	}
@@ -286,8 +286,8 @@ func (s *GameServer) pendingActionTalkDialogs(player *PlayerState, bot *BotState
 // not grow botInteractionFlags.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botHasUsableAction(bot *BotState) bool {
-	return s.botHasShop(bot) || s.botHasCraft(bot) || s.botHasStorage(bot)
+func (s *GameServer) botHasUsableAction(id EntityID, ms *MapState) bool {
+	return s.botHasShop(id, ms) || s.botHasCraft(id, ms) || s.botHasStorage(id, ms)
 }
 
 // botInPlayerRange reports whether a provider can be interacted with: same map,
@@ -295,11 +295,11 @@ func (s *GameServer) botHasUsableAction(bot *BotState) bool {
 // screen in the first place.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botInPlayerRange(player *PlayerState, bot *BotState) bool {
-	if bot.MapCode != player.MapCode {
+func (s *GameServer) botInPlayerRange(player *PlayerState, id EntityID, ms *MapState) bool {
+	if ms.code != player.MapCode {
 		return false
 	}
-	tf := s.maps[bot.MapCode].tf(bot.ID)
+	tf := ms.tf(id)
 	botRect := Rectangle{
 		MinX: tf.Pos.X, MinY: tf.Pos.Y,
 		MaxX: tf.Pos.X + tf.Size.X, MaxY: tf.Pos.Y + tf.Size.Y,

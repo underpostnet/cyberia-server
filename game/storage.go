@@ -60,11 +60,11 @@ func storageCapacity(slots int) int {
 // when that entity is not a storage terminal.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) storageVault(player *PlayerState, bot *BotState) (storageKey, int, bool) {
-	if bot == nil || s.vt(bot.ID, bot.MapCode).ghost() {
+func (s *GameServer) storageVault(player *PlayerState, id EntityID, ms *MapState) (storageKey, int, bool) {
+	if ms == nil || ms.vt(id).ghost() {
 		return storageKey{}, 0, false
 	}
-	action := s.actionCache[bot.ID]
+	action := s.actionCache[id]
 	if action == nil {
 		return storageKey{}, 0, false
 	}
@@ -79,11 +79,11 @@ func (s *GameServer) storageVault(player *PlayerState, bot *BotState) (storageKe
 // botHasUsableAction alongside the vendor and assembler capabilities.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botHasStorage(bot *BotState) bool {
-	if bot == nil || s.vt(bot.ID, bot.MapCode).ghost() {
+func (s *GameServer) botHasStorage(id EntityID, ms *MapState) bool {
+	if ms == nil || ms.vt(id).ghost() {
 		return false
 	}
-	action := s.actionCache[bot.ID]
+	action := s.actionCache[id]
 	return action != nil && storageCapacity(action.StorageSlots) >= 1
 }
 
@@ -105,11 +105,12 @@ func (s *GameServer) resolveStorage(player *PlayerState, entityID EntityID) (sto
 	if s.vt(player.ID, player.MapCode).ghost() {
 		return storageKey{}, 0, false
 	}
-	bot := s.findBot(entityID)
-	if bot == nil || !s.botInPlayerRange(player, bot) {
+	id := entityID
+	ms := s.findBot(id)
+	if ms == nil || !s.botInPlayerRange(player, id, ms) {
 		return storageKey{}, 0, false
 	}
-	key, capacity, ok := s.storageVault(player, bot)
+	key, capacity, ok := s.storageVault(player, id, ms)
 	if !ok {
 		return storageKey{}, 0, false
 	}

@@ -50,11 +50,11 @@ func shopItemFor(action *CyberiaAction, itemID string) *ActionShopItem {
 // attention icon, particle orbit, and border as a pending action-talk.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botHasShop(bot *BotState) bool {
-	if bot == nil || s.vt(bot.ID, bot.MapCode).ghost() {
+func (s *GameServer) botHasShop(id EntityID, ms *MapState) bool {
+	if ms == nil || ms.vt(id).ghost() {
 		return false
 	}
-	action := s.actionCache[bot.ID]
+	action := s.actionCache[id]
 	return action != nil && len(action.ShopItems) > 0
 }
 
@@ -92,16 +92,17 @@ func (s *GameServer) handleShopBuy(player *PlayerState, cmd *InputCommand) {
 		return
 	}
 	qty := shopBuyQuantity(cmd.Quantity)
-	bot := s.findBot(cmd.EntityID)
-	if bot == nil {
+	id := cmd.EntityID
+	ms := s.findBot(id)
+	if ms == nil {
 		s.sendShopAck(player, cmd.EntityID, cmd.ItemID, 0, shopRejectNoVendor)
 		return
 	}
-	if !s.botInPlayerRange(player, bot) {
+	if !s.botInPlayerRange(player, id, ms) {
 		s.sendShopAck(player, cmd.EntityID, cmd.ItemID, 0, shopRejectOutOfRange)
 		return
 	}
-	item := shopItemFor(s.actionCache[bot.ID], cmd.ItemID)
+	item := shopItemFor(s.actionCache[id], cmd.ItemID)
 	if item == nil {
 		s.sendShopAck(player, cmd.EntityID, cmd.ItemID, 0, shopRejectNotForSale)
 		return
@@ -123,7 +124,7 @@ func (s *GameServer) handleShopBuy(player *PlayerState, cmd *InputCommand) {
 	s.sendShopAck(player, cmd.EntityID, item.ItemID, qty, "")
 
 	logx.Debugf("[SHOP] player %s bought %dx %q from %s for %d %s",
-		player.ID, qty, item.ItemID, bot.ID, total, priceItemID)
+		player.ID, qty, item.ItemID, id, total, priceItemID)
 }
 
 // sendShopAck notifies the buyer of the outcome. An empty reason means the

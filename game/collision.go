@@ -23,12 +23,12 @@ func checkAABBCollision(pos1 Vec2, dims1 Vec2, pos2 Vec2, dims2 Vec2) bool {
 func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 	projectilesToDelete := []EntityID{}
 
-	for projectileID, projectile := range mapState.bots {
-		if mapState.ag(projectile.ID).Behavior != BehaviorSkill {
+	for projectileID := range mapState.brains {
+		if mapState.ag(projectileID).Behavior != BehaviorSkill {
 			continue
 		}
 
-		projectileStats := s.CalculateStats(projectile.ID, mapState)
+		projectileStats := s.CalculateStats(projectileID, mapState)
 		if projectileStats.Effect <= 0 {
 			continue // No damage to deal.
 		}
@@ -45,16 +45,16 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				continue
 			}
 			// Projectiles should not damage their caster.
-			if player.ID == mapState.ag(projectile.ID).CasterID {
+			if player.ID == mapState.ag(projectileID).CasterID {
 				continue
 			}
-			if checkAABBCollision(mapState.tf(projectile.ID).Pos, mapState.tf(projectile.ID).Size, mapState.tf(player.ID).Pos, mapState.tf(player.ID).Size) {
+			if checkAABBCollision(mapState.tf(projectileID).Pos, mapState.tf(projectileID).Size, mapState.tf(player.ID).Pos, mapState.tf(player.ID).Size) {
 				mapState.vt(player.ID).Life -= projectileStats.Effect
 				// Attribute damage for the loot race — player and bot casters both
 				// count, so a bot-only kill still drops the victim's coins and the
 				// contributing bots can collect. Recorded before the death handler
 				// consumes the ledger.
-				recordDamage(&mapState.mt(player.ID).DamageLedger, mapState, mapState.ag(projectile.ID).CasterID, projectileStats.Effect)
+				recordDamage(&mapState.mt(player.ID).DamageLedger, mapState, mapState.ag(projectileID).CasterID, projectileStats.Effect)
 				if mapState.vt(player.ID).Life <= 0 {
 					mapState.vt(player.ID).Life = 0
 					s.handlePlayerDeath(player, mapState)
@@ -62,14 +62,14 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				// FCT: the same red "-N" for every AOI viewer.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
 					broadcastFCT(mapState, FCTDamage,
-						mapState.tf(projectile.ID).Pos.X+mapState.tf(projectile.ID).Size.X*0.5,
-						mapState.tf(projectile.ID).Pos.Y+mapState.tf(projectile.ID).Size.Y*0.5, dmg)
+						mapState.tf(projectileID).Pos.X+mapState.tf(projectileID).Size.X*0.5,
+						mapState.tf(projectileID).Pos.Y+mapState.tf(projectileID).Size.Y*0.5, dmg)
 				}
 
 				// "Thorns" effect: The player's Effect stat damages the projectile.
 				playerStats := s.CalculateStats(player.ID, mapState)
 				if playerStats.Effect > 0 {
-					mapState.vt(projectile.ID).Life -= playerStats.Effect
+					mapState.vt(projectileID).Life -= playerStats.Effect
 				}
 
 				isColliding = true
@@ -77,62 +77,62 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 		}
 
 		// Check collision with other bots
-		for otherBotID, otherBot := range mapState.bots {
-			if projectileID == otherBotID || mapState.ag(otherBot.ID).Behavior == BehaviorSkill || mapState.vt(otherBot.ID).ghost() {
+		for otherBotID := range mapState.brains {
+			if projectileID == otherBotID || mapState.ag(otherBotID).Behavior == BehaviorSkill || mapState.vt(otherBotID).ghost() {
 				continue // Don't collide with self, other projectiles, or dead bots.
 			}
 			// Inert loot tokens are non-combat: projectiles pass through them.
-			if behaviorIsInert(mapState.ag(otherBot.ID).Behavior) {
+			if behaviorIsInert(mapState.ag(otherBotID).Behavior) {
 				continue
 			}
 			// Provider NPCs are immortal — projectiles pass through without damage.
-			if behaviorIsImmortal(mapState.ag(otherBot.ID).Behavior) {
+			if behaviorIsImmortal(mapState.ag(otherBotID).Behavior) {
 				continue
 			}
 			// Projectiles should not damage their caster.
-			if otherBotID == mapState.ag(projectile.ID).CasterID {
+			if otherBotID == mapState.ag(projectileID).CasterID {
 				continue
 			}
-			if checkAABBCollision(mapState.tf(projectile.ID).Pos, mapState.tf(projectile.ID).Size, mapState.tf(otherBot.ID).Pos, mapState.tf(otherBot.ID).Size) {
-				mapState.vt(otherBot.ID).Life -= projectileStats.Effect
+			if checkAABBCollision(mapState.tf(projectileID).Pos, mapState.tf(projectileID).Size, mapState.tf(otherBotID).Pos, mapState.tf(otherBotID).Size) {
+				mapState.vt(otherBotID).Life -= projectileStats.Effect
 				// Attribute damage to the firing player or bot for the loot race.
-				recordDamage(&mapState.mt(otherBot.ID).DamageLedger, mapState, mapState.ag(projectile.ID).CasterID, projectileStats.Effect)
+				recordDamage(&mapState.mt(otherBotID).DamageLedger, mapState, mapState.ag(projectileID).CasterID, projectileStats.Effect)
 				// FCT: bot amounts are public — the same red "-N" for every AOI
 				// viewer, including the killing (one-shot) blow.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
 					broadcastFCT(mapState, FCTDamage,
-						mapState.tf(otherBot.ID).Pos.X+mapState.tf(otherBot.ID).Size.X*0.5,
-						mapState.tf(otherBot.ID).Pos.Y+mapState.tf(otherBot.ID).Size.Y*0.5, dmg)
+						mapState.tf(otherBotID).Pos.X+mapState.tf(otherBotID).Size.X*0.5,
+						mapState.tf(otherBotID).Pos.Y+mapState.tf(otherBotID).Size.Y*0.5, dmg)
 				}
-				if mapState.vt(otherBot.ID).Life <= 0 {
-					mapState.vt(otherBot.ID).Life = 0
+				if mapState.vt(otherBotID).Life <= 0 {
+					mapState.vt(otherBotID).Life = 0
 					// Capture the victim's skin before death deactivates its
 					// layers — quest `kill` objectives match on it.
-					killedSkin := s.botActiveSkin(otherBot.ID)
-					s.handleBotDeath(otherBot, mapState)
-					if killer, ok := mapState.players[mapState.ag(projectile.ID).CasterID]; ok {
+					killedSkin := s.botActiveSkin(otherBotID)
+					s.handleBotDeath(otherBotID, mapState)
+					if killer, ok := mapState.players[mapState.ag(projectileID).CasterID]; ok {
 						s.advancePlayerQuestsOnKill(killer, killedSkin)
 					}
 				}
 
 				// "Thorns" effect: The other bot's Effect stat damages the projectile.
-				otherBotStats := s.CalculateStats(otherBot.ID, mapState)
+				otherBotStats := s.CalculateStats(otherBotID, mapState)
 				if otherBotStats.Effect > 0 {
-					mapState.vt(projectile.ID).Life -= otherBotStats.Effect
+					mapState.vt(projectileID).Life -= otherBotStats.Effect
 				}
 
 				isColliding = true
 			}
 		}
 
-		for _, res := range mapState.resources {
-			if hitStatic(mapState, projectile, projectileStats.Effect, res.ID,
+		for res := range mapState.ofKind(EntityResource) {
+			if hitStatic(mapState, projectileID, projectileStats.Effect, res,
 				func() { s.handleResourceDeath(res, mapState) }) {
 				isColliding = true
 			}
 		}
-		for _, obs := range mapState.destructibles {
-			if hitStatic(mapState, projectile, projectileStats.Effect, obs.ID,
+		for obs := range mapState.destructibles() {
+			if hitStatic(mapState, projectileID, projectileStats.Effect, obs,
 				func() { s.handleDestructibleDeath(obs, mapState) }) {
 				isColliding = true
 			}
@@ -140,8 +140,8 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 
 		// If the projectile is colliding, it loses life.
 		if isColliding {
-			mapState.vt(projectile.ID).Life -= s.collisionLifeLoss
-			if mapState.vt(projectile.ID).Life <= 0 {
+			mapState.vt(projectileID).Life -= s.collisionLifeLoss
+			if mapState.vt(projectileID).Life <= 0 {
 				// Projectile is "dead" from collision damage, mark for deletion.
 				projectilesToDelete = append(projectilesToDelete, projectileID)
 			}
@@ -149,7 +149,6 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 	}
 
 	for _, id := range projectilesToDelete {
-		delete(mapState.bots, id)
 		mapState.despawn(id)
 	}
 }
@@ -157,14 +156,14 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 // hitStatic lands a projectile hit on a static mortal entity — a resource or a
 // destructible obstacle — and reports whether it hit. A ghost takes no hit. The
 // damage joins the loot race ledger, and `die` runs on the lethal hit.
-func hitStatic(mapState *MapState, projectile *BotState, effect float64,
+func hitStatic(mapState *MapState, projectile EntityID, effect float64,
 	id EntityID, die func()) bool {
-	shot, tf, v := mapState.tf(projectile.ID), mapState.tf(id), mapState.vt(id)
+	shot, tf, v := mapState.tf(projectile), mapState.tf(id), mapState.vt(id)
 	if v.ghost() || !checkAABBCollision(shot.Pos, shot.Size, tf.Pos, tf.Size) {
 		return false
 	}
 	v.Life -= effect
-	recordDamage(&mapState.mt(id).DamageLedger, mapState, mapState.ag(projectile.ID).CasterID, effect)
+	recordDamage(&mapState.mt(id).DamageLedger, mapState, mapState.ag(projectile).CasterID, effect)
 	if v.Life <= 0 {
 		v.Life = 0
 		die()
@@ -205,11 +204,11 @@ func applyDeadItems(layers []ObjectLayerState, deadItemIDs []string) []ObjectLay
 
 // grantItemToBot transfers `qty` of a non-coin item into a contributing bot's
 // inventory when it collects a scattered drop (appended inactive if new).
-func (s *GameServer) grantItemToBot(bot *BotState, itemID string, qty int) {
+func (s *GameServer) grantItemToBot(id EntityID, ms *MapState, itemID string, qty int) {
 	if itemID == "" || qty <= 0 {
 		return
 	}
-	ol := getOrCreateItemOL(&s.ap(bot.ID, bot.MapCode).Layers, itemID)
+	ol := getOrCreateItemOL(&ms.ap(id).Layers, itemID)
 	ol.Quantity += qty
 }
 
@@ -238,11 +237,11 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) 
 	if len(contributorSet(mortal.DamageLedger)) > 0 {
 		coinDrop = s.pvpCoinDropAmount(player)
 		if coinDrop > 0 {
-			s.addCoins(player, -coinDrop)
+			s.addCoins(player.ID, mapState, -coinDrop)
 		}
 	}
 	playerCenter := Vec2{X: mapState.tf(player.ID).Pos.X + mapState.tf(player.ID).Size.X*0.5, Y: mapState.tf(player.ID).Pos.Y + mapState.tf(player.ID).Size.Y*0.5}
-	s.spawnDrops(mapState, player.MapCode, playerCenter, build, coinDrop, mortal.DamageLedger)
+	s.spawnDrops(mapState, playerCenter, build, coinDrop, mortal.DamageLedger)
 	broadcastAudioEvent(mapState, AudioEventDeath, playerCenter)
 	mortal.DamageLedger = nil
 
@@ -272,7 +271,7 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) 
 // Both the dead visuals and the drops come from the entity-type default
 // resolved by the pre-death active items (most-specific subset match), so a
 // skin can carry different dead/drop sets depending on its full active set.
-func (s *GameServer) killEntity(id EntityID, kind, mapCode string, coins int, mapState *MapState) {
+func (s *GameServer) killEntity(id EntityID, kind string, coins int, mapState *MapState) {
 	mortal := mapState.mt(id)
 	s.awardDefeat(id, kind, mapState)
 	layersToSave := make([]ObjectLayerState, len(mapState.ap(id).Layers))
@@ -281,7 +280,7 @@ func (s *GameServer) killEntity(id EntityID, kind, mapCode string, coins int, ma
 	build, _ := s.resolveEntityDefaultBuild(kind, activeObjectLayerItemIDs(layersToSave))
 
 	center := Vec2{X: mapState.tf(id).Pos.X + mapState.tf(id).Size.X*0.5, Y: mapState.tf(id).Pos.Y + mapState.tf(id).Size.Y*0.5}
-	s.spawnDrops(mapState, mapCode, center, build, coins, mortal.DamageLedger)
+	s.spawnDrops(mapState, center, build, coins, mortal.DamageLedger)
 	mortal.DamageLedger = nil
 	broadcastAudioEvent(mapState, AudioEventDeath, center)
 
@@ -291,24 +290,24 @@ func (s *GameServer) killEntity(id EntityID, kind, mapCode string, coins int, ma
 
 // handleBotDeath kills a bot. Loot and coins are not injected into the killer:
 // both scatter as collectible tokens.
-func (s *GameServer) handleBotDeath(bot *BotState, mapState *MapState) {
-	s.killEntity(bot.ID, "bot", bot.MapCode, s.botCoinDropAmount(bot), mapState)
+func (s *GameServer) handleBotDeath(id EntityID, mapState *MapState) {
+	s.killEntity(id, "bot", s.botCoinDropAmount(id, mapState), mapState)
 
-	s.ApplyResistanceStat(bot.ID, s.maps[bot.MapCode])
-	mapState.mo(bot.ID).Mode = IDLE // Stop movement
+	s.ApplyResistanceStat(id, mapState)
+	mapState.mo(id).Mode = IDLE // Stop movement
 }
 
 // handleResourceDeath destroys a resource. Resources carry no coins — item
 // drops only, with loot priority to the top extraction contributor.
-func (s *GameServer) handleResourceDeath(res *ResourceState, mapState *MapState) {
-	s.killEntity(res.ID, "resource", res.MapCode, 0, mapState)
+func (s *GameServer) handleResourceDeath(res EntityID, mapState *MapState) {
+	s.killEntity(res, "resource", 0, mapState)
 }
 
 // handleDestructibleDeath depletes a destructible obstacle. It carries no coins
 // and earns no XP; it frees its cells until it respawns.
-func (s *GameServer) handleDestructibleDeath(obs *DestructibleState, mapState *MapState) {
-	s.killEntity(obs.ID, "obstacle", obs.MapCode, 0, mapState)
-	tf := mapState.tf(obs.ID)
+func (s *GameServer) handleDestructibleDeath(obs EntityID, mapState *MapState) {
+	s.killEntity(obs, "obstacle", 0, mapState)
+	tf := mapState.tf(obs)
 	mapState.pathfinder.occupy(tf.Pos, tf.Size, -1)
 }
 
@@ -331,42 +330,42 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 	}
 
 	// Respawn bots
-	for _, bot := range mapState.bots {
-		if !mapState.vt(bot.ID).RespawnAt.IsZero() && time.Now().After(mapState.vt(bot.ID).RespawnAt) {
-			mapState.ap(bot.ID).Layers = mapState.mt(bot.ID).PreRespawnObjectLayers
-			mapState.mt(bot.ID).PreRespawnObjectLayers = nil
-			s.ApplyResistanceStat(bot.ID, mapState) // Recalculate stats with restored items.
-			mapState.vt(bot.ID).Life = mapState.vt(bot.ID).MaxLife
-			mapState.vt(bot.ID).RespawnAt = time.Time{}
+	for id := range mapState.brains {
+		if !mapState.vt(id).RespawnAt.IsZero() && time.Now().After(mapState.vt(id).RespawnAt) {
+			mapState.ap(id).Layers = mapState.mt(id).PreRespawnObjectLayers
+			mapState.mt(id).PreRespawnObjectLayers = nil
+			s.ApplyResistanceStat(id, mapState) // Recalculate stats with restored items.
+			mapState.vt(id).Life = mapState.vt(id).MaxLife
+			mapState.vt(id).RespawnAt = time.Time{}
 
 			// Reset coin supply via the Fountain — single source of truth.
-			s.FountainInitBot(bot)
+			s.FountainInitBot(id, mapState)
 		}
 	}
 
 	// Respawn resources — restore original OLs and reset life.
-	for _, res := range mapState.resources {
-		if !mapState.vt(res.ID).RespawnAt.IsZero() && time.Now().After(mapState.vt(res.ID).RespawnAt) {
-			mapState.ap(res.ID).Layers = mapState.mt(res.ID).PreRespawnObjectLayers
-			mapState.mt(res.ID).PreRespawnObjectLayers = nil
-			s.ApplyResistanceStat(res.ID, mapState)
-			mapState.vt(res.ID).Life = mapState.vt(res.ID).MaxLife
-			mapState.vt(res.ID).RespawnAt = time.Time{}
+	for res := range mapState.ofKind(EntityResource) {
+		if !mapState.vt(res).RespawnAt.IsZero() && time.Now().After(mapState.vt(res).RespawnAt) {
+			mapState.ap(res).Layers = mapState.mt(res).PreRespawnObjectLayers
+			mapState.mt(res).PreRespawnObjectLayers = nil
+			s.ApplyResistanceStat(res, mapState)
+			mapState.vt(res).Life = mapState.vt(res).MaxLife
+			mapState.vt(res).RespawnAt = time.Time{}
 		}
 	}
 
 	// Restored obstacles block their cells before nearby entities move.
-	for _, obs := range mapState.destructibles {
-		v := mapState.vt(obs.ID)
+	for obs := range mapState.destructibles() {
+		v := mapState.vt(obs)
 		if !v.ghost() || time.Now().Before(v.RespawnAt) {
 			continue
 		}
-		mortal := mapState.mt(obs.ID)
-		mapState.ap(obs.ID).Layers = mortal.PreRespawnObjectLayers
+		mortal := mapState.mt(obs)
+		mapState.ap(obs).Layers = mortal.PreRespawnObjectLayers
 		mortal.PreRespawnObjectLayers = nil
 		v.Life = v.MaxLife
 		v.RespawnAt = time.Time{}
-		tf := *mapState.tf(obs.ID)
+		tf := *mapState.tf(obs)
 		mapState.pathfinder.occupy(tf.Pos, tf.Size, 1)
 		s.clearObstacleCells(mapState, tf)
 	}
@@ -390,29 +389,20 @@ func (s *GameServer) clearObstacleCells(ms *MapState, obs Transform) {
 			player.Path, player.TargetPos, ms.mo(player.ID).Mode = nil, cell, IDLE
 		}
 	}
-	for _, bot := range ms.bots {
-		if ms.ag(bot.ID).Behavior == BehaviorSkill {
+	for id, bot := range ms.brains {
+		if ms.ag(id).Behavior == BehaviorSkill {
 			continue
 		}
-		// A drop has no motion: it faces NONE and has no walk to stop.
-		slot := ms.slot(bot.ID)
-		moving := ms.mask[slot]&maskMotion != 0
-		dir := NONE
-		if moving {
-			dir = ms.motion[slot].Direction
-		}
-		tf := ms.tf(bot.ID)
+		tf := ms.tf(id)
 		if checkAABBCollision(obs.Pos, obs.Size, tf.Pos, tf.Size) {
-			if cell, err := obstaclePushCell(ms, obs, *tf, dir); err == nil {
+			if cell, err := obstaclePushCell(ms, obs, *tf, ms.mo(id).Direction); err == nil {
 				tf.Pos = Vec2{X: float64(cell.X), Y: float64(cell.Y)}
 				bot.TargetPos = cell
 			}
 		} else if !pathCrossesObstacle(bot.Path, tf.Size, obs) {
 			continue
 		}
-		if moving {
-			ms.motion[slot].Mode = IDLE
-		}
+		ms.mo(id).Mode = IDLE
 		bot.Path = nil
 		bot.CurrentTargetPlayer = 0
 		bot.lastPursuitTargetPos = Cell{-1, -1}

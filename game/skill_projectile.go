@@ -69,21 +69,18 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 		projectileOLs = append(projectileOLs, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
 	}
 
-	projectileBot := &BotState{
-		EntityBase: EntityBase{
-			ID: s.newEntityID(),
-		},
-		MapCode:   ctx.MapState.code,
+	projectileBot := s.newEntityID()
+	brain := &Brain{
 		ExpiresAt: time.Now().Add(projectileLifetime),
 		// One-shot palette lookup at spawn; sim never re-reads.
 	}
 
-	ctx.MapState.bots[projectileBot.ID] = projectileBot
-	ctx.MapState.spawn(projectileBot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: spawnX, Y: spawnY}, Size: projectileDims}, Appearance{Layers: projectileOLs})
-	ctx.MapState.addVitals(projectileBot.ID, Vitals{MaxLife: projectileBaseLife, Life: projectileBaseLife})
-	ctx.MapState.addMotion(projectileBot.ID, Motion{Direction: projectileDirection})
-	ctx.MapState.addAgent(projectileBot.ID, Agent{Behavior: BehaviorSkill, CasterID: casterID})
-	ctx.MapState.addMortal(projectileBot.ID, &Mortal{})
-	s.ApplyResistanceStat(projectileBot.ID, ctx.MapState)
-	ctx.MapState.vt(projectileBot.ID).Life = ctx.MapState.vt(projectileBot.ID).MaxLife
+	ctx.MapState.addBrain(projectileBot, brain)
+	ctx.MapState.spawn(projectileBot, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: spawnX, Y: spawnY}, Size: projectileDims}, Appearance{Layers: projectileOLs})
+	ctx.MapState.addVitals(projectileBot, Vitals{MaxLife: projectileBaseLife, Life: projectileBaseLife})
+	ctx.MapState.addMotion(projectileBot, Motion{Direction: projectileDirection})
+	ctx.MapState.addAgent(projectileBot, Agent{Behavior: BehaviorSkill, CasterID: casterID})
+	ctx.MapState.addMortal(projectileBot, &Mortal{})
+	s.ApplyResistanceStat(projectileBot, ctx.MapState)
+	ctx.MapState.vt(projectileBot).Life = ctx.MapState.vt(projectileBot).MaxLife
 }

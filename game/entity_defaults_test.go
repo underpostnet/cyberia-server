@@ -116,22 +116,22 @@ func TestResourceSpawnedFromInstanceConfigCarriesTheOverriddenItem(t *testing.T)
 		}},
 	})
 
-	mapState := &MapState{resources: map[EntityID]*ResourceState{}}
-	server.buildResource(mapState, "fallback-map-0", &pb.EntityMessage{
+	mapState := &MapState{}
+	server.buildResource(mapState, &pb.EntityMessage{
 		ObjectLayerItemIds: []string{"wood-1"},
 		DimX:               2,
 		DimY:               2,
 	})
-	if len(mapState.resources) != 1 {
-		t.Fatalf("want one resource, got %d", len(mapState.resources))
+	if mapState.count(EntityResource) != 1 {
+		t.Fatalf("want one resource, got %d", mapState.count(EntityResource))
 	}
 
-	var spawned *ResourceState
-	for _, resource := range mapState.resources {
+	var spawned EntityID
+	for resource := range mapState.ofKind(EntityResource) {
 		spawned = resource
 	}
 	// What the wire carries to the client is the active set, in stack order.
-	sent := activeLayers(mapState.ap(spawned.ID).Layers)
+	sent := activeLayers(mapState.ap(spawned).Layers)
 	if len(sent) != 2 || sent[0].ItemID != "wood-1" || sent[1].ItemID != "tim-knife" {
 		t.Fatalf("the client must receive the skin and the item worn over it, got %+v", sent)
 	}

@@ -25,7 +25,7 @@
 //   - launch goroutines that mutate world state.
 //
 // A phase MAY:
-//   - read and write fields of MapState, PlayerState, BotState.
+//   - read and write fields of MapState and PlayerState.
 //   - read GameServer config (rules) fields that influence gameplay.
 
 package game
@@ -116,14 +116,8 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 // FCT events (those will move to phaseEconomy in a follow-up).
 func (s *GameServer) phaseLifecycle(tick uint32, mapState *MapState) {
 	_ = tick
-	for _, player := range mapState.players {
-		s.ApplyResistanceStat(player.ID, mapState)
-	}
-	for _, bot := range mapState.bots {
-		s.ApplyResistanceStat(bot.ID, mapState)
-	}
-	for _, resource := range mapState.resources {
-		s.ApplyResistanceStat(resource.ID, mapState)
+	for id := range mapState.mortals {
+		s.ApplyResistanceStat(id, mapState)
 	}
 	s.handleRespawns(mapState)
 	s.completeCrafts(mapState)
@@ -136,9 +130,9 @@ func (s *GameServer) phaseSkills(tick uint32, mapState *MapState) {
 	for _, player := range mapState.players {
 		s.dispatchHeldSkills(player.ID, mapState)
 	}
-	for _, bot := range mapState.bots {
-		if behaviorCollectsLoot(mapState.ag(bot.ID).Behavior) {
-			s.dispatchHeldSkills(bot.ID, mapState)
+	for id := range mapState.brains {
+		if behaviorCollectsLoot(mapState.ag(id).Behavior) {
+			s.dispatchHeldSkills(id, mapState)
 		}
 	}
 }

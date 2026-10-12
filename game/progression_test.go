@@ -274,11 +274,10 @@ func TestQuestCompletionAwardsAfterKillAndRejectsReplay(t *testing.T) {
 
 func TestAuthoredLevelsUseCommonBaseCurve(t *testing.T) {
 	s, ms, _ := movementFixture(t)
-	ms.resources = make(map[EntityID]*ResourceState)
-	s.buildResource(ms, "test", &pb.EntityMessage{Level: 7, MaxLife: 50, ColorA: 255})
-	for _, resource := range ms.resources {
-		if !ms.mt(resource.ID).Progression.Frozen || ms.mt(resource.ID).Progression.Level != 7 || ms.vt(resource.ID).MaxLife != 90 {
-			t.Fatalf("resource curve: %+v", ms.mt(resource.ID))
+	s.buildResource(ms, &pb.EntityMessage{Level: 7, MaxLife: 50, ColorA: 255})
+	for resource := range ms.ofKind(EntityResource) {
+		if !ms.mt(resource).Progression.Frozen || ms.mt(resource).Progression.Level != 7 || ms.vt(resource).MaxLife != 90 {
+			t.Fatalf("resource curve: %+v", ms.mt(resource))
 		}
 	}
 	rules := s.progressionConfig()

@@ -58,11 +58,11 @@ func craftRecipeAt(action *CyberiaAction, index int) *ActionCraftRecipe {
 // botHasUsableAction alongside the vendor capability.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botHasCraft(bot *BotState) bool {
-	if bot == nil || s.vt(bot.ID, bot.MapCode).ghost() {
+func (s *GameServer) botHasCraft(id EntityID, ms *MapState) bool {
+	if ms == nil || ms.vt(id).ghost() {
 		return false
 	}
-	action := s.actionCache[bot.ID]
+	action := s.actionCache[id]
 	return action != nil && len(action.CraftRecipes) > 0
 }
 
@@ -95,11 +95,12 @@ func (s *GameServer) handleCraftItem(player *PlayerState, cmd *InputCommand) {
 	if player.ActiveCraft != nil {
 		return
 	}
-	bot := s.findBot(cmd.EntityID)
-	if bot == nil || !s.botInPlayerRange(player, bot) {
+	id := cmd.EntityID
+	ms := s.findBot(id)
+	if ms == nil || !s.botInPlayerRange(player, id, ms) {
 		return
 	}
-	recipe := craftRecipeAt(s.actionCache[bot.ID], cmd.RecipeIndex)
+	recipe := craftRecipeAt(s.actionCache[id], cmd.RecipeIndex)
 	if recipe == nil || len(recipe.OutputItems) == 0 {
 		return
 	}
@@ -117,17 +118,17 @@ func (s *GameServer) handleCraftItem(player *PlayerState, cmd *InputCommand) {
 		refund = append(refund, in)
 	}
 
-	ms := craftTimeMs(recipe)
+	durationMs := craftTimeMs(recipe)
 	player.ActiveCraft = &ActiveCraft{
-		EntityID:    bot.ID,
+		EntityID:    id,
 		RecipeIndex: cmd.RecipeIndex,
 		Refund:      refund,
 		Outputs:     append([]ActionCraftItem(nil), recipe.OutputItems...),
-		CompleteAt:  time.Now().Add(time.Duration(ms) * time.Millisecond),
+		CompleteAt:  time.Now().Add(time.Duration(durationMs) * time.Millisecond),
 	}
 
 	logx.Debugf("[CRAFT] player %s started recipe %d at %s (%dms)",
-		player.ID, cmd.RecipeIndex, bot.ID, ms)
+		player.ID, cmd.RecipeIndex, id, durationMs)
 }
 
 // handleCraftCancel aborts the running assembly and refunds its ingredients.

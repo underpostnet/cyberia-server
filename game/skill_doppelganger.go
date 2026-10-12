@@ -58,22 +58,19 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 		}}
 	}
 
-	doppelgangerBot := &BotState{
-		EntityBase: EntityBase{
-			ID: s.newEntityID(),
-		},
-		MapCode:     ctx.MapState.code,
+	doppelgangerBot := s.newEntityID()
+	brain := &Brain{
 		SpawnCenter: casterPos,
 		SpawnRadius: s.doppelgangerSpawnRadius,
 		ExpiresAt:   time.Now().Add(botLifetime),
 	}
 
-	ctx.MapState.bots[doppelgangerBot.ID] = doppelgangerBot
-	ctx.MapState.spawn(doppelgangerBot.ID, EntityData{Kind: EntityBot}, Transform{Pos: casterPos, Size: casterDims}, Appearance{Layers: doppelgangerLayers})
-	ctx.MapState.addVitals(doppelgangerBot.ID, Vitals{MaxLife: s.entityBaseMaxLife, Life: s.entityBaseMaxLife * s.doppelgangerInitialLifeFraction})
-	ctx.MapState.addMotion(doppelgangerBot.ID, Motion{})
-	ctx.MapState.addAgent(doppelgangerBot.ID, Agent{Behavior: BehaviorPassive, CasterID: casterID})
-	ctx.MapState.addMortal(doppelgangerBot.ID, &Mortal{})
-	s.ApplyResistanceStat(doppelgangerBot.ID, ctx.MapState)
-	ctx.MapState.vt(doppelgangerBot.ID).Life = ctx.MapState.vt(doppelgangerBot.ID).MaxLife
+	ctx.MapState.addBrain(doppelgangerBot, brain)
+	ctx.MapState.spawn(doppelgangerBot, EntityData{Kind: EntityBot}, Transform{Pos: casterPos, Size: casterDims}, Appearance{Layers: doppelgangerLayers})
+	ctx.MapState.addVitals(doppelgangerBot, Vitals{MaxLife: s.entityBaseMaxLife, Life: s.entityBaseMaxLife * s.doppelgangerInitialLifeFraction})
+	ctx.MapState.addMotion(doppelgangerBot, Motion{})
+	ctx.MapState.addAgent(doppelgangerBot, Agent{Behavior: BehaviorPassive, CasterID: casterID})
+	ctx.MapState.addMortal(doppelgangerBot, &Mortal{})
+	s.ApplyResistanceStat(doppelgangerBot, ctx.MapState)
+	ctx.MapState.vt(doppelgangerBot).Life = ctx.MapState.vt(doppelgangerBot).MaxLife
 }

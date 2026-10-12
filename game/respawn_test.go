@@ -24,25 +24,25 @@ func TestEachPlacedEntityWaitsItsOwnRespawnTime(t *testing.T) {
 			ObjectLayerItemIds: []string{"crate"}, RespawnDurationMs: 9000},
 	)
 	ms := s.maps["m"]
-	if len(ms.bots) != 1 || len(ms.resources) != 1 || len(ms.destructibles) != 1 {
-		t.Fatalf("built %d bots, %d resources, %d destructibles; want one of each",
-			len(ms.bots), len(ms.resources), len(ms.destructibles))
+	bots, resources, destructibles := ms.count(EntityBot), ms.count(EntityResource), countOf(ms.destructibles())
+	if bots != 1 || resources != 1 || destructibles != 1 {
+		t.Fatalf("built %d bots, %d resources, %d destructibles; want one of each", bots, resources, destructibles)
 	}
 	player := woundedPlayer(ms, 103, Vec2{}, 0)
 	player.MapCode = "m"
 
 	now := time.Now()
-	for _, bot := range ms.bots {
+	for bot := range ms.ofKind(EntityBot) {
 		s.handleBotDeath(bot, ms)
-		waitsAbout(t, "bot", ms.vt(bot.ID), now, 7*time.Second)
+		waitsAbout(t, "bot", ms.vt(bot), now, 7*time.Second)
 	}
-	for _, res := range ms.resources {
+	for res := range ms.ofKind(EntityResource) {
 		s.handleResourceDeath(res, ms)
-		waitsAbout(t, "resource", ms.vt(res.ID), now, 8*time.Second)
+		waitsAbout(t, "resource", ms.vt(res), now, 8*time.Second)
 	}
-	for _, obs := range ms.destructibles {
+	for obs := range ms.destructibles() {
 		s.handleDestructibleDeath(obs, ms)
-		waitsAbout(t, "destructible", ms.vt(obs.ID), now, 9*time.Second)
+		waitsAbout(t, "destructible", ms.vt(obs), now, 9*time.Second)
 	}
 	s.handlePlayerDeath(player, ms)
 	waitsAbout(t, "player", ms.vt(player.ID), now, respawnDurationDefaultMs*time.Millisecond)
@@ -52,8 +52,8 @@ func TestAPlacedEntityWithoutARespawnTimeTakesTheDefault(t *testing.T) {
 	s := lootServer(t)
 	buildWorld(s, []string{"m"}, &pb.EntityMessage{EntityType: "resource", InitCellX: 5, InitCellY: 5})
 	now := time.Now()
-	for _, res := range s.maps["m"].resources {
+	for res := range s.maps["m"].ofKind(EntityResource) {
 		s.handleResourceDeath(res, s.maps["m"])
-		waitsAbout(t, "resource", s.maps["m"].vt(res.ID), now, respawnDurationDefaultMs*time.Millisecond)
+		waitsAbout(t, "resource", s.maps["m"].vt(res), now, respawnDurationDefaultMs*time.Millisecond)
 	}
 }

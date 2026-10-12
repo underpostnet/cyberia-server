@@ -15,7 +15,6 @@ func movementFixture(t *testing.T) (*GameServer, *MapState, *PlayerState) {
 		gridH:      20,
 		pathfinder: NewPathfinder(20, 20),
 		players:    map[EntityID]*PlayerState{},
-		bots:       map[EntityID]*BotState{},
 	}
 
 	s := &GameServer{
@@ -63,13 +62,13 @@ func placePlayer(s *GameServer, id EntityID, layers []ObjectLayerState) *PlayerS
 }
 
 // placeBot puts a bot with vitals v on the map "test" of s.
-func placeBot(s *GameServer, id EntityID, v Vitals) *BotState {
+func placeBot(s *GameServer, id EntityID, v Vitals) EntityID {
 	ms := testMap(s)
-	b := &BotState{EntityBase: EntityBase{ID: id}, MapCode: "test"}
 	ms.spawn(id, EntityData{Kind: EntityBot}, Transform{}, Appearance{})
 	ms.addVitals(id, v)
 	ms.addMortal(id, &Mortal{})
-	return b
+	ms.addBrain(id, &Brain{})
+	return id
 }
 
 // tapTick queues taps and runs one full input phase over them, which is the only
