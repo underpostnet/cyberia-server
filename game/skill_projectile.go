@@ -26,18 +26,18 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 	// Extract caster properties via type switch.
 	var casterID EntityID
 	var mapCode string
-	var casterPos Point
+	var casterPos Vec2
 	var casterDir Direction
 	switch e := ctx.Caster.(type) {
 	case *PlayerState:
 		casterID = e.ID
 		mapCode = e.MapCode
-		casterPos = e.Pos
+		casterPos = ctx.MapState.tf(e.ID).Pos
 		casterDir = e.Direction
 	case *BotState:
 		casterID = e.ID
 		mapCode = e.MapCode
-		casterPos = e.Pos
+		casterPos = ctx.MapState.tf(e.ID).Pos
 		casterDir = e.Direction
 	}
 
@@ -66,7 +66,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 	}
 
 	projectileLifetime := summonLifetime(s.projectileLifetimeMs, casterStats)
-	projectileDims := Dimensions{Width: s.projectileWidth, Height: s.projectileHeight}
+	projectileDims := Vec2{X: s.projectileWidth, Y: s.projectileHeight}
 	projectileBaseLife := s.entityBaseMaxLife
 
 	// Pre-compensate for the first tick's movement so the projectile appears
@@ -86,8 +86,6 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 	projectileBot := &BotState{
 		EntityBase: EntityBase{
 			ID:           s.newEntityID(),
-			Pos:          Point{X: spawnX, Y: spawnY},
-			Dims:         projectileDims,
 			ObjectLayers: projectileOLs,
 		},
 		Mortal: Mortal{
@@ -103,7 +101,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 	}
 
 	ctx.MapState.bots[projectileBot.ID] = projectileBot
-	ctx.MapState.spawn(projectileBot.ID)
+	ctx.MapState.spawn(projectileBot.ID, Transform{Pos: Vec2{X: spawnX, Y: spawnY}, Size: projectileDims})
 	s.ApplyResistanceStat(projectileBot, ctx.MapState)
 	projectileBot.Life = projectileBot.MaxLife
 }

@@ -18,21 +18,21 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 	// Extract caster properties via type switch.
 	var casterID EntityID
 	var mapCode string
-	var casterPos Point
-	var casterDims Dimensions
+	var casterPos Vec2
+	var casterDims Vec2
 	var casterLayers []ObjectLayerState
 	switch e := ctx.Caster.(type) {
 	case *PlayerState:
 		casterID = e.ID
 		mapCode = e.MapCode
-		casterPos = e.Pos
-		casterDims = e.Dims
+		casterPos = ctx.MapState.tf(e.ID).Pos
+		casterDims = ctx.MapState.tf(e.ID).Size
 		casterLayers = e.ObjectLayers
 	case *BotState:
 		casterID = e.ID
 		mapCode = e.MapCode
-		casterPos = e.Pos
-		casterDims = e.Dims
+		casterPos = ctx.MapState.tf(e.ID).Pos
+		casterDims = ctx.MapState.tf(e.ID).Size
 		casterLayers = e.ObjectLayers
 	}
 
@@ -77,8 +77,6 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 	doppelgangerBot := &BotState{
 		EntityBase: EntityBase{
 			ID:           s.newEntityID(),
-			Pos:          casterPos,
-			Dims:         casterDims,
 			ObjectLayers: doppelgangerLayers,
 		},
 		Mortal: Mortal{
@@ -94,7 +92,7 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 	}
 
 	ctx.MapState.bots[doppelgangerBot.ID] = doppelgangerBot
-	ctx.MapState.spawn(doppelgangerBot.ID)
+	ctx.MapState.spawn(doppelgangerBot.ID, Transform{Pos: casterPos, Size: casterDims})
 	s.ApplyResistanceStat(doppelgangerBot, ctx.MapState)
 	doppelgangerBot.Life = doppelgangerBot.MaxLife
 }

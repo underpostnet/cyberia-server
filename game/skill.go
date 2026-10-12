@@ -12,7 +12,7 @@ type SkillDefinition struct {
 }
 
 // HandlePlayerTapAction gates skills and regeneration with the authoritative cooldown.
-func (s *GameServer) HandlePlayerTapAction(player *PlayerState, mapState *MapState, target Point) {
+func (s *GameServer) HandlePlayerTapAction(player *PlayerState, mapState *MapState, target Vec2) {
 	if player.IsGhost() || player.Frozen {
 		return
 	}
@@ -33,6 +33,6 @@ func (s *GameServer) acceptSkillAction(entity statSource, mapState *MapState, no
 }
 
 // Bot action scheduling owns its cooldown.
-func (s *GameServer) handleBotSkills(bot *BotState, mapState *MapState, target Point) {
+func (s *GameServer) handleBotSkills(bot *BotState, mapState *MapState, target Vec2) {
 	s.dispatchSkillsForEntity(bot, mapState, target, true)
 }

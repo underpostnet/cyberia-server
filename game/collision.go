@@ -6,11 +6,11 @@ import (
 )
 
 // checkAABBCollision checks for collision between two axis-aligned bounding boxes.
-func checkAABBCollision(pos1 Point, dims1 Dimensions, pos2 Point, dims2 Dimensions) bool {
+func checkAABBCollision(pos1 Vec2, dims1 Vec2, pos2 Vec2, dims2 Vec2) bool {
 	// Check for overlap on X axis
-	if pos1.X < pos2.X+dims2.Width && pos1.X+dims1.Width > pos2.X {
+	if pos1.X < pos2.X+dims2.X && pos1.X+dims1.X > pos2.X {
 		// Check for overlap on Y axis
-		if pos1.Y < pos2.Y+dims2.Height && pos1.Y+dims1.Height > pos2.Y {
+		if pos1.Y < pos2.Y+dims2.Y && pos1.Y+dims1.Y > pos2.Y {
 			return true
 		}
 	}
@@ -48,7 +48,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 			if player.ID == projectile.CasterID {
 				continue
 			}
-			if checkAABBCollision(projectile.Pos, projectile.Dims, player.Pos, player.Dims) {
+			if checkAABBCollision(mapState.tf(projectile.ID).Pos, mapState.tf(projectile.ID).Size, mapState.tf(player.ID).Pos, mapState.tf(player.ID).Size) {
 				player.Life -= projectileStats.Effect
 				// Attribute damage for the loot race — player and bot casters both
 				// count, so a bot-only kill still drops the victim's coins and the
@@ -62,8 +62,8 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				// FCT: the same red "-N" for every AOI viewer.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
 					broadcastFCT(mapState, FCTDamage,
-						projectile.Pos.X+projectile.Dims.Width*0.5,
-						projectile.Pos.Y+projectile.Dims.Height*0.5, dmg)
+						mapState.tf(projectile.ID).Pos.X+mapState.tf(projectile.ID).Size.X*0.5,
+						mapState.tf(projectile.ID).Pos.Y+mapState.tf(projectile.ID).Size.Y*0.5, dmg)
 				}
 
 				// "Thorns" effect: The player's Effect stat damages the projectile.
@@ -93,7 +93,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 			if otherBotID == projectile.CasterID {
 				continue
 			}
-			if checkAABBCollision(projectile.Pos, projectile.Dims, otherBot.Pos, otherBot.Dims) {
+			if checkAABBCollision(mapState.tf(projectile.ID).Pos, mapState.tf(projectile.ID).Size, mapState.tf(otherBot.ID).Pos, mapState.tf(otherBot.ID).Size) {
 				otherBot.Life -= projectileStats.Effect
 				// Attribute damage to the firing player or bot for the loot race.
 				recordDamage(&otherBot.DamageLedger, mapState, projectile.CasterID, projectileStats.Effect)
@@ -101,8 +101,8 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				// viewer, including the killing (one-shot) blow.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
 					broadcastFCT(mapState, FCTDamage,
-						otherBot.Pos.X+otherBot.Dims.Width*0.5,
-						otherBot.Pos.Y+otherBot.Dims.Height*0.5, dmg)
+						mapState.tf(otherBot.ID).Pos.X+mapState.tf(otherBot.ID).Size.X*0.5,
+						mapState.tf(otherBot.ID).Pos.Y+mapState.tf(otherBot.ID).Size.Y*0.5, dmg)
 				}
 				if otherBot.Life <= 0 {
 					otherBot.Life = 0
@@ -159,7 +159,8 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 // damage joins the loot race ledger, and `die` runs on the lethal hit.
 func hitStatic(mapState *MapState, projectile *BotState, effect float64,
 	base *EntityBase, mortal *Mortal, ledger *map[EntityID]float64, die func()) bool {
-	if mortal.IsGhost() || !checkAABBCollision(projectile.Pos, projectile.Dims, base.Pos, base.Dims) {
+	shot, tf := mapState.tf(projectile.ID), mapState.tf(base.ID)
+	if mortal.IsGhost() || !checkAABBCollision(shot.Pos, shot.Size, tf.Pos, tf.Size) {
 		return false
 	}
 	mortal.Life -= effect
@@ -170,7 +171,7 @@ func hitStatic(mapState *MapState, projectile *BotState, effect float64,
 	}
 	// FCT: the amount is public — the same red "-N" for every AOI viewer.
 	if dmg := int(effect + 0.5); dmg > 0 {
-		broadcastFCT(mapState, FCTDamage, base.Pos.X+base.Dims.Width*0.5, base.Pos.Y+base.Dims.Height*0.5, dmg)
+		broadcastFCT(mapState, FCTDamage, tf.Pos.X+tf.Size.X*0.5, tf.Pos.Y+tf.Size.Y*0.5, dmg)
 	}
 	return true
 }
@@ -239,7 +240,7 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) 
 			s.addCoins(player, -coinDrop)
 		}
 	}
-	playerCenter := Point{X: player.Pos.X + player.Dims.Width*0.5, Y: player.Pos.Y + player.Dims.Height*0.5}
+	playerCenter := Vec2{X: mapState.tf(player.ID).Pos.X + mapState.tf(player.ID).Size.X*0.5, Y: mapState.tf(player.ID).Pos.Y + mapState.tf(player.ID).Size.Y*0.5}
 	s.spawnDrops(mapState, player.MapCode, playerCenter, build, coinDrop, player.DamageLedger)
 	broadcastAudioEvent(mapState, AudioEventDeath, playerCenter)
 	player.DamageLedger = nil
@@ -279,7 +280,7 @@ func (s *GameServer) killEntity(base *EntityBase, mortal *Mortal, kind, mapCode 
 	mortal.PreRespawnObjectLayers = layersToSave
 	build, _ := s.resolveEntityDefaultBuild(kind, activeObjectLayerItemIDs(layersToSave))
 
-	center := Point{X: base.Pos.X + base.Dims.Width*0.5, Y: base.Pos.Y + base.Dims.Height*0.5}
+	center := Vec2{X: mapState.tf(base.ID).Pos.X + mapState.tf(base.ID).Size.X*0.5, Y: mapState.tf(base.ID).Pos.Y + mapState.tf(base.ID).Size.Y*0.5}
 	s.spawnDrops(mapState, mapCode, center, build, coins, ledger)
 	broadcastAudioEvent(mapState, AudioEventDeath, center)
 
@@ -312,7 +313,8 @@ func (s *GameServer) handleDestructibleDeath(obs *DestructibleState, mapState *M
 	s.killEntity(&obs.EntityBase, &obs.Mortal, EntityObstacle, obs.MapCode,
 		obs.DamageLedger, 0, mapState)
 	obs.DamageLedger = nil
-	mapState.pathfinder.occupy(obs.Pos, obs.Dims, -1)
+	tf := mapState.tf(obs.ID)
+	mapState.pathfinder.occupy(tf.Pos, tf.Size, -1)
 }
 
 // handleRespawns checks and respawns dead players and bots.
@@ -367,16 +369,18 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 		obs.PreRespawnObjectLayers = nil
 		obs.Life = obs.MaxLife
 		obs.RespawnTime = time.Time{}
-		mapState.pathfinder.occupy(obs.Pos, obs.Dims, 1)
-		s.clearObstacleCells(mapState, obs.EntityBase)
+		tf := *mapState.tf(obs.ID)
+		mapState.pathfinder.occupy(tf.Pos, tf.Size, 1)
+		s.clearObstacleCells(mapState, tf)
 	}
 }
 
 // Projectiles keep their course through restored obstacles.
-func (s *GameServer) clearObstacleCells(ms *MapState, obs EntityBase) {
+func (s *GameServer) clearObstacleCells(ms *MapState, obs Transform) {
 	for _, player := range ms.players {
-		if !checkAABBCollision(obs.Pos, obs.Dims, player.Pos, player.Dims) {
-			if pathCrossesObstacle(player.Path, player.Dims, obs) {
+		tf := ms.tf(player.ID)
+		if !checkAABBCollision(obs.Pos, obs.Size, tf.Pos, tf.Size) {
+			if pathCrossesObstacle(player.Path, tf.Size, obs) {
 				player.Path, player.Mode = nil, IDLE
 				player.PendingMove = player.TargetPos
 				player.HasPendingMove = true
@@ -384,8 +388,8 @@ func (s *GameServer) clearObstacleCells(ms *MapState, obs EntityBase) {
 			}
 			continue
 		}
-		if cell, err := obstaclePushCell(ms, obs, player.EntityBase, player.Direction); err == nil {
-			player.Pos = Point{X: float64(cell.X), Y: float64(cell.Y)}
+		if cell, err := obstaclePushCell(ms, obs, *tf, player.Direction); err == nil {
+			tf.Pos = Vec2{X: float64(cell.X), Y: float64(cell.Y)}
 			player.Path, player.TargetPos, player.Mode = nil, cell, IDLE
 		}
 	}
@@ -393,12 +397,13 @@ func (s *GameServer) clearObstacleCells(ms *MapState, obs EntityBase) {
 		if bot.Behavior == BehaviorSkill {
 			continue
 		}
-		if checkAABBCollision(obs.Pos, obs.Dims, bot.Pos, bot.Dims) {
-			if cell, err := obstaclePushCell(ms, obs, bot.EntityBase, bot.Direction); err == nil {
-				bot.Pos = Point{X: float64(cell.X), Y: float64(cell.Y)}
+		tf := ms.tf(bot.ID)
+		if checkAABBCollision(obs.Pos, obs.Size, tf.Pos, tf.Size) {
+			if cell, err := obstaclePushCell(ms, obs, *tf, bot.Direction); err == nil {
+				tf.Pos = Vec2{X: float64(cell.X), Y: float64(cell.Y)}
 				bot.TargetPos = cell
 			}
-		} else if !pathCrossesObstacle(bot.Path, bot.Dims, obs) {
+		} else if !pathCrossesObstacle(bot.Path, tf.Size, obs) {
 			continue
 		}
 		bot.Path, bot.Mode = nil, IDLE
@@ -407,10 +412,10 @@ func (s *GameServer) clearObstacleCells(ms *MapState, obs EntityBase) {
 	}
 }
 
-func obstaclePushCell(ms *MapState, obs, entity EntityBase, direction Direction) (PointI, error) {
-	center := Point{X: obs.Pos.X + obs.Dims.Width*0.5, Y: obs.Pos.Y + obs.Dims.Height*0.5}
-	dx := entity.Pos.X + entity.Dims.Width*0.5 - center.X
-	dy := entity.Pos.Y + entity.Dims.Height*0.5 - center.Y
+func obstaclePushCell(ms *MapState, obs, entity Transform, direction Direction) (PointI, error) {
+	center := Vec2{X: obs.Pos.X + obs.Size.X*0.5, Y: obs.Pos.Y + obs.Size.Y*0.5}
+	dx := entity.Pos.X + entity.Size.X*0.5 - center.X
+	dy := entity.Pos.Y + entity.Size.Y*0.5 - center.Y
 	// An entity at the center follows its facing direction.
 	if dx == 0 && dy == 0 {
 		dx, dy = getDirectionVector(direction)
@@ -421,13 +426,13 @@ func obstaclePushCell(ms *MapState, obs, entity EntityBase, direction Direction)
 	// The combined half-widths place the entire entity outside the obstacle.
 	scale := math.Inf(1)
 	if dx != 0 {
-		scale = (obs.Dims.Width + entity.Dims.Width) * 0.5 / math.Abs(dx)
+		scale = (obs.Size.X + entity.Size.X) * 0.5 / math.Abs(dx)
 	}
 	if dy != 0 {
-		scale = math.Min(scale, (obs.Dims.Height+entity.Dims.Height)*0.5/math.Abs(dy))
+		scale = math.Min(scale, (obs.Size.Y+entity.Size.Y)*0.5/math.Abs(dy))
 	}
-	x := center.X + dx*scale - entity.Dims.Width*0.5
-	y := center.Y + dy*scale - entity.Dims.Height*0.5
+	x := center.X + dx*scale - entity.Size.X*0.5
+	y := center.Y + dy*scale - entity.Size.Y*0.5
 	cell := PointI{X: int(math.Round(x)), Y: int(math.Round(y))}
 	if dx > 0 {
 		cell.X = int(math.Ceil(x))
@@ -440,12 +445,12 @@ func obstaclePushCell(ms *MapState, obs, entity EntityBase, direction Direction)
 		cell.Y = int(math.Floor(y))
 	}
 	cell = clampCellToGrid(cell, ms.gridW, ms.gridH)
-	return ms.pathfinder.findClosestWalkablePoint(cell, entity.Dims)
+	return ms.pathfinder.findClosestWalkablePoint(cell, entity.Size)
 }
 
-func pathCrossesObstacle(path []PointI, dims Dimensions, obs EntityBase) bool {
+func pathCrossesObstacle(path []PointI, size Vec2, obs Transform) bool {
 	for _, cell := range path {
-		if checkAABBCollision(obs.Pos, obs.Dims, Point{X: float64(cell.X), Y: float64(cell.Y)}, dims) {
+		if checkAABBCollision(obs.Pos, obs.Size, Vec2{X: float64(cell.X), Y: float64(cell.Y)}, size) {
 			return true
 		}
 	}

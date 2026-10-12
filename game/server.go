@@ -392,7 +392,7 @@ func directionFromVector(dirX, dirY float64) Direction {
 // It returns the new position, the path left to walk, and the facing for this
 // step. The bool is false when the step produced no heading — an empty path
 // or a zero-length hop — so the caller decides what an arriving entity faces.
-func stepAlongPath(pos Point, path []PointI, speed, dt float64) (Point, []PointI, Direction, bool) {
+func stepAlongPath(pos Vec2, path []PointI, speed, dt float64) (Vec2, []PointI, Direction, bool) {
 	if len(path) == 0 {
 		return pos, path, NONE, false
 	}
@@ -411,7 +411,7 @@ func stepAlongPath(pos Point, path []PointI, speed, dt float64) (Point, []PointI
 	}
 
 	// Node reached. Face the next leg, if there is one.
-	pos = Point{X: float64(targetNode.X), Y: float64(targetNode.Y)}
+	pos = Vec2{X: float64(targetNode.X), Y: float64(targetNode.Y)}
 	path = path[1:]
 	if len(path) == 0 {
 		return pos, path, NONE, false
@@ -440,8 +440,9 @@ func (s *GameServer) updatePlayerPosition(player *PlayerState, mapState *MapStat
 		return
 	}
 
-	pos, path, dir, facing := stepAlongPath(player.Pos, player.Path, speed, s.tickDuration.Seconds())
-	player.Pos, player.Path = pos, path
+	tf := mapState.tf(player.ID)
+	pos, path, dir, facing := stepAlongPath(tf.Pos, player.Path, speed, s.tickDuration.Seconds())
+	tf.Pos, player.Path = pos, path
 	if facing {
 		player.Direction = dir
 	}
@@ -463,10 +464,9 @@ func (s *GameServer) checkPortal(player *PlayerState, mapState *MapState) {
 
 	onPortal := false
 	var activePortal *PortalState
+	playerRect := mapState.tf(player.ID).rect()
 	for _, portal := range mapState.portals {
-		portalRect := Rectangle{MinX: portal.Pos.X, MinY: portal.Pos.Y, MaxX: portal.Pos.X + portal.Dims.Width, MaxY: portal.Pos.Y + portal.Dims.Height}
-		playerRect := Rectangle{MinX: player.Pos.X, MinY: player.Pos.Y, MaxX: player.Pos.X + player.Dims.Width, MaxY: player.Pos.Y + player.Dims.Height}
-		if rectsOverlap(playerRect, portalRect) {
+		if rectsOverlap(playerRect, mapState.tf(portal.ID).rect()) {
 			onPortal = true
 			activePortal = portal
 			break
@@ -526,24 +526,22 @@ func (s *GameServer) teleportPlayer(player *PlayerState, portal *PortalState) {
 		spawnY += rand.Float64()*portal.PortalConfig.SpawnRadius*2 - portal.PortalConfig.SpawnRadius
 	}
 
-	destPosI, err := destMapState.pathfinder.findClosestWalkablePoint(PointI{X: int(spawnX), Y: int(spawnY)}, player.Dims)
+	currentMapState := s.maps[player.MapCode]
+	size := currentMapState.tf(player.ID).Size
+	destPosI, err := destMapState.pathfinder.findClosestWalkablePoint(PointI{X: int(spawnX), Y: int(spawnY)}, size)
 	if err != nil {
 		logx.Warnf("Could not find a walkable spawn point: %v", err)
 		return
 	}
-	currentMapState, ok := s.maps[player.MapCode]
-	if ok {
-		delete(currentMapState.players, player.ID)
-		currentMapState.despawn(player.ID)
-	}
+	delete(currentMapState.players, player.ID)
+	currentMapState.despawn(player.ID)
 	player.MapCode = destMapCode
-	player.Pos = Point{X: float64(destPosI.X), Y: float64(destPosI.Y)}
 	player.TargetPos = PointI{}
 	player.Path = []PointI{}
 	player.Mode = TELEPORTING
 	player.OnPortal = false
 	destMapState.players[player.ID] = player
-	destMapState.spawn(player.ID)
+	destMapState.spawn(player.ID, Transform{Pos: Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}, Size: size})
 	s.sendAOI(player)
 }
 

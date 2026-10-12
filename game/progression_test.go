@@ -161,7 +161,7 @@ func TestRawTapSpamDoesNotAwardXP(t *testing.T) {
 	s, ms, p := movementFixture(t)
 	p.Progression = NewEntityProgression(1, false, s.progressionConfig())
 	for i := uint32(1); i <= 1000; i++ {
-		s.HandlePlayerTapAction(p, ms, Point{X: 2, Y: 2})
+		s.HandlePlayerTapAction(p, ms, Vec2{X: 2, Y: 2})
 	}
 	if p.Progression.XP != 0 || p.Progression.Level != 1 {
 		t.Fatal("raw taps award XP")

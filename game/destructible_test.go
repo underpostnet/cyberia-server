@@ -52,23 +52,26 @@ func placeObstacle(s *GameServer, ms *MapState, maxLife float64, itemIDs ...stri
 	return 0
 }
 
-// shot is one bullet of the caster's at the point.
-func shot(caster *PlayerState, at Point) *BotState {
-	return &BotState{
-		EntityBase: EntityBase{ID: 900, Pos: at, Dims: Dimensions{Width: 1, Height: 1},
+// shot is one bullet of the caster's at the point, with a slot in the map.
+func shot(ms *MapState, caster *PlayerState, at Vec2) *BotState {
+	bullet := &BotState{
+		EntityBase: EntityBase{ID: 900,
 			ObjectLayers: []ObjectLayerState{{ItemID: "bullet", Active: true, Quantity: 1}}},
 		Mortal:   Mortal{MaxLife: 100, Life: 100},
 		Behavior: BehaviorSkill,
 		CasterID: caster.ID,
 	}
+	ms.spawn(bullet.ID, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}})
+	return bullet
 }
 
 // fire lands one bullet of the caster's at the point, then removes it.
-func fire(s *GameServer, ms *MapState, caster *PlayerState, at Point) {
-	bullet := shot(caster, at)
+func fire(s *GameServer, ms *MapState, caster *PlayerState, at Vec2) {
+	bullet := shot(ms, caster, at)
 	ms.bots[bullet.ID] = bullet
 	s.handleSkillCollisions(ms)
 	delete(ms.bots, bullet.ID)
+	ms.despawn(bullet.ID)
 }
 
 func drops(ms *MapState) []*BotState {
@@ -99,8 +102,8 @@ func TestOrdinaryObstacleBlocksAndTakesNoDamage(t *testing.T) {
 	if _, ok := ms.obstacles[id]; !ok || len(ms.destructibles) != 0 {
 		t.Fatal("an unmatched obstacle became destructible")
 	}
-	fire(s, ms, player, Point{X: 10, Y: 10})
-	if ms.pathfinder.isWalkable(10, 10, Dimensions{Width: 1, Height: 1}) || len(drops(ms)) != 0 {
+	fire(s, ms, player, Vec2{X: 10, Y: 10})
+	if ms.pathfinder.isWalkable(10, 10, Vec2{X: 1, Y: 1}) || len(drops(ms)) != 0 {
 		t.Fatal("an ordinary obstacle stopped blocking or dropped loot")
 	}
 }
@@ -132,17 +135,19 @@ func TestAColouredObstacleCarryingItsLiveItemIsDestructible(t *testing.T) {
 
 func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing.T) {
 	s, ms, player := destructibleFixture(t, crystalRock)
-	maxLife := 2.5 * s.CalculateStats(shot(player, Point{}), ms).Effect
+	probe := shot(ms, player, Vec2{})
+	maxLife := 2.5 * s.CalculateStats(probe, ms).Effect
+	ms.despawn(probe.ID)
 	obs := ms.destructibles[placeObstacle(s, ms, maxLife, "crystal")]
 	if obs == nil || obs.Life != maxLife || obs.MaxLife != maxLife {
 		t.Fatalf("placed life: %+v", obs)
 	}
-	cell := Dimensions{Width: 1, Height: 1}
+	cell := Vec2{X: 1, Y: 1}
 	if ms.pathfinder.isWalkable(11, 11, cell) {
 		t.Fatal("a live destructible obstacle blocks its cells")
 	}
 
-	fire(s, ms, player, Point{X: 10, Y: 10})
+	fire(s, ms, player, Vec2{X: 10, Y: 10})
 	if obs.Life >= maxLife || obs.IsGhost() || ms.pathfinder.isWalkable(11, 11, cell) {
 		t.Fatalf("a hit damages it and it keeps blocking: %+v", obs.Mortal)
 	}
@@ -150,9 +155,9 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 		if hits > 3 {
 			t.Fatal("three hits deplete the obstacle")
 		}
-		fire(s, ms, player, Point{X: 10, Y: 10})
+		fire(s, ms, player, Vec2{X: 10, Y: 10})
 	}
-	if !obs.IsGhost() || obs.Life != 0 || !ms.pathfinder.isWalkable(10, 10, Dimensions{Width: 2, Height: 2}) {
+	if !obs.IsGhost() || obs.Life != 0 || !ms.pathfinder.isWalkable(10, 10, Vec2{X: 2, Y: 2}) {
 		t.Fatalf("depletion frees the cells: %+v", obs.Mortal)
 	}
 	if active := activeObjectLayerItemIDs(obs.ObjectLayers); len(active) != 1 || active[0] != "rubble" {
@@ -169,41 +174,47 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 		t.Fatal("an obstacle awards no XP")
 	}
 
-	fire(s, ms, player, Point{X: 10, Y: 10})
+	fire(s, ms, player, Vec2{X: 10, Y: 10})
 	if len(drops(ms)) != 1 || obs.Life != 0 {
 		t.Fatal("a depleted obstacle takes no hit and drops nothing again")
 	}
 
 	obs.RespawnTime = time.Now().Add(-time.Second)
-	player.Pos, player.Path, player.Mode = Point{X: 10, Y: 10}, []PointI{{X: 12, Y: 12}}, WALKING
+	ptf := ms.tf(player.ID)
+	ptf.Pos, player.Path, player.Mode = Vec2{X: 10, Y: 10}, []PointI{{X: 12, Y: 12}}, WALKING
 	bot := &BotState{
-		EntityBase: EntityBase{ID: 901, Pos: Point{X: 10.5, Y: 10.5}, Dims: cell},
+		EntityBase: EntityBase{ID: 901},
 		Mortal:     Mortal{Life: 100, MaxLife: 100}, Behavior: BehaviorHostile,
 		Path: []PointI{{X: 11, Y: 11}}, Mode: WALKING, CurrentTargetPlayer: player.ID,
 	}
 	ms.bots[bot.ID] = bot
-	projectile := shot(player, Point{X: 10, Y: 10})
+	ms.spawn(bot.ID, Transform{Pos: Vec2{X: 10.5, Y: 10.5}, Size: cell})
+	projectile := shot(ms, player, Vec2{X: 10, Y: 10})
 	ms.bots[projectile.ID] = projectile
+	ptf = ms.tf(player.ID) // a spawn may move the transform array
 	s.handleRespawns(ms)
 	if obs.IsGhost() || obs.Life != obs.MaxLife || ms.pathfinder.isWalkable(10, 10, cell) {
 		t.Fatalf("the obstacle respawns on its timer and blocks again: %+v", obs.Mortal)
 	}
-	if checkAABBCollision(obs.Pos, obs.Dims, player.Pos, player.Dims) ||
-		!ms.pathfinder.isWalkable(int(player.Pos.X), int(player.Pos.Y), player.Dims) ||
-		math.Hypot(player.Pos.X-11, player.Pos.Y-11) > 4 || player.Mode != IDLE || len(player.Path) != 0 {
-		t.Fatalf("the player moves to a free spot near the obstacle and stops: %+v", player.Pos)
+	otf := ms.tf(obs.ID)
+	if checkAABBCollision(otf.Pos, otf.Size, ptf.Pos, ptf.Size) ||
+		!ms.pathfinder.isWalkable(int(ptf.Pos.X), int(ptf.Pos.Y), ptf.Size) ||
+		math.Hypot(ptf.Pos.X-11, ptf.Pos.Y-11) > 4 || player.Mode != IDLE || len(player.Path) != 0 {
+		t.Fatalf("the player moves to a free spot near the obstacle and stops: %+v", ptf.Pos)
 	}
-	for _, bot := range ms.bots {
-		if bot != projectile && checkAABBCollision(obs.Pos, obs.Dims, bot.Pos, bot.Dims) {
-			t.Fatalf("bot %s still stands in the obstacle", bot.ID)
+	for _, other := range ms.bots {
+		btf := ms.tf(other.ID)
+		if other != projectile && checkAABBCollision(otf.Pos, otf.Size, btf.Pos, btf.Size) {
+			t.Fatalf("bot %s still stands in the obstacle", other.ID)
 		}
 	}
-	if projectile.Pos != (Point{X: 10, Y: 10}) {
+	if ms.tf(projectile.ID).Pos != (Vec2{X: 10, Y: 10}) {
 		t.Fatal("a projectile keeps its course")
 	}
+	btf := ms.tf(bot.ID)
 	if bot.Mode != IDLE || len(bot.Path) != 0 || bot.CurrentTargetPlayer != 0 ||
 		bot.lastPursuitTargetPos != (PointI{-1, -1}) ||
-		!ms.pathfinder.isWalkable(int(bot.Pos.X), int(bot.Pos.Y), bot.Dims) {
+		!ms.pathfinder.isWalkable(int(btf.Pos.X), int(btf.Pos.Y), btf.Size) {
 		t.Fatalf("the displaced bot clears its movement and pursuit: %+v", bot)
 	}
 	if active := activeObjectLayerItemIDs(obs.ObjectLayers); len(active) != 1 || active[0] != "crystal" {
@@ -218,32 +229,36 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 	s, ms, player := destructibleFixture(t, crystalRock)
 	obs := ms.destructibles[placeObstacle(s, ms, 1, "crystal")]
-	fire(s, ms, player, obs.Pos)
+	otf := *ms.tf(obs.ID)
+	ptf := ms.tf(player.ID)
+	fire(s, ms, player, otf.Pos)
 	obs.RespawnTime = time.Now().Add(time.Minute)
 	tapTick(s, ms, player, tap(7, 15, 15))
-	if !pathCrossesObstacle(player.Path, player.Dims, obs.EntityBase) {
+	if !pathCrossesObstacle(player.Path, ptf.Size, otf) {
 		t.Fatal("the initial route crosses the depleted obstacle")
 	}
 	bot := &BotState{
-		EntityBase: EntityBase{ID: 902, Pos: Point{X: 9, Y: 10}, Dims: player.Dims},
+		EntityBase: EntityBase{ID: 902},
 		Mortal:     Mortal{Life: 100, MaxLife: 100}, Behavior: BehaviorHostile,
 		Path: []PointI{{X: 10, Y: 10}, {X: 12, Y: 10}}, Mode: WALKING,
 		CurrentTargetPlayer: player.ID,
 	}
 	ms.bots[bot.ID] = bot
+	ms.spawn(bot.ID, Transform{Pos: Vec2{X: 9, Y: 10}, Size: ptf.Size})
+	ptf = ms.tf(player.ID) // a spawn may move the transform array
 	s.handleRespawns(ms)
-	if !obs.IsGhost() || !pathCrossesObstacle(player.Path, player.Dims, obs.EntityBase) {
+	if !obs.IsGhost() || !pathCrossesObstacle(player.Path, ptf.Size, otf) {
 		t.Fatal("the obstacle stays passable until its timer ends")
 	}
 	obs.RespawnTime = time.Now().Add(-time.Second)
-	before := player.Pos
+	before := ptf.Pos
 	s.handleRespawns(ms)
-	if player.Pos != before || player.Mode != WALKING || player.TargetPos != (PointI{X: 15, Y: 15}) ||
+	if ptf.Pos != before || player.Mode != WALKING || player.TargetPos != (PointI{X: 15, Y: 15}) ||
 		len(player.Path) == 0 {
 		t.Fatalf("the player keeps its destination: %+v", player)
 	}
 	for _, cell := range player.Path {
-		if !ms.pathfinder.isWalkable(cell.X, cell.Y, player.Dims) {
+		if !ms.pathfinder.isWalkable(cell.X, cell.Y, ptf.Size) {
 			t.Fatalf("the new path crosses blocked cell %v", cell)
 		}
 	}
@@ -253,19 +268,20 @@ func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 }
 
 func TestObstacleClearanceUsesEntityDimensionsAtMapEdges(t *testing.T) {
-	for _, pos := range []Point{{X: 0, Y: 0}, {X: 18, Y: 18}} {
+	for _, pos := range []Vec2{{X: 0, Y: 0}, {X: 18, Y: 18}} {
 		t.Run(fmt.Sprintf("%g-%g", pos.X, pos.Y), func(t *testing.T) {
 			s, ms, player := movementFixture(t)
-			obs := EntityBase{Pos: pos, Dims: Dimensions{Width: 2, Height: 2}}
-			ms.pathfinder.occupy(obs.Pos, obs.Dims, 1)
-			player.Dims = Dimensions{Width: 3, Height: 2}
-			player.Pos = Point{X: math.Min(pos.X, 17), Y: pos.Y}
+			obs := Transform{Pos: pos, Size: Vec2{X: 2, Y: 2}}
+			ms.pathfinder.occupy(obs.Pos, obs.Size, 1)
+			ptf := ms.tf(player.ID)
+			ptf.Size = Vec2{X: 3, Y: 2}
+			ptf.Pos = Vec2{X: math.Min(pos.X, 17), Y: pos.Y}
 			player.Path, player.Mode = []PointI{{X: 10, Y: 10}}, WALKING
 			s.clearObstacleCells(ms, obs)
-			if checkAABBCollision(obs.Pos, obs.Dims, player.Pos, player.Dims) ||
-				!ms.pathfinder.isWalkable(int(player.Pos.X), int(player.Pos.Y), player.Dims) ||
+			if checkAABBCollision(obs.Pos, obs.Size, ptf.Pos, ptf.Size) ||
+				!ms.pathfinder.isWalkable(int(ptf.Pos.X), int(ptf.Pos.Y), ptf.Size) ||
 				player.Mode != IDLE || len(player.Path) != 0 {
-				t.Fatalf("the full player footprint clears the obstacle at %v: %v", pos, player.Pos)
+				t.Fatalf("the full player footprint clears the obstacle at %v: %v", pos, ptf.Pos)
 			}
 		})
 	}
@@ -274,30 +290,33 @@ func TestObstacleClearanceUsesEntityDimensionsAtMapEdges(t *testing.T) {
 func TestObstacleRespawnPushesEntitiesOutward(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		pos  Point
-		want Point
+		pos  Vec2
+		want Vec2
 	}{
-		{"north", Point{11, 10}, Point{11, 8}},
-		{"north-east", Point{12, 10}, Point{14, 8}},
-		{"east", Point{12, 11}, Point{14, 11}},
-		{"south-east", Point{12, 12}, Point{14, 14}},
-		{"south", Point{11, 12}, Point{11, 14}},
-		{"south-west", Point{10, 12}, Point{8, 14}},
-		{"west", Point{10, 11}, Point{8, 11}},
-		{"north-west", Point{10, 10}, Point{8, 8}},
+		{"north", Vec2{11, 10}, Vec2{11, 8}},
+		{"north-east", Vec2{12, 10}, Vec2{14, 8}},
+		{"east", Vec2{12, 11}, Vec2{14, 11}},
+		{"south-east", Vec2{12, 12}, Vec2{14, 14}},
+		{"south", Vec2{11, 12}, Vec2{11, 14}},
+		{"south-west", Vec2{10, 12}, Vec2{8, 14}},
+		{"west", Vec2{10, 11}, Vec2{8, 11}},
+		{"north-west", Vec2{10, 10}, Vec2{8, 8}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, ms, player := movementFixture(t)
-			obs := EntityBase{Pos: Point{10, 10}, Dims: Dimensions{4, 4}}
-			ms.pathfinder.occupy(obs.Pos, obs.Dims, 1)
-			player.Pos, player.Dims, player.Direction = tc.pos, Dimensions{2, 2}, DOWN
-			bot := &BotState{EntityBase: EntityBase{ID: 903, Pos: tc.pos, Dims: player.Dims}, Direction: UP}
+			obs := Transform{Pos: Vec2{10, 10}, Size: Vec2{4, 4}}
+			ms.pathfinder.occupy(obs.Pos, obs.Size, 1)
+			ptf := ms.tf(player.ID)
+			ptf.Pos, ptf.Size, player.Direction = tc.pos, Vec2{2, 2}, DOWN
+			bot := &BotState{EntityBase: EntityBase{ID: 903}, Direction: UP}
 			ms.bots[bot.ID] = bot
+			ms.spawn(bot.ID, Transform{Pos: tc.pos, Size: ptf.Size})
+			ptf = ms.tf(player.ID) // a spawn may move the transform array
 			s.clearObstacleCells(ms, obs)
-			if player.Pos != tc.want || bot.Pos != tc.want {
-				t.Fatalf("outward push: player %v, bot %v, want %v", player.Pos, bot.Pos, tc.want)
+			if ptf.Pos != tc.want || ms.tf(bot.ID).Pos != tc.want {
+				t.Fatalf("outward push: player %v, bot %v, want %v", ptf.Pos, ms.tf(bot.ID).Pos, tc.want)
 			}
-			if !ms.pathfinder.isWalkable(int(player.Pos.X), int(player.Pos.Y), player.Dims) {
+			if !ms.pathfinder.isWalkable(int(ptf.Pos.X), int(ptf.Pos.Y), ptf.Size) {
 				t.Fatal("the full footprint must land on free cells")
 			}
 		})
@@ -315,11 +334,11 @@ func TestObstaclePushAtCenterUsesFacing(t *testing.T) {
 		{DOWN, PointI{11, 14}},
 		{NONE, PointI{11, 14}},
 	} {
-		_, ms, player := movementFixture(t)
-		obs := EntityBase{Pos: Point{10, 10}, Dims: Dimensions{4, 4}}
-		ms.pathfinder.occupy(obs.Pos, obs.Dims, 1)
-		player.Pos, player.Dims = Point{11, 11}, Dimensions{2, 2}
-		cell, err := obstaclePushCell(ms, obs, player.EntityBase, tc.direction)
+		_, ms, _ := movementFixture(t)
+		obs := Transform{Pos: Vec2{10, 10}, Size: Vec2{4, 4}}
+		ms.pathfinder.occupy(obs.Pos, obs.Size, 1)
+		entity := Transform{Pos: Vec2{11, 11}, Size: Vec2{2, 2}}
+		cell, err := obstaclePushCell(ms, obs, entity, tc.direction)
 		if err != nil || cell != tc.want {
 			t.Fatalf("center push for direction %v: %v, %v; want %v", tc.direction, cell, err, tc.want)
 		}
@@ -328,12 +347,13 @@ func TestObstaclePushAtCenterUsesFacing(t *testing.T) {
 
 func TestObstaclePushFindsFreeCellsBesideBlockedExit(t *testing.T) {
 	_, ms, player := movementFixture(t)
-	obs := EntityBase{Pos: Point{10, 10}, Dims: Dimensions{2, 2}}
-	ms.pathfinder.occupy(obs.Pos, obs.Dims, 1)
-	ms.pathfinder.occupy(Point{12, 10}, Dimensions{1, 2}, 1)
-	player.Pos = Point{11, 10.5}
-	cell, err := obstaclePushCell(ms, obs, player.EntityBase, NONE)
-	if err != nil || cell.X != 13 || !ms.pathfinder.isWalkable(cell.X, cell.Y, player.Dims) {
+	obs := Transform{Pos: Vec2{10, 10}, Size: Vec2{2, 2}}
+	ms.pathfinder.occupy(obs.Pos, obs.Size, 1)
+	ms.pathfinder.occupy(Vec2{12, 10}, Vec2{1, 2}, 1)
+	ptf := ms.tf(player.ID)
+	ptf.Pos = Vec2{11, 10.5}
+	cell, err := obstaclePushCell(ms, obs, *ptf, NONE)
+	if err != nil || cell.X != 13 || !ms.pathfinder.isWalkable(cell.X, cell.Y, ptf.Size) {
 		t.Fatalf("a blocked exit keeps the push on the outward side: %v, %v", cell, err)
 	}
 }
@@ -347,7 +367,7 @@ func TestResourceDepletionKeepsItsObjectiveXP(t *testing.T) {
 			if hits == 100 {
 				t.Fatal("the resource never depletes")
 			}
-			fire(s, ms, player, Point{X: 10, Y: 10})
+			fire(s, ms, player, Vec2{X: 10, Y: 10})
 		}
 	}
 	if player.Progression.XP == 0 {
@@ -364,7 +384,7 @@ func TestDestructibleObstacleDropsOnlyWhatItsDefaultRolls(t *testing.T) {
 	for _, build := range []EntityTypeDefaultConfig{bare, never} {
 		s, ms, player := destructibleFixture(t, build)
 		obs := ms.destructibles[placeObstacle(s, ms, 1, build.LiveItemIDs[0])]
-		fire(s, ms, player, Point{X: 10, Y: 10})
+		fire(s, ms, player, Vec2{X: 10, Y: 10})
 		if !obs.IsGhost() || len(drops(ms)) != 0 {
 			t.Fatalf("%v: depleted with drops %v", build.LiveItemIDs, drops(ms))
 		}

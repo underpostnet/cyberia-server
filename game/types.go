@@ -10,10 +10,21 @@ import (
 
 // 1. Data Structures & Interfaces
 
-type Point struct {
-	X float64 `json:"X"`
-	Y float64 `json:"Y"`
+// Vec2 is a 2D quantity in grid units: a position or a size.
+type Vec2 struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
 }
+
+// Transform is the transform component: the top-left and the size of an
+// entity, in grid units.
+type Transform struct {
+	Pos  Vec2 `json:"pos"`
+	Size Vec2 `json:"size"`
+}
+
+// Component bits of MapState.mask, in the §4 order.
+const maskTransform ComponentMask = 1 << 1
 
 type PointI struct {
 	X int `json:"x"`
@@ -30,11 +41,6 @@ type cellKey struct {
 
 type Rectangle struct {
 	MinX, MinY, MaxX, MaxY float64
-}
-
-type Dimensions struct {
-	Width  float64 `json:"Width"`
-	Height float64 `json:"Height"`
 }
 
 type Direction int
@@ -72,13 +78,10 @@ type EntityID uint32
 // ComponentMask holds one bit per component an entity has.
 type ComponentMask uint64
 
-// EntityBase — identity + spatial fields shared by every world entity.
-// Anonymously embedded so field access (e.g. player.Pos) and JSON keys are
-// promoted unchanged.
+// EntityBase — identity and layers shared by every world entity. The position
+// and the size are in MapState.transform.
 type EntityBase struct {
 	ID           EntityID           `json:"id"`
-	Pos          Point              `json:"Pos"`
-	Dims         Dimensions         `json:"Dims"`
 	ObjectLayers []ObjectLayerState `json:"objectLayers"`
 }
 
@@ -197,7 +200,7 @@ type BotState struct {
 	Direction            Direction       `json:"direction"`
 	Mode                 ObjectLayerMode `json:"mode"`
 	Behavior             string          `json:"behavior"` // canonical entity behavior (see behavior.go)
-	SpawnCenter          Point           `json:"spawnCenter"`
+	SpawnCenter          Vec2            `json:"spawnCenter"`
 	SpawnRadius          float64         `json:"spawnRadius"`
 	AggroRange           float64         `json:"aggroRange"`
 	CurrentTargetPlayer  EntityID        `json:"-"` // player ID currently being pursued (if any)
@@ -324,10 +327,11 @@ type MapState struct {
 	lootRespawns []lootRespawn
 	gridW, gridH int
 
-	ids    []EntityID // entity id at slot i. 0 = free slot
-	index  map[EntityID]int
-	mask   []ComponentMask
-	cursor int // next slot the allocator tests
+	ids       []EntityID // entity id at slot i. 0 = free slot
+	index     map[EntityID]int
+	mask      []ComponentMask
+	transform []Transform
+	cursor    int // next slot the allocator tests
 }
 
 type Client struct {

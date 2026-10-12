@@ -76,7 +76,7 @@ func broadcastFCT(mapState *MapState, kind string, worldX, worldY float64, value
 
 // broadcastAudioEvent raises one audio logic id for every viewer in reach, so
 // a defeat or a level gained sounds for everyone who can see it.
-func broadcastAudioEvent(mapState *MapState, logicEventID string, at Point) {
+func broadcastAudioEvent(mapState *MapState, logicEventID string, at Vec2) {
 	broadcastAt(mapState, "audio_event", AudioEvent{LogicEventID: logicEventID, WorldX: at.X, WorldY: at.Y}, at.X, at.Y)
 }
 

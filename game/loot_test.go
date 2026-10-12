@@ -63,14 +63,13 @@ func onlyToken(t *testing.T, ms *MapState) *BotState {
 	return tokens[0]
 }
 
-// woundedPlayer stands a player with the given life on the token.
-func woundedPlayer(ms *MapState, id EntityID, token *BotState, life float64) *PlayerState {
+// woundedPlayer stands a player with the given life at the point.
+func woundedPlayer(ms *MapState, id EntityID, at Vec2, life float64) *PlayerState {
 	player := &PlayerState{}
 	player.ID = id
-	player.Pos = token.Pos
-	player.Dims = Dimensions{Width: 1, Height: 1}
 	player.Life, player.MaxLife = life, 100
 	ms.players[id] = player
+	ms.spawn(id, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}})
 	return player
 }
 
@@ -99,8 +98,8 @@ func TestAMapHoldsOnlyTheLootItPlaces(t *testing.T) {
 			t.Fatalf("map %q holds %d gel tokens, want its 2 placements", code, len(tokens))
 		}
 		for _, token := range tokens {
-			if token.Pos != (Point{X: 2, Y: 3}) && token.Pos != (Point{X: 8, Y: 8}) {
-				t.Fatalf("a token left its placed cell: %+v", token.Pos)
+			if at := s.maps[code].tf(token.ID).Pos; at != (Vec2{X: 2, Y: 3}) && at != (Vec2{X: 8, Y: 8}) {
+				t.Fatalf("a token left its placed cell: %+v", at)
 			}
 			if token.LootOutcome != LootOutcomeConsume || token.LootCollection != LootCollectFirstContact ||
 				len(activeLayers(token.ObjectLayers)) != 1 {
@@ -165,8 +164,8 @@ func TestWorldLootShowsOneItemBoundOrNot(t *testing.T) {
 func TestConsumingAPickupHealsByTheItemOnceAndGrantsNothing(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
-	first := woundedPlayer(ms, 101, token, 50)
-	second := woundedPlayer(ms, 102, token, 50)
+	first := woundedPlayer(ms, 101, ms.tf(token.ID).Pos, 50)
+	second := woundedPlayer(ms, 102, ms.tf(token.ID).Pos, 50)
 
 	for range 3 {
 		s.phaseLoot(0, ms)
@@ -186,7 +185,7 @@ func TestConsumingAPickupHealsByTheItemOnceAndGrantsNothing(t *testing.T) {
 func TestConsumingAPickupNeverPassesMaxLife(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
-	player := woundedPlayer(ms, 103, token, 95)
+	player := woundedPlayer(ms, 103, ms.tf(token.ID).Pos, 95)
 
 	s.phaseLoot(0, ms)
 
@@ -199,14 +198,15 @@ func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
 
-	ghost := woundedPlayer(ms, 105, token, 10)
+	ghost := woundedPlayer(ms, 105, ms.tf(token.ID).Pos, 10)
 	ghost.RespawnTime = time.Now().Add(time.Minute)
-	frozen := woundedPlayer(ms, 106, token, 10)
+	frozen := woundedPlayer(ms, 106, ms.tf(token.ID).Pos, 10)
 	frozen.Frozen = true
 	for i, behavior := range []string{BehaviorSkill, BehaviorCoin, BehaviorDrop, BehaviorProvider} {
-		bot := &BotState{EntityBase: EntityBase{ID: EntityID(200 + i), Pos: token.Pos, Dims: token.Dims},
+		bot := &BotState{EntityBase: EntityBase{ID: EntityID(200 + i)},
 			Mortal: Mortal{Life: 10, MaxLife: 100}, Behavior: behavior}
 		ms.bots[bot.ID] = bot
+		ms.spawn(bot.ID, *ms.tf(token.ID))
 	}
 
 	s.phaseLoot(0, ms)
@@ -218,7 +218,7 @@ func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 		t.Fatalf("ineligible players healed: ghost=%v frozen=%v", ghost.Life, frozen.Life)
 	}
 
-	wounded := woundedPlayer(ms, 108, token, 60)
+	wounded := woundedPlayer(ms, 108, ms.tf(token.ID).Pos, 60)
 	s.phaseLoot(0, ms)
 	if _, ok := ms.bots[token.ID]; ok || wounded.Life != 70 {
 		t.Fatalf("a wounded player must consume the token: life=%v", wounded.Life)
@@ -228,10 +228,12 @@ func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 func TestACollectorAtFullLifeKeepsAPickupAndTheTokenComesBack(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
-	player := woundedPlayer(ms, 104, token, 100)
-	bot := &BotState{EntityBase: EntityBase{ID: 109, Pos: Point{X: 15, Y: 15}, Dims: token.Dims},
+	at := *ms.tf(token.ID)
+	player := woundedPlayer(ms, 104, at.Pos, 100)
+	bot := &BotState{EntityBase: EntityBase{ID: 109},
 		Mortal: Mortal{Life: 100, MaxLife: 100}, Behavior: BehaviorHostile}
 	ms.bots[bot.ID] = bot
+	ms.spawn(bot.ID, Transform{Pos: Vec2{X: 15, Y: 15}, Size: at.Size})
 
 	s.phaseLoot(0, ms)
 	if _, ok := ms.bots[token.ID]; ok || player.Life != 100 || s.playerItemQuantity(player, "gel") != 1 {
@@ -242,8 +244,8 @@ func TestACollectorAtFullLifeKeepsAPickupAndTheTokenComesBack(t *testing.T) {
 	}
 
 	ms.lootRespawns[0].at = time.Now()
-	player.Pos = Point{X: -10, Y: -10}
-	bot.Pos = token.Pos
+	ms.tf(player.ID).Pos = Vec2{X: -10, Y: -10}
+	ms.tf(bot.ID).Pos = at.Pos
 	s.phaseLoot(0, ms)
 	if layerQuantity(bot.ObjectLayers, "gel") != 1 || bot.Life != 100 {
 		t.Fatalf("a full-life bot must keep the gel: life=%v layers=%+v", bot.Life, bot.ObjectLayers)
@@ -257,7 +259,8 @@ func TestAPickupHealsByItsResistanceAndComesBackAfterItsRespawnTime(t *testing.T
 	buildWorld(s, []string{"m"}, placed)
 	ms := s.maps["m"]
 	token := onlyToken(t, ms)
-	player := woundedPlayer(ms, 103, token, 50)
+	cell := ms.tf(token.ID).Pos
+	player := woundedPlayer(ms, 103, cell, 50)
 
 	now := time.Now()
 	s.phaseLoot(0, ms)
@@ -273,10 +276,10 @@ func TestAPickupHealsByItsResistanceAndComesBackAfterItsRespawnTime(t *testing.T
 		t.Fatal("the token came back before its respawn time")
 	}
 	ms.lootRespawns[0].at = now
-	player.Pos = Point{X: -10, Y: -10}
+	ms.tf(player.ID).Pos = Vec2{X: -10, Y: -10}
 	s.phaseLoot(0, ms)
 	back := onlyToken(t, ms)
-	if back.Pos != token.Pos || back.LootOutcome != LootOutcomeConsume || back.RespawnDuration != 5*time.Second ||
+	if ms.tf(back.ID).Pos != cell || back.LootOutcome != LootOutcomeConsume || back.RespawnDuration != 5*time.Second ||
 		len(ms.lootRespawns) != 0 {
 		t.Fatalf("the token must come back on its cell with its respawn time: %+v", back)
 	}
@@ -287,7 +290,7 @@ func TestAPickupWithoutARespawnTimeTakesTheDefault(t *testing.T) {
 	buildWorld(s, []string{"m"}, lootEntity(4, 4, "gel"), lootEntity(10, 10, "salve"))
 	ms := s.maps["m"]
 	for _, token := range worldTokens(ms) {
-		woundedPlayer(ms, 1000+token.ID, token, 50)
+		woundedPlayer(ms, 1000+token.ID, ms.tf(token.ID).Pos, 50)
 	}
 
 	now := time.Now()
@@ -303,9 +306,10 @@ func TestAPickupWithoutARespawnTimeTakesTheDefault(t *testing.T) {
 func TestABotConsumesAPickup(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
-	bot := &BotState{EntityBase: EntityBase{ID: 300, Pos: token.Pos, Dims: token.Dims},
+	bot := &BotState{EntityBase: EntityBase{ID: 300},
 		Mortal: Mortal{Life: 30, MaxLife: 100}, Behavior: BehaviorHostile}
 	ms.bots[bot.ID] = bot
+	ms.spawn(bot.ID, *ms.tf(token.ID))
 
 	s.phaseLoot(0, ms)
 
@@ -318,7 +322,7 @@ func TestAGrantPickupEntersTheInventoryUnused(t *testing.T) {
 	s := lootServer(t)
 	buildWorld(s, []string{"m"}, lootEntity(4, 4, "salve"))
 	ms := s.maps["m"]
-	player := woundedPlayer(ms, 103, onlyToken(t, ms), 100)
+	player := woundedPlayer(ms, 103, ms.tf(onlyToken(t, ms).ID).Pos, 100)
 
 	s.phaseLoot(0, ms)
 
@@ -330,10 +334,11 @@ func TestAGrantPickupEntersTheInventoryUnused(t *testing.T) {
 
 func TestDeathDropsKeepTheContributorRace(t *testing.T) {
 	s, ms, contributor := movementFixture(t)
+	s.lastEntityID = 1000 // drops take ids after the players
 	s.coinItemID = "coin"
-	outsider := woundedPlayer(ms, 107, &BotState{}, 50)
+	outsider := woundedPlayer(ms, 107, Vec2{}, 50)
 	ledger := map[EntityID]float64{contributor.ID: 5}
-	s.spawnDrops(ms, "test", Point{X: 10, Y: 10},
+	s.spawnDrops(ms, "test", Vec2{X: 10, Y: 10},
 		EntityTypeDefaultConfig{DropItemIDs: []string{"shard"}}, 7, ledger)
 
 	tokens := drops(ms)
@@ -342,7 +347,7 @@ func TestDeathDropsKeepTheContributorRace(t *testing.T) {
 	}
 	for i, token := range tokens {
 		// Scattered tokens may overlap: set them apart so each one is collected alone.
-		token.Pos = Point{X: float64(3 + 10*i), Y: 3}
+		ms.tf(token.ID).Pos = Vec2{X: float64(3 + 10*i), Y: 3}
 		if token.LootOrigin != LootOriginDeath || token.LootCollection != LootCollectContributors ||
 			token.ExpiresAt.IsZero() || !token.CollectableAt.After(time.Now()) {
 			t.Fatalf("death drop = %+v", token)
@@ -358,14 +363,14 @@ func TestDeathDropsKeepTheContributorRace(t *testing.T) {
 	}
 
 	for _, token := range tokens {
-		contributor.Pos = Point{X: 19, Y: 0}
-		outsider.Pos = token.Pos
+		ms.tf(contributor.ID).Pos = Vec2{X: 19, Y: 0}
+		ms.tf(outsider.ID).Pos = ms.tf(token.ID).Pos
 		s.phaseLoot(0, ms)
 		if _, ok := ms.bots[token.ID]; !ok {
 			t.Fatalf("a non-contributor took %s", token.DropItemID)
 		}
-		outsider.Pos = Point{X: 19, Y: 19}
-		contributor.Pos = token.Pos
+		ms.tf(outsider.ID).Pos = Vec2{X: 19, Y: 19}
+		ms.tf(contributor.ID).Pos = ms.tf(token.ID).Pos
 		s.phaseLoot(0, ms)
 		if _, ok := ms.bots[token.ID]; ok {
 			t.Fatalf("the contributor could not take %s", token.DropItemID)

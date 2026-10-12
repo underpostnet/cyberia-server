@@ -97,7 +97,7 @@ func (s *GameServer) handleShopBuy(player *PlayerState, cmd *InputCommand) {
 		s.sendShopAck(player, cmd.EntityID, cmd.ItemID, 0, shopRejectNoVendor)
 		return
 	}
-	if !botInPlayerRange(player, bot) {
+	if !s.botInPlayerRange(player, bot) {
 		s.sendShopAck(player, cmd.EntityID, cmd.ItemID, 0, shopRejectOutOfRange)
 		return
 	}

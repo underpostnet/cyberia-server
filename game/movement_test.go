@@ -27,12 +27,11 @@ func movementFixture(t *testing.T) (*GameServer, *MapState, *PlayerState) {
 
 	player := &PlayerState{}
 	player.ID = 1
-	player.Pos = Point{X: 1, Y: 1}
-	player.Dims = Dimensions{Width: 1, Height: 1}
 	player.MapCode = "test"
 	player.Life, player.MaxLife = 100, 100
 	player.Client = &Client{playerID: player.ID}
 	mapState.players[player.ID] = player
+	mapState.spawn(player.ID, Transform{Pos: Vec2{X: 1, Y: 1}, Size: Vec2{X: 1, Y: 1}})
 
 	return s, mapState, player
 }
@@ -175,7 +174,7 @@ func TestSnapshotActionReadyInFollowsTheSkillGate(t *testing.T) {
 	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready != 0 {
 		t.Fatalf("actionReadyInMs = %d before any tap, want 0", ready)
 	}
-	s.HandlePlayerTapAction(player, mapState, Point{X: 2, Y: 2})
+	s.HandlePlayerTapAction(player, mapState, Vec2{X: 2, Y: 2})
 	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready <= 0 || ready > 500 {
 		t.Fatalf("actionReadyInMs = %d after a tap, want 1..500", ready)
 	}

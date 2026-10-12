@@ -98,7 +98,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 
 	playerID := s.newEntityID()
-	playerDims := Dimensions{Width: s.defaultPlayerWidth, Height: s.defaultPlayerHeight}
+	playerDims := Vec2{X: s.defaultPlayerWidth, Y: s.defaultPlayerHeight}
 
 	// Resolve the starting map + cell from the instance's PlayerSpawn config. A
 	// fixed spawn (Random=false) on a loaded map with a walkable cell is honoured
@@ -145,8 +145,6 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	playerState := &PlayerState{
 		EntityBase: EntityBase{
 			ID:           playerID,
-			Pos:          Point{X: float64(startPosI.X), Y: float64(startPosI.Y)},
-			Dims:         playerDims,
 			ObjectLayers: playerOLs,
 		},
 		Mortal: Mortal{
@@ -178,7 +176,10 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	playerState.Client = client
 
 	startMapState.players[playerID] = playerState
-	startMapState.spawn(playerID)
+	startMapState.spawn(playerID, Transform{
+		Pos:  Vec2{X: float64(startPosI.X), Y: float64(startPosI.Y)},
+		Size: playerDims,
+	})
 
 	// Economy: credit the player's starting wallet (Fountain: playerSpawnCoins).
 	s.FountainInitPlayer(playerState)

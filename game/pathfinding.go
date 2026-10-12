@@ -94,9 +94,9 @@ func (pf *Pathfinder) beginSearch() {
 
 // occupy adds `delta` blockers to every grid cell the rectangle covers, so
 // overlapping obstacles free a cell only when the last of them leaves it.
-func (pf *Pathfinder) occupy(pos Point, dims Dimensions, delta int) {
-	for y := int(pos.Y); y < int(pos.Y+dims.Height); y++ {
-		for x := int(pos.X); x < int(pos.X+dims.Width); x++ {
+func (pf *Pathfinder) occupy(pos, size Vec2, delta int) {
+	for y := int(pos.Y); y < int(pos.Y+size.Y); y++ {
+		for x := int(pos.X); x < int(pos.X+size.X); x++ {
 			if pf.inGrid(x, y) {
 				pf.grid[y][x] += delta
 			}
@@ -110,8 +110,8 @@ func (pf *Pathfinder) isCellWalkable(x, y int) bool {
 }
 
 // isWalkable checks if a rectangle of a given dimension is walkable.
-func (pf *Pathfinder) isWalkable(x, y int, playerDims Dimensions) bool {
-	w, h := int(math.Ceil(playerDims.Width)), int(math.Ceil(playerDims.Height))
+func (pf *Pathfinder) isWalkable(x, y int, playerDims Vec2) bool {
+	w, h := int(math.Ceil(playerDims.X)), int(math.Ceil(playerDims.Y))
 	for dy := 0; dy < h; dy++ {
 		for dx := 0; dx < w; dx++ {
 			if !pf.isCellWalkable(x+dx, y+dy) {
@@ -123,9 +123,9 @@ func (pf *Pathfinder) isWalkable(x, y int, playerDims Dimensions) bool {
 }
 
 // findRandomWalkablePoint finds a random walkable point for a given dimension.
-func (pf *Pathfinder) findRandomWalkablePoint(dims Dimensions) (PointI, error) {
+func (pf *Pathfinder) findRandomWalkablePoint(dims Vec2) (PointI, error) {
 	for attempts := 0; attempts < 200; attempts++ {
-		x, y := rand.Intn(pf.gridW-int(dims.Width)), rand.Intn(pf.gridH-int(dims.Height))
+		x, y := rand.Intn(pf.gridW-int(dims.X)), rand.Intn(pf.gridH-int(dims.Y))
 		if pf.isWalkable(x, y, dims) {
 			return PointI{X: x, Y: y}, nil
 		}
@@ -134,7 +134,7 @@ func (pf *Pathfinder) findRandomWalkablePoint(dims Dimensions) (PointI, error) {
 }
 
 // findClosestWalkablePoint finds the closest walkable point to a given point.
-func (pf *Pathfinder) findClosestWalkablePoint(p PointI, playerDims Dimensions) (PointI, error) {
+func (pf *Pathfinder) findClosestWalkablePoint(p PointI, playerDims Vec2) (PointI, error) {
 	if pf.isWalkable(p.X, p.Y, playerDims) {
 		return p, nil
 	}
@@ -174,7 +174,7 @@ var astarMoves = [8]PointI{{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {-1, 1}, 
 // budget. The closed set keeps each cell to one expansion, and the open index
 // finds a queued node in O(1). Both are necessary: an unreachable target makes
 // the search expand the full reachable area.
-func (pf *Pathfinder) Astar(start, end PointI, playerDims Dimensions) ([]PointI, error) {
+func (pf *Pathfinder) Astar(start, end PointI, playerDims Vec2) ([]PointI, error) {
 	if !pf.inGrid(start.X, start.Y) || !pf.inGrid(end.X, end.Y) {
 		return nil, fmt.Errorf("path endpoint outside the grid")
 	}

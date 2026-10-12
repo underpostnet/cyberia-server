@@ -175,7 +175,7 @@ func (s *GameServer) logActionProviders() {
 			}
 			logx.Debugf("[ActionProviders]   map=%s action=%s label=%q quests=%v entity=%d initPos=(%d,%d)",
 				bot.MapCode, bot.ActionCode, label, quests, bot.ID,
-				int(bot.Pos.X), int(bot.Pos.Y))
+				int(ms.tf(bot.ID).Pos.X), int(ms.tf(bot.ID).Pos.Y))
 		}
 	}
 }
@@ -295,13 +295,14 @@ func (s *GameServer) botHasUsableAction(bot *BotState) bool {
 // screen in the first place.
 //
 // Caller MUST hold s.mu.
-func botInPlayerRange(player *PlayerState, bot *BotState) bool {
+func (s *GameServer) botInPlayerRange(player *PlayerState, bot *BotState) bool {
 	if bot.MapCode != player.MapCode {
 		return false
 	}
+	tf := s.maps[bot.MapCode].tf(bot.ID)
 	botRect := Rectangle{
-		MinX: bot.Pos.X, MinY: bot.Pos.Y,
-		MaxX: bot.Pos.X + bot.Dims.Width, MaxY: bot.Pos.Y + bot.Dims.Height,
+		MinX: tf.Pos.X, MinY: tf.Pos.Y,
+		MaxX: tf.Pos.X + tf.Size.X, MaxY: tf.Pos.Y + tf.Size.Y,
 	}
 	return rectsOverlap(player.AOI, botRect)
 }

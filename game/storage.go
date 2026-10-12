@@ -103,7 +103,7 @@ func (s *GameServer) resolveStorage(player *PlayerState, entityID EntityID) (sto
 		return storageKey{}, 0, false
 	}
 	bot := s.findBot(entityID)
-	if bot == nil || !botInPlayerRange(player, bot) {
+	if bot == nil || !s.botInPlayerRange(player, bot) {
 		return storageKey{}, 0, false
 	}
 	key, capacity, ok := s.storageVault(player, bot)

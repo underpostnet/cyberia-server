@@ -63,11 +63,12 @@ const (
 )
 
 // worldTokenDims is the footprint of a world token.
-var worldTokenDims = Dimensions{Width: lootTokenSize, Height: lootTokenSize}
+var worldTokenDims = Vec2{X: lootTokenSize, Y: lootTokenSize}
 
 // lootRespawn is a consumed world token waiting to come back on its cell.
 type lootRespawn struct {
 	token *BotState
+	pos   Vec2
 	at    time.Time
 }
 
@@ -150,7 +151,7 @@ func contributorSet(ledger map[EntityID]float64) map[EntityID]struct{} {
 // to collect the tokens once they settle. Shared by every dying
 // content-authority entity (bots, resources, destructible obstacles). Caller
 // holds s.mu.
-func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point, build EntityTypeDefaultConfig, coinAmount int, ledger map[EntityID]float64) {
+func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Vec2, build EntityTypeDefaultConfig, coinAmount int, ledger map[EntityID]float64) {
 	contributors := contributorSet(ledger)
 	// At least one contributor (player or bot) must have dealt damage for loot to
 	// drop. A death nobody contributed to leaves nothing behind.
@@ -182,14 +183,13 @@ func (s *GameServer) spawnDrops(mapState *MapState, mapCode string, center Point
 		scattered, len(build.DropItemIDs), coinAmount, center.X, center.Y, mapCode, len(contributors))
 }
 
-// newLootToken builds one BehaviorDrop token showing itemID × quantity at pos.
-// Its one active ObjectLayer carries the quantity for the on-grid counter.
-func (s *GameServer) newLootToken(mapCode string, pos Point, dims Dimensions, itemID string, quantity int) *BotState {
+// newLootToken builds one BehaviorDrop token showing itemID × quantity. Its one
+// active ObjectLayer carries the quantity for the on-grid counter. The caller
+// spawns it with its transform.
+func (s *GameServer) newLootToken(mapCode string, itemID string, quantity int) *BotState {
 	return &BotState{
 		EntityBase: EntityBase{
-			ID:   s.newEntityID(),
-			Pos:  pos,
-			Dims: dims,
+			ID: s.newEntityID(),
 			ObjectLayers: []ObjectLayerState{
 				{ItemID: itemID, Active: true, Quantity: quantity},
 			},
@@ -210,7 +210,7 @@ func (s *GameServer) newLootToken(mapCode string, pos Point, dims Dimensions, it
 // spawnDropToken creates one death-drop token carrying (itemID × quantity),
 // flings it to a walkable cell a random distance from `center` along a random
 // direction, and announces the launch. Caller holds s.mu.
-func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center Point, itemID string, quantity int, contributors map[EntityID]struct{}) {
+func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center Vec2, itemID string, quantity int, contributors map[EntityID]struct{}) {
 	if itemID == "" || quantity <= 0 {
 		return
 	}
@@ -219,7 +219,7 @@ func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center P
 	if itemID == s.coinItemID {
 		size, outcome = coinTokenSize, LootOutcomeCoin
 	}
-	tokenDims := Dimensions{Width: size, Height: size}
+	tokenDims := Vec2{X: size, Y: size}
 
 	angle := rand.Float64() * 2 * math.Pi
 	// Squared roll biases toward the near end with a long tail to the far edge,
@@ -232,12 +232,12 @@ func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center P
 	}
 
 	cell := s.clampDropCell(mapState, targetCell, tokenDims)
-	pos := Point{
-		X: float64(cell.X) - tokenDims.Width*0.5,
-		Y: float64(cell.Y) - tokenDims.Height*0.5,
+	pos := Vec2{
+		X: float64(cell.X) - tokenDims.X*0.5,
+		Y: float64(cell.Y) - tokenDims.Y*0.5,
 	}
 
-	drop := s.newLootToken(mapCode, pos, tokenDims, itemID, quantity)
+	drop := s.newLootToken(mapCode, itemID, quantity)
 	drop.LootOrigin = LootOriginDeath
 	drop.LootCollection = LootCollectContributors
 	drop.LootOutcome = outcome
@@ -245,18 +245,18 @@ func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center P
 	drop.CollectableAt = now.Add(lootLandingWindow)
 	drop.ExpiresAt = now.Add(lootLifetime)
 	mapState.bots[drop.ID] = drop
-	mapState.spawn(drop.ID)
+	mapState.spawn(drop.ID, Transform{Pos: pos, Size: tokenDims})
 
 	// Announce the launch so viewers play the corpse→cell parabola. The landing
 	// point is the token center.
-	landing := Point{X: pos.X + tokenDims.Width*0.5, Y: pos.Y + tokenDims.Height*0.5}
+	landing := Vec2{X: pos.X + tokenDims.X*0.5, Y: pos.Y + tokenDims.Y*0.5}
 	s.broadcastDropSpawn(mapState, drop, center, landing)
 }
 
 // clampDropCell keeps a scatter target inside the grid and on a walkable cell,
 // falling back to the closest walkable point (then the raw cell) so a drop is
 // never lost to an obstacle.
-func (s *GameServer) clampDropCell(mapState *MapState, cell PointI, dims Dimensions) PointI {
+func (s *GameServer) clampDropCell(mapState *MapState, cell PointI, dims Vec2) PointI {
 	if cell.X < 0 {
 		cell.X = 0
 	} else if cell.X >= mapState.gridW {
@@ -294,8 +294,8 @@ func (s *GameServer) lootBuild(itemID string) (EntityTypeDefaultConfig, bool) {
 // the first living entity it benefits, never expiring, blocking nothing. The
 // loot default its item matches makes it consume on pickup; else it grants the
 // item. Caller holds s.mu.
-func (s *GameServer) placeWorldLoot(mapState *MapState, mapCode string, pos Point, itemID string, respawn time.Duration) {
-	drop := s.newLootToken(mapCode, pos, worldTokenDims, itemID, 1)
+func (s *GameServer) placeWorldLoot(mapState *MapState, mapCode string, pos Vec2, itemID string, respawn time.Duration) {
+	drop := s.newLootToken(mapCode, itemID, 1)
 	drop.RespawnDuration = respawn
 	drop.LootOrigin = LootOriginWorld
 	drop.LootCollection = LootCollectFirstContact
@@ -304,13 +304,14 @@ func (s *GameServer) placeWorldLoot(mapState *MapState, mapCode string, pos Poin
 		drop.LootOutcome = LootOutcomeConsume
 	}
 	mapState.bots[drop.ID] = drop
-	mapState.spawn(drop.ID)
+	mapState.spawn(drop.ID, Transform{Pos: pos, Size: worldTokenDims})
 }
 
 // scheduleLootRespawn brings a consumed world token back on its cell after its
-// respawn time. Caller holds s.mu.
+// respawn time. Call it while the token still has its slot. Caller holds s.mu.
 func scheduleLootRespawn(mapState *MapState, drop *BotState, now time.Time) {
-	mapState.lootRespawns = append(mapState.lootRespawns, lootRespawn{token: drop, at: now.Add(drop.respawnDuration())})
+	mapState.lootRespawns = append(mapState.lootRespawns,
+		lootRespawn{token: drop, pos: mapState.tf(drop.ID).Pos, at: now.Add(drop.respawnDuration())})
 }
 
 // respawnWorldLoot places every consumed world token whose wait ran out.
@@ -322,7 +323,7 @@ func (s *GameServer) respawnWorldLoot(mapState *MapState, now time.Time) {
 			continue
 		}
 		token := respawn.token
-		s.placeWorldLoot(mapState, token.MapCode, token.Pos, token.DropItemID, token.RespawnDuration)
+		s.placeWorldLoot(mapState, token.MapCode, respawn.pos, token.DropItemID, token.RespawnDuration)
 	}
 	mapState.lootRespawns = waiting
 }
@@ -335,7 +336,7 @@ func (s *GameServer) buildLoot(mapState *MapState, mapCode string, ent *pb.Entit
 			ent.GetInitCellX(), ent.GetInitCellY(), mapCode, len(itemIDs))
 		return
 	}
-	pos := Point{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
+	pos := Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
 	s.placeWorldLoot(mapState, mapCode, pos, itemIDs[0], placedRespawnDuration(ent))
 }
 
@@ -359,8 +360,8 @@ func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 			continue
 		}
 
-		cx := drop.Pos.X + drop.Dims.Width*0.5
-		cy := drop.Pos.Y + drop.Dims.Height*0.5
+		cx := mapState.tf(drop.ID).Pos.X + mapState.tf(drop.ID).Size.X*0.5
+		cy := mapState.tf(drop.ID).Pos.Y + mapState.tf(drop.ID).Size.Y*0.5
 
 		var collectorID EntityID
 		var granted bool
@@ -372,11 +373,11 @@ func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 			continue
 		}
 		s.broadcastDropCollect(mapState, drop, collectorID, cx, cy, granted)
-		delete(mapState.bots, dropID)
-		mapState.despawn(dropID)
 		if drop.LootOrigin == LootOriginWorld && drop.LootOutcome == LootOutcomeConsume {
 			scheduleLootRespawn(mapState, drop, now)
 		}
+		delete(mapState.bots, dropID)
+		mapState.despawn(dropID)
 	}
 }
 
@@ -437,7 +438,7 @@ func (s *GameServer) resolveDropCollector(mapState *MapState, drop *BotState) *P
 		if player.IsGhost() || player.Frozen {
 			continue
 		}
-		if !checkAABBCollision(drop.Pos, drop.Dims, player.Pos, player.Dims) {
+		if !checkAABBCollision(mapState.tf(drop.ID).Pos, mapState.tf(drop.ID).Size, mapState.tf(player.ID).Pos, mapState.tf(player.ID).Size) {
 			continue
 		}
 		if lootAdmits(drop, player.ID) {
@@ -457,7 +458,7 @@ func (s *GameServer) resolveBotDropCollector(mapState *MapState, drop *BotState)
 		if !lootAdmits(drop, id) {
 			continue
 		}
-		if checkAABBCollision(drop.Pos, drop.Dims, bot.Pos, bot.Dims) {
+		if checkAABBCollision(mapState.tf(drop.ID).Pos, mapState.tf(drop.ID).Size, mapState.tf(bot.ID).Pos, mapState.tf(bot.ID).Size) {
 			return bot
 		}
 	}
@@ -469,7 +470,7 @@ func (s *GameServer) resolveBotDropCollector(mapState *MapState, drop *BotState)
 // broadcastDropSpawn delivers the launch event to every player watching the
 // corpse (AOI covers the launch origin), so all viewers see the token arc out
 // of the dead bot.
-func (s *GameServer) broadcastDropSpawn(mapState *MapState, drop *BotState, origin, landing Point) {
+func (s *GameServer) broadcastDropSpawn(mapState *MapState, drop *BotState, origin, landing Vec2) {
 	payload := DropSpawn{
 		DropID:   drop.ID,
 		OriginX:  origin.X,
@@ -500,8 +501,8 @@ func (s *GameServer) broadcastDropCollect(mapState *MapState, drop *BotState, co
 		Granted:     granted,
 	}
 	dropRect := Rectangle{
-		MinX: drop.Pos.X, MinY: drop.Pos.Y,
-		MaxX: drop.Pos.X + drop.Dims.Width, MaxY: drop.Pos.Y + drop.Dims.Height,
+		MinX: mapState.tf(drop.ID).Pos.X, MinY: mapState.tf(drop.ID).Pos.Y,
+		MaxX: mapState.tf(drop.ID).Pos.X + mapState.tf(drop.ID).Size.X, MaxY: mapState.tf(drop.ID).Pos.Y + mapState.tf(drop.ID).Size.Y,
 	}
 	for _, player := range mapState.players {
 		if player.ID == collectorID || rectsOverlap(player.AOI, dropRect) {

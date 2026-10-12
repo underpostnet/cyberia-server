@@ -10,7 +10,7 @@ type SkillContext struct {
 	// MapState is the map the caster belongs to.
 	MapState *MapState
 	// Target is the world-space point the caster acted upon (tap destination).
-	Target Point
+	Target Vec2
 	// TriggerItemID is the ObjectLayer item that matched the skillConfig entry.
 	TriggerItemID string
 	// SummonedEntityItemID is the item ID of the entity this skill should spawn
@@ -93,7 +93,7 @@ func casterBody(caster interface{}) (*EntityBase, *Mortal) {
 // dispatchSkillsForEntity iterates the entity's active ObjectLayers, looks up
 // matching entries in skillConfig, and dispatches each logicEventID.
 // This replaces the duplicated switch blocks in HandlePlayerTapAction and handleBotSkills.
-func (s *GameServer) dispatchSkillsForEntity(caster interface{}, mapState *MapState, target Point, callerHoldsLock bool) {
+func (s *GameServer) dispatchSkillsForEntity(caster interface{}, mapState *MapState, target Vec2, callerHoldsLock bool) {
 	base, _ := casterBody(caster)
 	if base == nil {
 		return

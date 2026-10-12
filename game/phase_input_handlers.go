@@ -36,7 +36,7 @@ func (s *GameServer) handlePlayerActionInput(player *PlayerState, mapState *MapS
 		return
 	}
 
-	target := Point{X: cmd.TargetX, Y: cmd.TargetY}
+	target := Vec2{X: cmd.TargetX, Y: cmd.TargetY}
 	s.HandlePlayerTapAction(player, mapState, target)
 
 	player.PendingMove = PointI{X: int(math.Round(cmd.TargetX)), Y: int(math.Round(cmd.TargetY))}
@@ -62,7 +62,7 @@ func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
 	// Clamp into the map. An off-grid target would otherwise make Astar expand
 	// the full reachable area and then fail, spending the tick budget.
 	startPosI := clampCellToGrid(
-		PointI{X: int(math.Round(player.Pos.X)), Y: int(math.Round(player.Pos.Y))},
+		PointI{X: int(math.Round(mapState.tf(player.ID).Pos.X)), Y: int(math.Round(mapState.tf(player.ID).Pos.Y))},
 		mapState.gridW, mapState.gridH)
 	targetPosI := clampCellToGrid(target, mapState.gridW, mapState.gridH)
 
@@ -74,18 +74,18 @@ func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
 		return
 	}
 
-	newPath, err := mapState.pathfinder.Astar(startPosI, targetPosI, player.Dims)
+	newPath, err := mapState.pathfinder.Astar(startPosI, targetPosI, mapState.tf(player.ID).Size)
 	usedTarget := targetPosI
 	if err != nil {
-		closest, cerr := mapState.pathfinder.findClosestWalkablePoint(targetPosI, player.Dims)
+		closest, cerr := mapState.pathfinder.findClosestWalkablePoint(targetPosI, mapState.tf(player.ID).Size)
 		if cerr != nil {
-			s.faceTargetWithoutPath(player, float64(targetPosI.X), float64(targetPosI.Y))
+			s.faceTargetWithoutPath(player, mapState, float64(targetPosI.X), float64(targetPosI.Y))
 			player.TargetPos = targetPosI
 			return
 		}
-		newPath, err = mapState.pathfinder.Astar(startPosI, closest, player.Dims)
+		newPath, err = mapState.pathfinder.Astar(startPosI, closest, mapState.tf(player.ID).Size)
 		if err != nil {
-			s.faceTargetWithoutPath(player, float64(closest.X), float64(closest.Y))
+			s.faceTargetWithoutPath(player, mapState, float64(closest.X), float64(closest.Y))
 			player.TargetPos = closest
 			return
 		}
@@ -97,8 +97,8 @@ func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
 		player.Path = newPath
 		player.TargetPos = usedTarget
 		player.Mode = WALKING
-		dx := float64(first.X) - player.Pos.X
-		dy := float64(first.Y) - player.Pos.Y
+		dx := float64(first.X) - mapState.tf(player.ID).Pos.X
+		dy := float64(first.Y) - mapState.tf(player.ID).Pos.Y
 		if dist := math.Sqrt(dx*dx + dy*dy); dist > 0 {
 			player.Direction = directionFromVector(dx/dist, dy/dist)
 		}
@@ -110,9 +110,9 @@ func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
 // faceTargetWithoutPath updates direction/mode when pathfinding fails but
 // we still want the entity to face the tap. Extracted from the JSON
 // handler so both PlayerAction fallback branches share one helper.
-func (s *GameServer) faceTargetWithoutPath(player *PlayerState, tx, ty float64) {
-	dx := tx - player.Pos.X
-	dy := ty - player.Pos.Y
+func (s *GameServer) faceTargetWithoutPath(player *PlayerState, mapState *MapState, tx, ty float64) {
+	dx := tx - mapState.tf(player.ID).Pos.X
+	dy := ty - mapState.tf(player.ID).Pos.Y
 	dist := math.Sqrt(dx*dx + dy*dy)
 	if dist > 0 {
 		player.Direction = directionFromVector(dx/dist, dy/dist)

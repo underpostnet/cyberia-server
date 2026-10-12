@@ -71,10 +71,11 @@ func (s *GameServer) awardProgression(source statSource, event progressionEvent,
 	}
 	s.ApplyResistanceStat(source, nil)
 	if player, ok := source.(*PlayerState); ok {
-		sendMessage(player, "combat_text", CombatText{Kind: FCTXp, WorldX: player.Pos.X, WorldY: player.Pos.Y, Value: int(amount)})
-		if p.Level > before {
-			if ms := s.maps[player.MapCode]; ms != nil {
-				broadcastAudioEvent(ms, AudioEventLevelUp, Point{X: player.Pos.X + player.Dims.Width*0.5, Y: player.Pos.Y + player.Dims.Height*0.5})
+		if ms := s.maps[player.MapCode]; ms != nil {
+			tf := ms.tf(player.ID)
+			sendMessage(player, "combat_text", CombatText{Kind: FCTXp, WorldX: tf.Pos.X, WorldY: tf.Pos.Y, Value: int(amount)})
+			if p.Level > before {
+				broadcastAudioEvent(ms, AudioEventLevelUp, Vec2{X: tf.Pos.X + tf.Size.X*0.5, Y: tf.Pos.Y + tf.Size.Y*0.5})
 			}
 		}
 	}

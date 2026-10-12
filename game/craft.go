@@ -108,7 +108,7 @@ func (s *GameServer) handleCraftItem(player *PlayerState, cmd *InputCommand) {
 		s.sendCraftAck(player, cmd.EntityID, cmd.RecipeIndex, 0, craftRejectNoAssembler)
 		return
 	}
-	if !botInPlayerRange(player, bot) {
+	if !s.botInPlayerRange(player, bot) {
 		s.sendCraftAck(player, cmd.EntityID, cmd.RecipeIndex, 0, craftRejectOutOfRange)
 		return
 	}

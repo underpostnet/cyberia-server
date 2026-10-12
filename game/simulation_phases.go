@@ -191,10 +191,10 @@ func (s *GameServer) phasePortals(tick uint32, mapState *MapState) {
 func (s *GameServer) phaseReplication(mapState *MapState) {
 	for _, player := range mapState.players {
 		player.AOI = Rectangle{
-			MinX: player.Pos.X - s.aoiRadius,
-			MinY: player.Pos.Y - s.aoiRadius,
-			MaxX: player.Pos.X + player.Dims.Width + s.aoiRadius,
-			MaxY: player.Pos.Y + player.Dims.Height + s.aoiRadius,
+			MinX: mapState.tf(player.ID).Pos.X - s.aoiRadius,
+			MinY: mapState.tf(player.ID).Pos.Y - s.aoiRadius,
+			MaxX: mapState.tf(player.ID).Pos.X + mapState.tf(player.ID).Size.X + s.aoiRadius,
+			MaxY: mapState.tf(player.ID).Pos.Y + mapState.tf(player.ID).Size.Y + s.aoiRadius,
 		}
 		s.sendAOI(player)
 	}

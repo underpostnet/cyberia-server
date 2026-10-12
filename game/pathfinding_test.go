@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-var unitDims = Dimensions{Width: 1, Height: 1}
+var unitDims = Vec2{X: 1, Y: 1}
 
 // openGrid returns an empty walkable grid.
 func openGrid(size int) *Pathfinder { return NewPathfinder(size, size) }
@@ -119,7 +119,7 @@ func TestAstarWorstCaseFitsTheTickBudget(t *testing.T) {
 		t.Skip("race instrumentation makes wall-clock timing meaningless")
 	}
 	pf := splitGrid(100)
-	dims := Dimensions{Width: 2, Height: 2}
+	dims := Vec2{X: 2, Y: 2}
 
 	// Warm the scratch buffers so the first allocation is not measured.
 	pf.Astar(PointI{2, 2}, PointI{95, 50}, dims)
