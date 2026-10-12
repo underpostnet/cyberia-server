@@ -36,6 +36,7 @@ const (
 	InputKindCraftCancel  // abort the running assembly and refund it
 	InputKindStorageOpen  // bind a storage vault and read its contents
 	InputKindItemOps      // replay one session's deposits and withdrawals
+	InputKindItemUse      // consume one unit of an owned consumable
 )
 
 // InputCommand is the unit of client→server input.
@@ -47,7 +48,7 @@ type InputCommand struct {
 	// Payload fields — only the ones relevant to Kind are populated.
 	TargetX     float64  // PlayerAction
 	TargetY     float64  // PlayerAction
-	ItemID      string   // ItemActivation, Chat target, ShopBuy
+	ItemID      string   // ItemActivation, ItemUse, Chat target, ShopBuy
 	Active      bool     // ItemActivation; PlayerStasis — the stasis bool
 	ChatText    string   // Chat
 	EntityID    string   // TalkDone, ShopBuy, CraftItem, StorageOpen, ItemOps — the NPC entity

@@ -315,6 +315,7 @@ var inputKinds = map[string]InputKind{
 	"craft_cancel":  InputKindCraftCancel,
 	"storage_open":  InputKindStorageOpen,
 	"item_ops":      InputKindItemOps,
+	"item_use":      InputKindItemUse,
 }
 
 // inputPayload holds every client event payload field. Each event type fills
@@ -427,6 +428,11 @@ func parseInput(msgType string, p *inputPayload) (InputCommand, bool) {
 		}
 		cmd.ItemID = p.ItemID
 		cmd.Active = p.Active
+	case InputKindItemUse:
+		if p.ItemID == "" || !validIdentifier(p.ItemID) {
+			return InputCommand{}, false
+		}
+		cmd.ItemID = p.ItemID
 	case InputKindPlayerStasis:
 		cmd.Active = p.Stasis
 	case InputKindChat:

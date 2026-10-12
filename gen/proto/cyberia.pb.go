@@ -1641,7 +1641,10 @@ type DefaultObjectLayerState struct {
 	// build carries in drop_item_ids. Explicitly optional so absent stays distinguishable from a
 	// deliberate 0: a payload from before this field existed must read as "always drops", while an
 	// operator who authors 0 means "never". See OverrideItemStateSchema.dropChance.
-	DropChance    *float64 `protobuf:"fixed64,4,opt,name=drop_chance,json=dropChance,proto3,oneof" json:"drop_chance,omitempty"`
+	DropChance *float64 `protobuf:"fixed64,4,opt,name=drop_chance,json=dropChance,proto3,oneof" json:"drop_chance,omitempty"`
+	// Fraction of its target's max life this id restores when it is consumed. See
+	// OverrideItemStateSchema.buffFactor.
+	BuffFactor    *float64 `protobuf:"fixed64,5,opt,name=buff_factor,json=buffFactor,proto3,oneof" json:"buff_factor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1700,6 +1703,13 @@ func (x *DefaultObjectLayerState) GetQuantity() int32 {
 func (x *DefaultObjectLayerState) GetDropChance() float64 {
 	if x != nil && x.DropChance != nil {
 		return *x.DropChance
+	}
+	return 0
+}
+
+func (x *DefaultObjectLayerState) GetBuffFactor() float64 {
+	if x != nil && x.BuffFactor != nil {
+		return *x.BuffFactor
 	}
 	return 0
 }
@@ -2297,9 +2307,7 @@ type InstanceConfig struct {
 	PlayerBaseSpeed     float64 `protobuf:"fixed64,68,opt,name=player_base_speed,json=playerBaseSpeed,proto3" json:"player_base_speed,omitempty"`
 	MaxActiveLayers     int32   `protobuf:"varint,25,opt,name=max_active_layers,json=maxActiveLayers,proto3" json:"max_active_layers,omitempty"`
 	InitialLifeFraction float64 `protobuf:"fixed64,26,opt,name=initial_life_fraction,json=initialLifeFraction,proto3" json:"initial_life_fraction,omitempty"`
-	// ── Combat / death ──
-	RespawnDurationMs int32   `protobuf:"varint,28,opt,name=respawn_duration_ms,json=respawnDurationMs,proto3" json:"respawn_duration_ms,omitempty"`
-	CollisionLifeLoss float64 `protobuf:"fixed64,30,opt,name=collision_life_loss,json=collisionLifeLoss,proto3" json:"collision_life_loss,omitempty"`
+	CollisionLifeLoss   float64 `protobuf:"fixed64,30,opt,name=collision_life_loss,json=collisionLifeLoss,proto3" json:"collision_life_loss,omitempty"`
 	// ── Regen ──
 	LifeRegenChance float64 `protobuf:"fixed64,33,opt,name=life_regen_chance,json=lifeRegenChance,proto3" json:"life_regen_chance,omitempty"`
 	MaxChance       float64 `protobuf:"fixed64,34,opt,name=max_chance,json=maxChance,proto3" json:"max_chance,omitempty"`
@@ -2464,13 +2472,6 @@ func (x *InstanceConfig) GetMaxActiveLayers() int32 {
 func (x *InstanceConfig) GetInitialLifeFraction() float64 {
 	if x != nil {
 		return x.InitialLifeFraction
-	}
-	return 0
-}
-
-func (x *InstanceConfig) GetRespawnDurationMs() int32 {
-	if x != nil {
-		return x.RespawnDurationMs
 	}
 	return 0
 }
@@ -2644,6 +2645,7 @@ func (x *EntityTypeDefault) GetBehavior() string {
 type EntityMessage struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Level              int32                  `protobuf:"varint,17,opt,name=level,proto3" json:"level,omitempty"`
+	RespawnDurationMs  int32                  `protobuf:"varint,18,opt,name=respawn_duration_ms,json=respawnDurationMs,proto3" json:"respawn_duration_ms,omitempty"` // time before a dead entity or a consumed loot token comes back (0 = use server default)
 	EntityType         string                 `protobuf:"bytes,1,opt,name=entity_type,json=entityType,proto3" json:"entity_type,omitempty"`
 	InitCellX          int32                  `protobuf:"varint,2,opt,name=init_cell_x,json=initCellX,proto3" json:"init_cell_x,omitempty"`
 	InitCellY          int32                  `protobuf:"varint,3,opt,name=init_cell_y,json=initCellY,proto3" json:"init_cell_y,omitempty"`
@@ -2702,6 +2704,13 @@ func (*EntityMessage) Descriptor() ([]byte, []int) {
 func (x *EntityMessage) GetLevel() int32 {
 	if x != nil {
 		return x.Level
+	}
+	return 0
+}
+
+func (x *EntityMessage) GetRespawnDurationMs() int32 {
+	if x != nil {
+		return x.RespawnDurationMs
 	}
 	return 0
 }
@@ -3365,14 +3374,17 @@ const file_cyberia_proto_rawDesc = "" +
 	"\x06config\x18\x04 \x01(\v2\x17.cyberia.InstanceConfigR\x06config\x12\x18\n" +
 	"\aversion\x18\x05 \x01(\tR\aversion\x127\n" +
 	"\aactions\x18\x06 \x03(\v2\x1d.cyberia.CyberiaActionMessageR\aactions\x124\n" +
-	"\x06quests\x18\a \x03(\v2\x1c.cyberia.CyberiaQuestMessageR\x06quests\"\x9c\x01\n" +
+	"\x06quests\x18\a \x03(\v2\x1c.cyberia.CyberiaQuestMessageR\x06quests\"\xeb\x01\n" +
 	"\x17DefaultObjectLayerState\x12\x17\n" +
 	"\aitem_id\x18\x01 \x01(\tR\x06itemId\x12\x16\n" +
 	"\x06active\x18\x02 \x01(\bR\x06active\x12\x1a\n" +
 	"\bquantity\x18\x03 \x01(\x05R\bquantity\x12$\n" +
 	"\vdrop_chance\x18\x04 \x01(\x01H\x00R\n" +
-	"dropChance\x88\x01\x01B\x0e\n" +
-	"\f_drop_chance\"\xa0\x01\n" +
+	"dropChance\x88\x01\x01\x12$\n" +
+	"\vbuff_factor\x18\x05 \x01(\x01H\x01R\n" +
+	"buffFactor\x88\x01\x01B\x0e\n" +
+	"\f_drop_chanceB\x0e\n" +
+	"\f_buff_factorJ\x04\b\x06\x10\aR\x11spawn_interval_ms\"\xa0\x01\n" +
 	"\vSkillDetail\x12$\n" +
 	"\x0elogic_event_id\x18\x01 \x01(\tR\flogicEventId\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x125\n" +
@@ -3422,7 +3434,7 @@ const file_cyberia_proto_rawDesc = "" +
 	"\x11max_repeat_awards\x18\n" +
 	" \x01(\x05R\x0fmaxRepeatAwards\x121\n" +
 	"\x15max_awards_per_window\x18\v \x01(\x05R\x12maxAwardsPerWindow\x12*\n" +
-	"\x11default_bot_level\x18\f \x01(\x05R\x0fdefaultBotLevel\"\xea\x11\n" +
+	"\x11default_bot_level\x18\f \x01(\x05R\x0fdefaultBotLevel\"\xd5\x11\n" +
 	"\x0eInstanceConfig\x12\x1d\n" +
 	"\n" +
 	"aoi_radius\x18\f \x01(\x01R\taoiRadius\x12-\n" +
@@ -3441,7 +3453,6 @@ const file_cyberia_proto_rawDesc = "" +
 	"\x11player_base_speed\x18D \x01(\x01R\x0fplayerBaseSpeed\x12*\n" +
 	"\x11max_active_layers\x18\x19 \x01(\x05R\x0fmaxActiveLayers\x122\n" +
 	"\x15initial_life_fraction\x18\x1a \x01(\x01R\x13initialLifeFraction\x12.\n" +
-	"\x13respawn_duration_ms\x18\x1c \x01(\x05R\x11respawnDurationMs\x12.\n" +
 	"\x13collision_life_loss\x18\x1e \x01(\x01R\x11collisionLifeLoss\x12*\n" +
 	"\x11life_regen_chance\x18! \x01(\x01R\x0flifeRegenChance\x12\x1d\n" +
 	"\n" +
@@ -3455,7 +3466,7 @@ const file_cyberia_proto_rawDesc = "" +
 	"\ttick_rate\x18A \x01(\x05R\btickRate\x12#\n" +
 	"\rsnapshot_rate\x18B \x01(\x05R\fsnapshotRateJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
 	"J\x04\b\n" +
-	"\x10\vJ\x04\b\v\x10\fJ\x04\b\x18\x10\x19J\x04\b\x1b\x10\x1cJ\x04\b \x10!J\x04\b5\x106J\x04\b6\x107J\x04\b7\x108J\x04\b8\x109J\x04\b9\x10:J\x04\b:\x10;J\x04\b;\x10<J\x04\b<\x10=J\x04\b=\x10>J\x04\b#\x10$J\x04\b$\x10%J\x04\b%\x10&J\x04\b&\x10'J\x04\b'\x10(J\x04\b(\x10)J\x04\b)\x10*J\x04\b*\x10+J\x04\b+\x10,J\x04\b.\x10/J\x04\b\x1d\x10\x1eJ\x04\b\x1f\x10 J\x04\b,\x10-J\x04\b0\x101J\x04\b1\x102J\x04\b2\x103J\x04\b3\x104J\x04\b@\x10AJ\x04\bC\x10DR\tcell_sizeR\x03fpsR\x10interpolation_msR\x11default_obj_widthR\x12default_obj_heightR\x10camera_smoothingR\vcamera_zoomR\x1bdefault_width_screen_factorR\x1cdefault_height_screen_factorR\x06dev_uiR\x06colorsR\x0fsum_stats_limitR\x1cdefault_player_object_layersR\x13bullet_spawn_chanceR\x12bullet_lifetime_msR\fbullet_widthR\rbullet_heightR\x17bullet_speed_multiplierR\x19doppelganger_spawn_chanceR\x18doppelganger_lifetime_msR\x19doppelganger_spawn_radiusR\"doppelganger_initial_life_fractionR\x14default_player_colorR\rghost_item_idR\fcoin_item_idR\x15default_floor_item_idR\x13bot_default_item_idR\x14user_default_item_idR\x16weapon_default_item_idR\x16bullet_default_item_idR\fstatus_iconsR\fclient_hints\"\xa3\x02\n" +
+	"\x10\vJ\x04\b\v\x10\fJ\x04\b\x18\x10\x19J\x04\b\x1b\x10\x1cJ\x04\b\x1c\x10\x1dJ\x04\b \x10!J\x04\b5\x106J\x04\b6\x107J\x04\b7\x108J\x04\b8\x109J\x04\b9\x10:J\x04\b:\x10;J\x04\b;\x10<J\x04\b<\x10=J\x04\b=\x10>J\x04\b#\x10$J\x04\b$\x10%J\x04\b%\x10&J\x04\b&\x10'J\x04\b'\x10(J\x04\b(\x10)J\x04\b)\x10*J\x04\b*\x10+J\x04\b+\x10,J\x04\b.\x10/J\x04\b\x1d\x10\x1eJ\x04\b\x1f\x10 J\x04\b,\x10-J\x04\b0\x101J\x04\b1\x102J\x04\b2\x103J\x04\b3\x104J\x04\b@\x10AJ\x04\bC\x10DR\tcell_sizeR\x03fpsR\x10interpolation_msR\x11default_obj_widthR\x12default_obj_heightR\x10camera_smoothingR\vcamera_zoomR\x1bdefault_width_screen_factorR\x1cdefault_height_screen_factorR\x06dev_uiR\x06colorsR\x0fsum_stats_limitR\x1cdefault_player_object_layersR\x13respawn_duration_msR\x13bullet_spawn_chanceR\x12bullet_lifetime_msR\fbullet_widthR\rbullet_heightR\x17bullet_speed_multiplierR\x19doppelganger_spawn_chanceR\x18doppelganger_lifetime_msR\x19doppelganger_spawn_radiusR\"doppelganger_initial_life_fractionR\x14default_player_colorR\rghost_item_idR\fcoin_item_idR\x15default_floor_item_idR\x13bot_default_item_idR\x14user_default_item_idR\x16weapon_default_item_idR\x16bullet_default_item_idR\fstatus_iconsR\fclient_hints\"\xa3\x02\n" +
 	"\x11EntityTypeDefault\x12\x1f\n" +
 	"\ventity_type\x18\x01 \x01(\tR\n" +
 	"entityType\x12\"\n" +
@@ -3463,9 +3474,10 @@ const file_cyberia_proto_rawDesc = "" +
 	"\rdead_item_ids\x18\x03 \x03(\tR\vdeadItemIds\x12T\n" +
 	"\x15default_object_layers\x18\x05 \x03(\v2 .cyberia.DefaultObjectLayerStateR\x13defaultObjectLayers\x12\"\n" +
 	"\rdrop_item_ids\x18\x06 \x03(\tR\vdropItemIds\x12\x1a\n" +
-	"\bbehavior\x18\a \x01(\tR\bbehaviorJ\x04\b\x04\x10\x05R\tcolor_key\"\x82\x04\n" +
+	"\bbehavior\x18\a \x01(\tR\bbehaviorJ\x04\b\x04\x10\x05R\tcolor_key\"\xb2\x04\n" +
 	"\rEntityMessage\x12\x14\n" +
-	"\x05level\x18\x11 \x01(\x05R\x05level\x12\x1f\n" +
+	"\x05level\x18\x11 \x01(\x05R\x05level\x12.\n" +
+	"\x13respawn_duration_ms\x18\x12 \x01(\x05R\x11respawnDurationMs\x12\x1f\n" +
 	"\ventity_type\x18\x01 \x01(\tR\n" +
 	"entityType\x12\x1e\n" +
 	"\vinit_cell_x\x18\x02 \x01(\x05R\tinitCellX\x12\x1e\n" +

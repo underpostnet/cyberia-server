@@ -7,6 +7,7 @@
 // What lives here
 //   - Movement / skill dispatch for PLAYER_ACTION taps.
 //   - Inventory mutation for ITEM_ACTIVATION (with equipment-rule validation).
+//     ITEM_USE lives in consumable.go.
 //   - Chat relay.
 //
 // What does NOT live here

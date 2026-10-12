@@ -28,10 +28,18 @@ func (s *GameServer) handleProbabilisticRegen(entity interface{}, mapState *MapS
 	if amount <= 0 {
 		return
 	}
-	mortal.Life = min(mortal.Life+amount, mortal.MaxLife)
-	// FCT: the same green "+N" for every AOI viewer, for players and bots alike,
-	// so regeneration is visible feedback rather than a silently refilling bar.
-	if shown := int(amount + 0.5); shown > 0 {
-		broadcastFCT(mapState, FCTRegen, base.Pos.X, base.Pos.Y, shown)
+	restoreLife(mapState, mortal, base.Pos, amount)
+}
+
+// restoreLife adds up to amount life, never past MaxLife. Every AOI viewer sees the same green
+// "+N" for the life actually restored, for players and bots alike.
+func restoreLife(mapState *MapState, mortal *Mortal, at Point, amount float64) {
+	gained := min(mortal.Life+amount, mortal.MaxLife) - mortal.Life
+	if gained <= 0 {
+		return
+	}
+	mortal.Life += gained
+	if shown := int(gained + 0.5); shown > 0 {
+		broadcastFCT(mapState, FCTRegen, at.X, at.Y, shown)
 	}
 }

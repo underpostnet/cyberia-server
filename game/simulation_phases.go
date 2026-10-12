@@ -102,6 +102,8 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 		s.handleStorageOpen(player, cmd)
 	case InputKindItemOps:
 		s.handleItemOps(player, cmd)
+	case InputKindItemUse:
+		s.handleItemUse(player, mapState, cmd)
 	case InputKindUnknown:
 		// failed validation: consumed, never applied
 	}
