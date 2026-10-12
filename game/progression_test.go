@@ -67,35 +67,6 @@ func TestSignedAggregationAcrossEntities(t *testing.T) {
 	}
 }
 
-func TestTemporaryStatsAndExpiry(t *testing.T) {
-	s := &GameServer{entityBaseMaxLife: 100}
-	p := placePlayer(s, 1, nil)
-	ms := s.maps["test"]
-	now := time.Now()
-	modifier := TemporaryModifier{ID: "buff", Stats: ComputedStats{Effect: 10, Resistance: 20}, ExpiresAt: now.Add(time.Second)}
-	if err := s.SetTemporaryModifier(p, modifier, now); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.SetTemporaryModifier(p, modifier, now); err != nil {
-		t.Fatal(err)
-	}
-	s.refreshEntityStats(p, ms, now)
-	if ms.vt(p.ID).MaxLife != 130 || len(p.TemporaryModifiers) != 1 {
-		t.Fatalf("temporary stats: %+v", p.Mortal)
-	}
-	if got := s.statBreakdown(p, ms, now.Add(time.Second), map[EntityID]bool{}).Effective.Effect; got != 5 {
-		t.Fatalf("expired effect = %v", got)
-	}
-	s.refreshEntityStats(p, ms, now.Add(2*time.Second))
-	if ms.vt(p.ID).MaxLife != 110 || len(p.TemporaryModifiers) != 0 {
-		t.Fatal("expiry did not refresh life")
-	}
-	modifier.Stats.Effect = math.NaN()
-	if s.SetTemporaryModifier(p, modifier, now) == nil {
-		t.Fatal("accepted NaN")
-	}
-}
-
 func TestProgressionThresholdsAndFrozenEntities(t *testing.T) {
 	rules := defaultProgressionRules()
 	if rules.Threshold(1) != 0 || rules.Threshold(2) != 100 || rules.Threshold(3) != 400 {

@@ -148,12 +148,6 @@ func (p *EntityProgression) award(r ProgressionRules, event progressionEvent, ke
 	return amount
 }
 
-type TemporaryModifier struct {
-	ID        string
-	Stats     ComputedStats
-	ExpiresAt time.Time
-}
-
 func (s Stats) Validate() error {
 	for i, value := range s.computed().Values() {
 		if value < StatModifierMin || value > StatModifierMax {

@@ -134,9 +134,8 @@ type Mortal struct {
 	NextSkillAt            time.Time
 	NextConsumeAt          time.Time // ends the cooldown a consumed held item starts (consumable.go)
 	BaseMaxLife            float64
-	Progression            EntityProgression   `json:"progression"`
-	TemporaryModifiers     []TemporaryModifier `json:"-"`
-	PreRespawnObjectLayers []ObjectLayerState  `json:"-"`
+	Progression            EntityProgression  `json:"progression"`
+	PreRespawnObjectLayers []ObjectLayerState `json:"-"`
 	// RespawnDuration is the wait before the entity comes back; 0 takes respawnDurationDefaultMs.
 	RespawnDuration time.Duration `json:"-"`
 }

@@ -426,7 +426,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 // buildSnapshotSelf fills the viewing player's own block.
 func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) SnapshotSelf {
 	stats := s.CalculateStats(player, mapState)
-	breakdown := s.statBreakdown(player, mapState, time.Now(), make(map[EntityID]bool))
+	breakdown := s.statBreakdown(player, mapState, make(map[EntityID]bool))
 	progression := s.entityProgression(player)
 
 	self := SnapshotSelf{

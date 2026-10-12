@@ -30,8 +30,6 @@
 
 package game
 
-import "time"
-
 // phaseInput drains queued InputCommand entries for each player in this
 // map and dispatches each command to its typed handler. This is the
 // authoritative ingestion point — no other code path is allowed to apply
@@ -118,15 +116,14 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 // FCT events (those will move to phaseEconomy in a follow-up).
 func (s *GameServer) phaseLifecycle(tick uint32, mapState *MapState) {
 	_ = tick
-	now := time.Now()
 	for _, player := range mapState.players {
-		s.refreshEntityStats(player, mapState, now)
+		s.ApplyResistanceStat(player, mapState)
 	}
 	for _, bot := range mapState.bots {
-		s.refreshEntityStats(bot, mapState, now)
+		s.ApplyResistanceStat(bot, mapState)
 	}
 	for _, resource := range mapState.resources {
-		s.refreshEntityStats(resource, mapState, now)
+		s.ApplyResistanceStat(resource, mapState)
 	}
 	s.handleRespawns(mapState)
 	s.completeCrafts(mapState)

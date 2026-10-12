@@ -13,7 +13,7 @@ type StatBreakdown struct {
 }
 
 // statBreakdown applies floors once, after all signed contributions.
-func (s *GameServer) statBreakdown(source statSource, mapState *MapState, now time.Time, visited map[EntityID]bool) StatBreakdown {
+func (s *GameServer) statBreakdown(source statSource, mapState *MapState, visited map[EntityID]bool) StatBreakdown {
 	var out StatBreakdown
 	entity := source.Base()
 	if visited[entity.ID] {
@@ -21,7 +21,6 @@ func (s *GameServer) statBreakdown(source statSource, mapState *MapState, now ti
 	}
 	visited[entity.ID] = true
 	defer delete(visited, entity.ID)
-	state := source.StatState()
 	progression := s.entityProgression(source)
 	out.Base = s.progressionConfig().BaseAtLevel(progression.Level)
 	var layers, temporary [StatCount]float64
@@ -36,14 +35,6 @@ func (s *GameServer) statBreakdown(source statSource, mapState *MapState, now ti
 		}
 	}
 	out.Layers = statsFromValues(layers)
-	for _, modifier := range state.TemporaryModifiers {
-		if !modifier.ExpiresAt.After(now) {
-			continue
-		}
-		for i, value := range modifier.Stats.Values() {
-			temporary[i] += value
-		}
-	}
 	if bot, ok := source.(*BotState); ok && mapState != nil && mapState.ag(bot.ID).CasterID != 0 {
 		var caster statSource
 		if p := mapState.players[mapState.ag(bot.ID).CasterID]; p != nil {
@@ -52,7 +43,7 @@ func (s *GameServer) statBreakdown(source statSource, mapState *MapState, now ti
 			caster = b
 		}
 		if caster != nil {
-			inherited := s.statBreakdown(caster, mapState, now, visited)
+			inherited := s.statBreakdown(caster, mapState, visited)
 			out.Base = inherited.Base
 			inheritedLayers, inheritedTemporary := inherited.Layers.Values(), inherited.Temporary.Values()
 			for i := range temporary {
@@ -70,7 +61,7 @@ func (s *GameServer) CalculateStats(source interface{}, mapState *MapState) Comp
 	if !ok {
 		return ComputedStats{}
 	}
-	return s.statBreakdown(entity, mapState, time.Now(), make(map[EntityID]bool)).Effective
+	return s.statBreakdown(entity, mapState, make(map[EntityID]bool)).Effective
 }
 
 // ApplyResistanceStat keeps life within the effective maximum.
@@ -79,8 +70,7 @@ func (s *GameServer) ApplyResistanceStat(entity interface{}, mapState *MapState)
 	if !ok {
 		return
 	}
-	state := source.StatState()
-	base := state.BaseMaxLife
+	base := source.StatState().BaseMaxLife
 	if base <= 0 {
 		base = s.entityBaseMaxLife
 	}

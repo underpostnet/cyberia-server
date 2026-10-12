@@ -2,7 +2,6 @@ package game
 
 import (
 	"fmt"
-	"math"
 	"time"
 
 	pb "cyberia-server/gen/proto"
@@ -121,40 +120,6 @@ func validateObjectLayers(cache map[string]*ObjectLayer) error {
 		}
 	}
 	return nil
-}
-
-// SetTemporaryModifier replaces one effect under the simulation lock.
-func (s *GameServer) SetTemporaryModifier(entity statSource, modifier TemporaryModifier, now time.Time) error {
-	if modifier.ID == "" || !modifier.ExpiresAt.After(now) {
-		return fmt.Errorf("invalid temporary modifier")
-	}
-	for _, value := range modifier.Stats.Values() {
-		if math.IsNaN(value) || math.IsInf(value, 0) {
-			return fmt.Errorf("non-finite temporary stat")
-		}
-	}
-	state := entity.StatState()
-	for i, current := range state.TemporaryModifiers {
-		if current.ID == modifier.ID {
-			state.TemporaryModifiers[i] = modifier
-			return nil
-		}
-	}
-	state.TemporaryModifiers = append(state.TemporaryModifiers, modifier)
-	return nil
-}
-
-func (s *GameServer) refreshEntityStats(entity statSource, ms *MapState, now time.Time) {
-	state := entity.StatState()
-	kept := state.TemporaryModifiers[:0]
-	for _, modifier := range state.TemporaryModifiers {
-		if modifier.ExpiresAt.After(now) {
-			kept = append(kept, modifier)
-		}
-	}
-	clear(state.TemporaryModifiers[len(kept):])
-	state.TemporaryModifiers = kept
-	s.ApplyResistanceStat(entity, ms)
 }
 
 func ValidateWorldProgression(config *pb.InstanceConfig, maps []*pb.MapDataMessage) error {
