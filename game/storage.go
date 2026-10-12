@@ -10,18 +10,21 @@
 //
 // Cross-process contract:
 //
-//	storage_open  (client→server) — bind the vault, reply with its contents
-//	item_ops      (client→server) — the deposits and withdrawals of one session,
-//	                                replayed in order against the server's items
-//	storage_state (server→client) — the vault, once per open
+//	item_ops (client→server) — the deposits and withdrawals of one session,
+//	                           replayed in order against the server's items
+//	snapshot self.vaults     — every vault of the player, every tick
 //
 // A replayed op clamps to what the source holds. No ack: the next snapshot
-// carries the inventory.
+// carries the inventory and the vaults.
 //
 // Caller MUST hold s.mu for every handler here (they run inside phaseInput).
 package game
 
-import "cyberia-server/logx"
+import (
+	"sort"
+
+	"cyberia-server/logx"
+)
 
 // StorageSlot is one stack. The JSON tags are the persistence shape.
 type StorageSlot struct {
@@ -111,17 +114,6 @@ func (s *GameServer) resolveStorage(player *PlayerState, entityID EntityID) (sto
 		return storageKey{}, 0, false
 	}
 	return key, capacity, true
-}
-
-// handleStorageOpen binds the vault and answers with its current contents.
-//
-// Caller MUST hold s.mu.
-func (s *GameServer) handleStorageOpen(player *PlayerState, cmd *InputCommand) {
-	key, capacity, ok := s.resolveStorage(player, cmd.EntityID)
-	if !ok {
-		return
-	}
-	s.sendStorageState(player, cmd.EntityID, capacity, s.storage[key])
 }
 
 // handleItemOps replays one session's vault ops, front to back, against the
@@ -250,15 +242,25 @@ func (s *GameServer) storageWithdraw(player *PlayerState, slots []StorageSlot,
 	return append(slots[:at], slots[at+1:]...)
 }
 
-// sendStorageState pushes the vault. The client seeds its grid from it.
-func (s *GameServer) sendStorageState(player *PlayerState, entityID EntityID, capacity int,
-	slots []StorageSlot) {
-	if slots == nil {
-		slots = []StorageSlot{}
+// SnapshotVault is one vault of the player in the self block. Capacity stays
+// in the action metadata the client already holds.
+type SnapshotVault struct {
+	ActionCode string        `json:"actionCode"`
+	Items      []StorageSlot `json:"items"`
+}
+
+// playerVaults lists every vault of the player, in action code order.
+//
+// Caller MUST hold s.mu.
+func (s *GameServer) playerVaults(player *PlayerState) []SnapshotVault {
+	// ponytail: a walk over every vault of every player, per player per tick;
+	// key the store by player if the vault count grows.
+	vaults := []SnapshotVault{}
+	for key, slots := range s.storage {
+		if key.PlayerID == player.ID {
+			vaults = append(vaults, SnapshotVault{ActionCode: key.ActionCode, Items: slots})
+		}
 	}
-	sendMessage(player, "storage_state", map[string]interface{}{
-		"entityId": entityID,
-		"capacity": capacity,
-		"slots":    slots,
-	})
+	sort.Slice(vaults, func(i, j int) bool { return vaults[i].ActionCode < vaults[j].ActionCode })
+	return vaults
 }

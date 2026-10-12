@@ -96,6 +96,8 @@ type SnapshotSelf struct {
 	CoinBalance uint32 `json:"coinBalance"`
 	// Inventory carries every visible layer, active and inactive.
 	Inventory []ObjectLayerState `json:"inventory"`
+	// Vaults carries every vault of the player.
+	Vaults []SnapshotVault `json:"vaults"`
 
 	Frozen bool `json:"frozen"`
 	// MoveSpeed is cells per second. The client prediction integrator uses
@@ -431,6 +433,7 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 		Path:    player.Path,
 		// player.Coins is the canonical flat balance — read it directly.
 		CoinBalance:      player.Coins,
+		Vaults:           s.playerVaults(player),
 		Inventory:        s.visibleInventory(mapState.ap(player.ID).Layers),
 		Frozen:           player.Frozen,
 		MoveSpeed:        s.CalculatePlayerMovementSpeed(stats),

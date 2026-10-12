@@ -34,7 +34,6 @@ const (
 	InputKindShopBuy      // buy one catalog item from a vendor action
 	InputKindCraftItem    // assemble one recipe at an assembler action
 	InputKindCraftCancel  // abort the running assembly and refund it
-	InputKindStorageOpen  // bind a storage vault and read its contents
 	InputKindItemOps      // replay one session's deposits and withdrawals
 )
 
@@ -50,7 +49,7 @@ type InputCommand struct {
 	ItemID      string   // ItemActivation, ItemUse, ShopBuy
 	Active      bool     // ItemActivation; PlayerStasis — the stasis bool
 	ChatText    string   // Chat
-	EntityID    EntityID // Chat target; TalkDone, ShopBuy, CraftItem, StorageOpen, ItemOps — the NPC entity
+	EntityID    EntityID // Chat target; TalkDone, ShopBuy, CraftItem, ItemOps — the NPC entity
 	DialogCode  string   // TalkDone — the dialogue group the player just read
 	Quantity    int      // ShopBuy — units (clamped server-side)
 	RecipeIndex int      // CraftItem — index into the action's craftRecipes

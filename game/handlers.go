@@ -315,7 +315,6 @@ var inputKinds = map[string]InputKind{
 	"shop_buy":      InputKindShopBuy,
 	"craft_item":    InputKindCraftItem,
 	"craft_cancel":  InputKindCraftCancel,
-	"storage_open":  InputKindStorageOpen,
 	"item_ops":      InputKindItemOps,
 }
 
@@ -337,7 +336,7 @@ type inputPayload struct {
 	ToID EntityID `json:"toId"` // chat
 	Text string   `json:"text"`
 
-	EntityID   EntityID `json:"entityId"`   // talk_done, quest_accept, shop_buy, storage_open, item_ops
+	EntityID   EntityID `json:"entityId"`   // talk_done, quest_accept, shop_buy, item_ops
 	DialogCode string   `json:"dialogCode"` // talk_done
 	QuestCode  string   `json:"questCode"`  // quest_*
 
@@ -467,11 +466,6 @@ func parseInput(msgType string, p *inputPayload) (InputCommand, bool) {
 		}
 		cmd.EntityID = p.EntityID
 		cmd.RecipeIndex = p.RecipeIndex
-	case InputKindStorageOpen:
-		if p.EntityID == 0 {
-			return InputCommand{}, false
-		}
-		cmd.EntityID = p.EntityID
 	case InputKindItemOps:
 		// Trust boundary: the list replays under s.mu, so its length is capped.
 		if p.EntityID == 0 || len(p.Ops) == 0 || len(p.Ops) > storageMaxSlots {
