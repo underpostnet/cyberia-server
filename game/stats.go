@@ -44,11 +44,11 @@ func (s *GameServer) statBreakdown(source statSource, mapState *MapState, now ti
 			temporary[i] += value
 		}
 	}
-	if bot, ok := source.(*BotState); ok && bot.CasterID != 0 && mapState != nil {
+	if bot, ok := source.(*BotState); ok && mapState != nil && mapState.ag(bot.ID).CasterID != 0 {
 		var caster statSource
-		if p := mapState.players[bot.CasterID]; p != nil {
+		if p := mapState.players[mapState.ag(bot.ID).CasterID]; p != nil {
 			caster = p
-		} else if b := mapState.bots[bot.CasterID]; b != nil {
+		} else if b := mapState.bots[mapState.ag(bot.ID).CasterID]; b != nil {
 			caster = b
 		}
 		if caster != nil {

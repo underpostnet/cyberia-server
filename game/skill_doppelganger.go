@@ -79,17 +79,16 @@ func (s *GameServer) executeDoppelgangerSkill(ctx SkillContext) {
 			ID: s.newEntityID(),
 		},
 		MapCode:     mapCode,
-		Behavior:    BehaviorPassive,
 		SpawnCenter: casterPos,
 		SpawnRadius: s.doppelgangerSpawnRadius,
 		ExpiresAt:   time.Now().Add(botLifetime),
-		CasterID:    casterID,
 	}
 
 	ctx.MapState.bots[doppelgangerBot.ID] = doppelgangerBot
 	ctx.MapState.spawn(doppelgangerBot.ID, EntityData{Kind: EntityBot}, Transform{Pos: casterPos, Size: casterDims}, Appearance{Layers: doppelgangerLayers})
 	ctx.MapState.addVitals(doppelgangerBot.ID, Vitals{MaxLife: s.entityBaseMaxLife, Life: s.entityBaseMaxLife * s.doppelgangerInitialLifeFraction})
 	ctx.MapState.addMotion(doppelgangerBot.ID, Motion{})
+	ctx.MapState.addAgent(doppelgangerBot.ID, Agent{Behavior: BehaviorPassive, CasterID: casterID})
 	s.ApplyResistanceStat(doppelgangerBot, ctx.MapState)
 	ctx.MapState.vt(doppelgangerBot.ID).Life = ctx.MapState.vt(doppelgangerBot.ID).MaxLife
 }

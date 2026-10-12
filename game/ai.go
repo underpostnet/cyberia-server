@@ -53,7 +53,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 		// Inert tokens (scattered loot drops) hold position: no wander, aggro,
 		// or skills. Collection and lifetime are handled elsewhere (loot.go).
-		if behaviorIsInert(bot.Behavior) {
+		if behaviorIsInert(mapState.ag(bot.ID).Behavior) {
 			continue
 		}
 
@@ -61,7 +61,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 		// --- SKILL PROJECTILE BEHAVIOR ---
 		// Skill projectile bots move in a straight line and are removed if they go out of bounds.
-		if bot.Behavior == BehaviorSkill {
+		if mapState.ag(bot.ID).Behavior == BehaviorSkill {
 			// dt-based integration. entityBaseSpeed is cells/second; one tick
 			// is s.tickDuration. (The old code used `... / s.fps` which is a
 			// frame-count integration that silently misbehaves when the loop
@@ -91,8 +91,8 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		// --- PROVIDER BEHAVIOR (mission/action givers) ---
 		// Immortal and near-stationary: never aggroes or casts. provider-static
 		// stays put; provider takes an occasional short step near its spawn.
-		if behaviorIsProvider(bot.Behavior) {
-			if !behaviorIsStationary(bot.Behavior) {
+		if behaviorIsProvider(mapState.ag(bot.ID).Behavior) {
+			if !behaviorIsStationary(mapState.ag(bot.ID).Behavior) {
 				if (mapState.mo(bot.ID).Mode != WALKING || len(bot.Path) == 0) && rand.Float64() < providerWanderChancePerTick {
 					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, providerWanderRadius, mapState.tf(bot.ID).Size)
 					if target.X >= 0 {
@@ -110,7 +110,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		// --- END PROVIDER BEHAVIOR ---
 
 		// Hostile logic: check for nearest player in aggro range
-		if bot.Behavior == BehaviorHostile {
+		if mapState.ag(bot.ID).Behavior == BehaviorHostile {
 			var nearestID EntityID
 			nearestDist := math.MaxFloat64
 			var nearestPlayer *PlayerState

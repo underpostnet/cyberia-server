@@ -98,10 +98,10 @@ func TestOnlyALootCollectingBotHealsFromItsHeldUnits(t *testing.T) {
 	s, ms, _ := healingServer(t, 100)
 	ids := map[string]EntityID{BehaviorHostile: 200, BehaviorDrop: 201, BehaviorProvider: 202}
 	for behavior, id := range ids {
-		ms.bots[id] = &BotState{EntityBase: EntityBase{ID: id},
-			Behavior: behavior}
+		ms.bots[id] = &BotState{EntityBase: EntityBase{ID: id}}
 		ms.spawn(id, EntityData{Kind: EntityBot}, Transform{Size: Vec2{X: 1, Y: 1}}, Appearance{Layers: []ObjectLayerState{gel(1)}})
 		ms.addVitals(id, Vitals{Life: 10, MaxLife: 100})
+		ms.addAgent(id, Agent{Behavior: behavior})
 	}
 
 	s.phaseSkills(0, ms)

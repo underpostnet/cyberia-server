@@ -205,10 +205,11 @@ func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 	frozen := woundedPlayer(ms, 106, ms.tf(token.ID).Pos, 10)
 	frozen.Frozen = true
 	for i, behavior := range []string{BehaviorSkill, BehaviorCoin, BehaviorDrop, BehaviorProvider} {
-		bot := &BotState{EntityBase: EntityBase{ID: EntityID(200 + i)}, Behavior: behavior}
+		bot := &BotState{EntityBase: EntityBase{ID: EntityID(200 + i)}}
 		ms.bots[bot.ID] = bot
 		ms.spawn(bot.ID, EntityData{Kind: EntityBot}, *ms.tf(token.ID), Appearance{})
 		ms.addVitals(bot.ID, Vitals{Life: 10, MaxLife: 100})
+		ms.addAgent(bot.ID, Agent{Behavior: behavior})
 	}
 
 	s.phaseLoot(0, ms)
@@ -232,11 +233,11 @@ func TestACollectorAtFullLifeKeepsAPickupAndTheTokenComesBack(t *testing.T) {
 	ms, token := gelMap(t, s)
 	at := *ms.tf(token.ID)
 	player := woundedPlayer(ms, 104, at.Pos, 100)
-	bot := &BotState{EntityBase: EntityBase{ID: 109},
-		Behavior: BehaviorHostile, MapCode: "m"}
+	bot := &BotState{EntityBase: EntityBase{ID: 109}, MapCode: "m"}
 	ms.bots[bot.ID] = bot
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: 15, Y: 15}, Size: at.Size}, Appearance{})
 	ms.addVitals(bot.ID, Vitals{Life: 100, MaxLife: 100})
+	ms.addAgent(bot.ID, Agent{Behavior: BehaviorHostile})
 
 	s.phaseLoot(0, ms)
 	if _, ok := ms.bots[token.ID]; ok || ms.vt(player.ID).Life != 100 || s.playerItemQuantity(player, "gel") != 1 {
@@ -309,11 +310,11 @@ func TestAPickupWithoutARespawnTimeTakesTheDefault(t *testing.T) {
 func TestABotConsumesAPickup(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
-	bot := &BotState{EntityBase: EntityBase{ID: 300},
-		Behavior: BehaviorHostile, MapCode: "m"}
+	bot := &BotState{EntityBase: EntityBase{ID: 300}, MapCode: "m"}
 	ms.bots[bot.ID] = bot
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, *ms.tf(token.ID), Appearance{})
 	ms.addVitals(bot.ID, Vitals{Life: 30, MaxLife: 100})
+	ms.addAgent(bot.ID, Agent{Behavior: BehaviorHostile})
 
 	s.phaseLoot(0, ms)
 

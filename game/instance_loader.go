@@ -342,7 +342,6 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 		MapCode:     mapCode,
 		Path:        []Cell{},
 		TargetPos:   Cell{-1, -1},
-		Behavior:    s.resolveEntityBehavior("bot", objectLayers),
 		SpawnCenter: startPos,
 		SpawnRadius: spawnRadius,
 		AggroRange:  aggroRange,
@@ -352,6 +351,7 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: startPos, Size: dims}, Appearance{Layers: objectLayers})
 	ms.addVitals(bot.ID, Vitals{MaxLife: maxLife, Life: maxLife * s.initialLifeFraction})
 	ms.addMotion(bot.ID, Motion{Direction: NONE, Mode: IDLE})
+	ms.addAgent(bot.ID, Agent{Behavior: s.resolveEntityBehavior("bot", objectLayers)})
 
 	bot.Progression = NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig())
 	s.ApplyResistanceStat(bot, ms)
@@ -362,7 +362,7 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 
 	// Initial wandering path — skipped for providers, which stay at their spawn
 	// (provider-static never moves; provider only takes sporadic short steps).
-	if !behaviorIsProvider(bot.Behavior) {
+	if !behaviorIsProvider(ms.ag(bot.ID).Behavior) {
 		target := s.randomPointWithinRadius(ms, bot.SpawnCenter, bot.SpawnRadius, dims)
 		if target.X >= 0 {
 			if pth, err := ms.pathfinder.Astar(

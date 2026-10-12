@@ -43,12 +43,13 @@ func TestSignedAggregationAcrossEntities(t *testing.T) {
 	layers := []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 20}, {ItemID: "buff", Active: true, Quantity: 1}}
 	entities := []statSource{
 		&PlayerState{EntityBase: EntityBase{ID: 1}},
-		&BotState{EntityBase: EntityBase{ID: 2}, Behavior: "provider"},
+		&BotState{EntityBase: EntityBase{ID: 2}},
 		&ResourceState{EntityBase: EntityBase{ID: 3}},
 	}
 	ms := &MapState{}
 	for _, entity := range entities {
 		ms.spawn(entity.Base().ID, EntityData{}, Transform{}, Appearance{Layers: layers})
+		ms.addAgent(entity.Base().ID, Agent{Behavior: "provider"})
 	}
 	for _, entity := range entities {
 		entity.StatState().Progression = NewEntityProgression(4, true, s.progressionConfig())
@@ -184,9 +185,10 @@ func TestRawTapSpamDoesNotAwardXP(t *testing.T) {
 
 func TestDefeatAwardsOnlyEligibleContributors(t *testing.T) {
 	s, ms, p := movementFixture(t)
-	victim := &BotState{EntityBase: EntityBase{ID: 10}, Behavior: "hostile"}
+	victim := &BotState{EntityBase: EntityBase{ID: 10}}
 	ms.spawn(victim.ID, EntityData{Kind: EntityBot}, Transform{}, Appearance{})
 	ms.addVitals(victim.ID, Vitals{})
+	ms.addAgent(victim.ID, Agent{Behavior: "hostile"})
 	victim.Progression = NewEntityProgression(1, true, s.progressionConfig())
 	ms.bots[victim.ID] = victim
 	s.awardDefeat(&victim.EntityBase, &victim.Mortal, "bot", map[EntityID]float64{p.ID: 100}, ms)
@@ -194,12 +196,12 @@ func TestDefeatAwardsOnlyEligibleContributors(t *testing.T) {
 		t.Fatalf("kill XP = %d", p.Progression.XP)
 	}
 	p.Progression = NewEntityProgression(1, false, s.progressionConfig())
-	victim.CasterID = p.ID
+	ms.ag(victim.ID).CasterID = p.ID
 	s.awardDefeat(&victim.EntityBase, &victim.Mortal, "bot", map[EntityID]float64{p.ID: 100}, ms)
 	if p.Progression.XP != 0 {
 		t.Fatal("summon farming awards XP")
 	}
-	victim.CasterID = 0
+	ms.ag(victim.ID).CasterID = 0
 	s.awardDefeat(&victim.EntityBase, &victim.Mortal, "bot", map[EntityID]float64{p.ID: 1, 999: 100}, ms)
 	if p.Progression.XP != 0 {
 		t.Fatal("low contribution awards XP")
@@ -255,12 +257,13 @@ func TestSummonFloorsAfterAllContributions(t *testing.T) {
 		"buff": {Data: ObjectLayerData{Stats: Stats{Effect: 100}}},
 	})
 	ms.ap(p.ID).Layers = []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
-	summon := &BotState{EntityBase: EntityBase{ID: 11}, CasterID: p.ID}
+	summon := &BotState{EntityBase: EntityBase{ID: 11}}
 	ms.spawn(summon.ID, EntityData{Kind: EntityBot}, Transform{}, Appearance{Layers: []ObjectLayerState{{ItemID: "buff", Active: true, Quantity: 1}}})
+	ms.addAgent(summon.ID, Agent{CasterID: p.ID})
 	if got := s.CalculateStats(summon, ms).Effect; got != 5 {
 		t.Fatalf("floor applied before full sum: %v", got)
 	}
-	summon.CasterID = summon.ID
+	ms.ag(summon.ID).CasterID = summon.ID
 	ms.bots[summon.ID] = summon
 	if got := s.CalculateStats(summon, ms).Effect; math.IsNaN(got) {
 		t.Fatal("caster cycle produces invalid stats")

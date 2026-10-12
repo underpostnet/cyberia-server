@@ -36,6 +36,7 @@ func (ms *MapState) spawn(id EntityID, data EntityData, tf Transform, ap Appeara
 		ms.appearance = append(ms.appearance, Appearance{})
 		ms.vitals = append(ms.vitals, Vitals{})
 		ms.motion = append(ms.motion, Motion{})
+		ms.agent = append(ms.agent, Agent{})
 	}
 	ms.ids[slot] = id
 	ms.mask[slot] = maskData | maskTransform | maskAppearance
@@ -97,6 +98,25 @@ func (ms *MapState) mo(id EntityID) *Motion {
 	return &ms.motion[slot]
 }
 
+// addAgent gives id its agent.
+func (ms *MapState) addAgent(id EntityID, a Agent) {
+	slot := ms.slot(id)
+	ms.agent[slot] = a
+	ms.mask[slot] |= maskAgent
+}
+
+// ag returns the agent of id. The id must have it.
+func (ms *MapState) ag(id EntityID) *Agent {
+	slot := ms.slot(id)
+	if ms.mask[slot]&maskAgent == 0 {
+		panic("entity " + id.String() + " has no agent")
+	}
+	return &ms.agent[slot]
+}
+
+// ag returns the agent of a bot on the map mapCode.
+func (s *GameServer) ag(id EntityID, mapCode string) *Agent { return s.maps[mapCode].ag(id) }
+
 // vt returns the vitals of an entity on the map mapCode.
 func (s *GameServer) vt(id EntityID, mapCode string) *Vitals { return s.maps[mapCode].vt(id) }
 
@@ -137,12 +157,13 @@ type entityRow struct {
 	appearance Appearance
 	vitals     Vitals
 	motion     Motion
+	agent      Agent
 }
 
 // take copies the row of id and frees its slot.
 func (ms *MapState) take(id EntityID) entityRow {
 	i := ms.slot(id)
-	row := entityRow{ms.mask[i], ms.data[i], ms.transform[i], ms.appearance[i], ms.vitals[i], ms.motion[i]}
+	row := entityRow{ms.mask[i], ms.data[i], ms.transform[i], ms.appearance[i], ms.vitals[i], ms.motion[i], ms.agent[i]}
 	ms.despawn(id)
 	return row
 }
@@ -152,6 +173,7 @@ func (ms *MapState) put(id EntityID, row entityRow) {
 	i := ms.spawn(id, row.data, row.transform, row.appearance)
 	ms.vitals[i] = row.vitals
 	ms.motion[i] = row.motion
+	ms.agent[i] = row.agent
 	ms.mask[i] = row.mask
 }
 

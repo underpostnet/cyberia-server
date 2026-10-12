@@ -143,7 +143,7 @@ func (s *GameServer) bindActions(mapCodes []string, actions []*pb.CyberiaActionM
 			if !ok {
 				continue
 			}
-			bot.ActionCode = action.Code
+			ms.ag(bot.ID).ActionCode = action.Code
 			s.actionCache[bot.ID] = action
 			bound++
 		}
@@ -163,7 +163,7 @@ func (s *GameServer) logActionProviders() {
 	logx.Debugf("[ActionProviders] %d action-provider entities:", len(s.actionCache))
 	for _, ms := range s.maps {
 		for _, bot := range ms.bots {
-			if bot.ActionCode == "" {
+			if ms.ag(bot.ID).ActionCode == "" {
 				continue
 			}
 			a := s.actionCache[bot.ID]
@@ -174,7 +174,7 @@ func (s *GameServer) logActionProviders() {
 				quests = s.questsByCell[actionCell(a)]
 			}
 			logx.Debugf("[ActionProviders]   map=%s action=%s label=%q quests=%v entity=%d initPos=(%d,%d)",
-				bot.MapCode, bot.ActionCode, label, quests, bot.ID,
+				bot.MapCode, ms.ag(bot.ID).ActionCode, label, quests, bot.ID,
 				int(ms.tf(bot.ID).Pos.X), int(ms.tf(bot.ID).Pos.Y))
 		}
 	}

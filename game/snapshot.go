@@ -377,13 +377,13 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		e := baseEntity(mapState, b.ID)
 		e.setVitals(mapState.vt(b.ID))
 		s.snapshotStats(&e, b, mapState)
-		e.StatusIcon = BotStatusIcon(b, mapState.vt(b.ID))
-		e.Behavior = b.Behavior
-		e.CasterID = b.CasterID
+		e.StatusIcon = BotStatusIcon(mapState.ag(b.ID), mapState.vt(b.ID))
+		e.Behavior = mapState.ag(b.ID).Behavior
+		e.CasterID = mapState.ag(b.ID).CasterID
 		// The action code is location-scoped and position-independent. The
 		// client fetches the metadata by code; quests come from the quest API
 		// by the bot's binding cell.
-		e.ActionCode = b.ActionCode
+		e.ActionCode = mapState.ag(b.ID).ActionCode
 		// Quests resolve per viewing player and per cell. QuestCodes carries
 		// every surfaced quest for the interact modal; the capability bits
 		// light only for actionable content.
@@ -400,7 +400,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 			hasPendingTalk, s.botHasUsableAction(b))
 		// Loot eligibility is personal: the token's collection policy decides who
 		// may collect it, and the client colours the particles by this bit.
-		if b.Behavior == BehaviorDrop && lootAdmits(b, player.ID) {
+		if mapState.ag(b.ID).Behavior == BehaviorDrop && lootAdmits(b, player.ID) {
 			e.InteractionFlags |= InteractionFlagLootEligible
 		}
 		snap.Entities = append(snap.Entities, e)

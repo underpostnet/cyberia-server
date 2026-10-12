@@ -88,9 +88,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 			ID: s.newEntityID(),
 		},
 		MapCode:   mapCode,
-		Behavior:  BehaviorSkill,
 		ExpiresAt: time.Now().Add(projectileLifetime),
-		CasterID:  casterID,
 		// One-shot palette lookup at spawn; sim never re-reads.
 	}
 
@@ -98,6 +96,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 	ctx.MapState.spawn(projectileBot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: spawnX, Y: spawnY}, Size: projectileDims}, Appearance{Layers: projectileOLs})
 	ctx.MapState.addVitals(projectileBot.ID, Vitals{MaxLife: projectileBaseLife, Life: projectileBaseLife})
 	ctx.MapState.addMotion(projectileBot.ID, Motion{Direction: projectileDirection})
+	ctx.MapState.addAgent(projectileBot.ID, Agent{Behavior: BehaviorSkill, CasterID: casterID})
 	s.ApplyResistanceStat(projectileBot, ctx.MapState)
 	ctx.MapState.vt(projectileBot.ID).Life = ctx.MapState.vt(projectileBot.ID).MaxLife
 }

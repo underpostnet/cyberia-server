@@ -189,7 +189,6 @@ func (s *GameServer) newLootToken(mapCode string, itemID string, quantity int) *
 	return &BotState{
 		EntityBase:   EntityBase{ID: s.newEntityID()},
 		MapCode:      mapCode,
-		Behavior:     BehaviorDrop,
 		DropItemID:   itemID,
 		DropQuantity: quantity,
 	}
@@ -242,6 +241,7 @@ func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center V
 	mapState.spawn(drop.ID, EntityData{Kind: EntityBot}, Transform{Pos: pos, Size: tokenDims}, lootAppearance(itemID, quantity))
 	mapState.addVitals(drop.ID, Vitals{MaxLife: s.entityBaseMaxLife, Life: s.entityBaseMaxLife})
 	mapState.addMotion(drop.ID, Motion{Direction: NONE, Mode: IDLE})
+	mapState.addAgent(drop.ID, Agent{Behavior: BehaviorDrop})
 
 	// Announce the launch so viewers play the corpse→cell parabola. The landing
 	// point is the token center.
@@ -302,6 +302,8 @@ func (s *GameServer) placeWorldLoot(mapState *MapState, mapCode string, pos Vec2
 	mapState.bots[drop.ID] = drop
 	mapState.spawn(drop.ID, EntityData{Kind: EntityBot}, Transform{Pos: pos, Size: worldTokenDims}, lootAppearance(itemID, 1))
 	mapState.addVitals(drop.ID, Vitals{MaxLife: s.entityBaseMaxLife, Life: s.entityBaseMaxLife})
+	mapState.addMotion(drop.ID, Motion{Direction: NONE, Mode: IDLE})
+	mapState.addAgent(drop.ID, Agent{Behavior: BehaviorDrop})
 }
 
 // scheduleLootRespawn brings a consumed world token back on its cell after its
@@ -349,7 +351,7 @@ func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 	s.respawnWorldLoot(mapState, now)
 
 	for dropID, drop := range mapState.bots {
-		if !behaviorIsInert(drop.Behavior) {
+		if !behaviorIsInert(mapState.ag(drop.ID).Behavior) {
 			continue
 		}
 		// Mid-launch tokens register no collision until they settle on the cell.
@@ -449,7 +451,7 @@ func (s *GameServer) resolveDropCollector(mapState *MapState, drop *BotState) *P
 // the token that its policy admits, or nil.
 func (s *GameServer) resolveBotDropCollector(mapState *MapState, drop *BotState) *BotState {
 	for id, bot := range mapState.bots {
-		if mapState.vt(bot.ID).ghost() || !behaviorCollectsLoot(bot.Behavior) {
+		if mapState.vt(bot.ID).ghost() || !behaviorCollectsLoot(mapState.ag(bot.ID).Behavior) {
 			continue
 		}
 		if !lootAdmits(drop, id) {

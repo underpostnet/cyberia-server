@@ -61,6 +61,7 @@ const (
 	maskAppearance ComponentMask = 1 << 2
 	maskVitals     ComponentMask = 1 << 3
 	maskMotion     ComponentMask = 1 << 5
+	maskAgent      ComponentMask = 1 << 6
 )
 
 type Cell struct {
@@ -152,6 +153,13 @@ type Motion struct {
 	Mode      ObjectLayerMode
 }
 
+// Agent is the agent component of a bot: what drives it and who made it.
+type Agent struct {
+	Behavior   string   // canonical bot behavior (see behavior.go)
+	CasterID   EntityID // the player or bot that made this bot; 0 for none
+	ActionCode string   // the bound CyberiaAction (see actionCache); "" for none
+}
+
 // ghost reports whether the entity is dead and waiting to respawn.
 func (v *Vitals) ghost() bool { return !v.RespawnAt.IsZero() }
 
@@ -233,7 +241,6 @@ type BotState struct {
 	MapCode              string    `json:"MapCode"`
 	Path                 []Cell    `json:"path"`
 	TargetPos            Cell      `json:"targetPos"`
-	Behavior             string    `json:"behavior"` // canonical entity behavior (see behavior.go)
 	SpawnCenter          Vec2      `json:"spawnCenter"`
 	SpawnRadius          float64   `json:"spawnRadius"`
 	AggroRange           float64   `json:"aggroRange"`
@@ -242,15 +249,11 @@ type BotState struct {
 	lastAction           time.Time `json:"-"`
 	ExpiresAt            time.Time `json:"-"` // bots with a lifetime will be removed after this time
 	LifeRegen            float64   `json:"lifeRegen"`
-	CasterID             EntityID  `json:"-"` // ID of the player or bot that created this bot
 	// Coins is the canonical flat coin balance — the single source of truth
 	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
 	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
 	// visualization only and is always Active: false.
 	Coins uint32 `json:"-"`
-	// ActionCode binds this entity to a cached CyberiaAction (see actionCache).
-	// Non-empty marks the bot as an action-provider (ESI 8 overhead icon).
-	ActionCode string `json:"-"`
 
 	// DamageLedger is the per-victim threat/contribution ledger:
 	// attacking player or bot ID → cumulative damage dealt to this entity.
@@ -355,6 +358,7 @@ type MapState struct {
 	appearance []Appearance
 	vitals     []Vitals
 	motion     []Motion
+	agent      []Agent
 	cursor     int // next slot the allocator tests
 }
 

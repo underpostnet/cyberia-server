@@ -142,7 +142,7 @@ func (s *GameServer) phaseSkills(tick uint32, mapState *MapState) {
 		s.dispatchHeldSkills(player, mapState)
 	}
 	for _, bot := range mapState.bots {
-		if behaviorCollectsLoot(bot.Behavior) {
+		if behaviorCollectsLoot(mapState.ag(bot.ID).Behavior) {
 			s.dispatchHeldSkills(bot, mapState)
 		}
 	}

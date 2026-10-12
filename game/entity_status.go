@@ -90,14 +90,14 @@ func PlayerStatusIcon(p *PlayerState, v *Vitals) uint8 {
 //  2. Dead/respawning → StatusDead
 //  3. Hostile         → StatusHostile
 //  4. Default         → StatusPassive
-func BotStatusIcon(b *BotState, v *Vitals) uint8 {
-	if b.Behavior == BehaviorSkill || b.Behavior == BehaviorCoin || b.Behavior == BehaviorDrop {
+func BotStatusIcon(a *Agent, v *Vitals) uint8 {
+	if a.Behavior == BehaviorSkill || a.Behavior == BehaviorCoin || a.Behavior == BehaviorDrop {
 		return StatusNone
 	}
 	if v.ghost() {
 		return StatusDead
 	}
-	if b.Behavior == BehaviorHostile {
+	if a.Behavior == BehaviorHostile {
 		return StatusHostile
 	}
 	return StatusPassive

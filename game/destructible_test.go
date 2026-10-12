@@ -38,12 +38,11 @@ func placeObstacle(s *GameServer, ms *MapState, maxLife float64, itemIDs ...stri
 func shot(ms *MapState, caster *PlayerState, at Vec2) *BotState {
 	bullet := &BotState{
 		EntityBase: EntityBase{ID: 900},
-		Behavior:   BehaviorSkill,
-		CasterID:   caster.ID,
 	}
 	ms.spawn(bullet.ID, EntityData{Kind: EntityBot}, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}},
 		Appearance{Layers: []ObjectLayerState{{ItemID: "bullet", Active: true, Quantity: 1}}})
 	ms.addVitals(bullet.ID, Vitals{MaxLife: 100, Life: 100})
+	ms.addAgent(bullet.ID, Agent{Behavior: BehaviorSkill, CasterID: caster.ID})
 	return bullet
 }
 
@@ -59,7 +58,7 @@ func fire(s *GameServer, ms *MapState, caster *PlayerState, at Vec2) {
 func drops(ms *MapState) []*BotState {
 	var out []*BotState
 	for _, bot := range ms.bots {
-		if bot.Behavior == BehaviorDrop {
+		if ms.ag(bot.ID).Behavior == BehaviorDrop {
 			out = append(out, bot)
 		}
 	}
@@ -166,12 +165,12 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	ptf.Pos, player.Path, ms.mo(player.ID).Mode = Vec2{X: 10, Y: 10}, []Cell{{X: 12, Y: 12}}, WALKING
 	bot := &BotState{
 		EntityBase: EntityBase{ID: 901},
-		Behavior:   BehaviorHostile,
 		Path:       []Cell{{X: 11, Y: 11}}, CurrentTargetPlayer: player.ID,
 	}
 	ms.bots[bot.ID] = bot
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: 10.5, Y: 10.5}, Size: cell}, Appearance{})
 	ms.addMotion(bot.ID, Motion{Mode: WALKING})
+	ms.addAgent(bot.ID, Agent{Behavior: BehaviorHostile})
 	ms.addVitals(bot.ID, Vitals{Life: 100, MaxLife: 100})
 	projectile := shot(ms, player, Vec2{X: 10, Y: 10})
 	ms.bots[projectile.ID] = projectile
@@ -223,13 +222,13 @@ func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 	}
 	bot := &BotState{
 		EntityBase:          EntityBase{ID: 902},
-		Behavior:            BehaviorHostile,
 		Path:                []Cell{{X: 10, Y: 10}, {X: 12, Y: 10}},
 		CurrentTargetPlayer: player.ID,
 	}
 	ms.bots[bot.ID] = bot
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: 9, Y: 10}, Size: ptf.Size}, Appearance{})
 	ms.addMotion(bot.ID, Motion{Mode: WALKING})
+	ms.addAgent(bot.ID, Agent{Behavior: BehaviorHostile})
 	ms.addVitals(bot.ID, Vitals{Life: 100, MaxLife: 100})
 	ptf = ms.tf(player.ID) // a spawn may move the transform array
 	s.handleRespawns(ms)
@@ -298,6 +297,7 @@ func TestObstacleRespawnPushesEntitiesOutward(t *testing.T) {
 			ms.bots[bot.ID] = bot
 			ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: tc.pos, Size: ptf.Size}, Appearance{})
 			ms.addMotion(bot.ID, Motion{Direction: UP})
+			ms.addAgent(bot.ID, Agent{})
 			ptf = ms.tf(player.ID) // a spawn may move the transform array
 			s.clearObstacleCells(ms, obs)
 			if ptf.Pos != tc.want || ms.tf(bot.ID).Pos != tc.want {

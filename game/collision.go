@@ -24,7 +24,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 	projectilesToDelete := []EntityID{}
 
 	for projectileID, projectile := range mapState.bots {
-		if projectile.Behavior != BehaviorSkill {
+		if mapState.ag(projectile.ID).Behavior != BehaviorSkill {
 			continue
 		}
 
@@ -45,7 +45,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				continue
 			}
 			// Projectiles should not damage their caster.
-			if player.ID == projectile.CasterID {
+			if player.ID == mapState.ag(projectile.ID).CasterID {
 				continue
 			}
 			if checkAABBCollision(mapState.tf(projectile.ID).Pos, mapState.tf(projectile.ID).Size, mapState.tf(player.ID).Pos, mapState.tf(player.ID).Size) {
@@ -54,7 +54,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 				// count, so a bot-only kill still drops the victim's coins and the
 				// contributing bots can collect. Recorded before the death handler
 				// consumes the ledger.
-				recordDamage(&player.DamageLedger, mapState, projectile.CasterID, projectileStats.Effect)
+				recordDamage(&player.DamageLedger, mapState, mapState.ag(projectile.ID).CasterID, projectileStats.Effect)
 				if mapState.vt(player.ID).Life <= 0 {
 					mapState.vt(player.ID).Life = 0
 					s.handlePlayerDeath(player, mapState)
@@ -78,25 +78,25 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 
 		// Check collision with other bots
 		for otherBotID, otherBot := range mapState.bots {
-			if projectileID == otherBotID || otherBot.Behavior == BehaviorSkill || mapState.vt(otherBot.ID).ghost() {
+			if projectileID == otherBotID || mapState.ag(otherBot.ID).Behavior == BehaviorSkill || mapState.vt(otherBot.ID).ghost() {
 				continue // Don't collide with self, other projectiles, or dead bots.
 			}
 			// Inert loot tokens are non-combat: projectiles pass through them.
-			if behaviorIsInert(otherBot.Behavior) {
+			if behaviorIsInert(mapState.ag(otherBot.ID).Behavior) {
 				continue
 			}
 			// Provider NPCs are immortal — projectiles pass through without damage.
-			if behaviorIsImmortal(otherBot.Behavior) {
+			if behaviorIsImmortal(mapState.ag(otherBot.ID).Behavior) {
 				continue
 			}
 			// Projectiles should not damage their caster.
-			if otherBotID == projectile.CasterID {
+			if otherBotID == mapState.ag(projectile.ID).CasterID {
 				continue
 			}
 			if checkAABBCollision(mapState.tf(projectile.ID).Pos, mapState.tf(projectile.ID).Size, mapState.tf(otherBot.ID).Pos, mapState.tf(otherBot.ID).Size) {
 				mapState.vt(otherBot.ID).Life -= projectileStats.Effect
 				// Attribute damage to the firing player or bot for the loot race.
-				recordDamage(&otherBot.DamageLedger, mapState, projectile.CasterID, projectileStats.Effect)
+				recordDamage(&otherBot.DamageLedger, mapState, mapState.ag(projectile.ID).CasterID, projectileStats.Effect)
 				// FCT: bot amounts are public — the same red "-N" for every AOI
 				// viewer, including the killing (one-shot) blow.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
@@ -110,7 +110,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 					// layers — quest `kill` objectives match on it.
 					killedSkin := s.botActiveSkin(otherBot.ID)
 					s.handleBotDeath(otherBot, mapState)
-					if killer, ok := mapState.players[projectile.CasterID]; ok {
+					if killer, ok := mapState.players[mapState.ag(projectile.ID).CasterID]; ok {
 						s.advancePlayerQuestsOnKill(killer, killedSkin)
 					}
 				}
@@ -164,7 +164,7 @@ func hitStatic(mapState *MapState, projectile *BotState, effect float64,
 		return false
 	}
 	v.Life -= effect
-	recordDamage(ledger, mapState, projectile.CasterID, effect)
+	recordDamage(ledger, mapState, mapState.ag(projectile.ID).CasterID, effect)
 	if v.Life <= 0 {
 		v.Life = 0
 		die()
@@ -395,7 +395,7 @@ func (s *GameServer) clearObstacleCells(ms *MapState, obs Transform) {
 		}
 	}
 	for _, bot := range ms.bots {
-		if bot.Behavior == BehaviorSkill {
+		if ms.ag(bot.ID).Behavior == BehaviorSkill {
 			continue
 		}
 		// A drop has no motion: it faces NONE and has no walk to stop.

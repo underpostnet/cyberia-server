@@ -85,7 +85,7 @@ func (s *GameServer) awardDefeat(base *EntityBase, mortal *Mortal, kind string, 
 	if ms == nil || ms.vt(base.ID).ghost() || kind == "obstacle" {
 		return
 	}
-	if b := ms.bots[base.ID]; b != nil && (b.CasterID != 0 || behaviorIsProvider(b.Behavior) || b.Behavior == BehaviorDrop) {
+	if b := ms.bots[base.ID]; b != nil && (ms.ag(b.ID).CasterID != 0 || behaviorIsProvider(ms.ag(b.ID).Behavior) || ms.ag(b.ID).Behavior == BehaviorDrop) {
 		return
 	}
 	var total float64
