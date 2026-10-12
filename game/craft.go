@@ -10,8 +10,10 @@
 // Cross-process contract:
 //
 //	craft_item (client→server) — entity + recipe index the player assembled
-//	craft_ack  (server→client) — accepted/rejected, so the presentation layer can
-//	                             play the synthesis FX or surface the reason
+//	self.craft (snapshot)      — the running assembly, absent when none runs
+//
+// The client makes the same checks before it sends, so a refusal is a desync
+// and the server drops it without an answer.
 //
 // Caller MUST hold s.mu for every handler here (they run inside phaseInput).
 package game
@@ -20,15 +22,6 @@ import (
 	"time"
 
 	"cyberia-server/logx"
-)
-
-// Rejection reasons echoed back on craft_ack. The client maps them to a message.
-const (
-	craftRejectNoAssembler = "no_assembler"
-	craftRejectNoRecipe    = "no_recipe"
-	craftRejectOutOfRange  = "out_of_range"
-	craftRejectMissing     = "missing_ingredients"
-	craftRejectBusy        = "already_assembling"
 )
 
 // craftMaxTimeMs bounds an authored assembly duration. A recipe longer than
@@ -100,26 +93,18 @@ func (s *GameServer) handleCraftItem(player *PlayerState, cmd *InputCommand) {
 		return
 	}
 	if player.ActiveCraft != nil {
-		s.sendCraftAck(player, cmd.EntityID, cmd.RecipeIndex, 0, craftRejectBusy)
 		return
 	}
 	bot := s.findBot(cmd.EntityID)
-	if bot == nil {
-		s.sendCraftAck(player, cmd.EntityID, cmd.RecipeIndex, 0, craftRejectNoAssembler)
-		return
-	}
-	if !s.botInPlayerRange(player, bot) {
-		s.sendCraftAck(player, cmd.EntityID, cmd.RecipeIndex, 0, craftRejectOutOfRange)
+	if bot == nil || !s.botInPlayerRange(player, bot) {
 		return
 	}
 	recipe := craftRecipeAt(s.actionCache[bot.ID], cmd.RecipeIndex)
 	if recipe == nil || len(recipe.OutputItems) == 0 {
-		s.sendCraftAck(player, cmd.EntityID, cmd.RecipeIndex, 0, craftRejectNoRecipe)
 		return
 	}
 	// All-or-nothing: a partial consume would burn ingredients for nothing.
 	if !s.playerCanCraft(player, recipe) {
-		s.sendCraftAck(player, cmd.EntityID, cmd.RecipeIndex, 0, craftRejectMissing)
 		return
 	}
 
@@ -140,7 +125,6 @@ func (s *GameServer) handleCraftItem(player *PlayerState, cmd *InputCommand) {
 		Outputs:     append([]ActionCraftItem(nil), recipe.OutputItems...),
 		CompleteAt:  time.Now().Add(time.Duration(ms) * time.Millisecond),
 	}
-	s.sendCraftAck(player, cmd.EntityID, cmd.RecipeIndex, ms, "")
 
 	logx.Debugf("[CRAFT] player %s started recipe %d at %s (%dms)",
 		player.ID, cmd.RecipeIndex, bot.ID, ms)
@@ -184,14 +168,22 @@ func (s *GameServer) completeCrafts(mapState *MapState) {
 	}
 }
 
-// sendCraftAck answers a start request. An empty reason means the assembly is
-// running and `craftTimeMs` is the authoritative duration the client's progress
-// bar adopts; anything else is a rejection code it renders.
-func (s *GameServer) sendCraftAck(player *PlayerState, entityID EntityID, recipeIndex,
-	craftTimeMs int, reason string) {
-	sendAck(player, "craft_ack", reason, map[string]interface{}{
-		"entityId":    entityID,
-		"recipeIndex": recipeIndex,
-		"craftTimeMs": craftTimeMs,
-	})
+// SnapshotCraft is the running assembly in the self block.
+type SnapshotCraft struct {
+	EntityID    EntityID `json:"entityId"`
+	RecipeIndex int      `json:"recipeIndex"`
+	RemainingMs int      `json:"remainingMs"`
+}
+
+// snapshotCraft is the player's running assembly, or nil when none runs.
+func snapshotCraft(player *PlayerState) *SnapshotCraft {
+	active := player.ActiveCraft
+	if active == nil {
+		return nil
+	}
+	return &SnapshotCraft{
+		EntityID:    active.EntityID,
+		RecipeIndex: active.RecipeIndex,
+		RemainingMs: max(int(time.Until(active.CompleteAt).Milliseconds()), 0),
+	}
 }

@@ -98,6 +98,8 @@ type SnapshotSelf struct {
 	Inventory []ObjectLayerState `json:"inventory"`
 	// Vaults carries every vault of the player.
 	Vaults []SnapshotVault `json:"vaults"`
+	// Craft is the running assembly, absent when none runs.
+	Craft *SnapshotCraft `json:"craft,omitempty"`
 
 	Frozen bool `json:"frozen"`
 	// MoveSpeed is cells per second. The client prediction integrator uses
@@ -434,6 +436,7 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 		// player.Coins is the canonical flat balance — read it directly.
 		CoinBalance:      player.Coins,
 		Vaults:           s.playerVaults(player),
+		Craft:            snapshotCraft(player),
 		Inventory:        s.visibleInventory(mapState.ap(player.ID).Layers),
 		Frozen:           player.Frozen,
 		MoveSpeed:        s.CalculatePlayerMovementSpeed(stats),
