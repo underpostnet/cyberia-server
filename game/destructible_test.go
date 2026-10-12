@@ -163,14 +163,15 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 
 	ms.vt(obs.ID).RespawnAt = time.Now().Add(-time.Second)
 	ptf := ms.tf(player.ID)
-	ptf.Pos, player.Path, player.Mode = Vec2{X: 10, Y: 10}, []PointI{{X: 12, Y: 12}}, WALKING
+	ptf.Pos, player.Path, ms.mo(player.ID).Mode = Vec2{X: 10, Y: 10}, []Cell{{X: 12, Y: 12}}, WALKING
 	bot := &BotState{
 		EntityBase: EntityBase{ID: 901},
 		Behavior:   BehaviorHostile,
-		Path:       []PointI{{X: 11, Y: 11}}, Mode: WALKING, CurrentTargetPlayer: player.ID,
+		Path:       []Cell{{X: 11, Y: 11}}, CurrentTargetPlayer: player.ID,
 	}
 	ms.bots[bot.ID] = bot
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: 10.5, Y: 10.5}, Size: cell}, Appearance{})
+	ms.addMotion(bot.ID, Motion{Mode: WALKING})
 	ms.addVitals(bot.ID, Vitals{Life: 100, MaxLife: 100})
 	projectile := shot(ms, player, Vec2{X: 10, Y: 10})
 	ms.bots[projectile.ID] = projectile
@@ -182,7 +183,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	otf := ms.tf(obs.ID)
 	if checkAABBCollision(otf.Pos, otf.Size, ptf.Pos, ptf.Size) ||
 		!ms.pathfinder.isWalkable(int(ptf.Pos.X), int(ptf.Pos.Y), ptf.Size) ||
-		math.Hypot(ptf.Pos.X-11, ptf.Pos.Y-11) > 4 || player.Mode != IDLE || len(player.Path) != 0 {
+		math.Hypot(ptf.Pos.X-11, ptf.Pos.Y-11) > 4 || ms.mo(player.ID).Mode != IDLE || len(player.Path) != 0 {
 		t.Fatalf("the player moves to a free spot near the obstacle and stops: %+v", ptf.Pos)
 	}
 	for _, other := range ms.bots {
@@ -195,8 +196,8 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 		t.Fatal("a projectile keeps its course")
 	}
 	btf := ms.tf(bot.ID)
-	if bot.Mode != IDLE || len(bot.Path) != 0 || bot.CurrentTargetPlayer != 0 ||
-		bot.lastPursuitTargetPos != (PointI{-1, -1}) ||
+	if ms.mo(bot.ID).Mode != IDLE || len(bot.Path) != 0 || bot.CurrentTargetPlayer != 0 ||
+		bot.lastPursuitTargetPos != (Cell{-1, -1}) ||
 		!ms.pathfinder.isWalkable(int(btf.Pos.X), int(btf.Pos.Y), btf.Size) {
 		t.Fatalf("the displaced bot clears its movement and pursuit: %+v", bot)
 	}
@@ -221,13 +222,14 @@ func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 		t.Fatal("the initial route crosses the depleted obstacle")
 	}
 	bot := &BotState{
-		EntityBase: EntityBase{ID: 902},
-		Behavior:   BehaviorHostile,
-		Path:       []PointI{{X: 10, Y: 10}, {X: 12, Y: 10}}, Mode: WALKING,
+		EntityBase:          EntityBase{ID: 902},
+		Behavior:            BehaviorHostile,
+		Path:                []Cell{{X: 10, Y: 10}, {X: 12, Y: 10}},
 		CurrentTargetPlayer: player.ID,
 	}
 	ms.bots[bot.ID] = bot
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: 9, Y: 10}, Size: ptf.Size}, Appearance{})
+	ms.addMotion(bot.ID, Motion{Mode: WALKING})
 	ms.addVitals(bot.ID, Vitals{Life: 100, MaxLife: 100})
 	ptf = ms.tf(player.ID) // a spawn may move the transform array
 	s.handleRespawns(ms)
@@ -237,7 +239,7 @@ func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 	ms.vt(obs.ID).RespawnAt = time.Now().Add(-time.Second)
 	before := ptf.Pos
 	s.handleRespawns(ms)
-	if ptf.Pos != before || player.Mode != WALKING || player.TargetPos != (PointI{X: 15, Y: 15}) ||
+	if ptf.Pos != before || ms.mo(player.ID).Mode != WALKING || player.TargetPos != (Cell{X: 15, Y: 15}) ||
 		len(player.Path) == 0 {
 		t.Fatalf("the player keeps its destination: %+v", player)
 	}
@@ -246,7 +248,7 @@ func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 			t.Fatalf("the new path crosses blocked cell %v", cell)
 		}
 	}
-	if bot.Mode != IDLE || len(bot.Path) != 0 || bot.CurrentTargetPlayer != 0 {
+	if ms.mo(bot.ID).Mode != IDLE || len(bot.Path) != 0 || bot.CurrentTargetPlayer != 0 {
 		t.Fatal("the bot clears its blocked route before its next AI tick")
 	}
 }
@@ -260,11 +262,11 @@ func TestObstacleClearanceUsesEntityDimensionsAtMapEdges(t *testing.T) {
 			ptf := ms.tf(player.ID)
 			ptf.Size = Vec2{X: 3, Y: 2}
 			ptf.Pos = Vec2{X: math.Min(pos.X, 17), Y: pos.Y}
-			player.Path, player.Mode = []PointI{{X: 10, Y: 10}}, WALKING
+			player.Path, ms.mo(player.ID).Mode = []Cell{{X: 10, Y: 10}}, WALKING
 			s.clearObstacleCells(ms, obs)
 			if checkAABBCollision(obs.Pos, obs.Size, ptf.Pos, ptf.Size) ||
 				!ms.pathfinder.isWalkable(int(ptf.Pos.X), int(ptf.Pos.Y), ptf.Size) ||
-				player.Mode != IDLE || len(player.Path) != 0 {
+				ms.mo(player.ID).Mode != IDLE || len(player.Path) != 0 {
 				t.Fatalf("the full player footprint clears the obstacle at %v: %v", pos, ptf.Pos)
 			}
 		})
@@ -291,10 +293,11 @@ func TestObstacleRespawnPushesEntitiesOutward(t *testing.T) {
 			obs := Transform{Pos: Vec2{10, 10}, Size: Vec2{4, 4}}
 			ms.pathfinder.occupy(obs.Pos, obs.Size, 1)
 			ptf := ms.tf(player.ID)
-			ptf.Pos, ptf.Size, player.Direction = tc.pos, Vec2{2, 2}, DOWN
-			bot := &BotState{EntityBase: EntityBase{ID: 903}, Direction: UP}
+			ptf.Pos, ptf.Size, ms.mo(player.ID).Direction = tc.pos, Vec2{2, 2}, DOWN
+			bot := &BotState{EntityBase: EntityBase{ID: 903}}
 			ms.bots[bot.ID] = bot
 			ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: tc.pos, Size: ptf.Size}, Appearance{})
+			ms.addMotion(bot.ID, Motion{Direction: UP})
 			ptf = ms.tf(player.ID) // a spawn may move the transform array
 			s.clearObstacleCells(ms, obs)
 			if ptf.Pos != tc.want || ms.tf(bot.ID).Pos != tc.want {
@@ -310,13 +313,13 @@ func TestObstacleRespawnPushesEntitiesOutward(t *testing.T) {
 func TestObstaclePushAtCenterUsesFacing(t *testing.T) {
 	for _, tc := range []struct {
 		direction Direction
-		want      PointI
+		want      Cell
 	}{
-		{RIGHT, PointI{14, 11}},
-		{LEFT, PointI{8, 11}},
-		{UP, PointI{11, 8}},
-		{DOWN, PointI{11, 14}},
-		{NONE, PointI{11, 14}},
+		{RIGHT, Cell{14, 11}},
+		{LEFT, Cell{8, 11}},
+		{UP, Cell{11, 8}},
+		{DOWN, Cell{11, 14}},
+		{NONE, Cell{11, 14}},
 	} {
 		_, ms, _ := movementFixture(t)
 		obs := Transform{Pos: Vec2{10, 10}, Size: Vec2{4, 4}}

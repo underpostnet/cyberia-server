@@ -13,8 +13,8 @@ const (
 	providerWanderChancePerTick = 0.004
 )
 
-// randomPointWithinRadius returns a random walkable PointI within radius from center (or {-1,-1} on failure).
-func (s *GameServer) randomPointWithinRadius(ms *MapState, center Vec2, radius float64, dims Vec2) PointI {
+// randomPointWithinRadius returns a random walkable Cell within radius from center (or {-1,-1} on failure).
+func (s *GameServer) randomPointWithinRadius(ms *MapState, center Vec2, radius float64, dims Vec2) Cell {
 	for tries := 0; tries < 30; tries++ {
 		ang := rand.Float64() * 2 * math.Pi
 		r := rand.Float64() * radius
@@ -24,13 +24,13 @@ func (s *GameServer) randomPointWithinRadius(ms *MapState, center Vec2, radius f
 			continue
 		}
 		if ms.pathfinder.isWalkable(x, y, dims) {
-			return PointI{X: x, Y: y}
+			return Cell{X: x, Y: y}
 		}
-		if c, err := ms.pathfinder.findClosestWalkablePoint(PointI{X: x, Y: y}, dims); err == nil {
+		if c, err := ms.pathfinder.findClosestWalkablePoint(Cell{X: x, Y: y}, dims); err == nil {
 			return c
 		}
 	}
-	return PointI{-1, -1}
+	return Cell{-1, -1}
 }
 
 // update bots per map
@@ -68,7 +68,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			// runs slow or tickRate changes.)
 			projectileStep := s.entityBaseSpeed * s.projectileSpeedMultiplier * s.tickDuration.Seconds()
 			// Calculate movement vector from bot's direction
-			dirX, dirY := getDirectionVector(bot.Direction)
+			dirX, dirY := getDirectionVector(mapState.mo(bot.ID).Direction)
 
 			// Update position
 			mapState.tf(bot.ID).Pos.X += dirX * projectileStep
@@ -93,13 +93,13 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		// stays put; provider takes an occasional short step near its spawn.
 		if behaviorIsProvider(bot.Behavior) {
 			if !behaviorIsStationary(bot.Behavior) {
-				if (bot.Mode != WALKING || len(bot.Path) == 0) && rand.Float64() < providerWanderChancePerTick {
+				if (mapState.mo(bot.ID).Mode != WALKING || len(bot.Path) == 0) && rand.Float64() < providerWanderChancePerTick {
 					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, providerWanderRadius, mapState.tf(bot.ID).Size)
 					if target.X >= 0 {
-						if pth, err := mapState.pathfinder.Astar(PointI{X: int(math.Round(mapState.tf(bot.ID).Pos.X)), Y: int(math.Round(mapState.tf(bot.ID).Pos.Y))}, target, mapState.tf(bot.ID).Size); err == nil && len(pth) > 0 {
+						if pth, err := mapState.pathfinder.Astar(Cell{X: int(math.Round(mapState.tf(bot.ID).Pos.X)), Y: int(math.Round(mapState.tf(bot.ID).Pos.Y))}, target, mapState.tf(bot.ID).Size); err == nil && len(pth) > 0 {
 							bot.Path = pth
 							bot.TargetPos = target
-							bot.Mode = WALKING
+							mapState.mo(bot.ID).Mode = WALKING
 						}
 					}
 				}
@@ -137,11 +137,11 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				dirX := mapState.tf(nearestPlayer.ID).Pos.X - mapState.tf(bot.ID).Pos.X
 				dirY := mapState.tf(nearestPlayer.ID).Pos.Y - mapState.tf(bot.ID).Pos.Y
 				if dirX != 0 || dirY != 0 {
-					bot.Direction = directionFromVector(dirX, dirY)
+					mapState.mo(bot.ID).Direction = directionFromVector(dirX, dirY)
 				}
 
 				// Hostile bots that are idle (not moving) have a chance to use a skill.
-				if bot.Mode == IDLE && bot.ExpiresAt.IsZero() {
+				if mapState.mo(bot.ID).Mode == IDLE && bot.ExpiresAt.IsZero() {
 					cooldown := s.CalculateActionCooldown(botStats)
 					if time.Since(bot.lastAction) >= cooldown {
 						s.handleBotSkills(bot, mapState, mapState.tf(nearestPlayer.ID).Pos)
@@ -150,16 +150,16 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				}
 
 				// Pursue the player: recompute path if newly acquired or player moved cell
-				playerCell := PointI{X: int(math.Round(mapState.tf(nearestPlayer.ID).Pos.X)), Y: int(math.Round(mapState.tf(nearestPlayer.ID).Pos.Y))}
+				playerCell := Cell{X: int(math.Round(mapState.tf(nearestPlayer.ID).Pos.X)), Y: int(math.Round(mapState.tf(nearestPlayer.ID).Pos.Y))}
 				needRepath := bot.CurrentTargetPlayer != nearestID || bot.lastPursuitTargetPos != playerCell
 				if needRepath {
-					start := PointI{X: int(math.Round(mapState.tf(bot.ID).Pos.X)), Y: int(math.Round(mapState.tf(bot.ID).Pos.Y))}
+					start := Cell{X: int(math.Round(mapState.tf(bot.ID).Pos.X)), Y: int(math.Round(mapState.tf(bot.ID).Pos.Y))}
 					target, err := mapState.pathfinder.findClosestWalkablePoint(playerCell, mapState.tf(bot.ID).Size)
 					if err == nil {
 						if p, err2 := mapState.pathfinder.Astar(start, target, mapState.tf(bot.ID).Size); err2 == nil && len(p) > 0 {
 							bot.Path = p
 							bot.TargetPos = target
-							bot.Mode = WALKING
+							mapState.mo(bot.ID).Mode = WALKING
 							bot.CurrentTargetPlayer = nearestID
 							bot.lastPursuitTargetPos = playerCell
 
@@ -182,18 +182,18 @@ func (s *GameServer) updateBots(mapState *MapState) {
 				// No player in range: clear pursuit (if any) and ensure wandering behavior
 				if bot.CurrentTargetPlayer != 0 {
 					bot.CurrentTargetPlayer = 0
-					bot.lastPursuitTargetPos = PointI{-1, -1}
+					bot.lastPursuitTargetPos = Cell{-1, -1}
 				}
 
 				// IMPORTANT CHANGE: When not pursuing, hostile bots behave like passive bots:
 				// - if they have no current walking path, generate a new random wander target within spawn radius.
-				if bot.Mode != WALKING || len(bot.Path) == 0 {
+				if mapState.mo(bot.ID).Mode != WALKING || len(bot.Path) == 0 {
 					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, mapState.tf(bot.ID).Size)
 					if target.X >= 0 {
-						if pth, err := mapState.pathfinder.Astar(PointI{X: int(math.Round(mapState.tf(bot.ID).Pos.X)), Y: int(math.Round(mapState.tf(bot.ID).Pos.Y))}, target, mapState.tf(bot.ID).Size); err == nil && len(pth) > 0 {
+						if pth, err := mapState.pathfinder.Astar(Cell{X: int(math.Round(mapState.tf(bot.ID).Pos.X)), Y: int(math.Round(mapState.tf(bot.ID).Pos.Y))}, target, mapState.tf(bot.ID).Size); err == nil && len(pth) > 0 {
 							bot.Path = pth
 							bot.TargetPos = target
-							bot.Mode = WALKING
+							mapState.mo(bot.ID).Mode = WALKING
 
 							// Trigger probabilistic regen on wander.
 							s.handleProbabilisticRegen(bot, mapState)
@@ -209,7 +209,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 						} else {
 							// if we can't path to a target, remain idle until next tick tries again
 							if len(bot.Path) == 0 {
-								bot.Mode = IDLE
+								mapState.mo(bot.ID).Mode = IDLE
 							}
 						}
 					}
@@ -217,13 +217,13 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			}
 		} else {
 			// Passive: if no path, create wandering path
-			if len(bot.Path) == 0 || bot.Mode != WALKING {
+			if len(bot.Path) == 0 || mapState.mo(bot.ID).Mode != WALKING {
 				target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, mapState.tf(bot.ID).Size)
 				if target.X >= 0 {
-					if pth, err := mapState.pathfinder.Astar(PointI{X: int(math.Round(mapState.tf(bot.ID).Pos.X)), Y: int(math.Round(mapState.tf(bot.ID).Pos.Y))}, target, mapState.tf(bot.ID).Size); err == nil && len(pth) > 0 {
+					if pth, err := mapState.pathfinder.Astar(Cell{X: int(math.Round(mapState.tf(bot.ID).Pos.X)), Y: int(math.Round(mapState.tf(bot.ID).Pos.Y))}, target, mapState.tf(bot.ID).Size); err == nil && len(pth) > 0 {
 						bot.Path = pth
 						bot.TargetPos = target
-						bot.Mode = WALKING
+						mapState.mo(bot.ID).Mode = WALKING
 
 						// Trigger probabilistic regen on wander.
 						s.handleProbabilisticRegen(bot, mapState)
@@ -247,7 +247,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 // update bot movement similar to players
 func (s *GameServer) updateBotPosition(bot *BotState, mapState *MapState, stats ComputedStats) {
-	if bot.Mode != WALKING {
+	if mapState.mo(bot.ID).Mode != WALKING {
 		return
 	}
 	speed := s.CalculateMovementSpeed(stats)
@@ -255,10 +255,10 @@ func (s *GameServer) updateBotPosition(bot *BotState, mapState *MapState, stats 
 	pos, path, dir, facing := stepAlongPath(mapState.tf(bot.ID).Pos, bot.Path, speed, s.tickDuration.Seconds())
 	mapState.tf(bot.ID).Pos, bot.Path = pos, path
 	if facing {
-		bot.Direction = dir
+		mapState.mo(bot.ID).Direction = dir
 	}
 	if len(bot.Path) == 0 {
-		bot.Mode = IDLE
+		mapState.mo(bot.ID).Mode = IDLE
 	}
 }
 

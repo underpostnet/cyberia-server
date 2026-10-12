@@ -24,7 +24,7 @@ import (
 // FreezePlayer puts a player into FrozenInteractionState. No-op when frozen.
 //
 // Caller MUST hold server.mu.
-func FreezePlayer(player *PlayerState) {
+func FreezePlayer(player *PlayerState, mapState *MapState) {
 	if player.Frozen {
 		return
 	}
@@ -33,7 +33,7 @@ func FreezePlayer(player *PlayerState) {
 
 	// Clear any in-flight movement so the player doesn't drift while frozen.
 	player.Path = nil
-	player.Mode = IDLE
+	mapState.mo(player.ID).Mode = IDLE
 
 	logx.Debugf("[FREEZE] Player %s frozen", player.ID)
 }

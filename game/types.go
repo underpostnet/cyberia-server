@@ -60,9 +60,10 @@ const (
 	maskTransform  ComponentMask = 1 << 1
 	maskAppearance ComponentMask = 1 << 2
 	maskVitals     ComponentMask = 1 << 3
+	maskMotion     ComponentMask = 1 << 5
 )
 
-type PointI struct {
+type Cell struct {
 	X int `json:"x"`
 	Y int `json:"y"`
 }
@@ -145,6 +146,12 @@ type Vitals struct {
 	RespawnAt time.Time // zero while alive
 }
 
+// Motion is the motion component: the facing and the walk mode.
+type Motion struct {
+	Direction Direction
+	Mode      ObjectLayerMode
+}
+
 // ghost reports whether the entity is dead and waiting to respawn.
 func (v *Vitals) ghost() bool { return !v.RespawnAt.IsZero() }
 
@@ -160,17 +167,15 @@ type PlayerState struct {
 	EntityBase
 	Mortal
 	// EngineID is the player id the engine knows. It never goes in a snapshot.
-	EngineID     string          `json:"-"`
-	MapCode      string          `json:"MapCode"`
-	Path         []PointI        `json:"path"`
-	TargetPos    PointI          `json:"targetPos"`
-	AOI          Rectangle       `json:"AOI"`
-	Client       *Client         `json:"-"`
-	Direction    Direction       `json:"direction"`
-	Mode         ObjectLayerMode `json:"mode"`
-	OnPortal     bool            `json:"onPortal"`
-	TimeOnPortal time.Time       `json:"-"`
-	LifeRegen    float64         `json:"lifeRegen"`
+	EngineID     string    `json:"-"`
+	MapCode      string    `json:"MapCode"`
+	Path         []Cell    `json:"path"`
+	TargetPos    Cell      `json:"targetPos"`
+	AOI          Rectangle `json:"AOI"`
+	Client       *Client   `json:"-"`
+	OnPortal     bool      `json:"onPortal"`
+	TimeOnPortal time.Time `json:"-"`
+	LifeRegen    float64   `json:"lifeRegen"`
 	// Coins is the canonical flat coin balance — the single source of truth
 	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
 	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
@@ -214,8 +219,8 @@ type PlayerState struct {
 	// tick. phaseInput re-plans from it once, after the whole queue is applied,
 	// so a burst of taps costs one A* instead of one per tap. Cleared by the
 	// flush; never persisted across ticks.
-	PendingMove    PointI `json:"-"`
-	HasPendingMove bool   `json:"-"`
+	PendingMove    Cell `json:"-"`
+	HasPendingMove bool `json:"-"`
 	// InputQueue holds InputCommand frames received from the client between
 	// simulation ticks. Drained in fixed order by phaseInput. nil-safe: the
 	// queue is allocated lazily when the first command is enqueued.
@@ -225,21 +230,19 @@ type PlayerState struct {
 type BotState struct {
 	EntityBase
 	Mortal
-	MapCode              string          `json:"MapCode"`
-	Path                 []PointI        `json:"path"`
-	TargetPos            PointI          `json:"targetPos"`
-	Direction            Direction       `json:"direction"`
-	Mode                 ObjectLayerMode `json:"mode"`
-	Behavior             string          `json:"behavior"` // canonical entity behavior (see behavior.go)
-	SpawnCenter          Vec2            `json:"spawnCenter"`
-	SpawnRadius          float64         `json:"spawnRadius"`
-	AggroRange           float64         `json:"aggroRange"`
-	CurrentTargetPlayer  EntityID        `json:"-"` // player ID currently being pursued (if any)
-	lastPursuitTargetPos PointI          `json:"-"` // cached player's last cell to know when to re-path
-	lastAction           time.Time       `json:"-"`
-	ExpiresAt            time.Time       `json:"-"` // bots with a lifetime will be removed after this time
-	LifeRegen            float64         `json:"lifeRegen"`
-	CasterID             EntityID        `json:"-"` // ID of the player or bot that created this bot
+	MapCode              string    `json:"MapCode"`
+	Path                 []Cell    `json:"path"`
+	TargetPos            Cell      `json:"targetPos"`
+	Behavior             string    `json:"behavior"` // canonical entity behavior (see behavior.go)
+	SpawnCenter          Vec2      `json:"spawnCenter"`
+	SpawnRadius          float64   `json:"spawnRadius"`
+	AggroRange           float64   `json:"aggroRange"`
+	CurrentTargetPlayer  EntityID  `json:"-"` // player ID currently being pursued (if any)
+	lastPursuitTargetPos Cell      `json:"-"` // cached player's last cell to know when to re-path
+	lastAction           time.Time `json:"-"`
+	ExpiresAt            time.Time `json:"-"` // bots with a lifetime will be removed after this time
+	LifeRegen            float64   `json:"lifeRegen"`
+	CasterID             EntityID  `json:"-"` // ID of the player or bot that created this bot
 	// Coins is the canonical flat coin balance — the single source of truth
 	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
 	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
@@ -351,6 +354,7 @@ type MapState struct {
 	transform  []Transform
 	appearance []Appearance
 	vitals     []Vitals
+	motion     []Motion
 	cursor     int // next slot the allocator tests
 }
 

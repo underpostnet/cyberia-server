@@ -122,24 +122,24 @@ func (pf *Pathfinder) isWalkable(x, y int, playerDims Vec2) bool {
 }
 
 // findRandomWalkablePoint finds a random walkable point for a given dimension.
-func (pf *Pathfinder) findRandomWalkablePoint(dims Vec2) (PointI, error) {
+func (pf *Pathfinder) findRandomWalkablePoint(dims Vec2) (Cell, error) {
 	for attempts := 0; attempts < 200; attempts++ {
 		x, y := rand.Intn(pf.gridW-int(dims.X)), rand.Intn(pf.gridH-int(dims.Y))
 		if pf.isWalkable(x, y, dims) {
-			return PointI{X: x, Y: y}, nil
+			return Cell{X: x, Y: y}, nil
 		}
 	}
-	return PointI{}, fmt.Errorf("could not find a walkable point")
+	return Cell{}, fmt.Errorf("could not find a walkable point")
 }
 
 // findClosestWalkablePoint finds the closest walkable point to a given point.
-func (pf *Pathfinder) findClosestWalkablePoint(p PointI, playerDims Vec2) (PointI, error) {
+func (pf *Pathfinder) findClosestWalkablePoint(p Cell, playerDims Vec2) (Cell, error) {
 	if pf.isWalkable(p.X, p.Y, playerDims) {
 		return p, nil
 	}
 	// Only in-grid cells enter the queue, so the sweep visits each cell once.
 	pf.beginSearch()
-	queue := []PointI{p}
+	queue := []Cell{p}
 	if pf.inGrid(p.X, p.Y) {
 		pf.closedGen[pf.cellIndex(p.X, p.Y)] = pf.gen
 	}
@@ -149,7 +149,7 @@ func (pf *Pathfinder) findClosestWalkablePoint(p PointI, playerDims Vec2) (Point
 		if pf.isWalkable(current.X, current.Y, playerDims) {
 			return current, nil
 		}
-		for _, move := range [4]PointI{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+		for _, move := range [4]Cell{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
 			nx, ny := current.X+move.X, current.Y+move.Y
 			if !pf.inGrid(nx, ny) {
 				continue
@@ -159,13 +159,13 @@ func (pf *Pathfinder) findClosestWalkablePoint(p PointI, playerDims Vec2) (Point
 				continue
 			}
 			pf.closedGen[idx] = pf.gen
-			queue = append(queue, PointI{X: nx, Y: ny})
+			queue = append(queue, Cell{X: nx, Y: ny})
 		}
 	}
-	return PointI{}, fmt.Errorf("no walkable point found near (%d, %d)", p.X, p.Y)
+	return Cell{}, fmt.Errorf("no walkable point found near (%d, %d)", p.X, p.Y)
 }
 
-var astarMoves = [8]PointI{{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {-1, 1}, {1, -1}, {1, 1}}
+var astarMoves = [8]Cell{{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {-1, 1}, {1, -1}, {1, 1}}
 
 // Astar performs the A* pathfinding algorithm.
 //
@@ -173,7 +173,7 @@ var astarMoves = [8]PointI{{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {-1, 1}, 
 // budget. The closed set keeps each cell to one expansion, and the open index
 // finds a queued node in O(1). Both are necessary: an unreachable target makes
 // the search expand the full reachable area.
-func (pf *Pathfinder) Astar(start, end PointI, playerDims Vec2) ([]PointI, error) {
+func (pf *Pathfinder) Astar(start, end Cell, playerDims Vec2) ([]Cell, error) {
 	if !pf.inGrid(start.X, start.Y) || !pf.inGrid(end.X, end.Y) {
 		return nil, fmt.Errorf("path endpoint outside the grid")
 	}
@@ -234,10 +234,10 @@ func heuristic(x1, y1, x2, y2 int) float64 {
 	return math.Abs(float64(x1-x2)) + math.Abs(float64(y1-y2))
 }
 
-func reconstructPath(n *Node) []PointI {
-	path := make([]PointI, 0)
+func reconstructPath(n *Node) []Cell {
+	path := make([]Cell, 0)
 	for n != nil {
-		path = append(path, PointI{X: n.X, Y: n.Y})
+		path = append(path, Cell{X: n.X, Y: n.Y})
 		n = n.parent
 	}
 	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {

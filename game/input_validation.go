@@ -38,7 +38,7 @@ func validTapTarget(x, y float64) bool {
 
 // clampCellToGrid puts a cell inside the map. The handler applies it so a tap
 // near an edge still moves the player instead of failing the path search.
-func clampCellToGrid(p PointI, gridW, gridH int) PointI {
+func clampCellToGrid(p Cell, gridW, gridH int) Cell {
 	if p.X < 0 {
 		p.X = 0
 	} else if p.X > gridW-1 {

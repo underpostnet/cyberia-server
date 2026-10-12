@@ -340,10 +340,8 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 			RespawnDuration: placedRespawnDuration(ent),
 		},
 		MapCode:     mapCode,
-		Path:        []PointI{},
-		TargetPos:   PointI{-1, -1},
-		Direction:   NONE,
-		Mode:        IDLE,
+		Path:        []Cell{},
+		TargetPos:   Cell{-1, -1},
 		Behavior:    s.resolveEntityBehavior("bot", objectLayers),
 		SpawnCenter: startPos,
 		SpawnRadius: spawnRadius,
@@ -353,6 +351,7 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 	ms.bots[bot.ID] = bot
 	ms.spawn(bot.ID, EntityData{Kind: EntityBot}, Transform{Pos: startPos, Size: dims}, Appearance{Layers: objectLayers})
 	ms.addVitals(bot.ID, Vitals{MaxLife: maxLife, Life: maxLife * s.initialLifeFraction})
+	ms.addMotion(bot.ID, Motion{Direction: NONE, Mode: IDLE})
 
 	bot.Progression = NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig())
 	s.ApplyResistanceStat(bot, ms)
@@ -367,12 +366,12 @@ func (s *GameServer) buildBot(ms *MapState, mapCode string, ent *pb.EntityMessag
 		target := s.randomPointWithinRadius(ms, bot.SpawnCenter, bot.SpawnRadius, dims)
 		if target.X >= 0 {
 			if pth, err := ms.pathfinder.Astar(
-				PointI{X: int(math.Round(startPos.X)), Y: int(math.Round(startPos.Y))},
+				Cell{X: int(math.Round(startPos.X)), Y: int(math.Round(startPos.Y))},
 				target, dims,
 			); err == nil && len(pth) > 0 {
 				bot.Path = pth
 				bot.TargetPos = target
-				bot.Mode = WALKING
+				ms.mo(bot.ID).Mode = WALKING
 			}
 		}
 	}

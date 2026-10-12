@@ -39,7 +39,7 @@ func (s *GameServer) handlePlayerActionInput(player *PlayerState, mapState *MapS
 	target := Vec2{X: cmd.TargetX, Y: cmd.TargetY}
 	s.HandlePlayerTapAction(player, mapState, target)
 
-	player.PendingMove = PointI{X: int(math.Round(cmd.TargetX)), Y: int(math.Round(cmd.TargetY))}
+	player.PendingMove = Cell{X: int(math.Round(cmd.TargetX)), Y: int(math.Round(cmd.TargetY))}
 	player.HasPendingMove = true
 }
 
@@ -62,7 +62,7 @@ func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
 	// Clamp into the map. An off-grid target would otherwise make Astar expand
 	// the full reachable area and then fail, spending the tick budget.
 	startPosI := clampCellToGrid(
-		PointI{X: int(math.Round(mapState.tf(player.ID).Pos.X)), Y: int(math.Round(mapState.tf(player.ID).Pos.Y))},
+		Cell{X: int(math.Round(mapState.tf(player.ID).Pos.X)), Y: int(math.Round(mapState.tf(player.ID).Pos.Y))},
 		mapState.gridW, mapState.gridH)
 	targetPosI := clampCellToGrid(target, mapState.gridW, mapState.gridH)
 
@@ -70,7 +70,7 @@ func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
 	// the shape a spam-tapping client takes, and it is also the shape of a held
 	// steering key, so skipping it removes the cheapest attack and the most
 	// common redundant search at once.
-	if player.Mode == WALKING && player.TargetPos == targetPosI && len(player.Path) > 0 {
+	if mapState.mo(player.ID).Mode == WALKING && player.TargetPos == targetPosI && len(player.Path) > 0 {
 		return
 	}
 
@@ -96,14 +96,14 @@ func (s *GameServer) flushPendingMove(player *PlayerState, mapState *MapState) {
 		first := newPath[0]
 		player.Path = newPath
 		player.TargetPos = usedTarget
-		player.Mode = WALKING
+		mapState.mo(player.ID).Mode = WALKING
 		dx := float64(first.X) - mapState.tf(player.ID).Pos.X
 		dy := float64(first.Y) - mapState.tf(player.ID).Pos.Y
 		if dist := math.Sqrt(dx*dx + dy*dy); dist > 0 {
-			player.Direction = directionFromVector(dx/dist, dy/dist)
+			mapState.mo(player.ID).Direction = directionFromVector(dx/dist, dy/dist)
 		}
 	} else if startPosI.X == targetPosI.X && startPosI.Y == targetPosI.Y {
-		player.Mode = IDLE
+		mapState.mo(player.ID).Mode = IDLE
 	}
 }
 
@@ -115,10 +115,10 @@ func (s *GameServer) faceTargetWithoutPath(player *PlayerState, mapState *MapSta
 	dy := ty - mapState.tf(player.ID).Pos.Y
 	dist := math.Sqrt(dx*dx + dy*dy)
 	if dist > 0 {
-		player.Direction = directionFromVector(dx/dist, dy/dist)
-		player.Mode = WALKING
+		mapState.mo(player.ID).Direction = directionFromVector(dx/dist, dy/dist)
+		mapState.mo(player.ID).Mode = WALKING
 	} else {
-		player.Mode = IDLE
+		mapState.mo(player.ID).Mode = IDLE
 	}
 }
 

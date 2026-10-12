@@ -260,7 +260,7 @@ func (s *GameServer) handlePlayerDeath(player *PlayerState, mapState *MapState) 
 	mapState.vt(player.ID).RespawnAt = time.Now().Add(player.respawnDuration())
 	// Recalculate stats for the ghost state to ensure consistency (mainly MaxLife).
 	s.ApplyResistanceStat(player, s.maps[player.MapCode])
-	player.Mode = IDLE // Stop movement
+	mapState.mo(player.ID).Mode = IDLE // Stop movement
 }
 
 // killEntity runs the death sequence shared by bots, resources and destructible
@@ -296,7 +296,7 @@ func (s *GameServer) handleBotDeath(bot *BotState, mapState *MapState) {
 	bot.DamageLedger = nil
 
 	s.ApplyResistanceStat(bot, s.maps[bot.MapCode])
-	bot.Mode = IDLE // Stop movement
+	mapState.mo(bot.ID).Mode = IDLE // Stop movement
 }
 
 // handleResourceDeath destroys a resource. Resources carry no coins — item
@@ -382,38 +382,48 @@ func (s *GameServer) clearObstacleCells(ms *MapState, obs Transform) {
 		tf := ms.tf(player.ID)
 		if !checkAABBCollision(obs.Pos, obs.Size, tf.Pos, tf.Size) {
 			if pathCrossesObstacle(player.Path, tf.Size, obs) {
-				player.Path, player.Mode = nil, IDLE
+				player.Path, ms.mo(player.ID).Mode = nil, IDLE
 				player.PendingMove = player.TargetPos
 				player.HasPendingMove = true
 				s.flushPendingMove(player, ms)
 			}
 			continue
 		}
-		if cell, err := obstaclePushCell(ms, obs, *tf, player.Direction); err == nil {
+		if cell, err := obstaclePushCell(ms, obs, *tf, ms.mo(player.ID).Direction); err == nil {
 			tf.Pos = Vec2{X: float64(cell.X), Y: float64(cell.Y)}
-			player.Path, player.TargetPos, player.Mode = nil, cell, IDLE
+			player.Path, player.TargetPos, ms.mo(player.ID).Mode = nil, cell, IDLE
 		}
 	}
 	for _, bot := range ms.bots {
 		if bot.Behavior == BehaviorSkill {
 			continue
 		}
+		// A drop has no motion: it faces NONE and has no walk to stop.
+		slot := ms.slot(bot.ID)
+		moving := ms.mask[slot]&maskMotion != 0
+		dir := NONE
+		if moving {
+			dir = ms.motion[slot].Direction
+		}
 		tf := ms.tf(bot.ID)
 		if checkAABBCollision(obs.Pos, obs.Size, tf.Pos, tf.Size) {
-			if cell, err := obstaclePushCell(ms, obs, *tf, bot.Direction); err == nil {
+			if cell, err := obstaclePushCell(ms, obs, *tf, dir); err == nil {
 				tf.Pos = Vec2{X: float64(cell.X), Y: float64(cell.Y)}
 				bot.TargetPos = cell
 			}
 		} else if !pathCrossesObstacle(bot.Path, tf.Size, obs) {
 			continue
 		}
-		bot.Path, bot.Mode = nil, IDLE
+		if moving {
+			ms.motion[slot].Mode = IDLE
+		}
+		bot.Path = nil
 		bot.CurrentTargetPlayer = 0
-		bot.lastPursuitTargetPos = PointI{-1, -1}
+		bot.lastPursuitTargetPos = Cell{-1, -1}
 	}
 }
 
-func obstaclePushCell(ms *MapState, obs, entity Transform, direction Direction) (PointI, error) {
+func obstaclePushCell(ms *MapState, obs, entity Transform, direction Direction) (Cell, error) {
 	center := Vec2{X: obs.Pos.X + obs.Size.X*0.5, Y: obs.Pos.Y + obs.Size.Y*0.5}
 	dx := entity.Pos.X + entity.Size.X*0.5 - center.X
 	dy := entity.Pos.Y + entity.Size.Y*0.5 - center.Y
@@ -434,7 +444,7 @@ func obstaclePushCell(ms *MapState, obs, entity Transform, direction Direction) 
 	}
 	x := center.X + dx*scale - entity.Size.X*0.5
 	y := center.Y + dy*scale - entity.Size.Y*0.5
-	cell := PointI{X: int(math.Round(x)), Y: int(math.Round(y))}
+	cell := Cell{X: int(math.Round(x)), Y: int(math.Round(y))}
 	if dx > 0 {
 		cell.X = int(math.Ceil(x))
 	} else if dx < 0 {
@@ -449,7 +459,7 @@ func obstaclePushCell(ms *MapState, obs, entity Transform, direction Direction) 
 	return ms.pathfinder.findClosestWalkablePoint(cell, entity.Size)
 }
 
-func pathCrossesObstacle(path []PointI, size Vec2, obs Transform) bool {
+func pathCrossesObstacle(path []Cell, size Vec2, obs Transform) bool {
 	for _, cell := range path {
 		if checkAABBCollision(obs.Pos, obs.Size, Vec2{X: float64(cell.X), Y: float64(cell.Y)}, size) {
 			return true

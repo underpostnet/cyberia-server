@@ -91,10 +91,8 @@ type SnapshotSelf struct {
 	LayerStats     [StatCount]int `json:"layerStats"`
 	TemporaryStats [StatCount]int `json:"temporaryStats"`
 
-	MapCode    string   `json:"mapCode"`
-	Path       []PointI `json:"path"`
-	TargetPosX int      `json:"targetPosX"`
-	TargetPosY int      `json:"targetPosY"`
+	MapCode string `json:"mapCode"`
+	Path    []Cell `json:"path"`
 
 	CoinBalance uint32 `json:"coinBalance"`
 	// Inventory carries every visible layer, active and inactive.
@@ -207,19 +205,23 @@ func msUntil(t time.Time) int {
 	return int((left + time.Millisecond - 1) / time.Millisecond)
 }
 
-// baseEntity fills the fields every entity carries: its data, transform and
-// active layers.
-func baseEntity(ms *MapState, id EntityID, dir Direction, mode ObjectLayerMode) SnapshotEntity {
+// baseEntity fills the fields every entity carries: its data, transform,
+// motion and active layers. An entity with no motion faces NONE and idles.
+func baseEntity(ms *MapState, id EntityID) SnapshotEntity {
 	slot := ms.slot(id)
 	data := ms.data[slot]
+	motion := Motion{Direction: NONE, Mode: IDLE}
+	if ms.mask[slot]&maskMotion != 0 {
+		motion = ms.motion[slot]
+	}
 	return SnapshotEntity{
 		ID:        id,
 		Kind:      data.Kind,
 		DrawOrder: data.DrawOrder,
 		Flags:     data.Flags,
 		Transform: ms.transform[slot],
-		Direction: int(dir),
-		Mode:      int(mode),
+		Direction: int(motion.Direction),
+		Mode:      int(motion.Mode),
 		Layers:    activeLayers(ms.appearance[slot].Layers),
 	}
 }
@@ -288,7 +290,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		if op.ID == player.ID || !inAOI(op.ID) {
 			continue
 		}
-		e := baseEntity(mapState, op.ID, op.Direction, op.Mode)
+		e := baseEntity(mapState, op.ID)
 		e.setVitals(mapState.vt(op.ID))
 		s.snapshotStats(&e, op, mapState)
 		s.snapshotPortalHold(&e, op)
@@ -308,7 +310,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 			floors = append(floors, i)
 			continue
 		}
-		e := baseEntity(mapState, id, NONE, IDLE)
+		e := baseEntity(mapState, id)
 		// A destructible obstacle adds its vitals; an ordinary obstacle sends maxLife 0.
 		if mapState.mask[i]&maskVitals != 0 {
 			e.setVitals(&mapState.vitals[i])
@@ -332,7 +334,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		return mapState.ids[i] < mapState.ids[j]
 	})
 	for _, i := range floors {
-		snap.Entities = append(snap.Entities, baseEntity(mapState, mapState.ids[i], NONE, IDLE))
+		snap.Entities = append(snap.Entities, baseEntity(mapState, mapState.ids[i]))
 	}
 
 	// Portals
@@ -340,7 +342,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		if !inAOI(p.ID) {
 			continue
 		}
-		e := baseEntity(mapState, p.ID, NONE, IDLE)
+		e := baseEntity(mapState, p.ID)
 		if p.PortalConfig != nil {
 			e.TargetMapCode = p.PortalConfig.DestMapCode
 			e.TargetCellX = int(p.PortalConfig.DestCellX)
@@ -360,7 +362,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		if !inAOI(r.ID) {
 			continue
 		}
-		e := baseEntity(mapState, r.ID, NONE, IDLE)
+		e := baseEntity(mapState, r.ID)
 		e.setVitals(mapState.vt(r.ID))
 		s.snapshotStats(&e, r, mapState)
 		e.StatusIcon = ResourceStatusIcon(mapState.vt(r.ID))
@@ -372,7 +374,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		if !inAOI(b.ID) {
 			continue
 		}
-		e := baseEntity(mapState, b.ID, b.Direction, b.Mode)
+		e := baseEntity(mapState, b.ID)
 		e.setVitals(mapState.vt(b.ID))
 		s.snapshotStats(&e, b, mapState)
 		e.StatusIcon = BotStatusIcon(b, mapState.vt(b.ID))
@@ -415,7 +417,7 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 	progression := s.entityProgression(player)
 
 	self := SnapshotSelf{
-		SnapshotEntity: baseEntity(mapState, player.ID, player.Direction, player.Mode),
+		SnapshotEntity: baseEntity(mapState, player.ID),
 		AoiMinX:        player.AOI.MinX,
 		AoiMinY:        player.AOI.MinY,
 		AoiMaxX:        player.AOI.MaxX,
@@ -427,10 +429,8 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 		LayerStats:     wholeStats(breakdown.Layers),
 		TemporaryStats: wholeStats(breakdown.Temporary),
 
-		MapCode:    player.MapCode,
-		Path:       player.Path,
-		TargetPosX: player.TargetPos.X,
-		TargetPosY: player.TargetPos.Y,
+		MapCode: player.MapCode,
+		Path:    player.Path,
 		// player.Coins is the canonical flat balance — read it directly.
 		CoinBalance:      player.Coins,
 		Inventory:        s.visibleInventory(mapState.ap(player.ID).Layers),

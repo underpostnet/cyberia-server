@@ -104,11 +104,11 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// fixed spawn (Random=false) on a loaded map with a walkable cell is honoured
 	// verbatim; anything else falls back to a random walkable cell on a random map.
 	startMapCode := ""
-	fixedPos := PointI{}
+	fixedPos := Cell{}
 	hasFixedPos := false
 	if !s.playerSpawn.Random && s.playerSpawn.MapCode != "" {
 		if ms, ok := s.maps[s.playerSpawn.MapCode]; ok {
-			cell := PointI{X: s.playerSpawn.CellX, Y: s.playerSpawn.CellY}
+			cell := Cell{X: s.playerSpawn.CellX, Y: s.playerSpawn.CellY}
 			if ms.pathfinder.isWalkable(cell.X, cell.Y, playerDims) {
 				startMapCode = s.playerSpawn.MapCode
 				fixedPos = cell
@@ -149,10 +149,8 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		},
 		EngineID:  uuid.New().String(),
 		MapCode:   startMapCode,
-		Path:      []PointI{},
-		TargetPos: PointI{-1, -1},
-		Direction: NONE,
-		Mode:      IDLE,
+		Path:      []Cell{},
+		TargetPos: Cell{-1, -1},
 		LifeRegen: lifeRegen,
 	}
 	client := &Client{
@@ -176,6 +174,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		Size: playerDims,
 	}, Appearance{Layers: playerOLs})
 	startMapState.addVitals(playerID, Vitals{MaxLife: s.entityBaseMaxLife})
+	startMapState.addMotion(playerID, Motion{Direction: NONE, Mode: IDLE})
 
 	// Economy: credit the player's starting wallet (Fountain: playerSpawnCoins).
 	s.FountainInitPlayer(playerState)
@@ -187,7 +186,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 
 	// Every join spawns frozen. The client loading overlay is its first open
 	// modal; Tap-to-Start closes it and sends player_stasis false.
-	FreezePlayer(playerState)
+	FreezePlayer(playerState, startMapState)
 
 	// InitPayload is strictly simulation/protocol. Zero presentation: no
 	// palette, no camera, no devUi, no status-icon visuals, no screen

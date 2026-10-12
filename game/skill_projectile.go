@@ -33,12 +33,12 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 		casterID = e.ID
 		mapCode = e.MapCode
 		casterPos = ctx.MapState.tf(e.ID).Pos
-		casterDir = e.Direction
+		casterDir = ctx.MapState.mo(e.ID).Direction
 	case *BotState:
 		casterID = e.ID
 		mapCode = e.MapCode
 		casterPos = ctx.MapState.tf(e.ID).Pos
-		casterDir = e.Direction
+		casterDir = ctx.MapState.mo(e.ID).Direction
 	}
 
 	// Calculate direction from caster to target.
@@ -89,7 +89,6 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 		},
 		MapCode:   mapCode,
 		Behavior:  BehaviorSkill,
-		Direction: projectileDirection,
 		ExpiresAt: time.Now().Add(projectileLifetime),
 		CasterID:  casterID,
 		// One-shot palette lookup at spawn; sim never re-reads.
@@ -98,6 +97,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 	ctx.MapState.bots[projectileBot.ID] = projectileBot
 	ctx.MapState.spawn(projectileBot.ID, EntityData{Kind: EntityBot}, Transform{Pos: Vec2{X: spawnX, Y: spawnY}, Size: projectileDims}, Appearance{Layers: projectileOLs})
 	ctx.MapState.addVitals(projectileBot.ID, Vitals{MaxLife: projectileBaseLife, Life: projectileBaseLife})
+	ctx.MapState.addMotion(projectileBot.ID, Motion{Direction: projectileDirection})
 	s.ApplyResistanceStat(projectileBot, ctx.MapState)
 	ctx.MapState.vt(projectileBot.ID).Life = ctx.MapState.vt(projectileBot.ID).MaxLife
 }

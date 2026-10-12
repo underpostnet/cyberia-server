@@ -32,6 +32,7 @@ func movementFixture(t *testing.T) (*GameServer, *MapState, *PlayerState) {
 	mapState.players[player.ID] = player
 	mapState.spawn(player.ID, EntityData{Kind: EntityPlayer}, Transform{Pos: Vec2{X: 1, Y: 1}, Size: Vec2{X: 1, Y: 1}}, Appearance{})
 	mapState.addVitals(player.ID, Vitals{Life: 100, MaxLife: 100})
+	mapState.addMotion(player.ID, Motion{Direction: NONE, Mode: IDLE})
 
 	return s, mapState, player
 }
@@ -83,8 +84,8 @@ func TestTapReplansOnTheSameTick(t *testing.T) {
 
 	tapTick(s, mapState, player, tap(7, 10, 10))
 
-	if player.Mode != WALKING {
-		t.Fatalf("mode = %v, want WALKING", player.Mode)
+	if mapState.mo(player.ID).Mode != WALKING {
+		t.Fatalf("mode = %v, want WALKING", mapState.mo(player.ID).Mode)
 	}
 	if player.TargetPos.X != 10 || player.TargetPos.Y != 10 {
 		t.Fatalf("target = %v, want (10,10)", player.TargetPos)
@@ -155,7 +156,7 @@ func TestRepeatOfTheCurrentTargetSkipsThePathfinder(t *testing.T) {
 
 	tapTick(s, mapState, player, tap(1, 10, 10))
 
-	sentinel := []PointI{{X: 42, Y: 42}}
+	sentinel := []Cell{{X: 42, Y: 42}}
 	player.Path = sentinel
 
 	tapTick(s, mapState, player, tap(2, 10, 10))
@@ -174,7 +175,7 @@ func TestFrozenPlayerNeverPlansMovement(t *testing.T) {
 
 	tapTick(s, mapState, player, tap(1, 10, 10))
 
-	if player.Mode == WALKING {
+	if mapState.mo(player.ID).Mode == WALKING {
 		t.Fatal("mode = WALKING — a frozen player does not move")
 	}
 	if player.HasPendingMove {

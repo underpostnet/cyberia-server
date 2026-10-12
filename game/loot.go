@@ -190,8 +190,6 @@ func (s *GameServer) newLootToken(mapCode string, itemID string, quantity int) *
 		EntityBase:   EntityBase{ID: s.newEntityID()},
 		MapCode:      mapCode,
 		Behavior:     BehaviorDrop,
-		Direction:    NONE,
-		Mode:         IDLE,
 		DropItemID:   itemID,
 		DropQuantity: quantity,
 	}
@@ -222,7 +220,7 @@ func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center V
 	// so drops feel randomly flung rather than evenly ringed.
 	roll := rand.Float64()
 	dist := lootScatterMinCells + roll*roll*(lootScatterMaxCells-lootScatterMinCells)
-	targetCell := PointI{
+	targetCell := Cell{
 		X: int(math.Round(center.X + math.Cos(angle)*dist)),
 		Y: int(math.Round(center.Y + math.Sin(angle)*dist)),
 	}
@@ -243,6 +241,7 @@ func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center V
 	mapState.bots[drop.ID] = drop
 	mapState.spawn(drop.ID, EntityData{Kind: EntityBot}, Transform{Pos: pos, Size: tokenDims}, lootAppearance(itemID, quantity))
 	mapState.addVitals(drop.ID, Vitals{MaxLife: s.entityBaseMaxLife, Life: s.entityBaseMaxLife})
+	mapState.addMotion(drop.ID, Motion{Direction: NONE, Mode: IDLE})
 
 	// Announce the launch so viewers play the corpse→cell parabola. The landing
 	// point is the token center.
@@ -253,7 +252,7 @@ func (s *GameServer) spawnDropToken(mapState *MapState, mapCode string, center V
 // clampDropCell keeps a scatter target inside the grid and on a walkable cell,
 // falling back to the closest walkable point (then the raw cell) so a drop is
 // never lost to an obstacle.
-func (s *GameServer) clampDropCell(mapState *MapState, cell PointI, dims Vec2) PointI {
+func (s *GameServer) clampDropCell(mapState *MapState, cell Cell, dims Vec2) Cell {
 	if cell.X < 0 {
 		cell.X = 0
 	} else if cell.X >= mapState.gridW {

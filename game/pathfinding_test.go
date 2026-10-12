@@ -23,7 +23,7 @@ func splitGrid(size int) *Pathfinder {
 func TestAstarFindsShortestPath(t *testing.T) {
 	pf := openGrid(20)
 
-	straight, err := pf.Astar(PointI{0, 0}, PointI{9, 0}, unitDims)
+	straight, err := pf.Astar(Cell{0, 0}, Cell{9, 0}, unitDims)
 	if err != nil {
 		t.Fatalf("open grid must have a path: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestAstarFindsShortestPath(t *testing.T) {
 	}
 
 	// 8-connected movement: the diagonal costs the same as a straight step.
-	diagonal, err := pf.Astar(PointI{0, 0}, PointI{5, 5}, unitDims)
+	diagonal, err := pf.Astar(Cell{0, 0}, Cell{5, 5}, unitDims)
 	if err != nil {
 		t.Fatalf("diagonal must have a path: %v", err)
 	}
@@ -43,14 +43,14 @@ func TestAstarFindsShortestPath(t *testing.T) {
 
 func TestAstarPathIsContiguousAndWalkable(t *testing.T) {
 	pf := splitGrid(30)
-	path, err := pf.Astar(PointI{2, 2}, PointI{12, 25}, unitDims)
+	path, err := pf.Astar(Cell{2, 2}, Cell{12, 25}, unitDims)
 	if err != nil {
 		t.Fatalf("target on the near side must be reachable: %v", err)
 	}
-	if path[0] != (PointI{2, 2}) {
+	if path[0] != (Cell{2, 2}) {
 		t.Fatalf("path must start at the origin, got %v", path[0])
 	}
-	if path[len(path)-1] != (PointI{12, 25}) {
+	if path[len(path)-1] != (Cell{12, 25}) {
 		t.Fatalf("path must end at the target, got %v", path[len(path)-1])
 	}
 	for i, cell := range path {
@@ -69,7 +69,7 @@ func TestAstarPathIsContiguousAndWalkable(t *testing.T) {
 
 func TestAstarReportsUnreachableTarget(t *testing.T) {
 	pf := splitGrid(30)
-	if _, err := pf.Astar(PointI{2, 2}, PointI{25, 15}, unitDims); err == nil {
+	if _, err := pf.Astar(Cell{2, 2}, Cell{25, 15}, unitDims); err == nil {
 		t.Fatal("a walled-off target must return an error, not a path")
 	}
 }
@@ -80,12 +80,12 @@ func TestAstarRejectsOffGridEndpoints(t *testing.T) {
 	pf := openGrid(20)
 	for _, c := range []struct {
 		name       string
-		start, end PointI
+		start, end Cell
 	}{
-		{"end far positive", PointI{1, 1}, PointI{1 << 20, 1 << 20}},
-		{"end negative", PointI{1, 1}, PointI{-5, -5}},
-		{"start off grid", PointI{-1, 0}, PointI{5, 5}},
-		{"end just past the edge", PointI{1, 1}, PointI{20, 20}},
+		{"end far positive", Cell{1, 1}, Cell{1 << 20, 1 << 20}},
+		{"end negative", Cell{1, 1}, Cell{-5, -5}},
+		{"start off grid", Cell{-1, 0}, Cell{5, 5}},
+		{"end just past the edge", Cell{1, 1}, Cell{20, 20}},
 	} {
 		if _, err := pf.Astar(c.start, c.end, unitDims); err == nil {
 			t.Fatalf("%s: must be rejected", c.name)
@@ -98,14 +98,14 @@ func TestAstarRejectsOffGridEndpoints(t *testing.T) {
 func TestAstarRepeatedSearchesStayCorrect(t *testing.T) {
 	pf := splitGrid(24)
 	for i := 0; i < 50; i++ {
-		if _, err := pf.Astar(PointI{1, 1}, PointI{20, 12}, unitDims); err == nil {
+		if _, err := pf.Astar(Cell{1, 1}, Cell{20, 12}, unitDims); err == nil {
 			t.Fatalf("run %d: unreachable target must stay unreachable", i)
 		}
-		path, err := pf.Astar(PointI{1, 1}, PointI{10, 20}, unitDims)
+		path, err := pf.Astar(Cell{1, 1}, Cell{10, 20}, unitDims)
 		if err != nil {
 			t.Fatalf("run %d: reachable target must stay reachable: %v", i, err)
 		}
-		if path[len(path)-1] != (PointI{10, 20}) {
+		if path[len(path)-1] != (Cell{10, 20}) {
 			t.Fatalf("run %d: wrong endpoint %v", i, path[len(path)-1])
 		}
 	}
@@ -122,12 +122,12 @@ func TestAstarWorstCaseFitsTheTickBudget(t *testing.T) {
 	dims := Vec2{X: 2, Y: 2}
 
 	// Warm the scratch buffers so the first allocation is not measured.
-	pf.Astar(PointI{2, 2}, PointI{95, 50}, dims)
+	pf.Astar(Cell{2, 2}, Cell{95, 50}, dims)
 
 	start := time.Now()
 	const runs = 20
 	for i := 0; i < runs; i++ {
-		pf.Astar(PointI{2, 2}, PointI{95, 50}, dims)
+		pf.Astar(Cell{2, 2}, Cell{95, 50}, dims)
 	}
 	perCall := time.Since(start) / runs
 
@@ -144,7 +144,7 @@ func TestFindClosestWalkablePointHandlesOffGridInput(t *testing.T) {
 	pf := splitGrid(20)
 
 	// A blocked cell resolves to a walkable neighbour.
-	got, err := pf.findClosestWalkablePoint(PointI{10, 5}, unitDims)
+	got, err := pf.findClosestWalkablePoint(Cell{10, 5}, unitDims)
 	if err != nil {
 		t.Fatalf("a blocked cell must resolve to a neighbour: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestFindClosestWalkablePointHandlesOffGridInput(t *testing.T) {
 	}
 
 	// A point far outside has no in-grid neighbour and must fail fast.
-	if _, err := pf.findClosestWalkablePoint(PointI{1 << 20, 1 << 20}, unitDims); err == nil {
+	if _, err := pf.findClosestWalkablePoint(Cell{1 << 20, 1 << 20}, unitDims); err == nil {
 		t.Fatal("a far off-grid point must not resolve")
 	}
 }

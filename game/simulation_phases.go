@@ -88,7 +88,7 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 		s.handleItemActivationInput(player, cmd)
 	case InputKindPlayerStasis:
 		if cmd.Active {
-			FreezePlayer(player)
+			FreezePlayer(player, mapState)
 		} else {
 			ThawPlayer(player)
 		}
@@ -169,8 +169,8 @@ func (s *GameServer) phaseMovement(tick uint32, mapState *MapState) {
 		// TELEPORTING indefinitely.  The client uses this flag to suppress
 		// pos_prev interpolation on the teleport snapshot, preventing a visible
 		// cross-map lerp.
-		if player.Mode == TELEPORTING {
-			player.Mode = IDLE
+		if mapState.mo(player.ID).Mode == TELEPORTING {
+			mapState.mo(player.ID).Mode = IDLE
 		}
 	}
 }

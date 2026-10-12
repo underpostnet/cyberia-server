@@ -71,6 +71,7 @@ func woundedPlayer(ms *MapState, id EntityID, at Vec2, life float64) *PlayerStat
 	ms.players[id] = player
 	ms.spawn(id, EntityData{Kind: EntityPlayer}, Transform{Pos: at, Size: Vec2{X: 1, Y: 1}}, Appearance{})
 	ms.addVitals(id, Vitals{Life: life, MaxLife: 100})
+	ms.addMotion(id, Motion{})
 	return player
 }
 
