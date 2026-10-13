@@ -2545,7 +2545,7 @@ type EntityTypeDefault struct {
 	DropItemIds []string `protobuf:"bytes,6,rep,name=drop_item_ids,json=dropItemIds,proto3" json:"drop_item_ids,omitempty"`
 	// Canonical entity behavior bound to entities matched by live_item_ids. Empty
 	// lets the runtime derive it (armed → hostile, else passive). See
-	// SharedDefaultsCyberia.ENTITY_BEHAVIORS / game/behavior.go.
+	// SharedDefaultsCyberia.ENTITY_BEHAVIORS / game/content/behavior.go.
 	Behavior      string `protobuf:"bytes,7,opt,name=behavior,proto3" json:"behavior,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
