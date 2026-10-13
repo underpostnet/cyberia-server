@@ -114,6 +114,16 @@ type Content struct {
 	equipmentRules EquipmentRulesConfig
 }
 
+// NewContent returns the content over w with empty caches.
+func NewContent(w *World) *Content {
+	return &Content{
+		World:                w,
+		objectLayerDataCache: make(map[string]*ObjectLayer),
+		skillConfig:          make(map[string][]SkillDefinition),
+		persistQueue:         make(chan persistJob, 256),
+	}
+}
+
 // applyConfig applies the rules and the content of the instance config.
 // Caller holds s.mu.
 func (s *Content) applyConfig(cfg *pb.InstanceConfig, rules ProgressionRules) {

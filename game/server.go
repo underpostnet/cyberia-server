@@ -14,18 +14,12 @@ import (
 // NewGameServer creates an empty game server with no hardcoded defaults.
 // All configuration must be applied via ApplyInstanceConfig from gRPC data.
 func NewGameServer() *GameServer {
-	world := &World{
+	w := &World{
 		maps:     make(map[string]*MapState),
 		sessions: make(map[EntityID]*Session),
 	}
-	content := &Content{
-		World:                world,
-		objectLayerDataCache: make(map[string]*ObjectLayer),
-		skillConfig:          make(map[string][]SkillDefinition),
-		persistQueue:         make(chan persistJob, 256),
-	}
 	gs := &GameServer{
-		Sim:     &Sim{Content: content},
+		Sim:     &Sim{Content: NewContent(w)},
 		clients: make(map[EntityID]*Client),
 		// Buffer register/unregister so HandleConnections never blocks the
 		// HTTP handler goroutine waiting for listenForClients to win the
