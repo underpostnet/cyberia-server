@@ -136,7 +136,7 @@ func TestCraftTimeMsValidatesTheAuthoredDuration(t *testing.T) {
 // The ingredients leave the inventory when the bar starts, so cancelling before
 // the timer elapses has to put every one of them back and pay out nothing.
 func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
-	s := &GameServer{coinItemID: "coin"}
+	s := &GameServer{coinItemID: "coin", crafts: map[EntityID]*ActiveCraft{}}
 	next := EntityID(0)
 	newPlayer := func() *Session {
 		next++
@@ -156,7 +156,7 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 		for _, in := range recipe.Ingredients {
 			s.removePlayerItem(p, in.ItemID, in.Qty)
 		}
-		p.ActiveCraft = &ActiveCraft{
+		s.crafts[p.ID] = &ActiveCraft{
 			Refund:     recipe.Ingredients,
 			Outputs:    recipe.OutputItems,
 			CompleteAt: at,
@@ -169,7 +169,7 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 		t.Fatal("starting an assembly must consume its ingredients up front")
 	}
 	s.handleCraftCancel(cancelled)
-	if cancelled.ActiveCraft != nil {
+	if s.crafts[cancelled.ID] != nil {
 		t.Fatal("cancel must clear the running assembly")
 	}
 	if s.playerItemQuantity(cancelled, "wood-drop-1") != 2 || cancelled.Coins != 5 {
@@ -193,10 +193,10 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 	mapState := s.maps["test"]
 
 	s.completeCrafts(mapState)
-	if pending.ActiveCraft == nil || s.playerItemQuantity(pending, "hatchet") != 0 {
+	if s.crafts[pending.ID] == nil || s.playerItemQuantity(pending, "hatchet") != 0 {
 		t.Fatal("an assembly whose timer has not elapsed must keep running")
 	}
-	if elapsed.ActiveCraft != nil || s.playerItemQuantity(elapsed, "hatchet") != 1 {
+	if s.crafts[elapsed.ID] != nil || s.playerItemQuantity(elapsed, "hatchet") != 1 {
 		t.Fatalf("an elapsed assembly must pay out once, got %d",
 			s.playerItemQuantity(elapsed, "hatchet"))
 	}

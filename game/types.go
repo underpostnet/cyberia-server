@@ -203,12 +203,6 @@ type Session struct {
 	Frozen      bool      `json:"-"`
 	FreezeStart time.Time `json:"-"` // [FREEZE] duration log only
 
-	// ActiveCraft is the assembly currently running for this player, or nil.
-	// A craft consumes its ingredients up front and pays out only when the
-	// timer elapses, so this record is also the refund receipt a cancel needs.
-	// One at a time: assembling is a modal operation.
-	ActiveCraft *ActiveCraft `json:"-"`
-
 	// ── Tick / replication metadata ─────────────────────────────────────────
 	// InputConsumedThrough is the highest InputCommand.Sequence phaseInput has
 	// applied for this player; the snapshot echoes it so the client can drop
@@ -445,6 +439,11 @@ type GameServer struct {
 	// Authoritative for the session; best-effort mirrored to engine-cyberia
 	// quest-progress REST for persistence.
 	quests map[EntityID]map[string]*QuestProgress
+	// crafts is the assembly running for each player. A craft consumes its
+	// ingredients up front and pays out only when the timer elapses, so the
+	// row is also the refund receipt a cancel needs. One at a time:
+	// assembling is a modal operation.
+	crafts map[EntityID]*ActiveCraft
 
 	// Equipment rules — governs activation constraints.
 	equipmentRules EquipmentRulesConfig

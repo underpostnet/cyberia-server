@@ -447,7 +447,7 @@ func (s *GameServer) buildSnapshotSelf(player *Session, mapState *MapState) Snap
 		// player.Coins is the canonical flat balance — read it directly.
 		CoinBalance:      player.Coins,
 		Vaults:           s.playerVaults(player),
-		Craft:            snapshotCraft(player),
+		Craft:            s.snapshotCraft(player),
 		Inventory:        s.visibleInventory(mapState.ap(player.ID).Layers),
 		Frozen:           player.Frozen,
 		MoveSpeed:        s.CalculatePlayerMovementSpeed(stats),

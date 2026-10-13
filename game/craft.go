@@ -92,7 +92,7 @@ func (s *GameServer) handleCraftItem(player *Session, cmd *InputCommand) {
 	if s.vt(player.ID, player.MapCode).ghost() {
 		return
 	}
-	if player.ActiveCraft != nil {
+	if s.crafts[player.ID] != nil {
 		return
 	}
 	id := cmd.EntityID
@@ -119,7 +119,10 @@ func (s *GameServer) handleCraftItem(player *Session, cmd *InputCommand) {
 	}
 
 	durationMs := craftTimeMs(recipe)
-	player.ActiveCraft = &ActiveCraft{
+	if s.crafts == nil {
+		s.crafts = make(map[EntityID]*ActiveCraft)
+	}
+	s.crafts[player.ID] = &ActiveCraft{
 		EntityID:    id,
 		RecipeIndex: cmd.RecipeIndex,
 		Refund:      refund,
@@ -136,11 +139,11 @@ func (s *GameServer) handleCraftItem(player *Session, cmd *InputCommand) {
 //
 // Caller MUST hold s.mu.
 func (s *GameServer) handleCraftCancel(player *Session) {
-	active := player.ActiveCraft
+	active := s.crafts[player.ID]
 	if active == nil {
 		return
 	}
-	player.ActiveCraft = nil
+	delete(s.crafts, player.ID)
 	for _, in := range active.Refund {
 		s.addPlayerItem(player, in.ItemID, in.Qty)
 	}
@@ -154,11 +157,11 @@ func (s *GameServer) handleCraftCancel(player *Session) {
 func (s *GameServer) completeCrafts(mapState *MapState) {
 	now := time.Now()
 	for player := range s.playersOn(mapState) {
-		active := player.ActiveCraft
+		active := s.crafts[player.ID]
 		if active == nil || now.Before(active.CompleteAt) {
 			continue
 		}
-		player.ActiveCraft = nil
+		delete(s.crafts, player.ID)
 		for _, out := range active.Outputs {
 			s.addPlayerItem(player, out.ItemID, out.Qty)
 		}
@@ -177,8 +180,8 @@ type SnapshotCraft struct {
 }
 
 // snapshotCraft is the player's running assembly, or nil when none runs.
-func snapshotCraft(player *Session) *SnapshotCraft {
-	active := player.ActiveCraft
+func (s *GameServer) snapshotCraft(player *Session) *SnapshotCraft {
+	active := s.crafts[player.ID]
 	if active == nil {
 		return nil
 	}

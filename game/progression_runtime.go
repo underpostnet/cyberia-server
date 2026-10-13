@@ -69,6 +69,7 @@ func (s *GameServer) despawn(ms *MapState, id EntityID) {
 	ms.despawn(id)
 	delete(s.progression, id)
 	delete(s.quests, id)
+	delete(s.crafts, id)
 }
 
 // awardProgression runs under the simulation lock after a gameplay result.
