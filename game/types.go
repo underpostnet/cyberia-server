@@ -184,7 +184,7 @@ type Session struct {
 	Path         []Cell    `json:"path"`
 	TargetPos    Cell      `json:"targetPos"`
 	AOI          Rectangle `json:"AOI"`
-	Client       *Client   `json:"-"`
+	Client       Conn      `json:"-"`
 	OnPortal     bool      `json:"onPortal"`
 	TimeOnPortal time.Time `json:"-"`
 	// Coins is the canonical flat coin balance — the single source of truth
@@ -292,6 +292,11 @@ type MapState struct {
 
 	mortals map[EntityID]*Mortal
 	brains  map[EntityID]*Brain
+}
+
+// Conn is the link of a session to its client.
+type Conn interface {
+	Send(msgType string, payload any)
 }
 
 type Client struct {

@@ -260,7 +260,14 @@ func (s *GameServer) detachClient(client *Client) {
 // sendMessage packs a message and queues it for the player. The send never
 // blocks: a full queue drops the message.
 func sendMessage(player *Session, msgType string, payload any) {
-	if player == nil || player.Client == nil || player.Client.sock == nil {
+	if player != nil && player.Client != nil {
+		player.Client.Send(msgType, payload)
+	}
+}
+
+// Send packs one message and queues it on the socket.
+func (c *Client) Send(msgType string, payload any) {
+	if c.sock == nil {
 		return
 	}
 	pack, err := serial.Pack(msgType, payload)
@@ -268,8 +275,8 @@ func sendMessage(player *Session, msgType string, payload any) {
 		logx.Errorf("[sendMessage] pack %q failed: %v", msgType, err)
 		return
 	}
-	if !player.Client.sock.Send(pack) {
-		logx.Debugf("Client %s queue full — dropped %q.", player.ID, msgType)
+	if !c.sock.Send(pack) {
+		logx.Debugf("Client %s queue full — dropped %q.", c.playerID, msgType)
 	}
 }
 
