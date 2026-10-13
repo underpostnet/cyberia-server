@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"testing"
 
-	"cyberia-server/game"
+	"cyberia-server/game/net"
 )
 
 // The identity the engine computes for the contract definition: a change to its canonical
@@ -126,7 +126,7 @@ func TestRestClientSignedObjectLayer(t *testing.T) {
 }
 
 // The definition the engine serves and the metadata the client parses name one identity: the
-// WebSocket fixture the client is tested against is `game.OLMeta` of the REST fixture.
+// WebSocket fixture the client is tested against is `net.OLMeta` of the REST fixture.
 func TestObjectLayerIdentityReachesTheClient(t *testing.T) {
 	server := httptest.NewServer(fixtureHandler(t, map[string]string{
 		restBootPath + "/object-layer/sword": "testdata/boot_object_layer.json",
@@ -146,7 +146,7 @@ func TestObjectLayerIdentityReachesTheClient(t *testing.T) {
 		t.Fatalf("unregistered definition carries a ledger: %+v", layer.Data.Ledger)
 	}
 
-	sent, err := json.Marshal(map[string]*game.OLMeta{
+	sent, err := json.Marshal(map[string]*net.OLMeta{
 		layer.Data.Item.ID: {Cid: layer.Cid, Data: layer.Data},
 	})
 	if err != nil {

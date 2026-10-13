@@ -1,4 +1,4 @@
-package game
+package net
 
 import (
 	"encoding/json"
@@ -10,8 +10,6 @@ import (
 	"cyberia-server/game/sim"
 	"cyberia-server/game/world"
 	"cyberia-server/logx"
-	"cyberia-server/serial"
-	"cyberia-server/socket"
 
 	"github.com/google/uuid"
 )
@@ -82,7 +80,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	conn, err := socket.Upgrader.Upgrade(w, r, nil)
+	conn, err := Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		logx.Debugf("Upgrade failed: %v", err)
 		releaseSlot()
@@ -154,7 +152,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 	client := &Client{
 		playerID: playerID,
-		sock: socket.New(conn, socket.Metrics{
+		sock: NewSocket(conn, Metrics{
 			Read:       s.recordWsRead,
 			Write:      s.recordWsWrite,
 			ReadError:  s.recordWsReadError,
@@ -265,7 +263,7 @@ func (c *Client) Send(msgType string, payload any) {
 	if c.sock == nil {
 		return
 	}
-	pack, err := serial.Pack(msgType, payload)
+	pack, err := Pack(msgType, payload)
 	if err != nil {
 		logx.Errorf("[sendMessage] pack %q failed: %v", msgType, err)
 		return
@@ -340,7 +338,7 @@ type inputPayload struct {
 
 // eventsPayload is the payload of "events", the one uplink input message.
 type eventsPayload struct {
-	Events []serial.Message `json:"events"`
+	Events []Message `json:"events"`
 }
 
 // receiveMessage is the single client → server dispatch point. A message is a
@@ -361,7 +359,7 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 		return
 	}
 
-	msg, err := serial.Unpack(pack)
+	msg, err := Unpack(pack)
 	if err == nil && msg.Type == "handshake" {
 		return // already authenticated upstream; nothing to do
 	}

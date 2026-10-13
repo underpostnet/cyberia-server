@@ -1,4 +1,4 @@
-package game
+package net
 
 import (
 	"encoding/json"
@@ -12,7 +12,6 @@ import (
 	"cyberia-server/game/content"
 	"cyberia-server/game/sim"
 	"cyberia-server/game/world"
-	"cyberia-server/serial"
 
 	"github.com/gorilla/websocket"
 )
@@ -96,7 +95,7 @@ func readInitData(t *testing.T, conn *websocket.Conn) InitPayload {
 		if err != nil {
 			t.Fatalf("read init_data: %v", err)
 		}
-		msg, err := serial.Unpack(raw)
+		msg, err := Unpack(raw)
 		if err != nil {
 			continue
 		}
@@ -118,13 +117,13 @@ func packEvents(t *testing.T, eventType string, payloads ...map[string]any) []by
 	t.Helper()
 	events := make([]json.RawMessage, 0, len(payloads))
 	for _, payload := range payloads {
-		event, err := serial.Pack(eventType, payload)
+		event, err := Pack(eventType, payload)
 		if err != nil {
 			t.Fatalf("pack %s: %v", eventType, err)
 		}
 		events = append(events, event)
 	}
-	pack, err := serial.Pack("events", map[string]any{"events": events})
+	pack, err := Pack("events", map[string]any{"events": events})
 	if err != nil {
 		t.Fatalf("pack events: %v", err)
 	}

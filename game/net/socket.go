@@ -1,6 +1,8 @@
-// Package socket moves bytes on one WebSocket connection.
-// It never parses or builds messages — that is the job of package serial.
-package socket
+// Package net — socket.go
+//
+// The socket moves bytes on one WebSocket connection. It never parses or
+// builds messages — that is the job of serial.go.
+package net
 
 import (
 	"net/http"
@@ -15,7 +17,7 @@ const (
 	sendQueue = 256
 	// readLimit bounds one inbound client frame: one batch of client events.
 	// It holds a full batch of 512 taps, so a batch over the cap reaches the
-	// cap check in game.receiveMessage instead of the socket.
+	// cap check in receiveMessage instead of the socket.
 	readLimit    = 64 * 1024
 	readTimeout  = 60 * time.Second
 	writeTimeout = 10 * time.Second
@@ -55,8 +57,8 @@ type Socket struct {
 	drops atomic.Uint32
 }
 
-// New starts the write pump for an accepted connection.
-func New(conn *websocket.Conn, metrics Metrics) *Socket {
+// NewSocket starts the write pump for an accepted connection.
+func NewSocket(conn *websocket.Conn, metrics Metrics) *Socket {
 	conn.EnableWriteCompression(true)
 	s := &Socket{conn: conn, send: make(chan []byte, sendQueue), metrics: metrics}
 	go s.writePump()

@@ -1,4 +1,4 @@
-package game
+package net
 
 import (
 	"fmt"
@@ -11,7 +11,6 @@ import (
 	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 	"cyberia-server/logx"
-	"cyberia-server/socket"
 )
 
 // NewGameServer creates an empty game server with no hardcoded defaults.
@@ -203,7 +202,7 @@ func (s *GameServer) GetConnectedClientsCount() int {
 }
 
 type Client struct {
-	sock        *socket.Socket
+	sock        *Socket
 	playerID    world.EntityID
 	playerState *world.Session
 

@@ -1,6 +1,8 @@
-// Package serial packs objects to bytes and unpacks bytes to objects.
+// Package net — serial.go
+//
+// serial.go packs objects to bytes and unpacks bytes to objects.
 // Every WebSocket message uses the same JSON envelope, in both directions.
-package serial
+package net
 
 import "encoding/json"
 

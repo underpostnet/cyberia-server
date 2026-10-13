@@ -15,7 +15,7 @@ import (
 	api "cyberia-server/api"
 	"cyberia-server/config"
 	"cyberia-server/engine_client"
-	game "cyberia-server/game"
+	gamenet "cyberia-server/game/net"
 	"cyberia-server/hotreload"
 	"cyberia-server/httpserver"
 	"cyberia-server/httpserver/problem"
@@ -109,9 +109,9 @@ func main() {
 	}
 
 	// Core game server
-	s := game.NewGameServer()
+	s := gamenet.NewGameServer()
 
-	limits := game.ResolveConnectionLimits(game.ConnectionLimitOverrides{
+	limits := gamenet.ResolveConnectionLimits(gamenet.ConnectionLimitOverrides{
 		DisableAll:          cfg.WSLimits.DisableAll,
 		MaxConnections:      cfg.WSLimits.MaxConnections,
 		MaxConnectionsPerIP: cfg.WSLimits.MaxConnectionsPerIP,

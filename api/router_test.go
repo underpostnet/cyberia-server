@@ -5,11 +5,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	game "cyberia-server/game"
+	"cyberia-server/game/net"
 )
 
 func TestReadinessFailsWhileTheServerDrains(t *testing.T) {
-	gs := game.NewGameServer()
+	gs := net.NewGameServer()
 	handler := readinessHandlerFor(gs)
 
 	rec := httptest.NewRecorder()

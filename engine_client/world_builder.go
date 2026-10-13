@@ -14,7 +14,7 @@ import (
 	"cyberia-server/game/content"
 	"cyberia-server/logx"
 
-	game "cyberia-server/game"
+	"cyberia-server/game/net"
 	pb "cyberia-server/gen/proto"
 )
 
@@ -23,7 +23,7 @@ import (
 type WorldBuilder struct {
 	mu     sync.Mutex
 	client DataSource
-	server *game.GameServer
+	server *net.GameServer
 
 	// InstanceCode is the INSTANCE_CODE to query from the Engine.
 	InstanceCode string
@@ -38,7 +38,7 @@ type WorldBuilder struct {
 }
 
 // NewWorldBuilder creates a WorldBuilder bound to the given data source + server.
-func NewWorldBuilder(client DataSource, server *game.GameServer) *WorldBuilder {
+func NewWorldBuilder(client DataSource, server *net.GameServer) *WorldBuilder {
 	return &WorldBuilder{
 		client:   client,
 		server:   server,

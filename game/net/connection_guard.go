@@ -1,4 +1,4 @@
-// Package game — connection_guard.go
+// Package net — connection_guard.go
 //
 // Admission control and abuse limits for the WebSocket endpoint.
 //
@@ -20,7 +20,7 @@
 // triggered), so a fast human peaks near 10 taps per second. UI actions
 // (freeze, equip, dialogue, storage) are human paced and much rarer.
 
-package game
+package net
 
 import (
 	"net"

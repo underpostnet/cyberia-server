@@ -1,4 +1,4 @@
-package serial
+package net
 
 import (
 	"encoding/json"

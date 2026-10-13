@@ -34,7 +34,7 @@ import (
 	"sync"
 	"time"
 
-	game "cyberia-server/game"
+	"cyberia-server/game/net"
 	"cyberia-server/httpserver/problem"
 
 	"github.com/go-chi/chi/v5"
@@ -122,7 +122,7 @@ type WebSocketServerMetrics struct {
 
 // RuntimeMetrics combines simulation cadence with Go process telemetry.
 type RuntimeMetrics struct {
-	game.RuntimeMetricsSnapshot
+	net.RuntimeMetricsSnapshot
 	GoVersion    string `json:"go_version"`
 	NumGoroutine int    `json:"num_goroutine"`
 	NumCPU       int    `json:"num_cpu"`
@@ -143,14 +143,14 @@ type MetricsResponse struct {
 	WebSocket         WebSocketServerMetrics `json:"websocket"`
 	Workload          WorkloadMetrics        `json:"workload"`
 	Runtime           RuntimeMetrics         `json:"runtime"`
-	Maps              []game.MapBreakdown    `json:"maps"`
+	Maps              []net.MapBreakdown     `json:"maps"`
 }
 
 // MetricsHandler owns the metrics endpoints. It is safe for concurrent
 // use; per-request reads are coordinated by h.mu, while heavy world
 // reads are delegated to GameServer methods (which take their own lock).
 type MetricsHandler struct {
-	gameServer *game.GameServer
+	gameServer *net.GameServer
 
 	mu              sync.RWMutex
 	serverStartTime time.Time
@@ -165,7 +165,7 @@ type MetricsHandler struct {
 }
 
 // NewMetricsHandler wires a MetricsHandler to a GameServer.
-func NewMetricsHandler(gs *game.GameServer, instanceCode string) *MetricsHandler {
+func NewMetricsHandler(gs *net.GameServer, instanceCode string) *MetricsHandler {
 	return &MetricsHandler{
 		gameServer:                  gs,
 		serverStartTime:             time.Now(),

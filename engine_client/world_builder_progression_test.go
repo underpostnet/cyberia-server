@@ -6,8 +6,8 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"cyberia-server/game"
 	"cyberia-server/game/content"
+	"cyberia-server/game/net"
 	pb "cyberia-server/gen/proto"
 )
 
@@ -21,7 +21,7 @@ func (source *progressionDataSource) FetchFullInstance(context.Context, string) 
 }
 
 func TestReloadRejectsInvalidStatsBeforeMutationAndAllowsRetry(t *testing.T) {
-	server := game.NewGameServer()
+	server := net.NewGameServer()
 	if err := server.ReplaceObjectLayerCache(map[string]*content.ObjectLayer{
 		"sword": {Data: content.ObjectLayerData{Stats: content.Stats{Effect: -100}}},
 	}); err != nil {

@@ -1,5 +1,5 @@
 // Snapshots carry authoritative state. Passive objects omit progression fields.
-package game
+package net
 
 import (
 	"math"

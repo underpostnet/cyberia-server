@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"cyberia-server/config"
-	game "cyberia-server/game"
+	"cyberia-server/game/net"
 	"cyberia-server/hotreload"
 	"cyberia-server/httpserver"
 	"cyberia-server/httpserver/problem"
@@ -20,7 +20,7 @@ import (
 // pass an InstanceCode and an explicit AllowedOrigins list (typically
 // from CYBERIA_CORS_ALLOWED_ORIGINS).
 type RouterOptions struct {
-	GameServer   *game.GameServer
+	GameServer   *net.GameServer
 	InstanceCode string
 	// HotReload mounts the internal reload trigger when non-nil.
 	HotReload      *hotreload.Service
@@ -81,7 +81,7 @@ func livenessHandler(w http.ResponseWriter, r *http.Request) {
 
 // readinessHandlerFor reports 503 with a problem+json envelope until the
 // GameServer has at least one map loaded, and again once it drains.
-func readinessHandlerFor(gs *game.GameServer) http.HandlerFunc {
+func readinessHandlerFor(gs *net.GameServer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if gs == nil || !gs.HasMaps() {
 			problem.Write(w, r, problem.ServiceUnavailable("game world not yet loaded"))
