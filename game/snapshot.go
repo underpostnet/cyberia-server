@@ -204,8 +204,8 @@ func (s *GameServer) snapshotStats(snapshot *SnapshotEntity, ms *world.MapState)
 // portalHoldTime elapsed. checkPortal clears OnPortal for a ghost.
 func (s *GameServer) snapshotPortalHold(e *SnapshotEntity, player *world.Session) {
 	e.OnPortal = player.OnPortal
-	if player.OnPortal && s.portalHoldTime > 0 {
-		e.PortalHoldProgress = min(max(time.Since(player.TimeOnPortal).Seconds()/s.portalHoldTime.Seconds(), 0), 1)
+	if player.OnPortal && s.PortalHoldTime > 0 {
+		e.PortalHoldProgress = min(max(time.Since(player.TimeOnPortal).Seconds()/s.PortalHoldTime.Seconds(), 0), 1)
 	}
 }
 

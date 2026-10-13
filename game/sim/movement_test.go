@@ -1,4 +1,4 @@
-package game
+package sim
 
 import (
 	"testing"
@@ -48,7 +48,7 @@ func (nopConn) Send(string, any) {}
 // path that re-plans movement.
 func tapTick(s *Sim, mapState *world.MapState, player *world.Session, taps ...world.InputCommand) {
 	world.EnqueueInputs(player, taps)
-	s.phaseInput(0, mapState)
+	s.PhaseInput(0, mapState)
 }
 
 func tap(seq uint32, x, y float64) world.InputCommand {
@@ -117,7 +117,7 @@ func TestEnqueueIsNotConsumption(t *testing.T) {
 			player.InputConsumedThrough)
 	}
 
-	s.phaseInput(0, mapState)
+	s.PhaseInput(0, mapState)
 
 	if player.InputConsumedThrough != 2 {
 		t.Fatalf("cursor = %d, want 2 — the tick consumes every command",
@@ -171,24 +171,5 @@ func TestSnapshotActionCooldownAppliesUtility(t *testing.T) {
 	gate := s.CalculateActionCooldown(content.ComputedStats{Utility: 20})
 	if wire := int(gate / time.Millisecond); wire != 400 {
 		t.Fatalf("actionCooldownMs = %d, want 400 (500 ms less 20%% Utility)", wire)
-	}
-}
-
-// The snapshot carries the time left on the shared action cooldown. A tap
-// starts it; it reads 0 once the next tap fires skills again.
-func TestSnapshotActionReadyInFollowsTheSkillGate(t *testing.T) {
-	sim, mapState, player := movementFixture(t)
-	s := &GameServer{Sim: sim}
-
-	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready != 0 {
-		t.Fatalf("actionReadyInMs = %d before any tap, want 0", ready)
-	}
-	s.HandlePlayerTapAction(player, mapState, world.Vec2{X: 2, Y: 2})
-	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready <= 0 || ready > 500 {
-		t.Fatalf("actionReadyInMs = %d after a tap, want 1..500", ready)
-	}
-	mapState.Mt(player.ID).NextSkillAt = time.Now().Add(-time.Millisecond)
-	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready != 0 {
-		t.Fatalf("actionReadyInMs = %d after the cooldown, want 0", ready)
 	}
 }

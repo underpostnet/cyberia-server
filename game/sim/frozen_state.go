@@ -1,4 +1,4 @@
-// Package game — frozen_state.go
+// Package sim — frozen_state.go
 //
 // FrozenInteractionState protects a player while a client modal is open,
 // without a pause of the rest of the real-time sandbox.
@@ -14,7 +14,7 @@
 // sends the flag back as "frozen" in the AOI self-player payload.
 //
 // The caller MUST hold server.mu when calling these functions.
-package game
+package sim
 
 import (
 	"time"

@@ -1,26 +1,28 @@
 package game
 
 import (
-	"cyberia-server/game/world"
 	"testing"
 	"time"
+
+	"cyberia-server/game/world"
+	"cyberia-server/game/world/worldtest"
 )
 
-// holdingFixture is the movement fixture with a 2 s portal hold and a second
+// holdingFixture is a server with a 2 s portal hold, a viewer, and a second
 // player in view that has stood on a portal for 1 s.
 func holdingFixture(t *testing.T) (*GameServer, *world.MapState, *world.Session, *world.Session) {
 	t.Helper()
-	s, ms, viewer := movementFixture(t)
-	s.portalHoldTime = 2 * time.Second
+	s := NewGameServer()
+	s.PortalHoldTime = 2 * time.Second
+	viewer := worldtest.PlacePlayer(s.World, 1, nil)
 	viewer.AOI = world.Rectangle{MaxX: 20, MaxY: 20}
-	traveler := &world.Session{ID: 300, MapCode: viewer.MapCode}
+	traveler := worldtest.PlacePlayer(s.World, 300, nil)
+	ms := worldtest.Map(s.World)
+	*ms.Tf(traveler.ID) = world.Transform{Pos: world.Vec2{X: 5, Y: 5}, Size: world.Vec2{X: 1, Y: 1}}
+	*ms.Vt(traveler.ID) = world.Vitals{Life: 100, MaxLife: 100}
 	traveler.OnPortal = true
 	traveler.TimeOnPortal = time.Now().Add(-time.Second)
-	s.Sessions[traveler.ID] = traveler
-	ms.Spawn(traveler.ID, world.EntityData{Kind: world.EntityPlayer}, world.Transform{Pos: world.Vec2{X: 5, Y: 5}, Size: world.Vec2{X: 1, Y: 1}}, world.Appearance{})
-	ms.AddVitals(traveler.ID, world.Vitals{Life: 100, MaxLife: 100})
-	ms.AddMortal(traveler.ID, &world.Mortal{})
-	return &GameServer{Sim: s}, ms, viewer, traveler
+	return s, ms, viewer, traveler
 }
 
 func TestEveryViewerSeesThePortalHoldOfAPlayer(t *testing.T) {

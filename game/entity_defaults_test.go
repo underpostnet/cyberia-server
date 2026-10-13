@@ -30,7 +30,7 @@ func TestResourceSpawnedFromInstanceConfigCarriesTheOverriddenItem(t *testing.T)
 	})
 
 	mapState := &world.MapState{}
-	server.buildResource(mapState, &pb.EntityMessage{
+	server.BuildResource(mapState, &pb.EntityMessage{
 		ObjectLayerItemIds: []string{"wood-1"},
 		DimX:               2,
 		DimY:               2,
@@ -47,5 +47,19 @@ func TestResourceSpawnedFromInstanceConfigCarriesTheOverriddenItem(t *testing.T)
 	sent := activeLayers(mapState.Ap(spawned).Layers)
 	if len(sent) != 2 || sent[0].ItemID != "wood-1" || sent[1].ItemID != "tim-knife" {
 		t.Fatalf("the client must receive the skin and the item worn over it, got %+v", sent)
+	}
+}
+
+func TestTheSkillMapMarksOnlyAHeldSkill(t *testing.T) {
+	s := NewGameServer()
+	if err := s.ApplyInstanceConfig(&pb.InstanceConfig{SkillConfig: []*pb.SkillConfigEntry{
+		{TriggerItemId: "gel", Skills: []*pb.SkillDetail{{LogicEventId: "zero-waste-auto-consume-heal", SummonedEntityItemId: "gel"}}},
+		{TriggerItemId: "pistol", Skills: []*pb.SkillDetail{{LogicEventId: "projectile", SummonedEntityItemId: "bullet"}}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	skills := s.buildSkillMap()
+	if !skills["gel"][0].Held || skills["pistol"][0].Held {
+		t.Fatalf("skill map = %+v, want only the zero-waste heal held", skills)
 	}
 }

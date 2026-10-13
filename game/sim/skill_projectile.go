@@ -1,4 +1,4 @@
-package game
+package sim
 
 import (
 	"math"
@@ -62,7 +62,7 @@ func (s *Sim) executeProjectileSkill(ctx SkillContext) {
 	// at the caster's position on the first rendered frame.
 	// dt-based: one-tick pre-displacement so the first replicated frame shows
 	// the projectile at the caster's position rather than one tick downstream.
-	projectileStep := s.EntityBaseSpeed * s.projectileSpeedMultiplier * tickDuration.Seconds()
+	projectileStep := s.EntityBaseSpeed * s.projectileSpeedMultiplier * TickDuration.Seconds()
 	dirX, dirY := getDirectionVector(projectileDirection)
 	spawnX := casterPos.X - (dirX * projectileStep)
 	spawnY := casterPos.Y - (dirY * projectileStep)

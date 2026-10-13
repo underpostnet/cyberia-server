@@ -1,4 +1,4 @@
-package game
+package sim
 
 import (
 	"cyberia-server/game/content"
@@ -360,7 +360,7 @@ func TestObstaclePushFindsFreeCellsBesideBlockedExit(t *testing.T) {
 // A resource depleted by the same hits still earns its objective XP.
 func TestResourceDepletionKeepsItsObjectiveXP(t *testing.T) {
 	s, ms, player := destructibleFixture(t)
-	s.buildResource(ms, &pb.EntityMessage{InitCellX: 10, InitCellY: 10, DimX: 2, DimY: 2, MaxLife: 1, ColorA: 255})
+	s.BuildResource(ms, &pb.EntityMessage{InitCellX: 10, InitCellY: 10, DimX: 2, DimY: 2, MaxLife: 1, ColorA: 255})
 	for res := range ms.OfKind(world.EntityResource) {
 		for hits := 0; !ms.Vt(res).Ghost(); hits++ {
 			if hits == 100 {
@@ -387,22 +387,5 @@ func TestDestructibleObstacleDropsOnlyWhatItsDefaultRolls(t *testing.T) {
 		if !ms.Vt(obs).Ghost() || len(drops(ms)) != 0 {
 			t.Fatalf("%v: depleted with drops %v", build.LiveItemIDs, drops(ms))
 		}
-	}
-}
-
-func TestSnapshotCarriesOnlyTheDestructibleLife(t *testing.T) {
-	s, ms, player := destructibleFixture(t, crystalRock)
-	player.AOI = world.Rectangle{MaxX: 20, MaxY: 20}
-	wall := placeObstacle(s, ms, 0, "wall")
-	crystal := placeObstacle(s, ms, 9, "crystal")
-
-	life := map[world.EntityID]int{}
-	for _, e := range (&GameServer{Sim: s}).buildSnapshot(player, ms).Entities {
-		if e.Kind == world.EntityScenery {
-			life[e.ID] = e.MaxLife
-		}
-	}
-	if len(life) != 2 || life[wall] != 0 || life[crystal] != 9 {
-		t.Fatalf("obstacle max life on the wire: %v", life)
 	}
 }

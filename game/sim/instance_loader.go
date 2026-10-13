@@ -1,10 +1,10 @@
-// Package game — instance_loader.go
+// Package sim — instance_loader.go
 //
 // Builds the Go game server's in-memory world from gRPC data.
 // Replaces the old hardcoded createMaps() approach: the Go server
 // no longer creates its own maps, entities, or portals.
 // Everything is fetched from the Engine-Cyberia via GetFullInstance.
-package game
+package sim
 
 import (
 	"fmt"
@@ -58,7 +58,7 @@ func (s *Sim) BuildWorldFromInstance(
 		instance.GetCode(), len(mapMsgs), len(olMsgs))
 
 	s.buildMapsFromInstance(instance, mapMsgs)
-	s.playerSpawn = playerSpawnFromInstance(instance)
+	s.PlayerSpawn = playerSpawnFromInstance(instance)
 
 	// Bind the CyberiaAction / CyberiaQuest content the engine delivered with
 	// the world to the freshly built entities. No separate fetch.
@@ -86,7 +86,7 @@ func (s *Sim) BuildWorldFromInstance(
 // testing) instead of a random one.
 func (s *Sim) SetInstanceCode(code string) {
 	s.Mu.Lock()
-	s.instanceCode = code
+	s.InstanceCode = code
 	s.Mu.Unlock()
 }
 
@@ -121,7 +121,7 @@ func (s *Sim) RebuildWorld(
 
 	// Rebuild via the same path as initial load.
 	s.buildMapsFromInstance(instance, mapMsgs)
-	s.playerSpawn = playerSpawnFromInstance(instance)
+	s.PlayerSpawn = playerSpawnFromInstance(instance)
 	s.BindQuests(instance.GetMapCodes(), quests)
 	s.BindActions(instance.GetMapCodes(), actions)
 
@@ -189,7 +189,7 @@ func (s *Sim) buildMapsFromInstance(
 			case "bot":
 				s.buildBot(ms, ent)
 			case "resource":
-				s.buildResource(ms, ent)
+				s.BuildResource(ms, ent)
 			case "static":
 				s.buildStatic(ms, ent)
 			case "obstacle":
@@ -358,7 +358,7 @@ func (s *Sim) buildBot(ms *world.MapState, ent *pb.EntityMessage) {
 	}
 }
 
-func (s *Sim) buildResource(ms *world.MapState, ent *pb.EntityMessage) {
+func (s *Sim) BuildResource(ms *world.MapState, ent *pb.EntityMessage) {
 	dims := world.Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
 	if dims.X <= 0 {
 		dims.X = 2

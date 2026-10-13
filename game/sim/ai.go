@@ -1,4 +1,4 @@
-package game
+package sim
 
 import (
 	"math"
@@ -69,7 +69,7 @@ func (s *Sim) updateBots(mapState *world.MapState) {
 			// is tickDuration. (The old code used `... / s.fps` which is a
 			// frame-count integration that silently misbehaves when the loop
 			// runs slow or tickRate changes.)
-			projectileStep := s.EntityBaseSpeed * s.projectileSpeedMultiplier * tickDuration.Seconds()
+			projectileStep := s.EntityBaseSpeed * s.projectileSpeedMultiplier * TickDuration.Seconds()
 			// Calculate movement vector from bot's direction
 			dirX, dirY := getDirectionVector(mapState.Mo(id).Direction)
 
@@ -255,7 +255,7 @@ func (s *Sim) updateBotPosition(id world.EntityID, mapState *world.MapState, sta
 	}
 	speed := s.CalculateMovementSpeed(stats)
 
-	pos, path, dir, facing := stepAlongPath(mapState.Tf(id).Pos, bot.Path, speed, tickDuration.Seconds())
+	pos, path, dir, facing := stepAlongPath(mapState.Tf(id).Pos, bot.Path, speed, TickDuration.Seconds())
 	mapState.Tf(id).Pos, bot.Path = pos, path
 	if facing {
 		mapState.Mo(id).Direction = dir

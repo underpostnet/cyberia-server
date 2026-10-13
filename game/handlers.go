@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cyberia-server/game/content"
+	"cyberia-server/game/sim"
 	"cyberia-server/game/world"
 	"cyberia-server/logx"
 	"cyberia-server/serial"
@@ -34,7 +35,7 @@ func (s *GameServer) buildSkillMap() map[string][]SkillMapEntry {
 				Name:                 def.Name,
 				Description:          def.Description,
 				SummonedEntityItemID: def.SummonedEntityItemID,
-				Held:                 isHeldSkill(def.LogicEventID),
+				Held:                 sim.IsHeldSkill(def.LogicEventID),
 			})
 		}
 		out[triggerID] = entries
@@ -108,11 +109,11 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	startMapCode := ""
 	fixedPos := world.Cell{}
 	hasFixedPos := false
-	if !s.playerSpawn.Random && s.playerSpawn.MapCode != "" {
-		if ms, ok := s.Maps[s.playerSpawn.MapCode]; ok {
-			cell := world.Cell{X: s.playerSpawn.CellX, Y: s.playerSpawn.CellY}
+	if !s.PlayerSpawn.Random && s.PlayerSpawn.MapCode != "" {
+		if ms, ok := s.Maps[s.PlayerSpawn.MapCode]; ok {
+			cell := world.Cell{X: s.PlayerSpawn.CellX, Y: s.PlayerSpawn.CellY}
 			if ms.Pathfinder().IsWalkable(cell.X, cell.Y, playerDims) {
-				startMapCode = s.playerSpawn.MapCode
+				startMapCode = s.PlayerSpawn.MapCode
 				fixedPos = cell
 				hasFixedPos = true
 			}
@@ -187,7 +188,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 
 	// Every join spawns frozen. The client loading overlay is its first open
 	// modal; Tap-to-Start closes it and sends player_stasis false.
-	FreezePlayer(playerState, startMapState)
+	sim.FreezePlayer(playerState, startMapState)
 
 	// InitPayload is strictly simulation/protocol. Zero presentation: no
 	// palette, no camera, no devUi, no status-icon visuals, no screen
@@ -207,7 +208,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		Quests:         s.BuildQuestSnapshot(playerState),
 	}
 	metadataPayload := map[string]interface{}{
-		"instanceCode":   s.instanceCode,
+		"instanceCode":   s.InstanceCode,
 		"equipmentRules": s.EquipmentRules,
 	}
 
@@ -408,13 +409,13 @@ func parseInput(msgType string, p *inputPayload) (world.InputCommand, bool) {
 	case world.InputKindPlayerAction:
 		// A tap target reaches the pathfinder directly. Reject anything that
 		// is not a finite, plausible coordinate before it costs tick time.
-		if !validTapTarget(p.X, p.Y) {
+		if !sim.ValidTapTarget(p.X, p.Y) {
 			return world.InputCommand{}, false
 		}
 		cmd.TargetX = p.X
 		cmd.TargetY = p.Y
 	case world.InputKindItemActivation:
-		if p.ItemID == "" || !validIdentifier(p.ItemID) {
+		if p.ItemID == "" || !sim.ValidIdentifier(p.ItemID) {
 			return world.InputCommand{}, false
 		}
 		cmd.ItemID = p.ItemID
@@ -426,31 +427,31 @@ func parseInput(msgType string, p *inputPayload) (world.InputCommand, bool) {
 			return world.InputCommand{}, false
 		}
 		cmd.EntityID = p.ToID
-		cmd.ChatText = truncateRunes(p.Text, maxChatRunes)
+		cmd.ChatText = sim.TruncateRunes(p.Text, sim.MaxChatRunes)
 	case world.InputKindTalkDone:
-		if p.EntityID == 0 || !validIdentifier(p.DialogCode) {
+		if p.EntityID == 0 || !sim.ValidIdentifier(p.DialogCode) {
 			return world.InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.DialogCode = p.DialogCode
 	case world.InputKindQuestAbandon:
-		if p.QuestCode == "" || !validIdentifier(p.QuestCode) {
+		if p.QuestCode == "" || !sim.ValidIdentifier(p.QuestCode) {
 			return world.InputCommand{}, false
 		}
 		cmd.ItemID = p.QuestCode
 	case world.InputKindQuestAccept:
-		if p.EntityID == 0 || p.QuestCode == "" || !validIdentifier(p.QuestCode) {
+		if p.EntityID == 0 || p.QuestCode == "" || !sim.ValidIdentifier(p.QuestCode) {
 			return world.InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.QuestCode
 	case world.InputKindShopBuy:
-		if p.EntityID == 0 || p.ItemID == "" || !validIdentifier(p.ItemID) {
+		if p.EntityID == 0 || p.ItemID == "" || !sim.ValidIdentifier(p.ItemID) {
 			return world.InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.ItemID
-		cmd.Quantity = clampQuantity(p.Quantity)
+		cmd.Quantity = sim.ClampQuantity(p.Quantity)
 	case world.InputKindCraftItem:
 		if p.EntityID == 0 || p.RecipeIndex < 0 {
 			return world.InputCommand{}, false
@@ -463,7 +464,7 @@ func parseInput(msgType string, p *inputPayload) (world.InputCommand, bool) {
 			return world.InputCommand{}, false
 		}
 		for _, op := range p.Ops {
-			if op.ItemID == "" || !validIdentifier(op.ItemID) || op.Qty <= 0 {
+			if op.ItemID == "" || !sim.ValidIdentifier(op.ItemID) || op.Qty <= 0 {
 				return world.InputCommand{}, false
 			}
 		}

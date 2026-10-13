@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"cyberia-server/game/content"
+	"cyberia-server/game/sim"
 	"cyberia-server/game/world"
 	"cyberia-server/serial"
 
@@ -41,7 +42,7 @@ func newWSTestServer(t *testing.T, limits ConnectionLimits) *wsTestServer {
 	s.EntityBaseMinActionCooldown = 50 * time.Millisecond
 	s.Storage = map[content.StorageKey][]content.StorageSlot{}
 	s.EntityDefaults = map[string]content.EntityTypeDefaultConfig{}
-	s.playerSpawn = PlayerSpawnConfig{Random: true}
+	s.PlayerSpawn = sim.PlayerSpawnConfig{Random: true}
 
 	go s.listenForClients()
 
@@ -365,7 +366,7 @@ func TestWSAbsurdTapTargetsAreRejectedWithoutKillingTheSession(t *testing.T) {
 	// json.Unmarshal rejects NaN/Inf literals, so send the absurd finite values
 	// a hostile client can actually put on the wire.
 	for _, target := range []struct{ x, y float64 }{
-		{1e18, 1e18}, {-1e18, 0}, {maxTapCoordinate + 1, 5},
+		{1e18, 1e18}, {-1e18, 0}, {sim.MaxTapCoordinate + 1, 5},
 	} {
 		if err := sendEvent(t, conn, "player_action", map[string]any{
 			"x": target.x, "y": target.y, "frame": 0, "seq": 1,
@@ -425,7 +426,7 @@ func TestWSBatchWithAnInvalidEventIsConsumedWhole(t *testing.T) {
 
 	srv.game.Mu.Lock()
 	defer srv.game.Mu.Unlock()
-	srv.game.phaseInput(0, mapState)
+	srv.game.PhaseInput(0, mapState)
 	for p := range srv.game.PlayersOn(mapState) {
 		if p.InputConsumedThrough != 3 || len(p.InputQueue) != 0 {
 			t.Fatalf("cursor = %d, queue = %d, want 3, 0", p.InputConsumedThrough, len(p.InputQueue))

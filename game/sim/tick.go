@@ -1,4 +1,4 @@
-// Package game — tick.go
+// Package sim — tick.go
 //
 // The tick is the universal coordinate of the authoritative simulation.
 //
@@ -12,7 +12,7 @@
 // monotonic sequence number. Each snapshot carries the client frame it
 // stands for and the last consumed sequence, enabling client replay.
 
-package game
+package sim
 
 import "time"
 
@@ -20,5 +20,5 @@ import "time"
 // TICK_RATE_HZ.
 const DefaultTickRate = 30
 
-// tickDuration is one simulation step.
-const tickDuration = time.Second / DefaultTickRate
+// TickDuration is one simulation step.
+const TickDuration = time.Second / DefaultTickRate

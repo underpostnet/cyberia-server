@@ -1,4 +1,4 @@
-// Package game — phase_input_handlers.go
+// Package sim — phase_input_handlers.go
 //
 // Typed handlers consumed by phaseInput. Each function applies one
 // InputCommand to authoritative world state, assuming the caller already
@@ -19,7 +19,7 @@
 //     tick because phaseInput calls flushPendingMove once; the handlers only
 //     record intent.
 
-package game
+package sim
 
 import (
 	"math"

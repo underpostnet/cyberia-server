@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cyberia-server/game/content"
+	"cyberia-server/game/sim"
 	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 	"cyberia-server/logx"
@@ -21,7 +22,7 @@ func NewGameServer() *GameServer {
 		Sessions: make(map[world.EntityID]*world.Session),
 	}
 	gs := &GameServer{
-		Sim:     &Sim{Content: content.NewContent(w)},
+		Sim:     &sim.Sim{Content: content.NewContent(w)},
 		clients: make(map[world.EntityID]*Client),
 		// Buffer register/unregister so HandleConnections never blocks the
 		// HTTP handler goroutine waiting for listenForClients to win the
@@ -65,10 +66,10 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 
 	// World / AOI
 	s.aoiRadius = cfg.GetAoiRadius()
-	s.Sim.applyConfig(cfg, rules)
+	s.Sim.ApplyConfig(cfg, rules)
 
 	logx.Infof("[GameServer] Instance config applied: tickRate=%dHz, tickDuration=%v, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d skills, %d entityDefaultTypes, %d entityDefaultBuilds, floorItem=%q, ghostItem=%q, coinItem=%q",
-		DefaultTickRate, tickDuration, s.aoiRadius, s.EntityBaseSpeed, s.EntityBaseMaxLife, len(s.SkillConfig), len(s.EntityDefaults), len(s.EntityDefaultBuilds), s.DefaultFloorItemID, s.GhostItemID, s.CoinItemID)
+		sim.DefaultTickRate, sim.TickDuration, s.aoiRadius, s.EntityBaseSpeed, s.EntityBaseMaxLife, len(s.SkillConfig), len(s.EntityDefaults), len(s.EntityDefaultBuilds), s.DefaultFloorItemID, s.GhostItemID, s.CoinItemID)
 	return nil
 }
 
@@ -133,11 +134,11 @@ func (s *GameServer) listenForClients() {
 //
 // No phase reads PresentationHints.
 func (s *GameServer) gameLoop() {
-	simTicker := time.NewTicker(tickDuration)
+	simTicker := time.NewTicker(sim.TickDuration)
 	defer simTicker.Stop()
 
 	logx.Infof("[GameServer] simulation and replication @ %d Hz (tick %v)",
-		DefaultTickRate, tickDuration)
+		sim.DefaultTickRate, sim.TickDuration)
 
 	for range simTicker.C {
 		func() {
@@ -150,17 +151,17 @@ func (s *GameServer) gameLoop() {
 			defer s.Mu.Unlock()
 			tick := s.currentTick
 			for _, mapState := range s.Maps {
-				s.phaseInput(tick, mapState)
-				s.phaseLifecycle(tick, mapState)
-				s.phaseSkills(tick, mapState)
-				s.phaseAI(tick, mapState)
-				s.phaseMovement(tick, mapState)
-				s.phaseLoot(tick, mapState)
-				s.phasePortals(tick, mapState)
-				for _, player := range s.teleported {
+				s.PhaseInput(tick, mapState)
+				s.PhaseLifecycle(tick, mapState)
+				s.PhaseSkills(tick, mapState)
+				s.PhaseAI(tick, mapState)
+				s.PhaseMovement(tick, mapState)
+				s.PhaseLoot(tick, mapState)
+				s.PhasePortals(tick, mapState)
+				for _, player := range s.Teleported {
 					s.sendAOI(player)
 				}
-				s.teleported = s.teleported[:0]
+				s.Teleported = s.Teleported[:0]
 			}
 			for _, mapState := range s.Maps {
 				s.phaseReplication(mapState)
@@ -223,7 +224,7 @@ type Client struct {
 // GameServer is the network side: the client links, the tick loop and the
 // replication. Sim runs the simulation.
 type GameServer struct {
-	*Sim
+	*sim.Sim
 	clients    map[world.EntityID]*Client
 	register   chan *Client
 	unregister chan *Client

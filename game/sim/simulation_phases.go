@@ -1,4 +1,4 @@
-// Package game — simulation_phases.go
+// Package sim — simulation_phases.go
 //
 // Named simulation phases. The game loop in server.go calls these in a fixed
 // order once per Tick. Each phase has a single responsibility and operates on
@@ -28,7 +28,7 @@
 //   - read and write fields of MapState and Session.
 //   - read GameServer config (rules) fields that influence gameplay.
 
-package game
+package sim
 
 import (
 	"time"
@@ -37,7 +37,7 @@ import (
 	"cyberia-server/game/world"
 )
 
-// phaseInput drains queued InputCommand entries for each player in this
+// PhaseInput drains queued InputCommand entries for each player in this
 // map and dispatches each command to its typed handler. This is the
 // authoritative ingestion point — no other code path is allowed to apply
 // client input to world state.
@@ -52,7 +52,7 @@ import (
 //   - Movement re-plans at most once per player per tick. Handlers record the
 //     intent; flushPendingMove runs the single A*. This is the only bound on
 //     pathfinder cost, so no other path may call it.
-func (s *Sim) phaseInput(tick uint32, mapState *world.MapState) {
+func (s *Sim) PhaseInput(tick uint32, mapState *world.MapState) {
 	for player := range s.PlayersOn(mapState) {
 		if len(player.InputQueue) == 0 {
 			continue
@@ -110,10 +110,10 @@ func (s *Sim) applyInputCommand(player *world.Session, mapState *world.MapState,
 	}
 }
 
-// phaseLifecycle handles respawn timers and similar lifecycle transitions.
+// PhaseLifecycle handles respawn timers and similar lifecycle transitions.
 // Currently delegates to the existing helper which also subsumes coin-drop
 // FCT events (those will move to phaseEconomy in a follow-up).
-func (s *Sim) phaseLifecycle(tick uint32, mapState *world.MapState) {
+func (s *Sim) PhaseLifecycle(tick uint32, mapState *world.MapState) {
 	_ = tick
 	for id := range mapState.Mortals() {
 		s.ApplyResistanceStat(id, mapState)
@@ -122,8 +122,8 @@ func (s *Sim) phaseLifecycle(tick uint32, mapState *world.MapState) {
 	s.CompleteCrafts(mapState)
 }
 
-// phaseSkills resolves skill projectile collisions and runs the skills of held items for this tick.
-func (s *Sim) phaseSkills(tick uint32, mapState *world.MapState) {
+// PhaseSkills resolves skill projectile collisions and runs the skills of held items for this tick.
+func (s *Sim) PhaseSkills(tick uint32, mapState *world.MapState) {
 	_ = tick
 	s.handleSkillCollisions(mapState)
 	for player := range s.PlayersOn(mapState) {
@@ -136,18 +136,18 @@ func (s *Sim) phaseSkills(tick uint32, mapState *world.MapState) {
 	}
 }
 
-// phaseAI runs bot behaviour. The current implementation also performs the
+// PhaseAI runs bot behaviour. The current implementation also performs the
 // bot's positional integration inside updateBots — that movement remains
 // here for now but should be split out to phaseMovement in a follow-up so
 // that ai/movement separation is enforced on both player and bot paths.
-func (s *Sim) phaseAI(tick uint32, mapState *world.MapState) {
+func (s *Sim) PhaseAI(tick uint32, mapState *world.MapState) {
 	_ = tick
 	s.updateBots(mapState)
 }
 
-// phaseMovement integrates player positions using dt = tickDuration.
+// PhaseMovement integrates player positions using dt = tickDuration.
 // Bots are handled inside phaseAI for now (see note above).
-func (s *Sim) phaseMovement(tick uint32, mapState *world.MapState) {
+func (s *Sim) PhaseMovement(tick uint32, mapState *world.MapState) {
 	_ = tick
 	for player := range s.PlayersOn(mapState) {
 		s.updatePlayerPosition(player, mapState)
@@ -163,20 +163,20 @@ func (s *Sim) phaseMovement(tick uint32, mapState *world.MapState) {
 	}
 }
 
-// phasePortals checks each player against portals and triggers teleports
+// PhasePortals checks each player against portals and triggers teleports
 // when the portal hold time has elapsed.
-func (s *Sim) phasePortals(tick uint32, mapState *world.MapState) {
+func (s *Sim) PhasePortals(tick uint32, mapState *world.MapState) {
 	_ = tick
 	for player := range s.PlayersOn(mapState) {
 		s.checkPortal(player, mapState)
 	}
 }
 
-// phaseLoot resolves token collisions for one tick. The first collector the
+// PhaseLoot resolves token collisions for one tick. The first collector the
 // token's collection policy admits takes it, players before bots: its outcome
 // applies, the pickup animation event goes to every viewer and the token is
 // removed in the same step, so one token applies once. Caller holds s.mu.
-func (s *Sim) phaseLoot(tick uint32, mapState *world.MapState) {
+func (s *Sim) PhaseLoot(tick uint32, mapState *world.MapState) {
 	_ = tick
 	now := time.Now()
 	s.RespawnWorldLoot(mapState, now)

@@ -4,6 +4,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"cyberia-server/game/sim"
 	"cyberia-server/game/world"
 )
 
@@ -95,9 +96,9 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 	activeConns, activeAddrs := s.guard.counts()
 
 	return RuntimeMetricsSnapshot{
-		TickRate:           DefaultTickRate,
+		TickRate:           sim.DefaultTickRate,
 		CurrentTick:        tick,
-		TickDurationMs:     float64(tickDuration.Microseconds()) / 1000.0,
+		TickDurationMs:     float64(sim.TickDuration.Microseconds()) / 1000.0,
 		AoiRadius:          aoi,
 		WsMessagesIn:       s.counters.wsMessagesIn.Load(),
 		WsMessagesOut:      s.counters.wsMessagesOut.Load(),

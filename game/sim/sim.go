@@ -1,4 +1,4 @@
-package game
+package sim
 
 import (
 	"time"
@@ -11,12 +11,12 @@ import (
 // Sim is the simulation step and its config.
 type Sim struct {
 	*content.Content
-	instanceCode   string            // INSTANCE_CODE — selects which instance to load
-	playerSpawn    PlayerSpawnConfig // authoritative initial spawn for new players
-	portalHoldTime time.Duration
-	// teleported holds the players a portal moved this map step. gameLoop
+	InstanceCode   string            // INSTANCE_CODE — selects which instance to load
+	PlayerSpawn    PlayerSpawnConfig // authoritative initial spawn for new players
+	PortalHoldTime time.Duration
+	// Teleported holds the players a portal moved this map step. gameLoop
 	// sends their snapshots after phasePortals and clears it.
-	teleported []*world.Session
+	Teleported []*world.Session
 
 	// bot related defaults
 	botAggroRange float64
@@ -36,11 +36,11 @@ type Sim struct {
 	portalSpawnRadius float64
 }
 
-// applyConfig applies the simulation part of the instance config, then the
+// ApplyConfig applies the simulation part of the instance config, then the
 // content part. Caller holds s.mu.
-func (s *Sim) applyConfig(cfg *pb.InstanceConfig, rules content.ProgressionRules) {
+func (s *Sim) ApplyConfig(cfg *pb.InstanceConfig, rules content.ProgressionRules) {
 	s.Content.ApplyConfig(cfg, rules)
-	s.portalHoldTime = time.Duration(cfg.GetPortalHoldTimeMs()) * time.Millisecond
+	s.PortalHoldTime = time.Duration(cfg.GetPortalHoldTimeMs()) * time.Millisecond
 	s.portalSpawnRadius = cfg.GetPortalSpawnRadius()
 
 	// Bot defaults

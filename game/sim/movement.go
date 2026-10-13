@@ -1,4 +1,4 @@
-package game
+package sim
 
 import (
 	"math"
@@ -76,7 +76,7 @@ func (s *Sim) updatePlayerPosition(player *world.Session, mapState *world.MapSta
 	}
 
 	tf := mapState.Tf(player.ID)
-	pos, path, dir, facing := stepAlongPath(tf.Pos, player.Path, speed, tickDuration.Seconds())
+	pos, path, dir, facing := stepAlongPath(tf.Pos, player.Path, speed, TickDuration.Seconds())
 	tf.Pos, player.Path = pos, path
 	if facing {
 		mapState.Mo(player.ID).Direction = dir
@@ -111,7 +111,7 @@ func (s *Sim) checkPortal(player *world.Session, mapState *world.MapState) {
 		if !player.OnPortal {
 			player.OnPortal = true
 			player.TimeOnPortal = time.Now()
-		} else if time.Since(player.TimeOnPortal) > s.portalHoldTime {
+		} else if time.Since(player.TimeOnPortal) > s.PortalHoldTime {
 			s.teleportPlayer(player, mapState, activePortal)
 		}
 	} else {
@@ -161,5 +161,5 @@ func (s *Sim) teleportPlayer(player *world.Session, mapState *world.MapState, po
 	row.Motion.Mode = world.TELEPORTING
 	player.OnPortal = false
 	destMapState.Put(player.ID, row)
-	s.teleported = append(s.teleported, player)
+	s.Teleported = append(s.Teleported, player)
 }

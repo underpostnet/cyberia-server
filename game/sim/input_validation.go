@@ -1,4 +1,4 @@
-// Package game — input_validation.go
+// Package sim — input_validation.go
 //
 // Validation of client-controlled input, applied at the protocol boundary in
 // receiveMessage before a command reaches the per-player queue.
@@ -8,39 +8,39 @@
 // search expand the full reachable area and spend the whole tick budget. Every
 // numeric field a client controls gets a range check here.
 
-package game
+package sim
 
 import "math"
 
 const (
-	// maxChatRunes bounds one chat line. The socket read limit already bounds
+	// MaxChatRunes bounds one chat line. The socket read limit already bounds
 	// the frame; this bounds what the simulation stores and re-broadcasts.
-	maxChatRunes = 512
+	MaxChatRunes = 512
 
 	// maxItemIDLen bounds any client-supplied identifier. Authored item and
 	// quest codes are short slugs.
 	maxItemIDLen = 128
 
-	// maxTapCoordinate bounds a tap before the map is known. Grid clamping
+	// MaxTapCoordinate bounds a tap before the map is known. Grid clamping
 	// happens later in the handler, which is the only place the map size is
 	// available. This rejects the absurd values only.
-	maxTapCoordinate = 100000
+	MaxTapCoordinate = 100000
 )
 
-// validTapTarget reports whether a tap coordinate pair can reach the pathfinder.
+// ValidTapTarget reports whether a tap coordinate pair can reach the pathfinder.
 // NaN and Inf are rejected: int(NaN) is undefined and produces a garbage cell.
-func validTapTarget(x, y float64) bool {
+func ValidTapTarget(x, y float64) bool {
 	if math.IsNaN(x) || math.IsNaN(y) || math.IsInf(x, 0) || math.IsInf(y, 0) {
 		return false
 	}
-	return math.Abs(x) <= maxTapCoordinate && math.Abs(y) <= maxTapCoordinate
+	return math.Abs(x) <= MaxTapCoordinate && math.Abs(y) <= MaxTapCoordinate
 }
 
-// validIdentifier reports whether a client-supplied id is a plausible slug.
-func validIdentifier(id string) bool { return len(id) <= maxItemIDLen }
+// ValidIdentifier reports whether a client-supplied id is a plausible slug.
+func ValidIdentifier(id string) bool { return len(id) <= maxItemIDLen }
 
-// truncateRunes cuts a string to at most n runes without splitting one.
-func truncateRunes(s string, n int) string {
+// TruncateRunes cuts a string to at most n runes without splitting one.
+func TruncateRunes(s string, n int) string {
 	count := 0
 	for i := range s {
 		if count == n {
@@ -51,9 +51,9 @@ func truncateRunes(s string, n int) string {
 	return s
 }
 
-// clampQuantity bounds a client-supplied count. Handlers clamp again against
+// ClampQuantity bounds a client-supplied count. Handlers clamp again against
 // what the player actually holds; this stops an absurd value earlier.
-func clampQuantity(q int) int {
+func ClampQuantity(q int) int {
 	if q < 0 {
 		return 0
 	}

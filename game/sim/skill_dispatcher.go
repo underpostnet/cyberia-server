@@ -1,4 +1,4 @@
-package game
+package sim
 
 import (
 	"cyberia-server/game/world"
@@ -46,8 +46,8 @@ func registerHeldSkill(logicEventID string, handler SkillHandlerFunc) {
 	heldSkillRegistry[logicEventID] = handler
 }
 
-// isHeldSkill reports whether logicEventID runs on held items instead of on a tap.
-func isHeldSkill(logicEventID string) bool {
+// IsHeldSkill reports whether logicEventID runs on held items instead of on a tap.
+func IsHeldSkill(logicEventID string) bool {
 	_, ok := heldSkillRegistry[logicEventID]
 	return ok
 }
