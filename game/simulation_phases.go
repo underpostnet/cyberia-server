@@ -11,7 +11,7 @@
 //	2. phaseLifecycle   respawn timers, despawn expirations
 //	3. phaseSkills      skill projectile collisions
 //	4. phaseAI          bot behaviour decisions (path planning)
-//	5. phaseMovement    integrate positions using s.tickDuration
+//	5. phaseMovement    integrate positions using tickDuration
 //	6. phaseLoot        player↔drop-token collection + priority validation
 //	7. phasePortals     portal entry / teleport
 //	8. phaseReplication one AOI snapshot per player
@@ -142,7 +142,7 @@ func (s *GameServer) phaseAI(tick uint32, mapState *MapState) {
 	s.updateBots(mapState)
 }
 
-// phaseMovement integrates player positions using dt = s.tickDuration.
+// phaseMovement integrates player positions using dt = tickDuration.
 // Bots are handled inside phaseAI for now (see note above).
 func (s *GameServer) phaseMovement(tick uint32, mapState *MapState) {
 	_ = tick

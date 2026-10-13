@@ -59,7 +59,7 @@ func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
 	// at the caster's position on the first rendered frame.
 	// dt-based: one-tick pre-displacement so the first replicated frame shows
 	// the projectile at the caster's position rather than one tick downstream.
-	projectileStep := s.entityBaseSpeed * s.projectileSpeedMultiplier * s.tickDuration.Seconds()
+	projectileStep := s.entityBaseSpeed * s.projectileSpeedMultiplier * tickDuration.Seconds()
 	dirX, dirY := getDirectionVector(projectileDirection)
 	spawnX := casterPos.X - (dirX * projectileStep)
 	spawnY := casterPos.Y - (dirY * projectileStep)

@@ -75,7 +75,7 @@ func (s *GameServer) updatePlayerPosition(player *Session, mapState *MapState) {
 	}
 
 	tf := mapState.tf(player.ID)
-	pos, path, dir, facing := stepAlongPath(tf.Pos, player.Path, speed, s.tickDuration.Seconds())
+	pos, path, dir, facing := stepAlongPath(tf.Pos, player.Path, speed, tickDuration.Seconds())
 	tf.Pos, player.Path = pos, path
 	if facing {
 		mapState.mo(player.ID).Direction = dir

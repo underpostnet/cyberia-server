@@ -80,12 +80,9 @@ func (s *GameServer) recordWsEvicted()     { s.counters.wsEvictedTotal.Add(1) }
 // counters and per-process throughput. Safe to call from the HTTP API
 // without contending with the simulation tick.
 func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
-	// tickRate/aoiRadius are only mutated inside
-	// ApplyInstanceConfig, which holds s.mu. Read under the same lock
-	// to avoid a torn read on the float64 / int fields.
+	// aoiRadius is only mutated inside ApplyInstanceConfig, which holds
+	// s.mu. Read under the same lock to avoid a torn read.
 	s.mu.Lock()
-	tickRate := s.tickRate
-	tickDur := s.tickDuration
 	aoi := s.aoiRadius
 	tick := s.currentTick
 	s.mu.Unlock()
@@ -96,9 +93,9 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 	activeConns, activeAddrs := s.guard.counts()
 
 	return RuntimeMetricsSnapshot{
-		TickRate:           tickRate,
+		TickRate:           DefaultTickRate,
 		CurrentTick:        tick,
-		TickDurationMs:     float64(tickDur.Microseconds()) / 1000.0,
+		TickDurationMs:     float64(tickDuration.Microseconds()) / 1000.0,
 		AoiRadius:          aoi,
 		WsMessagesIn:       s.counters.wsMessagesIn.Load(),
 		WsMessagesOut:      s.counters.wsMessagesOut.Load(),

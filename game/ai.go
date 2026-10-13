@@ -62,10 +62,10 @@ func (s *GameServer) updateBots(mapState *MapState) {
 		// Skill projectile bots move in a straight line and are removed if they go out of bounds.
 		if mapState.ag(id).Behavior == BehaviorSkill {
 			// dt-based integration. entityBaseSpeed is cells/second; one tick
-			// is s.tickDuration. (The old code used `... / s.fps` which is a
+			// is tickDuration. (The old code used `... / s.fps` which is a
 			// frame-count integration that silently misbehaves when the loop
 			// runs slow or tickRate changes.)
-			projectileStep := s.entityBaseSpeed * s.projectileSpeedMultiplier * s.tickDuration.Seconds()
+			projectileStep := s.entityBaseSpeed * s.projectileSpeedMultiplier * tickDuration.Seconds()
 			// Calculate movement vector from bot's direction
 			dirX, dirY := getDirectionVector(mapState.mo(id).Direction)
 
@@ -251,7 +251,7 @@ func (s *GameServer) updateBotPosition(id EntityID, mapState *MapState, stats Co
 	}
 	speed := s.CalculateMovementSpeed(stats)
 
-	pos, path, dir, facing := stepAlongPath(mapState.tf(id).Pos, bot.Path, speed, s.tickDuration.Seconds())
+	pos, path, dir, facing := stepAlongPath(mapState.tf(id).Pos, bot.Path, speed, tickDuration.Seconds())
 	mapState.tf(id).Pos, bot.Path = pos, path
 	if facing {
 		mapState.mo(id).Direction = dir

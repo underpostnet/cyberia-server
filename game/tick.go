@@ -1,15 +1,10 @@
 // Package game — tick.go
 //
-// Tick is the universal coordinate of the authoritative simulation. Every
-// piece of timing in the server (simulation, replication, prediction
-// acknowledgement, AOI delta baselines, FCT events, AI scheduling) carries
-// or derives from a Tick value.
+// The tick is the universal coordinate of the authoritative simulation.
 //
 // Conventions:
-//   - Tick advances exactly once per simulation step.
-//   - Tick is monotonic for the lifetime of a world; it resets only on
-//     world rebuild (which currently never happens after bootstrap).
-//   - tickRate is the simulation Hz; tickDuration = 1 / tickRate.
+//   - The tick advances exactly once per simulation step.
+//   - DefaultTickRate is the simulation Hz; tickDuration = 1 / DefaultTickRate.
 //   - Each tick sends one snapshot per player.
 //   - The string "fps" must not appear on the server. Use TickRate.
 //
@@ -21,19 +16,9 @@ package game
 
 import "time"
 
-// Tick is the simulation step counter. uint32 gives ~828 days at 60 Hz —
-// enough for any conceivable session and small enough to be cheap on wire.
-type Tick uint32
-
 // DefaultTickRate is the only simulation rate. It must equal the client
 // TICK_RATE_HZ.
 const DefaultTickRate = 30
 
-// computeTickDuration — derives tickDuration from a tickRate Hz value.
-// Returns the default if rate is non-positive.
-func computeTickDuration(rate int) time.Duration {
-	if rate <= 0 {
-		rate = DefaultTickRate
-	}
-	return time.Second / time.Duration(rate)
-}
+// tickDuration is one simulation step.
+const tickDuration = time.Second / DefaultTickRate

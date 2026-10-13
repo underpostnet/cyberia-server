@@ -61,8 +61,6 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 	// /api/v1/cyberia-client-hints using its own CYBERIA_CLIENT_HINTS_CODE.
 	// The instance config tick_rate is ignored. The client fixes its step
 	// at compile time, and a replay needs the same dt on both sides.
-	s.tickRate = DefaultTickRate
-	s.tickDuration = computeTickDuration(s.tickRate)
 
 	// World / AOI
 	s.aoiRadius = cfg.GetAoiRadius()
@@ -218,7 +216,7 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 	s.InitSkills()
 
 	logx.Infof("[GameServer] Instance config applied: tickRate=%dHz, tickDuration=%v, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d skills, %d entityDefaultTypes, %d entityDefaultBuilds, floorItem=%q, ghostItem=%q, coinItem=%q",
-		s.tickRate, s.tickDuration, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.skillConfig), len(s.entityDefaults), len(s.entityDefaultBuilds), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
+		DefaultTickRate, tickDuration, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.skillConfig), len(s.entityDefaults), len(s.entityDefaultBuilds), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
 	return nil
 }
 
@@ -276,23 +274,18 @@ func (s *GameServer) listenForClients() {
 //	phaseLifecycle  respawn timers, despawn expirations
 //	phaseSkills     skill projectile collisions
 //	phaseAI         bot behaviour decisions
-//	phaseMovement   integrate positions using s.tickDuration (NOT 1/fps)
+//	phaseMovement   integrate positions using tickDuration (NOT 1/fps)
 //	phaseLoot       player↔drop-token collection + priority validation
 //	phasePortals    portal entry / teleport
 //	phaseReplication one snapshot per player, after every map has stepped
 //
 // No phase reads PresentationHints.
 func (s *GameServer) gameLoop() {
-	if s.tickRate <= 0 {
-		s.tickRate = DefaultTickRate
-	}
-	s.tickDuration = computeTickDuration(s.tickRate)
-
-	simTicker := time.NewTicker(s.tickDuration)
+	simTicker := time.NewTicker(tickDuration)
 	defer simTicker.Stop()
 
 	logx.Infof("[GameServer] simulation and replication @ %d Hz (tick %v)",
-		s.tickRate, s.tickDuration)
+		DefaultTickRate, tickDuration)
 
 	for range simTicker.C {
 		func() {
@@ -393,9 +386,7 @@ type GameServer struct {
 	// ── Tick model (authoritative simulation cadence) ────────────────────────
 	// The server advances one logical Tick per tickDuration and sends one
 	// snapshot per player each tick.
-	tickRate     int           // simulation Hz (e.g. 30)
-	tickDuration time.Duration // 1 / tickRate
-	currentTick  uint32        // monotonic; advanced once per simulation tick
+	currentTick uint32 // monotonic; advanced once per simulation tick
 	// teleported holds the players a portal moved this map step. gameLoop
 	// sends their snapshots after phasePortals and clears it.
 	teleported []*Session
