@@ -334,6 +334,9 @@ type GameServer struct {
 	tickRate     int           // simulation Hz (e.g. 30)
 	tickDuration time.Duration // 1 / tickRate
 	currentTick  uint32        // monotonic; advanced once per simulation tick
+	// teleported holds the players a portal moved this map step. gameLoop
+	// sends their snapshots after phasePortals and clears it.
+	teleported []*Session
 
 	// bot related defaults
 	botAggroRange float64

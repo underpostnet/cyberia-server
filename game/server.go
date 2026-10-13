@@ -364,6 +364,10 @@ func (s *GameServer) gameLoop() {
 				s.phaseMovement(tick, mapState)
 				s.phaseLoot(tick, mapState)
 				s.phasePortals(tick, mapState)
+				for _, player := range s.teleported {
+					s.sendAOI(player)
+				}
+				s.teleported = s.teleported[:0]
 			}
 			for _, mapState := range s.maps {
 				s.phaseReplication(mapState)
@@ -527,7 +531,7 @@ func (s *GameServer) teleportPlayer(player *Session, mapState *MapState, portal 
 	row.motion.Mode = TELEPORTING
 	player.OnPortal = false
 	destMapState.put(player.ID, row)
-	s.sendAOI(player)
+	s.teleported = append(s.teleported, player)
 }
 
 // ---------- AOI snapshot send ----------
@@ -535,9 +539,10 @@ func (s *GameServer) teleportPlayer(player *Session, mapState *MapState, portal 
 // sendAOI is the one-shot snapshot dispatcher. Two call sites use it:
 //
 //   - phaseReplication (the snapshot-rate ticker) — the canonical path.
-//   - teleportPlayer — pushes an immediate snapshot after a portal so the
-//     client doesn't see a frame of stale geometry; semantically still part
-//     of the replication contract, just out-of-band w.r.t. the tick.
+//   - gameLoop after phasePortals — an immediate snapshot for each player in
+//     s.teleported, so the client doesn't see a frame of stale geometry;
+//     semantically still part of the replication contract, just out-of-band
+//     w.r.t. the tick.
 //
 // Outside these two call sites, simulation code MUST NOT send a snapshot —
 // replication is the only path that may produce AOI frames.

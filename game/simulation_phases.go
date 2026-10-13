@@ -153,7 +153,7 @@ func (s *GameServer) phaseMovement(tick uint32, mapState *MapState) {
 	for player := range s.playersOn(mapState) {
 		s.updatePlayerPosition(player, mapState)
 		// TELEPORTING is a one-snapshot-interval signal set by teleportPlayer.
-		// phaseReplication (or the immediate sendAOI in teleportPlayer) delivers
+		// phaseReplication (or the immediate send after phasePortals) delivers
 		// it once; we reset it here so the player becomes IDLE rather than staying
 		// TELEPORTING indefinitely.  The client uses this flag to suppress
 		// pos_prev interpolation on the teleport snapshot, preventing a visible
