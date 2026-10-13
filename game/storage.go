@@ -52,7 +52,7 @@ func storageCapacity(slots int) int {
 // when that entity is not a storage terminal.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) storageVault(player *Session, id EntityID, ms *MapState) (storageKey, int, bool) {
+func (s *Content) storageVault(player *Session, id EntityID, ms *MapState) (storageKey, int, bool) {
 	if ms == nil || ms.vt(id).ghost() {
 		return storageKey{}, 0, false
 	}
@@ -71,7 +71,7 @@ func (s *GameServer) storageVault(player *Session, id EntityID, ms *MapState) (s
 // botHasUsableAction alongside the vendor and assembler capabilities.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botHasStorage(id EntityID, ms *MapState) bool {
+func (s *Content) botHasStorage(id EntityID, ms *MapState) bool {
 	if ms == nil || ms.vt(id).ghost() {
 		return false
 	}
@@ -93,7 +93,7 @@ func storageStackOf(slots []StorageSlot, itemID string) int {
 // the vault's key, capacity and liveness. Every handler starts here.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) resolveStorage(player *Session, entityID EntityID) (storageKey, int, bool) {
+func (s *Content) resolveStorage(player *Session, entityID EntityID) (storageKey, int, bool) {
 	if s.vt(player.ID, player.MapCode).ghost() {
 		return storageKey{}, 0, false
 	}
@@ -113,7 +113,7 @@ func (s *GameServer) resolveStorage(player *Session, entityID EntityID) (storage
 // server's own items. It sends no reply.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleItemOps(player *Session, cmd *InputCommand) {
+func (s *Content) handleItemOps(player *Session, cmd *InputCommand) {
 	key, capacity, ok := s.resolveStorage(player, cmd.EntityID)
 	if !ok {
 		return
@@ -131,7 +131,7 @@ func (s *GameServer) handleItemOps(player *Session, cmd *InputCommand) {
 
 // playerItemActive reports whether the player currently has this item equipped.
 // An active layer is worn, not stock, so it can never be banked.
-func (s *GameServer) playerItemActive(player *Session, itemID string) bool {
+func (s *Content) playerItemActive(player *Session, itemID string) bool {
 	for i := range s.ap(player.ID, player.MapCode).Layers {
 		if s.ap(player.ID, player.MapCode).Layers[i].ItemID == itemID && s.ap(player.ID, player.MapCode).Layers[i].Active {
 			return true
@@ -145,7 +145,7 @@ func (s *GameServer) playerItemActive(player *Session, itemID string) bool {
 // The loadout has to survive without it, and the equipment rules say what that means: requireSkin
 // keeps a skin on the entity, so the last active one stays put while a second skin — or a weapon,
 // or a breastplate — is free to go. Anything the rules do not govern was never held back.
-func (s *GameServer) bankableWhileWorn(player *Session, itemID string) bool {
+func (s *Content) bankableWhileWorn(player *Session, itemID string) bool {
 	if !s.equipmentRules.RequireSkin || s.itemType(itemID) != "skin" {
 		return true
 	}
@@ -177,7 +177,7 @@ func setLayerActive(layers []ObjectLayerState, itemID string, active bool) {
 // need it worn.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) storageDeposit(player *Session, slots []StorageSlot, capacity int,
+func (s *Content) storageDeposit(player *Session, slots []StorageSlot, capacity int,
 	itemID string, qty int) []StorageSlot {
 	at := storageStackOf(slots, itemID)
 	if at < 0 && len(slots) >= capacity {
@@ -209,7 +209,7 @@ func (s *GameServer) storageDeposit(player *Session, slots []StorageSlot, capaci
 // inventory, dropping the stack once it is empty.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) storageWithdraw(player *Session, slots []StorageSlot,
+func (s *Content) storageWithdraw(player *Session, slots []StorageSlot,
 	itemID string, qty int) []StorageSlot {
 	at := storageStackOf(slots, itemID)
 	if at < 0 {
@@ -245,7 +245,7 @@ type SnapshotVault struct {
 // playerVaults lists every vault of the player, in action code order.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) playerVaults(player *Session) []SnapshotVault {
+func (s *Content) playerVaults(player *Session) []SnapshotVault {
 	// ponytail: a walk over every vault of every player, per player per tick;
 	// key the store by player if the vault count grows.
 	vaults := []SnapshotVault{}

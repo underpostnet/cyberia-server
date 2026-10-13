@@ -9,8 +9,8 @@ import (
 // The reported document: a wood resource whose default carries a knife in its inventory, marked
 // active by an override. Every entity type reads its stack the same way, so the case is pinned
 // once here and the spawn paths all go through it.
-func resourceServer() *GameServer {
-	return &GameServer{
+func resourceServer() *Content {
+	return &Content{
 		entityDefaults: map[string]EntityTypeDefaultConfig{},
 		entityDefaultBuilds: []EntityTypeDefaultConfig{{
 			EntityType:  "resource",
@@ -80,7 +80,7 @@ func TestSpawnObjectLayersLeavesAColouredEntityBare(t *testing.T) {
 
 // A build seeded before engine-cyberia derived its inventory still names its live ids.
 func TestSpawnObjectLayersFallsBackToLiveItemIDs(t *testing.T) {
-	server := &GameServer{
+	server := &Content{
 		entityDefaults: map[string]EntityTypeDefaultConfig{
 			"bot": {EntityType: "bot", LiveItemIDs: []string{"purple"}},
 		},
@@ -95,12 +95,9 @@ func TestSpawnObjectLayersFallsBackToLiveItemIDs(t *testing.T) {
 // resolved inventory, a map places the resource by its skin alone, and the snapshot has to carry
 // the overridden item the entity is wearing.
 func TestResourceSpawnedFromInstanceConfigCarriesTheOverriddenItem(t *testing.T) {
-	server := &GameServer{
-		entityDefaults:      map[string]EntityTypeDefaultConfig{},
-		entityBaseMaxLife:   100,
-		initialLifeFraction: 1,
-		maps:                map[string]*MapState{},
-	}
+	server := NewGameServer()
+	server.entityBaseMaxLife = 100
+	server.initialLifeFraction = 1
 	server.ApplyInstanceConfig(&pb.InstanceConfig{
 		EntityDefaults: []*pb.EntityTypeDefault{{
 			EntityType:  "resource",
@@ -171,7 +168,7 @@ func TestSpawnObjectLayersHoldsTheEquipmentRules(t *testing.T) {
 // Taking an item off is not taking it away: a skin the equipment rules unseat stays carried with
 // its stack, which is what lets the player bank it or put it back on.
 func TestNormalizeLoadoutKeepsTheStackOfWhatItUnseats(t *testing.T) {
-	server := &GameServer{
+	server := &Content{
 		equipmentRules: EquipmentRulesConfig{
 			ActiveItemTypes: map[string]bool{"skin": true},
 			OnePerType:      true,
@@ -195,7 +192,7 @@ func TestNormalizeLoadoutKeepsTheStackOfWhatItUnseats(t *testing.T) {
 // second weapon reaches the entity with the same answer engine-cyberia wrote into the map, so the
 // two layers of the platform agree on which one is on.
 func TestSpawnObjectLayersTakesTheBuildStateForAPlacedID(t *testing.T) {
-	server := &GameServer{
+	server := &Content{
 		entityDefaults: map[string]EntityTypeDefaultConfig{},
 		entityDefaultBuilds: []EntityTypeDefaultConfig{{
 			EntityType:  "bot",

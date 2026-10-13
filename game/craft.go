@@ -58,7 +58,7 @@ func craftRecipeAt(action *CyberiaAction, index int) *ActionCraftRecipe {
 // botHasUsableAction alongside the vendor capability.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botHasCraft(id EntityID, ms *MapState) bool {
+func (s *Content) botHasCraft(id EntityID, ms *MapState) bool {
 	if ms == nil || ms.vt(id).ghost() {
 		return false
 	}
@@ -70,7 +70,7 @@ func (s *GameServer) botHasCraft(id EntityID, ms *MapState) bool {
 // needs. A line with a non-positive quantity is free.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) playerCanCraft(player *Session, recipe *ActionCraftRecipe) bool {
+func (s *Content) playerCanCraft(player *Session, recipe *ActionCraftRecipe) bool {
 	for _, in := range recipe.Ingredients {
 		if in.Qty <= 0 {
 			continue
@@ -88,7 +88,7 @@ func (s *GameServer) playerCanCraft(player *Session, recipe *ActionCraftRecipe) 
 // the progress bar starts; a cancel before completion refunds them.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleCraftItem(player *Session, cmd *InputCommand) {
+func (s *Content) handleCraftItem(player *Session, cmd *InputCommand) {
 	if s.vt(player.ID, player.MapCode).ghost() {
 		return
 	}
@@ -138,7 +138,7 @@ func (s *GameServer) handleCraftItem(player *Session, cmd *InputCommand) {
 // Ignored once the timer has already paid out — there is nothing to abort.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleCraftCancel(player *Session) {
+func (s *Content) handleCraftCancel(player *Session) {
 	active := s.crafts[player.ID]
 	if active == nil {
 		return
@@ -154,7 +154,7 @@ func (s *GameServer) handleCraftCancel(player *Session) {
 // phaseLifecycle alongside the other timed transitions.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) completeCrafts(mapState *MapState) {
+func (s *Content) completeCrafts(mapState *MapState) {
 	now := time.Now()
 	for player := range s.playersOn(mapState) {
 		active := s.crafts[player.ID]
@@ -180,7 +180,7 @@ type SnapshotCraft struct {
 }
 
 // snapshotCraft is the player's running assembly, or nil when none runs.
-func (s *GameServer) snapshotCraft(player *Session) *SnapshotCraft {
+func (s *Content) snapshotCraft(player *Session) *SnapshotCraft {
 	active := s.crafts[player.ID]
 	if active == nil {
 		return nil

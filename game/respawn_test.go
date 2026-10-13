@@ -28,7 +28,7 @@ func TestEachPlacedEntityWaitsItsOwnRespawnTime(t *testing.T) {
 	if bots != 1 || resources != 1 || destructibles != 1 {
 		t.Fatalf("built %d bots, %d resources, %d destructibles; want one of each", bots, resources, destructibles)
 	}
-	player := woundedPlayer(s, ms, 103, Vec2{}, 0)
+	player := woundedPlayer(s.World, ms, 103, Vec2{}, 0)
 	player.MapCode = "m"
 
 	now := time.Now()

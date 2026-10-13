@@ -64,7 +64,7 @@ func onlyToken(t *testing.T, ms *MapState) EntityID {
 }
 
 // woundedPlayer stands a player with the given life at the point, on map "m".
-func woundedPlayer(s *GameServer, ms *MapState, id EntityID, at Vec2, life float64) *Session {
+func woundedPlayer(s *World, ms *MapState, id EntityID, at Vec2, life float64) *Session {
 	player := &Session{ID: id, MapCode: "m"}
 	if s.sessions == nil {
 		s.sessions = map[EntityID]*Session{}
@@ -168,8 +168,8 @@ func TestWorldLootShowsOneItemBoundOrNot(t *testing.T) {
 func TestConsumingAPickupHealsByTheItemOnceAndGrantsNothing(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
-	first := woundedPlayer(s, ms, 101, ms.tf(token).Pos, 50)
-	second := woundedPlayer(s, ms, 102, ms.tf(token).Pos, 50)
+	first := woundedPlayer(s.World, ms, 101, ms.tf(token).Pos, 50)
+	second := woundedPlayer(s.World, ms, 102, ms.tf(token).Pos, 50)
 
 	for range 3 {
 		s.phaseLoot(0, ms)
@@ -189,7 +189,7 @@ func TestConsumingAPickupHealsByTheItemOnceAndGrantsNothing(t *testing.T) {
 func TestConsumingAPickupNeverPassesMaxLife(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
-	player := woundedPlayer(s, ms, 103, ms.tf(token).Pos, 95)
+	player := woundedPlayer(s.World, ms, 103, ms.tf(token).Pos, 95)
 
 	s.phaseLoot(0, ms)
 
@@ -202,9 +202,9 @@ func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
 
-	ghost := woundedPlayer(s, ms, 105, ms.tf(token).Pos, 10)
+	ghost := woundedPlayer(s.World, ms, 105, ms.tf(token).Pos, 10)
 	ms.vt(ghost.ID).RespawnAt = time.Now().Add(time.Minute)
-	frozen := woundedPlayer(s, ms, 106, ms.tf(token).Pos, 10)
+	frozen := woundedPlayer(s.World, ms, 106, ms.tf(token).Pos, 10)
 	frozen.Frozen = true
 	for i, behavior := range []string{BehaviorSkill, BehaviorCoin, BehaviorDrop, BehaviorProvider} {
 		bot := EntityID(200 + i)
@@ -221,7 +221,7 @@ func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 		t.Fatalf("ineligible players healed: ghost=%v frozen=%v", ms.vt(ghost.ID).Life, ms.vt(frozen.ID).Life)
 	}
 
-	wounded := woundedPlayer(s, ms, 108, ms.tf(token).Pos, 60)
+	wounded := woundedPlayer(s.World, ms, 108, ms.tf(token).Pos, 60)
 	s.phaseLoot(0, ms)
 	if _, ok := ms.brains[token]; ok || ms.vt(wounded.ID).Life != 70 {
 		t.Fatalf("a wounded player must consume the token: life=%v", ms.vt(wounded.ID).Life)
@@ -232,7 +232,7 @@ func TestACollectorAtFullLifeKeepsAPickupAndTheTokenComesBack(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
 	at := *ms.tf(token)
-	player := woundedPlayer(s, ms, 104, at.Pos, 100)
+	player := woundedPlayer(s.World, ms, 104, at.Pos, 100)
 	const bot EntityID = 109
 	addBot(ms, bot, Transform{Pos: Vec2{X: 15, Y: 15}, Size: at.Size}, &Brain{}, Motion{}, BehaviorHostile)
 
@@ -261,7 +261,7 @@ func TestAPickupHealsByItsResistanceAndComesBackAfterItsRespawnTime(t *testing.T
 	ms := s.maps["m"]
 	token := onlyToken(t, ms)
 	cell := ms.tf(token).Pos
-	player := woundedPlayer(s, ms, 103, cell, 50)
+	player := woundedPlayer(s.World, ms, 103, cell, 50)
 
 	now := time.Now()
 	s.phaseLoot(0, ms)
@@ -291,7 +291,7 @@ func TestAPickupWithoutARespawnTimeTakesTheDefault(t *testing.T) {
 	buildWorld(s, []string{"m"}, lootEntity(4, 4, "gel"), lootEntity(10, 10, "salve"))
 	ms := s.maps["m"]
 	for _, token := range worldTokens(ms) {
-		woundedPlayer(s, ms, 1000+token, ms.tf(token).Pos, 50)
+		woundedPlayer(s.World, ms, 1000+token, ms.tf(token).Pos, 50)
 	}
 
 	now := time.Now()
@@ -322,7 +322,7 @@ func TestAGrantPickupEntersTheInventoryUnused(t *testing.T) {
 	s := lootServer(t)
 	buildWorld(s, []string{"m"}, lootEntity(4, 4, "salve"))
 	ms := s.maps["m"]
-	player := woundedPlayer(s, ms, 103, ms.tf(onlyToken(t, ms)).Pos, 100)
+	player := woundedPlayer(s.World, ms, 103, ms.tf(onlyToken(t, ms)).Pos, 100)
 
 	s.phaseLoot(0, ms)
 
@@ -336,7 +336,7 @@ func TestDeathDropsKeepTheContributorRace(t *testing.T) {
 	s, ms, contributor := movementFixture(t)
 	s.lastEntityID = 1000 // drops take ids after the players
 	s.coinItemID = "coin"
-	outsider := woundedPlayer(s, ms, 107, Vec2{}, 50)
+	outsider := woundedPlayer(s.World, ms, 107, Vec2{}, 50)
 	ledger := map[EntityID]float64{contributor.ID: 5}
 	s.spawnDrops(ms, Vec2{X: 10, Y: 10},
 		EntityTypeDefaultConfig{DropItemIDs: []string{"shard"}}, 7, ledger)

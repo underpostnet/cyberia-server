@@ -3,7 +3,7 @@ package game
 import "time"
 
 // HandlePlayerTapAction gates skills and regeneration with the authoritative cooldown.
-func (s *GameServer) HandlePlayerTapAction(player *Session, mapState *MapState, target Vec2) {
+func (s *Sim) HandlePlayerTapAction(player *Session, mapState *MapState, target Vec2) {
 	if mapState.vt(player.ID).ghost() || player.Frozen {
 		return
 	}
@@ -14,7 +14,7 @@ func (s *GameServer) HandlePlayerTapAction(player *Session, mapState *MapState, 
 	s.dispatchSkillsForEntity(player.ID, mapState, target, true)
 }
 
-func (s *GameServer) acceptSkillAction(id EntityID, mapState *MapState, now time.Time) bool {
+func (s *Sim) acceptSkillAction(id EntityID, mapState *MapState, now time.Time) bool {
 	state := mapState.mt(id)
 	if mapState.vt(id).ghost() || now.Before(state.NextSkillAt) {
 		return false
@@ -24,6 +24,6 @@ func (s *GameServer) acceptSkillAction(id EntityID, mapState *MapState, now time
 }
 
 // Bot action scheduling owns its cooldown.
-func (s *GameServer) handleBotSkills(id EntityID, mapState *MapState, target Vec2) {
+func (s *Sim) handleBotSkills(id EntityID, mapState *MapState, target Vec2) {
 	s.dispatchSkillsForEntity(id, mapState, target, true)
 }

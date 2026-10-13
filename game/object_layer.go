@@ -44,7 +44,7 @@ type ObjectLayer struct {
 
 // ReplaceObjectLayerCache atomically replaces the entire cache.
 // Used by WorldBuilder for initial full load via gRPC.
-func (s *GameServer) ReplaceObjectLayerCache(cache map[string]*ObjectLayer) error {
+func (s *Content) ReplaceObjectLayerCache(cache map[string]*ObjectLayer) error {
 	if err := validateObjectLayers(cache); err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func (s *GameServer) ReplaceObjectLayerCache(cache map[string]*ObjectLayer) erro
 
 // PatchObjectLayerCache applies incremental updates and deletions.
 // Used by WorldBuilder for hot-reload via gRPC manifest diffing.
-func (s *GameServer) PatchObjectLayerCache(updates map[string]*ObjectLayer, deletions []string) error {
+func (s *Content) PatchObjectLayerCache(updates map[string]*ObjectLayer, deletions []string) error {
 	if err := validateObjectLayers(updates); err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (s *GameServer) PatchObjectLayerCache(updates map[string]*ObjectLayer, dele
 }
 
 // GetObjectLayerData returns an ObjectLayer by item ID (read-locked).
-func (s *GameServer) GetObjectLayerData(itemID string) (*ObjectLayer, bool) {
+func (s *Content) GetObjectLayerData(itemID string) (*ObjectLayer, bool) {
 	s.olMu.RLock()
 	defer s.olMu.RUnlock()
 	ol, ok := s.objectLayerDataCache[itemID]

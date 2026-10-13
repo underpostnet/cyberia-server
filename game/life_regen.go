@@ -5,7 +5,7 @@ import "math/rand"
 // handleProbabilisticRegen gives an entity a chance to regenerate life on an
 // action: a player's tap or a bot's new path. Utility raises the chance,
 // resistance the amount, on top of the entity's own base regeneration.
-func (s *GameServer) handleProbabilisticRegen(id EntityID, mapState *MapState) {
+func (s *Sim) handleProbabilisticRegen(id EntityID, mapState *MapState) {
 	v := mapState.vt(id)
 	if v.Life >= v.MaxLife {
 		return
@@ -23,7 +23,7 @@ func (s *GameServer) handleProbabilisticRegen(id EntityID, mapState *MapState) {
 
 // restoreLife adds up to amount life, never past MaxLife. Every AOI viewer sees the same green
 // "+N" for the life actually restored, for players and bots alike.
-func (s *GameServer) restoreLife(mapState *MapState, v *Vitals, at Vec2, amount float64) {
+func (s *Content) restoreLife(mapState *MapState, v *Vitals, at Vec2, amount float64) {
 	gained := min(v.Life+amount, v.MaxLife) - v.Life
 	if gained <= 0 {
 		return

@@ -153,7 +153,7 @@ func contributorSet(ledger map[EntityID]float64) map[EntityID]struct{} {
 // to collect the tokens once they settle. Shared by every dying
 // content-authority entity (bots, resources, destructible obstacles). Caller
 // holds s.mu.
-func (s *GameServer) spawnDrops(mapState *MapState, center Vec2, build EntityTypeDefaultConfig, coinAmount int, ledger map[EntityID]float64) {
+func (s *Content) spawnDrops(mapState *MapState, center Vec2, build EntityTypeDefaultConfig, coinAmount int, ledger map[EntityID]float64) {
 	contributors := contributorSet(ledger)
 	// At least one contributor (player or bot) must have dealt damage for loot to
 	// drop. A death nobody contributed to leaves nothing behind.
@@ -188,7 +188,7 @@ func (s *GameServer) spawnDrops(mapState *MapState, center Vec2, build EntityTyp
 // spawnLootToken spawns one BehaviorDrop token showing itemID × quantity at
 // pos with its brain. Its one active layer carries the quantity for the
 // on-grid counter. Caller holds s.mu.
-func (s *GameServer) spawnLootToken(mapState *MapState, pos, size Vec2, brain *Brain, respawn time.Duration) EntityID {
+func (s *Content) spawnLootToken(mapState *MapState, pos, size Vec2, brain *Brain, respawn time.Duration) EntityID {
 	id := s.newEntityID()
 	mapState.addBrain(id, brain)
 	mapState.spawn(id, EntityData{Kind: EntityBot}, Transform{Pos: pos, Size: size},
@@ -203,7 +203,7 @@ func (s *GameServer) spawnLootToken(mapState *MapState, pos, size Vec2, brain *B
 // spawnDropToken creates one death-drop token carrying (itemID × quantity),
 // flings it to a walkable cell a random distance from `center` along a random
 // direction, and announces the launch. Caller holds s.mu.
-func (s *GameServer) spawnDropToken(mapState *MapState, center Vec2, itemID string, quantity int, contributors map[EntityID]struct{}) {
+func (s *Content) spawnDropToken(mapState *MapState, center Vec2, itemID string, quantity int, contributors map[EntityID]struct{}) {
 	if itemID == "" || quantity <= 0 {
 		return
 	}
@@ -250,7 +250,7 @@ func (s *GameServer) spawnDropToken(mapState *MapState, center Vec2, itemID stri
 // clampDropCell keeps a scatter target inside the grid and on a walkable cell,
 // falling back to the closest walkable point (then the raw cell) so a drop is
 // never lost to an obstacle.
-func (s *GameServer) clampDropCell(mapState *MapState, cell Cell, dims Vec2) Cell {
+func (s *Content) clampDropCell(mapState *MapState, cell Cell, dims Vec2) Cell {
 	if cell.X < 0 {
 		cell.X = 0
 	} else if cell.X >= mapState.gridW {
@@ -276,7 +276,7 @@ func (s *GameServer) clampDropCell(mapState *MapState, cell Cell, dims Vec2) Cel
 
 // lootBuild is the loot default whose live items itemID matches, or an empty
 // build and false.
-func (s *GameServer) lootBuild(itemID string) (EntityTypeDefaultConfig, bool) {
+func (s *Content) lootBuild(itemID string) (EntityTypeDefaultConfig, bool) {
 	items := []string{itemID}
 	if build, _ := s.resolveEntityDefaultBuild("loot", items); matchesLiveItems(build, items) {
 		return build, true
@@ -288,7 +288,7 @@ func (s *GameServer) lootBuild(itemID string) (EntityTypeDefaultConfig, bool) {
 // the first living entity it benefits, never expiring, blocking nothing. The
 // loot default its item matches makes it consume on pickup; else it grants the
 // item. Caller holds s.mu.
-func (s *GameServer) placeWorldLoot(mapState *MapState, pos Vec2, itemID string, respawn time.Duration) {
+func (s *Content) placeWorldLoot(mapState *MapState, pos Vec2, itemID string, respawn time.Duration) {
 	brain := &Brain{
 		DropItemID:     itemID,
 		DropQuantity:   1,
@@ -315,7 +315,7 @@ func scheduleLootRespawn(mapState *MapState, dropID EntityID, now time.Time) {
 }
 
 // respawnWorldLoot places every consumed world token whose wait ran out.
-func (s *GameServer) respawnWorldLoot(mapState *MapState, now time.Time) {
+func (s *Content) respawnWorldLoot(mapState *MapState, now time.Time) {
 	waiting := mapState.lootRespawns[:0]
 	for _, respawn := range mapState.lootRespawns {
 		if now.Before(respawn.at) {
@@ -328,7 +328,7 @@ func (s *GameServer) respawnWorldLoot(mapState *MapState, now time.Time) {
 }
 
 // buildLoot places a map-authored `loot` entity on its cell. It shows one item.
-func (s *GameServer) buildLoot(mapState *MapState, ent *pb.EntityMessage) {
+func (s *Content) buildLoot(mapState *MapState, ent *pb.EntityMessage) {
 	itemIDs := ent.GetObjectLayerItemIds()
 	if len(itemIDs) != 1 {
 		logx.Warnf("[LOOT] skip loot at (%d,%d) on %q: it shows %d items, not one",
@@ -349,7 +349,7 @@ func lootConsumes(drop *Brain, collector *Vitals) bool {
 
 // applyLootToPlayer applies the token's outcome to the collecting player and
 // reports whether the player received what it carries.
-func (s *GameServer) applyLootToPlayer(mapState *MapState, drop *Brain, player *Session) bool {
+func (s *Content) applyLootToPlayer(mapState *MapState, drop *Brain, player *Session) bool {
 	logx.Debugf("[LOOT] %s token %s taken by player %s", drop.LootOrigin, drop.DropItemID, player.ID)
 	switch {
 	case drop.LootOutcome == LootOutcomeCoin:
@@ -367,7 +367,7 @@ func (s *GameServer) applyLootToPlayer(mapState *MapState, drop *Brain, player *
 
 // applyLootToBot applies the token's outcome to the collecting bot and reports
 // whether the bot received what it carries.
-func (s *GameServer) applyLootToBot(mapState *MapState, drop *Brain, bot EntityID) bool {
+func (s *Content) applyLootToBot(mapState *MapState, drop *Brain, bot EntityID) bool {
 	logx.Debugf("[LOOT] %s token %s taken by bot %s", drop.LootOrigin, drop.DropItemID, bot)
 	switch {
 	case drop.LootOutcome == LootOutcomeCoin:
@@ -393,7 +393,7 @@ func lootAdmits(drop *Brain, collectorID EntityID) bool {
 // resolveDropCollector returns the first live, non-frozen player overlapping the
 // token that its policy admits, or nil. Go's random map
 // iteration order fairly breaks ties between simultaneous colliders.
-func (s *GameServer) resolveDropCollector(mapState *MapState, dropID EntityID) *Session {
+func (s *Content) resolveDropCollector(mapState *MapState, dropID EntityID) *Session {
 	drop := mapState.br(dropID)
 	for player := range s.playersOn(mapState) {
 		if mapState.vt(player.ID).ghost() || player.Frozen {
@@ -411,7 +411,7 @@ func (s *GameServer) resolveDropCollector(mapState *MapState, dropID EntityID) *
 
 // resolveBotDropCollector returns the first live loot-collecting bot overlapping
 // the token that its policy admits, or 0.
-func (s *GameServer) resolveBotDropCollector(mapState *MapState, dropID EntityID) EntityID {
+func (s *Content) resolveBotDropCollector(mapState *MapState, dropID EntityID) EntityID {
 	drop := mapState.br(dropID)
 	for id := range mapState.brains {
 		if id == dropID || mapState.vt(id).ghost() || !behaviorCollectsLoot(mapState.ag(id).Behavior) {
@@ -432,7 +432,7 @@ func (s *GameServer) resolveBotDropCollector(mapState *MapState, dropID EntityID
 // broadcastDropSpawn delivers the launch event to every player watching the
 // corpse (AOI covers the launch origin), so all viewers see the token arc out
 // of the dead bot.
-func (s *GameServer) broadcastDropSpawn(mapState *MapState, dropID EntityID, origin, landing Vec2) {
+func (s *Content) broadcastDropSpawn(mapState *MapState, dropID EntityID, origin, landing Vec2) {
 	drop := mapState.br(dropID)
 	payload := DropSpawn{
 		DropID:   dropID,
@@ -454,7 +454,7 @@ func (s *GameServer) broadcastDropSpawn(mapState *MapState, dropID EntityID, ori
 // broadcastDropCollect delivers the pickup animation event to every player whose
 // AOI covers the token, so all viewers see the token fly to the collector (a
 // player or a bot).
-func (s *GameServer) broadcastDropCollect(mapState *MapState, dropID EntityID, collectorID EntityID, cx, cy float64, granted bool) {
+func (s *Content) broadcastDropCollect(mapState *MapState, dropID EntityID, collectorID EntityID, cx, cy float64, granted bool) {
 	drop := mapState.br(dropID)
 	payload := DropCollect{
 		DropID:      dropID,
@@ -477,7 +477,7 @@ func (s *GameServer) broadcastDropCollect(mapState *MapState, dropID EntityID, c
 
 // grantItemToBot transfers `qty` of a non-coin item into a contributing bot's
 // inventory when it collects a scattered drop (appended inactive if new).
-func (s *GameServer) grantItemToBot(id EntityID, ms *MapState, itemID string, qty int) {
+func (s *Content) grantItemToBot(id EntityID, ms *MapState, itemID string, qty int) {
 	if itemID == "" || qty <= 0 {
 		return
 	}

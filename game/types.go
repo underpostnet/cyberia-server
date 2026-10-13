@@ -386,3 +386,11 @@ func (p *Session) frameAt(tick uint32) uint32 {
 	}
 	return uint32(int64(tick) + p.FrameOffset)
 }
+
+// World is the entity state: every map and the session of every player.
+type World struct {
+	mu           sync.Mutex // guards maps and sessions
+	maps         map[string]*MapState
+	lastEntityID EntityID // only goes up, so a freed id never comes back
+	sessions     map[EntityID]*Session
+}

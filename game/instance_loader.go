@@ -42,7 +42,7 @@ func playerSpawnFromInstance(instance *pb.InstanceMessage) PlayerSpawnConfig {
 	}
 }
 
-func (s *GameServer) BuildWorldFromInstance(
+func (s *Sim) BuildWorldFromInstance(
 	instance *pb.InstanceMessage,
 	mapMsgs []*pb.MapDataMessage,
 	olMsgs []*pb.ObjectLayerMessage,
@@ -82,7 +82,7 @@ func (s *GameServer) BuildWorldFromInstance(
 // SetInstanceCode records the INSTANCE_CODE the world was loaded for. When it is
 // "TEST", new players always spawn on the first declared map (deterministic for
 // testing) instead of a random one.
-func (s *GameServer) SetInstanceCode(code string) {
+func (s *Sim) SetInstanceCode(code string) {
 	s.mu.Lock()
 	s.instanceCode = code
 	s.mu.Unlock()
@@ -92,7 +92,7 @@ func (s *GameServer) SetInstanceCode(code string) {
 // (floors, obstacles, foregrounds, portals, bots) while preserving
 // connected players.  Called by the hot-reload loop so that map edits
 // made in the admin UI are reflected without a full server restart.
-func (s *GameServer) RebuildWorld(
+func (s *Sim) RebuildWorld(
 	instance *pb.InstanceMessage,
 	mapMsgs []*pb.MapDataMessage,
 	olMsgs []*pb.ObjectLayerMessage,
@@ -157,7 +157,7 @@ func (s *GameServer) RebuildWorld(
 
 // buildMapsFromInstance is the shared implementation for BuildWorldFromInstance
 // and RebuildWorld.  Caller MUST hold s.mu.
-func (s *GameServer) buildMapsFromInstance(
+func (s *Sim) buildMapsFromInstance(
 	instance *pb.InstanceMessage,
 	mapMsgs []*pb.MapDataMessage,
 ) {
@@ -280,7 +280,7 @@ func entTransform(ent *pb.EntityMessage, size Vec2) Transform {
 	return Transform{Pos: Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}, Size: size}
 }
 
-func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
+func (s *Sim) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 	var layers []ObjectLayerState
 	for _, itemID := range ent.GetObjectLayerItemIds() {
 		layers = append(layers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
@@ -299,7 +299,7 @@ func (s *GameServer) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 		entTransform(ent, entSize(ent)), Appearance{Layers: layers})
 }
 
-func (s *GameServer) buildBot(ms *MapState, ent *pb.EntityMessage) {
+func (s *Sim) buildBot(ms *MapState, ent *pb.EntityMessage) {
 	dims := Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
 	if dims.X <= 0 {
 		dims.X = float64(rand.Intn(4) + 1)
@@ -370,7 +370,7 @@ func (s *GameServer) buildBot(ms *MapState, ent *pb.EntityMessage) {
 	}
 }
 
-func (s *GameServer) buildResource(ms *MapState, ent *pb.EntityMessage) {
+func (s *Sim) buildResource(ms *MapState, ent *pb.EntityMessage) {
 	dims := Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
 	if dims.X <= 0 {
 		dims.X = 2
@@ -398,7 +398,7 @@ func (s *GameServer) buildResource(ms *MapState, ent *pb.EntityMessage) {
 
 // placedMaxLife is the max life a map entity names, or the instance base when it
 // names none.
-func (s *GameServer) placedMaxLife(ent *pb.EntityMessage) float64 {
+func (s *Sim) placedMaxLife(ent *pb.EntityMessage) float64 {
 	if ent.GetMaxLife() > 0 {
 		return ent.GetMaxLife()
 	}
@@ -413,7 +413,7 @@ func placedRespawnDuration(ent *pb.EntityMessage) time.Duration {
 // buildObstacle places an obstacle and blocks its cells. The destructible
 // behavior binds only on a live-item match: an obstacle that falls back to the
 // first default of its type stays ordinary.
-func (s *GameServer) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
+func (s *Sim) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
 	dims := Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
 	pos := Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
 	objectLayers := s.spawnObjectLayers("obstacle", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
@@ -434,11 +434,11 @@ func (s *GameServer) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
 
 // entAppearance gives an entity of `kind` its layers. One that carries neither
 // object layers nor a colour falls back to the kind's default live items.
-func (s *GameServer) entAppearance(ent *pb.EntityMessage, kind string) Appearance {
+func (s *Sim) entAppearance(ent *pb.EntityMessage, kind string) Appearance {
 	return Appearance{Layers: s.spawnObjectLayers(kind, ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)}
 }
 
-func (s *GameServer) buildForeground(ms *MapState, ent *pb.EntityMessage) {
+func (s *Sim) buildForeground(ms *MapState, ent *pb.EntityMessage) {
 	ap := s.entAppearance(ent, "foreground")
 	data := EntityData{Kind: EntityScenery, DrawOrder: DrawForeground}
 	if s.boundBehavior("foreground", ap.Layers) == BehaviorOverheadOcclusion {
@@ -447,13 +447,13 @@ func (s *GameServer) buildForeground(ms *MapState, ent *pb.EntityMessage) {
 	ms.spawn(s.newEntityID(), data, entTransform(ent, entSize(ent)), ap)
 }
 
-func (s *GameServer) buildStatic(ms *MapState, ent *pb.EntityMessage) {
+func (s *Sim) buildStatic(ms *MapState, ent *pb.EntityMessage) {
 	// Statics are passable: no pathfinder cells are blocked.
 	ms.spawn(s.newEntityID(), EntityData{Kind: EntityScenery},
 		entTransform(ent, entSize(ent)), s.entAppearance(ent, "static"))
 }
 
-func (s *GameServer) buildPortal(ms *MapState, ent *pb.EntityMessage) EntityID {
+func (s *Sim) buildPortal(ms *MapState, ent *pb.EntityMessage) EntityID {
 	dims := Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
 	if dims.X <= 0 {
 		dims.X = 3

@@ -49,7 +49,7 @@ import (
 //   - Movement re-plans at most once per player per tick. Handlers record the
 //     intent; flushPendingMove runs the single A*. This is the only bound on
 //     pathfinder cost, so no other path may call it.
-func (s *GameServer) phaseInput(tick uint32, mapState *MapState) {
+func (s *Sim) phaseInput(tick uint32, mapState *MapState) {
 	for player := range s.playersOn(mapState) {
 		if len(player.InputQueue) == 0 {
 			continue
@@ -74,7 +74,7 @@ func (s *GameServer) phaseInput(tick uint32, mapState *MapState) {
 // applyInputCommand is the typed dispatcher. Kept on *GameServer so it
 // can call into existing simulation helpers without re-acquiring the
 // world lock. Each branch maps to one InputKind constant.
-func (s *GameServer) applyInputCommand(player *Session, mapState *MapState, cmd *InputCommand) {
+func (s *Sim) applyInputCommand(player *Session, mapState *MapState, cmd *InputCommand) {
 	switch cmd.Kind {
 	case InputKindPlayerAction:
 		s.handlePlayerActionInput(player, mapState, cmd)
@@ -110,7 +110,7 @@ func (s *GameServer) applyInputCommand(player *Session, mapState *MapState, cmd 
 // phaseLifecycle handles respawn timers and similar lifecycle transitions.
 // Currently delegates to the existing helper which also subsumes coin-drop
 // FCT events (those will move to phaseEconomy in a follow-up).
-func (s *GameServer) phaseLifecycle(tick uint32, mapState *MapState) {
+func (s *Sim) phaseLifecycle(tick uint32, mapState *MapState) {
 	_ = tick
 	for id := range mapState.mortals {
 		s.ApplyResistanceStat(id, mapState)
@@ -120,7 +120,7 @@ func (s *GameServer) phaseLifecycle(tick uint32, mapState *MapState) {
 }
 
 // phaseSkills resolves skill projectile collisions and runs the skills of held items for this tick.
-func (s *GameServer) phaseSkills(tick uint32, mapState *MapState) {
+func (s *Sim) phaseSkills(tick uint32, mapState *MapState) {
 	_ = tick
 	s.handleSkillCollisions(mapState)
 	for player := range s.playersOn(mapState) {
@@ -137,14 +137,14 @@ func (s *GameServer) phaseSkills(tick uint32, mapState *MapState) {
 // bot's positional integration inside updateBots — that movement remains
 // here for now but should be split out to phaseMovement in a follow-up so
 // that ai/movement separation is enforced on both player and bot paths.
-func (s *GameServer) phaseAI(tick uint32, mapState *MapState) {
+func (s *Sim) phaseAI(tick uint32, mapState *MapState) {
 	_ = tick
 	s.updateBots(mapState)
 }
 
 // phaseMovement integrates player positions using dt = tickDuration.
 // Bots are handled inside phaseAI for now (see note above).
-func (s *GameServer) phaseMovement(tick uint32, mapState *MapState) {
+func (s *Sim) phaseMovement(tick uint32, mapState *MapState) {
 	_ = tick
 	for player := range s.playersOn(mapState) {
 		s.updatePlayerPosition(player, mapState)
@@ -162,7 +162,7 @@ func (s *GameServer) phaseMovement(tick uint32, mapState *MapState) {
 
 // phasePortals checks each player against portals and triggers teleports
 // when the portal hold time has elapsed.
-func (s *GameServer) phasePortals(tick uint32, mapState *MapState) {
+func (s *Sim) phasePortals(tick uint32, mapState *MapState) {
 	_ = tick
 	for player := range s.playersOn(mapState) {
 		s.checkPortal(player, mapState)
@@ -173,7 +173,7 @@ func (s *GameServer) phasePortals(tick uint32, mapState *MapState) {
 // token's collection policy admits takes it, players before bots: its outcome
 // applies, the pickup animation event goes to every viewer and the token is
 // removed in the same step, so one token applies once. Caller holds s.mu.
-func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
+func (s *Sim) phaseLoot(tick uint32, mapState *MapState) {
 	_ = tick
 	now := time.Now()
 	s.respawnWorldLoot(mapState, now)

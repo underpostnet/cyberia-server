@@ -6,7 +6,7 @@ import (
 	"cyberia-server/logx"
 )
 
-func (s *GameServer) buildEntityDefaultsSlice() []EntityTypeDefaultConfig {
+func (s *Content) buildEntityDefaultsSlice() []EntityTypeDefaultConfig {
 	result := make([]EntityTypeDefaultConfig, len(s.entityDefaultBuilds))
 	copy(result, s.entityDefaultBuilds)
 	return result
@@ -19,7 +19,7 @@ func (s *GameServer) buildEntityDefaultsSlice() []EntityTypeDefaultConfig {
 // defaults by its full active set, e.g. {purple, atlas_pistol_mk2} → hostile but
 // {purple} → passive. With no containing match it falls back to the first build
 // of the type, then the per-type lookup.
-func (s *GameServer) resolveEntityDefaultBuild(entityType string, itemIDs []string) (EntityTypeDefaultConfig, bool) {
+func (s *Content) resolveEntityDefaultBuild(entityType string, itemIDs []string) (EntityTypeDefaultConfig, bool) {
 	var firstTypeBuild *EntityTypeDefaultConfig
 	bestIndex := -1
 	bestSize := 0
@@ -123,7 +123,7 @@ func buildLayer(build EntityTypeDefaultConfig, itemID string) ObjectLayerState {
 //
 // A placed id is active by definition: it is what the author put there. seedDefaults is false for
 // a solid-colour entity placed without sprites, which carries no default layers at all.
-func (s *GameServer) spawnObjectLayers(entityType string, placedItemIDs []string, seedDefaults bool) []ObjectLayerState {
+func (s *Content) spawnObjectLayers(entityType string, placedItemIDs []string, seedDefaults bool) []ObjectLayerState {
 	build, hasBuild := s.resolveEntityDefaultBuild(entityType, placedItemIDs)
 	layers := make([]ObjectLayerState, 0, len(placedItemIDs))
 	seen := make(map[string]struct{}, len(placedItemIDs))
@@ -171,7 +171,7 @@ func (s *GameServer) spawnObjectLayers(entityType string, placedItemIDs []string
 // reached it any other way. A type the rules do not govern — a resource visual, a coin — passes
 // through, and so does an item whose type this server has not cached, exactly as an activation
 // request does.
-func (s *GameServer) normalizeLoadout(layers []ObjectLayerState) []ObjectLayerState {
+func (s *Content) normalizeLoadout(layers []ObjectLayerState) []ObjectLayerState {
 	claimed := make(map[string]bool, len(layers))
 	active := 0
 	out := make([]ObjectLayerState, len(layers))
@@ -245,7 +245,7 @@ type SkillDefinition struct {
 
 // itemType returns the ObjectLayer item type for an itemID, or "" if the
 // ObjectLayer cache has no entry. Pure helper — no state mutation.
-func (s *GameServer) itemType(itemID string) string {
+func (s *Content) itemType(itemID string) string {
 	if data, ok := s.GetObjectLayerData(itemID); ok {
 		return data.Data.Item.Type
 	}

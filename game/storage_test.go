@@ -21,12 +21,13 @@ func TestStorageCapacityClampsToTheRenderableCeiling(t *testing.T) {
 // does the reverse and drops the stack once drained. Quantities are clamped to
 // what the source actually holds, so a spoofed count can never mint items.
 func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
-	s := &GameServer{
+	s := &Content{
+		World:      &World{},
 		coinItemID: "coin",
 
 		storage: map[storageKey][]StorageSlot{},
 	}
-	player := placePlayer(s, 1, []ObjectLayerState{{ItemID: "hatchet", Quantity: 2}})
+	player := placePlayer(s.World, 1, []ObjectLayerState{{ItemID: "hatchet", Quantity: 2}})
 
 	// Deposit more than held → clamped to the 2 the player actually has.
 	slots := s.storageDeposit(player, nil, 2, "hatchet", 9)
@@ -101,7 +102,8 @@ func TestParseInputBoundsItemOps(t *testing.T) {
 // A skin the player is wearing can be banked as long as another skin stays on: requireSkin keeps
 // an entity dressed, it does not pin one particular skin to it for good.
 func TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive(t *testing.T) {
-	server := &GameServer{
+	server := &Content{
+		World: &World{},
 		equipmentRules: EquipmentRulesConfig{
 			ActiveItemTypes: map[string]bool{"skin": true, "weapon": true},
 			OnePerType:      true,
@@ -112,7 +114,7 @@ func TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive(t *testing.T) {
 			"punk": {Data: ObjectLayerData{Item: Item{Type: "skin"}}},
 		},
 	}
-	player := placePlayer(server, 1, []ObjectLayerState{
+	player := placePlayer(server.World, 1, []ObjectLayerState{
 		{ItemID: "anon", Active: true, Quantity: 1},
 		{ItemID: "punk", Active: true, Quantity: 1},
 	})

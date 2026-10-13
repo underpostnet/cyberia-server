@@ -60,7 +60,7 @@ import (
 // broadcastAt delivers one message to every player whose AOI covers the
 // event point — identical feedback for every viewer, so per-recipient
 // amounts can never leak.
-func (s *GameServer) broadcastAt(mapState *MapState, msgType string, payload any, worldX, worldY float64) {
+func (s *Content) broadcastAt(mapState *MapState, msgType string, payload any, worldX, worldY float64) {
 	pt := Rectangle{MinX: worldX, MinY: worldY, MaxX: worldX, MaxY: worldY}
 	for player := range s.playersOn(mapState) {
 		if rectsOverlap(player.AOI, pt) {
@@ -70,13 +70,13 @@ func (s *GameServer) broadcastAt(mapState *MapState, msgType string, payload any
 }
 
 // broadcastFCT delivers the same combat-text event to every viewer in reach.
-func (s *GameServer) broadcastFCT(mapState *MapState, kind string, worldX, worldY float64, value int) {
+func (s *Content) broadcastFCT(mapState *MapState, kind string, worldX, worldY float64, value int) {
 	s.broadcastAt(mapState, "combat_text", CombatText{Kind: kind, WorldX: worldX, WorldY: worldY, Value: value}, worldX, worldY)
 }
 
 // broadcastAudioEvent raises one audio logic id for every viewer in reach, so
 // a defeat or a level gained sounds for everyone who can see it.
-func (s *GameServer) broadcastAudioEvent(mapState *MapState, logicEventID string, at Vec2) {
+func (s *Content) broadcastAudioEvent(mapState *MapState, logicEventID string, at Vec2) {
 	s.broadcastAt(mapState, "audio_event", AudioEvent{LogicEventID: logicEventID, WorldX: at.X, WorldY: at.Y}, at.X, at.Y)
 }
 
@@ -92,14 +92,14 @@ func (s *GameServer) broadcastAudioEvent(mapState *MapState, logicEventID string
 // syncCoinOL ensures the coin ObjectLayer slot reflects the current flat balance.
 // The slot is created if absent.  Active is always forced to false: coins are
 // a non-activable item (display-only in the inventory bar and modal).
-func (s *GameServer) syncCoinOL(layers *[]ObjectLayerState, amount uint32) {
+func (s *Content) syncCoinOL(layers *[]ObjectLayerState, amount uint32) {
 	ol := getOrCreateItemOL(layers, s.coinItemID)
 	ol.Quantity = int(amount)
 	ol.Active = false // coins are never activable — enforced here
 }
 
 // wallet returns the flat coin balance of player or bot id on ms.
-func (s *GameServer) wallet(id EntityID, ms *MapState) *uint32 {
+func (s *Content) wallet(id EntityID, ms *MapState) *uint32 {
 	if b, ok := ms.brains[id]; ok {
 		return &b.Coins
 	}
@@ -108,14 +108,14 @@ func (s *GameServer) wallet(id EntityID, ms *MapState) *uint32 {
 
 // setCoins sets the flat balance of id and synchronises the display-only coin
 // ObjectLayer slot (Active: false, Quantity = amount).
-func (s *GameServer) setCoins(id EntityID, ms *MapState, amount uint32) {
+func (s *Content) setCoins(id EntityID, ms *MapState, amount uint32) {
 	*s.wallet(id, ms) = amount
 	s.syncCoinOL(&ms.ap(id).Layers, amount)
 }
 
 // addCoins adds delta to the balance of id (clamped to [0, MaxUint32]) and
 // syncs the display coin OL slot. Returns the new balance.
-func (s *GameServer) addCoins(id EntityID, ms *MapState, delta int) uint32 {
+func (s *Content) addCoins(id EntityID, ms *MapState, delta int) uint32 {
 	next := uint32(max(int(*s.wallet(id, ms))+delta, 0))
 	s.setCoins(id, ms, next)
 	return next
@@ -172,7 +172,7 @@ func removeLayerItem(layers *[]ObjectLayerState, itemID string, qty int) {
 // Coins route through the flat balance so the display slot stays in sync;
 // everything else lands on its ObjectLayer stack, inactive. The counterpart of
 // removePlayerItem (quest.go).
-func (s *GameServer) addPlayerItem(player *Session, itemID string, qty int) {
+func (s *Content) addPlayerItem(player *Session, itemID string, qty int) {
 	if itemID == "" || qty <= 0 {
 		return
 	}
@@ -188,13 +188,13 @@ func (s *GameServer) addPlayerItem(player *Session, itemID string, qty int) {
 
 // FountainInitPlayer credits the player's starting wallet on first connect.
 // It always runs, so the seeded coin slot mirrors the balance even at zero.
-func (s *GameServer) FountainInitPlayer(player *Session) {
+func (s *Content) FountainInitPlayer(player *Session) {
 	s.setCoins(player.ID, s.maps[player.MapCode], uint32(max(s.playerSpawnCoins, 0)))
 }
 
 // FountainInitBot credits a bot's coin pool at spawn / respawn time.
 // Implements the botSpawnCoins fountain (infinite mint bounded by kill rate).
-func (s *GameServer) FountainInitBot(id EntityID, ms *MapState) {
+func (s *Content) FountainInitBot(id EntityID, ms *MapState) {
 	s.setCoins(id, ms, uint32(max(s.botSpawnCoins, 0)))
 }
 
@@ -204,7 +204,7 @@ func (s *GameServer) FountainInitBot(id EntityID, ms *MapState) {
 // drop, mirroring botCoinDropAmount at the vs-player rate: the victim's
 // balance, floored, with the configured minimum, capped at the balance.
 // Players carry only what they hold (no mint). Caller holds s.mu.
-func (s *GameServer) pvpCoinDropAmount(player *Session) int {
+func (s *Content) pvpCoinDropAmount(player *Session) int {
 	effectiveBalance := int(player.Coins)
 	if effectiveBalance <= 0 {
 		return 0
@@ -222,7 +222,7 @@ func (s *GameServer) pvpCoinDropAmount(player *Session) int {
 // botCoinDropAmount computes how many coins a dead bot scatters, mirroring the
 // PvE kill-transfer formula: the bot's balance (minted up to botSpawnCoins) at
 // the vs-bot rate, floored, with the configured minimum. Caller holds s.mu.
-func (s *GameServer) botCoinDropAmount(id EntityID, ms *MapState) int {
+func (s *Content) botCoinDropAmount(id EntityID, ms *MapState) int {
 	effectiveBalance := int(ms.br(id).Coins)
 	if effectiveBalance < s.botSpawnCoins {
 		effectiveBalance = s.botSpawnCoins
@@ -244,7 +244,7 @@ func (s *GameServer) botCoinDropAmount(id EntityID, ms *MapState) int {
 
 // SinkRespawnCost burns a percentage of the dead player's coins on respawn.
 // Alpha default: respawnCostPercent = 0.0 (disabled).
-func (s *GameServer) SinkRespawnCost(player *Session) {
+func (s *Content) SinkRespawnCost(player *Session) {
 	if s.respawnCostPercent <= 0 {
 		return
 	}

@@ -14,7 +14,7 @@ const (
 )
 
 // randomPointWithinRadius returns a random walkable Cell within radius from center (or {-1,-1} on failure).
-func (s *GameServer) randomPointWithinRadius(ms *MapState, center Vec2, radius float64, dims Vec2) Cell {
+func (s *Sim) randomPointWithinRadius(ms *MapState, center Vec2, radius float64, dims Vec2) Cell {
 	for tries := 0; tries < 30; tries++ {
 		ang := rand.Float64() * 2 * math.Pi
 		r := rand.Float64() * radius
@@ -34,7 +34,7 @@ func (s *GameServer) randomPointWithinRadius(ms *MapState, center Vec2, radius f
 }
 
 // update bots per map
-func (s *GameServer) updateBots(mapState *MapState) {
+func (s *Sim) updateBots(mapState *MapState) {
 	for id, bot := range mapState.brains {
 		// If bot is dead, skip all AI logic.
 		if mapState.vt(id).ghost() {
@@ -244,7 +244,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 }
 
 // update bot movement similar to players
-func (s *GameServer) updateBotPosition(id EntityID, mapState *MapState, stats ComputedStats) {
+func (s *Sim) updateBotPosition(id EntityID, mapState *MapState, stats ComputedStats) {
 	bot := mapState.br(id)
 	if mapState.mo(id).Mode != WALKING {
 		return

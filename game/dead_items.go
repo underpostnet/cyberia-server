@@ -5,7 +5,7 @@ import "sort"
 // resolveDeadItemIDs returns the build's dead visuals. Every entity type that
 // needs a dead state must declare deadItemIds in its engine-cyberia config.
 // There is no hardcoded fallback — the gRPC boot is the single authority.
-func (s *GameServer) resolveDeadItemIDs(build EntityTypeDefaultConfig) []string {
+func (s *Content) resolveDeadItemIDs(build EntityTypeDefaultConfig) []string {
 	return build.DeadItemIDs
 }
 
@@ -16,7 +16,7 @@ func (s *GameServer) resolveDeadItemIDs(build EntityTypeDefaultConfig) []string 
 // the first deadItemID declared for the "player" entity type in the gRPC
 // config; it is the auto-applied visual when no other dead items are
 // equipped and must not clutter the inventory.
-func (s *GameServer) visibleInventory(layers []ObjectLayerState) []ObjectLayerState {
+func (s *Content) visibleInventory(layers []ObjectLayerState) []ObjectLayerState {
 	out := make([]ObjectLayerState, 0, len(layers))
 	for _, l := range layers {
 		if l.ItemID == s.ghostItemID {
@@ -31,7 +31,7 @@ func (s *GameServer) visibleInventory(layers []ObjectLayerState) []ObjectLayerSt
 // order: one active per type (first wins, so the configured default leads)
 // and the maxActiveLayers cap. Unknown types pass through, matching the live
 // normalization.
-func (s *GameServer) normalizeDeadLoadout(ids []string) []string {
+func (s *Content) normalizeDeadLoadout(ids []string) []string {
 	out := make([]string, 0, len(ids))
 	seenID := make(map[string]bool)
 	seenType := make(map[string]bool)
@@ -72,7 +72,7 @@ func activateOrAppendLayer(layers *[]ObjectLayerState, itemID string) {
 // deadItemIDList returns the resolved dead-item ids (all from gRPC config),
 // sorted for a deterministic wire order. Shipped in init_data so the client
 // can label Fragmentation items and gate their equip UI.
-func (s *GameServer) deadItemIDList() []string {
+func (s *Content) deadItemIDList() []string {
 	ids := make([]string, 0, len(s.deadItemIDs))
 	for id := range s.deadItemIDs {
 		ids = append(ids, id)

@@ -8,7 +8,7 @@ import (
 // handleSkillCollisions manages collisions for 'skill' behavior bots (projectiles).
 // It checks for intersections with players and other bots, applies damage,
 // and handles death, removing the projectile upon impact.
-func (s *GameServer) handleSkillCollisions(mapState *MapState) {
+func (s *Sim) handleSkillCollisions(mapState *MapState) {
 	projectilesToDelete := []EntityID{}
 
 	for projectileID := range mapState.brains {
@@ -144,7 +144,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 // hitStatic lands a projectile hit on a static mortal entity — a resource or a
 // destructible obstacle — and reports whether it hit. A ghost takes no hit. The
 // damage joins the loot race ledger, and `die` runs on the lethal hit.
-func (s *GameServer) hitStatic(mapState *MapState, projectile EntityID, effect float64,
+func (s *Sim) hitStatic(mapState *MapState, projectile EntityID, effect float64,
 	id EntityID, die func()) bool {
 	shot, tf, v := mapState.tf(projectile), mapState.tf(id), mapState.vt(id)
 	if v.ghost() || !checkAABBCollision(shot.Pos, shot.Size, tf.Pos, tf.Size) {
@@ -197,7 +197,7 @@ func applyDeadItems(layers []ObjectLayerState, deadItemIDs []string) []ObjectLay
 // bots that dealt damage, so a bot-only kill still drops the victim's coins per
 // the instance economy rules; contributing bots collect on collision. A death
 // nobody contributed to drops nothing.
-func (s *GameServer) handlePlayerDeath(player *Session, mapState *MapState) {
+func (s *Sim) handlePlayerDeath(player *Session, mapState *MapState) {
 	mortal := mapState.mt(player.ID)
 	s.awardDefeat(player.ID, "player", mapState)
 	// Economy: apply respawn-cost sink before saving layers (disabled by default, rate = 0).
@@ -249,7 +249,7 @@ func (s *GameServer) handlePlayerDeath(player *Session, mapState *MapState) {
 // Both the dead visuals and the drops come from the entity-type default
 // resolved by the pre-death active items (most-specific subset match), so a
 // skin can carry different dead/drop sets depending on its full active set.
-func (s *GameServer) killEntity(id EntityID, kind string, coins int, mapState *MapState) {
+func (s *Sim) killEntity(id EntityID, kind string, coins int, mapState *MapState) {
 	mortal := mapState.mt(id)
 	s.awardDefeat(id, kind, mapState)
 	layersToSave := make([]ObjectLayerState, len(mapState.ap(id).Layers))
@@ -268,7 +268,7 @@ func (s *GameServer) killEntity(id EntityID, kind string, coins int, mapState *M
 
 // handleBotDeath kills a bot. Loot and coins are not injected into the killer:
 // both scatter as collectible tokens.
-func (s *GameServer) handleBotDeath(id EntityID, mapState *MapState) {
+func (s *Sim) handleBotDeath(id EntityID, mapState *MapState) {
 	s.killEntity(id, "bot", s.botCoinDropAmount(id, mapState), mapState)
 
 	s.ApplyResistanceStat(id, mapState)
@@ -277,20 +277,20 @@ func (s *GameServer) handleBotDeath(id EntityID, mapState *MapState) {
 
 // handleResourceDeath destroys a resource. Resources carry no coins — item
 // drops only, with loot priority to the top extraction contributor.
-func (s *GameServer) handleResourceDeath(res EntityID, mapState *MapState) {
+func (s *Sim) handleResourceDeath(res EntityID, mapState *MapState) {
 	s.killEntity(res, "resource", 0, mapState)
 }
 
 // handleDestructibleDeath depletes a destructible obstacle. It carries no coins
 // and earns no XP; it frees its cells until it respawns.
-func (s *GameServer) handleDestructibleDeath(obs EntityID, mapState *MapState) {
+func (s *Sim) handleDestructibleDeath(obs EntityID, mapState *MapState) {
 	s.killEntity(obs, "obstacle", 0, mapState)
 	tf := mapState.tf(obs)
 	mapState.pathfinder.occupy(tf.Pos, tf.Size, -1)
 }
 
 // handleRespawns checks and respawns dead players and bots.
-func (s *GameServer) handleRespawns(mapState *MapState) {
+func (s *Sim) handleRespawns(mapState *MapState) {
 	// Respawn players
 	for player := range s.playersOn(mapState) {
 		if !mapState.vt(player.ID).RespawnAt.IsZero() && time.Now().After(mapState.vt(player.ID).RespawnAt) {
@@ -350,7 +350,7 @@ func (s *GameServer) handleRespawns(mapState *MapState) {
 }
 
 // Projectiles keep their course through restored obstacles.
-func (s *GameServer) clearObstacleCells(ms *MapState, obs Transform) {
+func (s *Sim) clearObstacleCells(ms *MapState, obs Transform) {
 	for player := range s.playersOn(ms) {
 		tf := ms.tf(player.ID)
 		if !checkAABBCollision(obs.Pos, obs.Size, tf.Pos, tf.Size) {

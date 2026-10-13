@@ -7,14 +7,8 @@ import (
 func lifecycleServer() (*GameServer, *MapState, *MapState) {
 	home := &MapState{code: "home", gridW: 20, gridH: 20}
 	away := &MapState{code: "away", gridW: 20, gridH: 20}
-	s := &GameServer{
-		maps:       map[string]*MapState{"home": home, "away": away},
-		clients:    map[EntityID]*Client{},
-		sessions:   map[EntityID]*Session{},
-		register:   make(chan *Client, 4),
-		unregister: make(chan *Client, 4),
-	}
-	s.SetConnectionLimits(DefaultConnectionLimits())
+	s := NewGameServer()
+	s.maps = map[string]*MapState{"home": home, "away": away}
 	return s, home, away
 }
 

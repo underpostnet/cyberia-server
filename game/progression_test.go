@@ -33,7 +33,7 @@ func TestSignedStatContract(t *testing.T) {
 }
 
 func TestSignedAggregationAcrossEntities(t *testing.T) {
-	s := &GameServer{}
+	s := &Content{}
 	if err := s.ReplaceObjectLayerCache(map[string]*ObjectLayer{
 		"nerf": {Data: ObjectLayerData{Stats: Stats{Effect: -100, Resistance: -100, Agility: -100}}},
 		"buff": {Data: ObjectLayerData{Stats: Stats{Effect: 100, Resistance: 100, Agility: 100}}},
@@ -180,7 +180,7 @@ func TestDefeatAwardsOnlyEligibleContributors(t *testing.T) {
 }
 
 func TestStatValidationRejectsCacheMutation(t *testing.T) {
-	s := &GameServer{}
+	s := NewGameServer()
 	good := map[string]*ObjectLayer{"good": {Data: ObjectLayerData{Stats: Stats{Effect: -100}}}}
 	if err := s.ReplaceObjectLayerCache(good); err != nil {
 		t.Fatal(err)
@@ -204,7 +204,7 @@ func TestSnapshotCarriesProgressionAndSignedBreakdown(t *testing.T) {
 	}
 	ms.ap(p.ID).Layers = []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
 	s.setProgression(p.ID, NewEntityProgression(2, false, s.progressionConfig()))
-	snap := s.buildSnapshotSelf(p, ms)
+	snap := (&GameServer{Sim: s}).buildSnapshotSelf(p, ms)
 	if snap.Level != 2 || snap.XP != 100 || snap.LevelXP != 100 || snap.NextLevelXP != 400 || snap.LayerStats[2] != -100 || snap.Stats[2] != -90 {
 		t.Fatalf("snapshot: %+v", snap)
 	}
@@ -242,7 +242,7 @@ func TestSummonFloorsAfterAllContributions(t *testing.T) {
 }
 
 func TestProgressionNormalizesAfterCurveChange(t *testing.T) {
-	s := &GameServer{progressionRules: defaultProgressionRules()}
+	s := &Content{progressionRules: defaultProgressionRules()}
 	ms := &MapState{}
 	ms.spawn(1, EntityData{Kind: EntityPlayer}, Transform{}, Appearance{})
 	ms.addMortal(1, &Mortal{})

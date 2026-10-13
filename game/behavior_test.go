@@ -7,13 +7,14 @@ import (
 )
 
 func TestForegroundCarriesOnlyTheBehaviorItsDefaultBinds(t *testing.T) {
-	s := &GameServer{
+	s := &Sim{Content: &Content{
+		World:          &World{},
 		entityDefaults: map[string]EntityTypeDefaultConfig{},
 		entityDefaultBuilds: []EntityTypeDefaultConfig{
 			{EntityType: "foreground", LiveItemIDs: []string{"canopy"}},
 			{EntityType: "foreground", LiveItemIDs: []string{"roof"}, Behavior: "overhead-occlusion"},
 		},
-	}
+	}}
 	ms := &MapState{}
 	s.buildForeground(ms, &pb.EntityMessage{ObjectLayerItemIds: []string{"roof"}, DimX: 4, DimY: 3})
 	s.buildForeground(ms, &pb.EntityMessage{ObjectLayerItemIds: []string{"canopy"}, DimX: 2, DimY: 2})

@@ -23,14 +23,14 @@ func progressionRulesFromProto(p *pb.ProgressionRules) ProgressionRules {
 	}
 }
 
-func (s *GameServer) progressionConfig() ProgressionRules {
+func (s *Content) progressionConfig() ProgressionRules {
 	if s.progressionRules.MaxLevel == 0 {
 		return defaultProgressionRules()
 	}
 	return s.progressionRules
 }
 
-func (s *GameServer) entityProgression(id EntityID, ms *MapState) *EntityProgression {
+func (s *Content) entityProgression(id EntityID, ms *MapState) *EntityProgression {
 	p := s.progression[id]
 	if p == nil {
 		p = s.setProgression(id, EntityProgression{})
@@ -55,7 +55,7 @@ func (s *GameServer) entityProgression(id EntityID, ms *MapState) *EntityProgres
 }
 
 // setProgression stores the progression of id and returns it.
-func (s *GameServer) setProgression(id EntityID, p EntityProgression) *EntityProgression {
+func (s *Content) setProgression(id EntityID, p EntityProgression) *EntityProgression {
 	if s.progression == nil {
 		s.progression = make(map[EntityID]*EntityProgression)
 	}
@@ -65,7 +65,7 @@ func (s *GameServer) setProgression(id EntityID, p EntityProgression) *EntityPro
 
 // despawn frees the slot of id and its content rows. A move between maps
 // uses MapState.take, which keeps them.
-func (s *GameServer) despawn(ms *MapState, id EntityID) {
+func (s *Content) despawn(ms *MapState, id EntityID) {
 	ms.despawn(id)
 	delete(s.progression, id)
 	delete(s.quests, id)
@@ -75,7 +75,7 @@ func (s *GameServer) despawn(ms *MapState, id EntityID) {
 // awardProgression runs under the simulation lock after a gameplay result.
 // XP is private, so its floating text goes to the earner alone; a level gained
 // is public, so its sound reaches every viewer in the earner's area.
-func (s *GameServer) awardProgression(player *Session, event progressionEvent, key string, targetLevel int, now time.Time) uint64 {
+func (s *Content) awardProgression(player *Session, event progressionEvent, key string, targetLevel int, now time.Time) uint64 {
 	ms := s.maps[player.MapCode]
 	p := s.entityProgression(player.ID, ms)
 	before := p.Level
@@ -94,7 +94,7 @@ func (s *GameServer) awardProgression(player *Session, event progressionEvent, k
 
 // awardDefeat uses damage shares and excludes summoned entities, self kills
 // and obstacles.
-func (s *GameServer) awardDefeat(victim EntityID, kind string, ms *MapState) {
+func (s *Content) awardDefeat(victim EntityID, kind string, ms *MapState) {
 	if ms == nil || ms.vt(victim).ghost() || kind == "obstacle" {
 		return
 	}

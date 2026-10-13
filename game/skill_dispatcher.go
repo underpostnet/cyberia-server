@@ -23,7 +23,7 @@ type SkillContext struct {
 }
 
 // SkillHandlerFunc is the signature every skill implementation must satisfy.
-type SkillHandlerFunc func(s *GameServer, ctx SkillContext)
+type SkillHandlerFunc func(s *Sim, ctx SkillContext)
 
 // skillRegistry maps logicEventID → handler. Populated by InitSkills() during
 // server startup. New skills only need to add one entry here.
@@ -51,26 +51,26 @@ func isHeldSkill(logicEventID string) bool {
 
 // InitSkills wires all built-in skill implementations into the registry.
 // Called from ApplyInstanceConfig after all server parameters are set.
-func (s *GameServer) InitSkills() {
-	registerSkill("projectile", func(s *GameServer, ctx SkillContext) {
+func (s *Sim) InitSkills() {
+	registerSkill("projectile", func(s *Sim, ctx SkillContext) {
 		s.executeProjectileSkill(ctx)
 	})
-	registerSkill("doppelganger", func(s *GameServer, ctx SkillContext) {
+	registerSkill("doppelganger", func(s *Sim, ctx SkillContext) {
 		s.executeDoppelgangerSkill(ctx)
 	})
-	registerSkill("coin_drop_or_transaction", func(s *GameServer, ctx SkillContext) {
+	registerSkill("coin_drop_or_transaction", func(s *Sim, ctx SkillContext) {
 		// Economy mechanic: every kill scatters the victim's coin stake as a
 		// grid drop (handleBotDeath / handlePlayerDeath → spawnDrops). No
 		// manual action needed.
 	})
-	registerHeldSkill("zero-waste-auto-consume-heal", func(s *GameServer, ctx SkillContext) {
+	registerHeldSkill("zero-waste-auto-consume-heal", func(s *Sim, ctx SkillContext) {
 		s.executeZeroWasteHeal(ctx)
 	})
 }
 
 // DispatchSkill routes a single logicEventID to its registered handler.
 // Unknown IDs are logged and silently ignored.
-func (s *GameServer) DispatchSkill(logicID string, ctx SkillContext) {
+func (s *Sim) DispatchSkill(logicID string, ctx SkillContext) {
 	handler, ok := skillRegistry[logicID]
 	if !ok {
 		logx.Debugf("Unknown logicEventID '%s' for item '%s'", logicID, ctx.TriggerItemID)
@@ -82,7 +82,7 @@ func (s *GameServer) DispatchSkill(logicID string, ctx SkillContext) {
 // dispatchSkillsForEntity iterates the entity's active ObjectLayers, looks up
 // matching entries in skillConfig, and dispatches each logicEventID.
 // This replaces the duplicated switch blocks in HandlePlayerTapAction and handleBotSkills.
-func (s *GameServer) dispatchSkillsForEntity(casterID EntityID, mapState *MapState, target Vec2, callerHoldsLock bool) {
+func (s *Sim) dispatchSkillsForEntity(casterID EntityID, mapState *MapState, target Vec2, callerHoldsLock bool) {
 	for _, layer := range mapState.ap(casterID).Layers {
 		if !layer.Active {
 			continue
@@ -104,7 +104,7 @@ func (s *GameServer) dispatchSkillsForEntity(casterID EntityID, mapState *MapSta
 
 // dispatchHeldSkills runs the held-item skills of every stack the caster holds, active or not.
 // A handler may spend units, so each stack is read from the live layers. Caller holds s.mu.
-func (s *GameServer) dispatchHeldSkills(casterID EntityID, mapState *MapState) {
+func (s *Sim) dispatchHeldSkills(casterID EntityID, mapState *MapState) {
 	for i := 0; i < len(mapState.ap(casterID).Layers); i++ {
 		layer := mapState.ap(casterID).Layers[i]
 		if layer.Quantity < 1 {

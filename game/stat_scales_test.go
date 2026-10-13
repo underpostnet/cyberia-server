@@ -8,14 +8,13 @@ import (
 // Every stat point is worth what the shared contract says, and no chance the
 // stats raise passes the configured cap.
 func TestStatScalesApply(t *testing.T) {
-	s := &GameServer{
+	s := &Sim{Content: &Content{
 		entityBaseSpeed:             5,
 		entityBaseActionCooldown:    500 * time.Millisecond,
 		entityBaseMinActionCooldown: 100 * time.Millisecond,
 		lifeRegenChance:             0.15,
 		maxChance:                   0.95,
-		projectileSpawnChance:       0.75,
-	}
+	}, projectileSpawnChance: 0.75}
 	if got := s.CalculateMovementSpeed(ComputedStats{Agility: 10}); got != 5.5 {
 		t.Fatalf("agility 10 speed = %v, want 5.5", got)
 	}

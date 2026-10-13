@@ -17,7 +17,7 @@ package game
 import "time"
 
 // consumableHeal is the life one unit of itemID restores: its resistance, at the stat scale.
-func (s *GameServer) consumableHeal(itemID string) float64 {
+func (s *Content) consumableHeal(itemID string) float64 {
 	data, ok := s.GetObjectLayerData(itemID)
 	if !ok {
 		return 0
@@ -33,7 +33,7 @@ func canConsume(consumer *Vitals) bool {
 
 // consumeItem applies the effect of one unit of itemID to the consumer: it
 // restores the item's heal, never past max life, and tells every viewer.
-func (s *GameServer) consumeItem(mapState *MapState, id EntityID, itemID string) {
+func (s *Content) consumeItem(mapState *MapState, id EntityID, itemID string) {
 	pos := mapState.tf(id).Pos
 	s.restoreLife(mapState, mapState.vt(id), pos, s.consumableHeal(itemID))
 	build, _ := s.lootBuild(itemID)
@@ -44,7 +44,7 @@ func (s *GameServer) consumeItem(mapState *MapState, id EntityID, itemID string)
 // executeZeroWasteHeal consumes one held unit of the trigger item once the
 // caster's missing life takes its whole heal and the consume cooldown is over.
 // The action cooldown rule times the next one.
-func (s *GameServer) executeZeroWasteHeal(ctx SkillContext) {
+func (s *Sim) executeZeroWasteHeal(ctx SkillContext) {
 	ms, id := ctx.MapState, ctx.CasterID
 	now := time.Now()
 	heal := s.consumableHeal(ctx.TriggerItemID)

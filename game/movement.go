@@ -61,7 +61,7 @@ func stepAlongPath(pos Vec2, path []Cell, speed, dt float64) (Vec2, []Cell, Dire
 	return pos, path, directionFromVector(dirX/norm, dirY/norm), true
 }
 
-func (s *GameServer) updatePlayerPosition(player *Session, mapState *MapState) {
+func (s *Sim) updatePlayerPosition(player *Session, mapState *MapState) {
 	// Dead players can't move.
 	if mapState.vt(player.ID).ghost() {
 		return
@@ -87,7 +87,7 @@ func (s *GameServer) updatePlayerPosition(player *Session, mapState *MapState) {
 }
 
 // ---------- Portals ----------
-func (s *GameServer) checkPortal(player *Session, mapState *MapState) {
+func (s *Sim) checkPortal(player *Session, mapState *MapState) {
 	// Teleport is only possible while alive. A dead player standing on a portal
 	// neither accrues hold progress nor teleports; entering ghost state cancels
 	// any in-progress hold.
@@ -118,7 +118,7 @@ func (s *GameServer) checkPortal(player *Session, mapState *MapState) {
 	}
 }
 
-func (s *GameServer) teleportPlayer(player *Session, mapState *MapState, portal EntityID) {
+func (s *Sim) teleportPlayer(player *Session, mapState *MapState, portal EntityID) {
 	// s.mu is held by the caller (phasePortals). Do not release it: map
 	// mutations of the map slots must not race other readers.
 

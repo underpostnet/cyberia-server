@@ -7,7 +7,7 @@ import (
 
 // movementFixture builds the smallest world phaseInput needs: one walkable grid
 // and a player holding a client.
-func movementFixture(t *testing.T) (*GameServer, *MapState, *Session) {
+func movementFixture(t *testing.T) (*Sim, *MapState, *Session) {
 	t.Helper()
 
 	mapState := &MapState{
@@ -17,18 +17,20 @@ func movementFixture(t *testing.T) (*GameServer, *MapState, *Session) {
 		code:       "test",
 	}
 
-	s := &GameServer{
-		maps:                        map[string]*MapState{"test": mapState},
-		sessions:                    map[EntityID]*Session{},
+	s := &Sim{Content: &Content{
+		World: &World{
+			maps:     map[string]*MapState{"test": mapState},
+			sessions: map[EntityID]*Session{},
+		},
 		entityBaseSpeed:             5,
 		entityBaseActionCooldown:    500 * time.Millisecond,
 		entityBaseMinActionCooldown: 100 * time.Millisecond,
-	}
+	}}
 
 	player := &Session{}
 	player.ID = 1
 	player.MapCode = "test"
-	player.Client = &Client{playerID: player.ID}
+	player.Client = nopConn{}
 	s.sessions[player.ID] = player
 	mapState.spawn(player.ID, EntityData{Kind: EntityPlayer}, Transform{Pos: Vec2{X: 1, Y: 1}, Size: Vec2{X: 1, Y: 1}}, Appearance{})
 	mapState.addVitals(player.ID, Vitals{Life: 100, MaxLife: 100})
@@ -39,8 +41,13 @@ func movementFixture(t *testing.T) (*GameServer, *MapState, *Session) {
 	return s, mapState, player
 }
 
+// nopConn is a client link that drops every message.
+type nopConn struct{}
+
+func (nopConn) Send(string, any) {}
+
 // testMap returns the map "test" of s, made on first use.
-func testMap(s *GameServer) *MapState {
+func testMap(s *World) *MapState {
 	if s.maps == nil {
 		s.maps = map[string]*MapState{}
 	}
@@ -51,7 +58,7 @@ func testMap(s *GameServer) *MapState {
 }
 
 // placePlayer puts a player that holds layers on the map "test" of s.
-func placePlayer(s *GameServer, id EntityID, layers []ObjectLayerState) *Session {
+func placePlayer(s *World, id EntityID, layers []ObjectLayerState) *Session {
 	ms := testMap(s)
 	p := &Session{ID: id, MapCode: "test"}
 	if s.sessions == nil {
@@ -66,7 +73,7 @@ func placePlayer(s *GameServer, id EntityID, layers []ObjectLayerState) *Session
 }
 
 // placeBot puts a bot with vitals v on the map "test" of s.
-func placeBot(s *GameServer, id EntityID, v Vitals) EntityID {
+func placeBot(s *World, id EntityID, v Vitals) EntityID {
 	ms := testMap(s)
 	ms.spawn(id, EntityData{Kind: EntityBot}, Transform{}, Appearance{})
 	ms.addVitals(id, v)
@@ -77,7 +84,7 @@ func placeBot(s *GameServer, id EntityID, v Vitals) EntityID {
 
 // tapTick queues taps and runs one full input phase over them, which is the only
 // path that re-plans movement.
-func tapTick(s *GameServer, mapState *MapState, player *Session, taps ...InputCommand) {
+func tapTick(s *Sim, mapState *MapState, player *Session, taps ...InputCommand) {
 	EnqueueInputs(player, taps)
 	s.phaseInput(0, mapState)
 }
@@ -194,7 +201,7 @@ func TestFrozenPlayerNeverPlansMovement(t *testing.T) {
 // The snapshot carries the player's effective action cooldown. It no longer
 // gates movement, but keyboard steering paces its refresh by it.
 func TestSnapshotActionCooldownAppliesUtility(t *testing.T) {
-	s := &GameServer{
+	s := &Content{
 		entityBaseActionCooldown:    500 * time.Millisecond,
 		entityBaseMinActionCooldown: 100 * time.Millisecond,
 	}
@@ -208,7 +215,8 @@ func TestSnapshotActionCooldownAppliesUtility(t *testing.T) {
 // The snapshot carries the time left on the shared action cooldown. A tap
 // starts it; it reads 0 once the next tap fires skills again.
 func TestSnapshotActionReadyInFollowsTheSkillGate(t *testing.T) {
-	s, mapState, player := movementFixture(t)
+	sim, mapState, player := movementFixture(t)
+	s := &GameServer{Sim: sim}
 
 	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready != 0 {
 		t.Fatalf("actionReadyInMs = %d before any tap, want 0", ready)

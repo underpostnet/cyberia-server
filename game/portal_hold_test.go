@@ -19,7 +19,7 @@ func holdingFixture(t *testing.T) (*GameServer, *MapState, *Session, *Session) {
 	ms.spawn(traveler.ID, EntityData{Kind: EntityPlayer}, Transform{Pos: Vec2{X: 5, Y: 5}, Size: Vec2{X: 1, Y: 1}}, Appearance{})
 	ms.addVitals(traveler.ID, Vitals{Life: 100, MaxLife: 100})
 	ms.addMortal(traveler.ID, &Mortal{})
-	return s, ms, viewer, traveler
+	return &GameServer{Sim: s}, ms, viewer, traveler
 }
 
 func TestEveryViewerSeesThePortalHoldOfAPlayer(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 
 // destructibleFixture is the movement map with a damaging bullet item and the
 // obstacle defaults a test resolves against.
-func destructibleFixture(t *testing.T, builds ...EntityTypeDefaultConfig) (*GameServer, *MapState, *Session) {
+func destructibleFixture(t *testing.T, builds ...EntityTypeDefaultConfig) (*Sim, *MapState, *Session) {
 	t.Helper()
 	s, ms, player := movementFixture(t)
 	s.entityDefaults = map[string]EntityTypeDefaultConfig{}
@@ -28,7 +28,7 @@ func destructibleFixture(t *testing.T, builds ...EntityTypeDefaultConfig) (*Game
 }
 
 // placeObstacle builds one 2×2 obstacle at (10, 10) and returns its id.
-func placeObstacle(s *GameServer, ms *MapState, maxLife float64, itemIDs ...string) EntityID {
+func placeObstacle(s *Sim, ms *MapState, maxLife float64, itemIDs ...string) EntityID {
 	s.buildObstacle(ms, &pb.EntityMessage{ObjectLayerItemIds: itemIDs, InitCellX: 10, InitCellY: 10, DimX: 2, DimY: 2, MaxLife: maxLife})
 	return s.lastEntityID
 }
@@ -47,7 +47,7 @@ func shot(ms *MapState, caster *Session, at Vec2) EntityID {
 }
 
 // fire lands one bullet of the caster's at the point, then removes it.
-func fire(s *GameServer, ms *MapState, caster *Session, at Vec2) {
+func fire(s *Sim, ms *MapState, caster *Session, at Vec2) {
 	bullet := shot(ms, caster, at)
 	s.handleSkillCollisions(ms)
 	s.despawn(ms, bullet)
@@ -385,7 +385,7 @@ func TestSnapshotCarriesOnlyTheDestructibleLife(t *testing.T) {
 	crystal := placeObstacle(s, ms, 9, "crystal")
 
 	life := map[EntityID]int{}
-	for _, e := range s.buildSnapshot(player, ms).Entities {
+	for _, e := range (&GameServer{Sim: s}).buildSnapshot(player, ms).Entities {
 		if e.Kind == EntityScenery {
 			life[e.ID] = e.MaxLife
 		}

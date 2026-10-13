@@ -50,7 +50,7 @@ func shopItemFor(action *CyberiaAction, itemID string) *ActionShopItem {
 // attention icon, particle orbit, and border as a pending action-talk.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botHasShop(id EntityID, ms *MapState) bool {
+func (s *Content) botHasShop(id EntityID, ms *MapState) bool {
 	if ms == nil || ms.vt(id).ghost() {
 		return false
 	}
@@ -61,7 +61,7 @@ func (s *GameServer) botHasShop(id EntityID, ms *MapState) bool {
 // shopPrice normalises a catalog row's price: an unset currency defaults to
 // coins (matching the CyberiaAction schema default) and a missing quantity to
 // free. Returns the currency item id and how many of it the purchase costs.
-func (s *GameServer) shopPrice(item *ActionShopItem) (string, int) {
+func (s *Content) shopPrice(item *ActionShopItem) (string, int) {
 	priceItemID := item.PriceItemID
 	if priceItemID == "" {
 		priceItemID = s.coinItemID
@@ -87,7 +87,7 @@ func shopBuyQuantity(requested int) int {
 // transaction landed.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleShopBuy(player *Session, cmd *InputCommand) {
+func (s *Content) handleShopBuy(player *Session, cmd *InputCommand) {
 	if s.vt(player.ID, player.MapCode).ghost() {
 		return
 	}
@@ -129,7 +129,7 @@ func (s *GameServer) handleShopBuy(player *Session, cmd *InputCommand) {
 
 // sendShopAck notifies the buyer of the outcome. An empty reason means the
 // purchase was applied; anything else is a rejection code the client renders.
-func (s *GameServer) sendShopAck(player *Session, entityID EntityID, itemID string, quantity int, reason string) {
+func (s *Content) sendShopAck(player *Session, entityID EntityID, itemID string, quantity int, reason string) {
 	sendAck(player, "shop_ack", reason, map[string]interface{}{
 		"entityId": entityID,
 		"itemId":   itemID,

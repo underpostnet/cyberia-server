@@ -59,8 +59,8 @@ func TestCraftRecipeAtBoundsTheIndex(t *testing.T) {
 }
 
 func TestPlayerCanCraftChecksEveryIngredient(t *testing.T) {
-	s := &GameServer{coinItemID: "coin"}
-	player := placePlayer(s, 1, []ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
+	s := &Content{World: &World{}, coinItemID: "coin"}
+	player := placePlayer(s.World, 1, []ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
 	player.Coins = 5
 	recipe := &ActionCraftRecipe{Ingredients: []ActionCraftItem{
 		{ItemID: "wood-drop-1", Qty: 2},
@@ -94,23 +94,23 @@ func TestBotHasCraftGatesTheCapabilityBit(t *testing.T) {
 	book := &CyberiaAction{CraftRecipes: []ActionCraftRecipe{
 		{OutputItems: []ActionCraftItem{{ItemID: "hatchet", Qty: 1}}},
 	}}
-	s := &GameServer{actionCache: map[EntityID]*CyberiaAction{
+	s := &Content{World: &World{}, actionCache: map[EntityID]*CyberiaAction{
 		1: book,
 		2: {DialogCode: "default-lain"},
 		3: book,
 	}}
 
-	assembler := placeBot(s, 1, Vitals{})
-	talker := placeBot(s, 2, Vitals{})
-	dead := placeBot(s, 3, Vitals{RespawnAt: time.Now().Add(time.Second)})
+	assembler := placeBot(s.World, 1, Vitals{})
+	talker := placeBot(s.World, 2, Vitals{})
+	dead := placeBot(s.World, 3, Vitals{RespawnAt: time.Now().Add(time.Second)})
 
-	if !s.botHasCraft(assembler, testMap(s)) || !s.botHasUsableAction(assembler, testMap(s)) {
+	if !s.botHasCraft(assembler, testMap(s.World)) || !s.botHasUsableAction(assembler, testMap(s.World)) {
 		t.Fatal("a live bot with a recipe book is an assembler")
 	}
-	if s.botHasCraft(talker, testMap(s)) || s.botHasUsableAction(talker, testMap(s)) {
+	if s.botHasCraft(talker, testMap(s.World)) || s.botHasUsableAction(talker, testMap(s.World)) {
 		t.Fatal("an action with no recipes is not an assembler")
 	}
-	if s.botHasCraft(dead, testMap(s)) {
+	if s.botHasCraft(dead, testMap(s.World)) {
 		t.Fatal("a dead assembler must not advertise")
 	}
 	if flags := s.botInteractionFlags(false, false, true); flags&InteractionFlagAction == 0 {
@@ -136,11 +136,11 @@ func TestCraftTimeMsValidatesTheAuthoredDuration(t *testing.T) {
 // The ingredients leave the inventory when the bar starts, so cancelling before
 // the timer elapses has to put every one of them back and pay out nothing.
 func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
-	s := &GameServer{coinItemID: "coin", crafts: map[EntityID]*ActiveCraft{}}
+	s := &Content{World: &World{}, coinItemID: "coin", crafts: map[EntityID]*ActiveCraft{}}
 	next := EntityID(0)
 	newPlayer := func() *Session {
 		next++
-		p := placePlayer(s, next, []ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
+		p := placePlayer(s.World, next, []ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
 		p.Coins = 5
 		return p
 	}

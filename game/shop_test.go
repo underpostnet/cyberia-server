@@ -55,7 +55,7 @@ func TestShopItemForSelectsByItemID(t *testing.T) {
 }
 
 func TestShopPriceFillsSchemaDefaults(t *testing.T) {
-	s := &GameServer{coinItemID: "coin"}
+	s := &Content{World: &World{}, coinItemID: "coin"}
 
 	// An unset currency falls back to coins, matching the CyberiaAction schema.
 	itemID, qty := s.shopPrice(&ActionShopItem{ItemID: "tim-knife", PriceQty: 10})
@@ -90,25 +90,25 @@ func TestShopBuyQuantityClampsToRange(t *testing.T) {
 // itself overhead exactly like a pending action-talk does.
 func TestBotHasShopGatesTheCapabilityBit(t *testing.T) {
 	catalog := &CyberiaAction{ShopItems: []ActionShopItem{{ItemID: "tim-knife", PriceQty: 10}}}
-	s := &GameServer{actionCache: map[EntityID]*CyberiaAction{
+	s := &Content{World: &World{}, actionCache: map[EntityID]*CyberiaAction{
 		1: catalog,
 		2: {DialogCode: "default-lain"},
 		3: catalog,
 	}}
-	vendor := placeBot(s, 1, Vitals{})
-	plain := placeBot(s, 2, Vitals{})
-	dead := placeBot(s, 3, Vitals{RespawnAt: time.Now().Add(time.Second)})
+	vendor := placeBot(s.World, 1, Vitals{})
+	plain := placeBot(s.World, 2, Vitals{})
+	dead := placeBot(s.World, 3, Vitals{RespawnAt: time.Now().Add(time.Second)})
 
-	if !s.botHasShop(vendor, testMap(s)) {
+	if !s.botHasShop(vendor, testMap(s.World)) {
 		t.Fatal("a live bot with a catalog is a vendor")
 	}
-	if s.botHasShop(plain, testMap(s)) {
+	if s.botHasShop(plain, testMap(s.World)) {
 		t.Fatal("an action with no catalog is not a vendor")
 	}
-	if s.botHasShop(dead, testMap(s)) {
+	if s.botHasShop(dead, testMap(s.World)) {
 		t.Fatal("a dead vendor must not advertise")
 	}
-	if s.botHasShop(placeBot(s, 4, Vitals{}), testMap(s)) {
+	if s.botHasShop(placeBot(s.World, 4, Vitals{}), testMap(s.World)) {
 		t.Fatal("a bot with no bound action is not a vendor")
 	}
 	if s.botHasShop(5, nil) {

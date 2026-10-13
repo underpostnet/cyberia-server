@@ -13,7 +13,7 @@ const gelHeal = 20
 // healingServer is the movement fixture with the gel consumable bound to the
 // zero-waste heal skill, the unbound crate resource, and the player holding the
 // given stacks at the given life.
-func healingServer(t *testing.T, life float64, stacks ...ObjectLayerState) (*GameServer, *MapState, *Session) {
+func healingServer(t *testing.T, life float64, stacks ...ObjectLayerState) (*Sim, *MapState, *Session) {
 	t.Helper()
 	s, ms, player := movementFixture(t)
 	if err := s.ReplaceObjectLayerCache(map[string]*ObjectLayer{

@@ -9,7 +9,7 @@ import (
 // executeProjectileSkill is the "projectile" skill handler.
 // It spawns a fast-moving "skill" projectile bot towards the caster's target.
 // Works for players and bots alike: the context names the caster by id.
-func (s *GameServer) executeProjectileSkill(ctx SkillContext) {
+func (s *Sim) executeProjectileSkill(ctx SkillContext) {
 	casterStats := s.CalculateStats(ctx.CasterID, ctx.MapState)
 
 	projectileItemIDs := []string{ctx.SummonedEntityItemID}

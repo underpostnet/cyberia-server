@@ -116,7 +116,7 @@ func protoToCraftItems(items []*pb.ActionCraftItem) []ActionCraftItem {
 // NPCs wander within their radius.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) bindActions(mapCodes []string, actions []*pb.CyberiaActionMessage) {
+func (s *Content) bindActions(mapCodes []string, actions []*pb.CyberiaActionMessage) {
 	s.actionCache = make(map[EntityID]*CyberiaAction)
 	if s.storage == nil {
 		s.storage = make(map[storageKey][]StorageSlot)
@@ -155,7 +155,7 @@ func (s *GameServer) bindActions(mapCodes []string, actions []*pb.CyberiaActionM
 // code, label, the quests bound to its cell, entity id, and initial cell. Called
 // after the instance graph so operators can confirm the action NPCs were
 // instantiated and bound.
-func (s *GameServer) logActionProviders() {
+func (s *Content) logActionProviders() {
 	if len(s.actionCache) == 0 {
 		logx.Infof("[ActionProviders] none bound (no actions delivered via gRPC, or none match an entity cell)")
 		return
@@ -183,7 +183,7 @@ func (s *GameServer) logActionProviders() {
 // findBot returns the map that holds the bot with this entity ID, or nil.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) findBot(id EntityID) *MapState {
+func (s *Content) findBot(id EntityID) *MapState {
 	for _, ms := range s.maps {
 		if ms.brains[id] != nil {
 			return ms
@@ -195,7 +195,7 @@ func (s *GameServer) findBot(id EntityID) *MapState {
 // botActiveSkin returns the active skin item ID of the bot with this entity ID
 // (searched across maps), or "" if not found. The bot's own active skin — not
 // any action field — is what 'talk' objectives match against.
-func (s *GameServer) botActiveSkin(id EntityID) string {
+func (s *Content) botActiveSkin(id EntityID) string {
 	ms := s.findBot(id)
 	if ms == nil {
 		return ""
@@ -205,7 +205,7 @@ func (s *GameServer) botActiveSkin(id EntityID) string {
 
 // botActiveSkinOf reads a bot's active skin directly (no lookup), so the AOI
 // path that already holds the bot avoids an O(N) per-entity map search.
-func (s *GameServer) botActiveSkinOf(id EntityID, ms *MapState) string {
+func (s *Content) botActiveSkinOf(id EntityID, ms *MapState) string {
 	// When the NPC is dead its active layers hold the ghost skin; the live skin
 	// is preserved in PreRespawnObjectLayers. Read from there so a talk objective
 	// still validates against a quest-giver that just died — the interaction
@@ -233,7 +233,7 @@ func (s *GameServer) botActiveSkinOf(id EntityID, ms *MapState) string {
 // never completed feedback). The full quest list still travels separately in
 // the bot block (botQuestCodes), so the interact modal keeps its Quest tab and
 // completed feedback without any icon.
-func (s *GameServer) botInteractionFlags(hasActionableQuest, hasPendingActionTalk, hasUsableAction bool) uint8 {
+func (s *Content) botInteractionFlags(hasActionableQuest, hasPendingActionTalk, hasUsableAction bool) uint8 {
 	var flags uint8
 	if hasPendingActionTalk || hasUsableAction {
 		flags |= InteractionFlagAction
@@ -256,7 +256,7 @@ func (s *GameServer) botInteractionFlags(hasActionableQuest, hasPendingActionTal
 // capability lives in shop.go.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) pendingActionTalkDialogs(player *Session, id EntityID, ms *MapState, questCodes []string) []string {
+func (s *Content) pendingActionTalkDialogs(player *Session, id EntityID, ms *MapState, questCodes []string) []string {
 	dialogs := make([]string, len(questCodes))
 	action := s.actionCache[id]
 	if action == nil || len(action.QuestDialogueCodes) == 0 {
@@ -286,7 +286,7 @@ func (s *GameServer) pendingActionTalkDialogs(player *Session, id EntityID, ms *
 // not grow botInteractionFlags.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botHasUsableAction(id EntityID, ms *MapState) bool {
+func (s *Content) botHasUsableAction(id EntityID, ms *MapState) bool {
 	return s.botHasShop(id, ms) || s.botHasCraft(id, ms) || s.botHasStorage(id, ms)
 }
 
@@ -295,7 +295,7 @@ func (s *GameServer) botHasUsableAction(id EntityID, ms *MapState) bool {
 // screen in the first place.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) botInPlayerRange(player *Session, id EntityID, ms *MapState) bool {
+func (s *Content) botInPlayerRange(player *Session, id EntityID, ms *MapState) bool {
 	if ms.code != player.MapCode {
 		return false
 	}
@@ -316,7 +316,7 @@ func (s *GameServer) botInPlayerRange(player *Session, id EntityID, ms *MapState
 // (advanceTalkObjectives). It never grants a quest — that is quest_accept.
 //
 // Caller MUST hold s.mu.
-func (s *GameServer) handleTalkDone(player *Session, cmd *InputCommand) {
+func (s *Content) handleTalkDone(player *Session, cmd *InputCommand) {
 	if s.vt(player.ID, player.MapCode).ghost() {
 		return
 	}

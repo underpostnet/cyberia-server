@@ -1,0 +1,64 @@
+package game
+
+import (
+	"time"
+
+	pb "cyberia-server/gen/proto"
+)
+
+// Sim is the simulation step and its config.
+type Sim struct {
+	*Content
+	instanceCode   string            // INSTANCE_CODE — selects which instance to load
+	playerSpawn    PlayerSpawnConfig // authoritative initial spawn for new players
+	portalHoldTime time.Duration
+	// teleported holds the players a portal moved this map step. gameLoop
+	// sends their snapshots after phasePortals and clears it.
+	teleported []*Session
+
+	// bot related defaults
+	botAggroRange float64
+
+	// Skill config
+	projectileSpawnChance           float64
+	projectileLifetimeMs            int
+	projectileWidth                 float64
+	projectileHeight                float64
+	projectileSpeedMultiplier       float64
+	doppelgangerSpawnChance         float64
+	doppelgangerLifetimeMs          int
+	doppelgangerSpawnRadius         float64
+	doppelgangerInitialLifeFraction float64
+
+	// Portal defaults
+	portalSpawnRadius float64
+}
+
+// applyConfig applies the simulation part of the instance config, then the
+// content part. Caller holds s.mu.
+func (s *Sim) applyConfig(cfg *pb.InstanceConfig, rules ProgressionRules) {
+	s.Content.applyConfig(cfg, rules)
+	s.portalHoldTime = time.Duration(cfg.GetPortalHoldTimeMs()) * time.Millisecond
+	s.portalSpawnRadius = cfg.GetPortalSpawnRadius()
+
+	// Bot defaults
+	s.botAggroRange = cfg.GetBotAggroRange()
+
+	// Skill params (nested under SkillRules in proto)
+	sr := cfg.GetSkillRules()
+	if sr == nil {
+		sr = &pb.SkillRules{}
+	}
+	s.projectileSpawnChance = sr.GetProjectileSpawnChance()
+	s.projectileLifetimeMs = int(sr.GetProjectileLifetimeMs())
+	s.projectileWidth = sr.GetProjectileWidth()
+	s.projectileHeight = sr.GetProjectileHeight()
+	s.projectileSpeedMultiplier = sr.GetProjectileSpeedMultiplier()
+	s.doppelgangerSpawnChance = sr.GetDoppelgangerSpawnChance()
+	s.doppelgangerLifetimeMs = int(sr.GetDoppelgangerLifetimeMs())
+	s.doppelgangerSpawnRadius = sr.GetDoppelgangerSpawnRadius()
+	s.doppelgangerInitialLifeFraction = sr.GetDoppelgangerInitialLifeFraction()
+
+	// Register built-in skill handlers now that skillConfig is populated.
+	s.InitSkills()
+}

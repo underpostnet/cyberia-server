@@ -9,7 +9,7 @@ import (
 func (id EntityID) String() string { return strconv.FormatUint(uint64(id), 10) }
 
 // newEntityID returns the next entity id. Call it under s.mu.
-func (s *GameServer) newEntityID() EntityID {
+func (s *World) newEntityID() EntityID {
 	s.lastEntityID++
 	return s.lastEntityID
 }
@@ -68,7 +68,7 @@ func (ms *MapState) tf(id EntityID) *Transform { return &ms.transform[ms.slot(id
 func (ms *MapState) ap(id EntityID) *Appearance { return &ms.appearance[ms.slot(id)] }
 
 // ap returns the appearance of an entity on the map mapCode.
-func (s *GameServer) ap(id EntityID, mapCode string) *Appearance { return s.maps[mapCode].ap(id) }
+func (s *World) ap(id EntityID, mapCode string) *Appearance { return s.maps[mapCode].ap(id) }
 
 // addVitals gives id its vitals.
 func (ms *MapState) addVitals(id EntityID, v Vitals) {
@@ -119,7 +119,7 @@ func (ms *MapState) ag(id EntityID) *Agent {
 }
 
 // ag returns the agent of a bot on the map mapCode.
-func (s *GameServer) ag(id EntityID, mapCode string) *Agent { return s.maps[mapCode].ag(id) }
+func (s *World) ag(id EntityID, mapCode string) *Agent { return s.maps[mapCode].ag(id) }
 
 // addPortal links portal id to its target.
 func (ms *MapState) addPortal(id EntityID, p Portal) {
@@ -196,7 +196,7 @@ func (ms *MapState) destructibles() iter.Seq[EntityID] {
 }
 
 // playersOn yields the session of every player on ms, in slot order.
-func (s *GameServer) playersOn(ms *MapState) iter.Seq[*Session] {
+func (s *World) playersOn(ms *MapState) iter.Seq[*Session] {
 	return func(yield func(*Session) bool) {
 		for id := range ms.ofKind(EntityPlayer) {
 			if !yield(s.sessions[id]) {
@@ -207,7 +207,7 @@ func (s *GameServer) playersOn(ms *MapState) iter.Seq[*Session] {
 }
 
 // playerOn returns the session of id when id is a player on ms, else nil.
-func (s *GameServer) playerOn(ms *MapState, id EntityID) *Session {
+func (s *World) playerOn(ms *MapState, id EntityID) *Session {
 	if slot, ok := ms.index[id]; ok && ms.data[slot].Kind == EntityPlayer {
 		return s.sessions[id]
 	}
@@ -224,7 +224,7 @@ func (ms *MapState) count(k string) int {
 }
 
 // vt returns the vitals of an entity on the map mapCode.
-func (s *GameServer) vt(id EntityID, mapCode string) *Vitals { return s.maps[mapCode].vt(id) }
+func (s *World) vt(id EntityID, mapCode string) *Vitals { return s.maps[mapCode].vt(id) }
 
 // sceneryClass names a scenery entity by its flags, for logs and the dashboard.
 func sceneryClass(d EntityData) string {

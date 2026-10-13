@@ -60,7 +60,7 @@ func behaviorIsStationary(b string) bool {
 // canonical behavior is bound: any active weapon-type layer → hostile, else
 // passive. Runtime-spawned entities (projectiles, doppelgangers) set behavior
 // directly and never go through here.
-func (s *GameServer) deriveBehaviorFromLayers(layers []ObjectLayerState) string {
+func (s *Content) deriveBehaviorFromLayers(layers []ObjectLayerState) string {
 	for _, ol := range layers {
 		if data, ok := s.GetObjectLayerData(ol.ItemID); ok {
 			if data.Data.Item.Type == "weapon" {
@@ -74,7 +74,7 @@ func (s *GameServer) deriveBehaviorFromLayers(layers []ObjectLayerState) string 
 // boundBehavior is the behavior bound to the entity-type default the layers
 // match (by active itemId — the same liveItemIds match used for the
 // live/dead/drop sets), or "" when that default binds none.
-func (s *GameServer) boundBehavior(entityType string, layers []ObjectLayerState) string {
+func (s *Content) boundBehavior(entityType string, layers []ObjectLayerState) string {
 	build, _ := s.resolveEntityDefaultBuild(entityType, activeObjectLayerItemIDs(layers))
 	return build.Behavior
 }
@@ -82,7 +82,7 @@ func (s *GameServer) boundBehavior(entityType string, layers []ObjectLayerState)
 // resolveEntityBehavior picks a bot's behavior: the bound behavior when set,
 // otherwise derived from the layers. This is the single entry point for
 // assigning a spawned bot's behavior.
-func (s *GameServer) resolveEntityBehavior(entityType string, layers []ObjectLayerState) string {
+func (s *Content) resolveEntityBehavior(entityType string, layers []ObjectLayerState) string {
 	if behavior := s.boundBehavior(entityType, layers); behavior != "" {
 		return behavior
 	}
