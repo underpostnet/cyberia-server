@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"cyberia-server/game/world"
+	"cyberia-server/game/world/worldtest"
 	pb "cyberia-server/gen/proto"
 )
 
@@ -55,7 +57,7 @@ func TestShopItemForSelectsByItemID(t *testing.T) {
 }
 
 func TestShopPriceFillsSchemaDefaults(t *testing.T) {
-	s := &Content{World: &World{}, coinItemID: "coin"}
+	s := &Content{World: &world.World{}, coinItemID: "coin"}
 
 	// An unset currency falls back to coins, matching the CyberiaAction schema.
 	itemID, qty := s.shopPrice(&ActionShopItem{ItemID: "tim-knife", PriceQty: 10})
@@ -90,25 +92,25 @@ func TestShopBuyQuantityClampsToRange(t *testing.T) {
 // itself overhead exactly like a pending action-talk does.
 func TestBotHasShopGatesTheCapabilityBit(t *testing.T) {
 	catalog := &CyberiaAction{ShopItems: []ActionShopItem{{ItemID: "tim-knife", PriceQty: 10}}}
-	s := &Content{World: &World{}, actionCache: map[EntityID]*CyberiaAction{
+	s := &Content{World: &world.World{}, actionCache: map[world.EntityID]*CyberiaAction{
 		1: catalog,
 		2: {DialogCode: "default-lain"},
 		3: catalog,
 	}}
-	vendor := placeBot(s.World, 1, Vitals{})
-	plain := placeBot(s.World, 2, Vitals{})
-	dead := placeBot(s.World, 3, Vitals{RespawnAt: time.Now().Add(time.Second)})
+	vendor := worldtest.PlaceBot(s.World, 1, world.Vitals{})
+	plain := worldtest.PlaceBot(s.World, 2, world.Vitals{})
+	dead := worldtest.PlaceBot(s.World, 3, world.Vitals{RespawnAt: time.Now().Add(time.Second)})
 
-	if !s.botHasShop(vendor, testMap(s.World)) {
+	if !s.botHasShop(vendor, worldtest.Map(s.World)) {
 		t.Fatal("a live bot with a catalog is a vendor")
 	}
-	if s.botHasShop(plain, testMap(s.World)) {
+	if s.botHasShop(plain, worldtest.Map(s.World)) {
 		t.Fatal("an action with no catalog is not a vendor")
 	}
-	if s.botHasShop(dead, testMap(s.World)) {
+	if s.botHasShop(dead, worldtest.Map(s.World)) {
 		t.Fatal("a dead vendor must not advertise")
 	}
-	if s.botHasShop(placeBot(s.World, 4, Vitals{}), testMap(s.World)) {
+	if s.botHasShop(worldtest.PlaceBot(s.World, 4, world.Vitals{}), worldtest.Map(s.World)) {
 		t.Fatal("a bot with no bound action is not a vendor")
 	}
 	if s.botHasShop(5, nil) {

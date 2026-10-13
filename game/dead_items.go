@@ -1,6 +1,10 @@
 package game
 
-import "sort"
+import (
+	"sort"
+
+	"cyberia-server/game/world"
+)
 
 // resolveDeadItemIDs returns the build's dead visuals. Every entity type that
 // needs a dead state must declare deadItemIds in its engine-cyberia config.
@@ -16,8 +20,8 @@ func (s *Content) resolveDeadItemIDs(build EntityTypeDefaultConfig) []string {
 // the first deadItemID declared for the "player" entity type in the gRPC
 // config; it is the auto-applied visual when no other dead items are
 // equipped and must not clutter the inventory.
-func (s *Content) visibleInventory(layers []ObjectLayerState) []ObjectLayerState {
-	out := make([]ObjectLayerState, 0, len(layers))
+func (s *Content) visibleInventory(layers []world.ObjectLayerState) []world.ObjectLayerState {
+	out := make([]world.ObjectLayerState, 0, len(layers))
 	for _, l := range layers {
 		if l.ItemID == s.ghostItemID {
 			continue
@@ -58,7 +62,7 @@ func (s *Content) normalizeDeadLoadout(ids []string) []string {
 
 // activateOrAppendLayer activates the layer holding itemID, appending a new
 // row when the inventory has none — same append semantics as applyDeadItems.
-func activateOrAppendLayer(layers *[]ObjectLayerState, itemID string) {
+func activateOrAppendLayer(layers *[]world.ObjectLayerState, itemID string) {
 	for i := range *layers {
 		if (*layers)[i].ItemID == itemID {
 			(*layers)[i].Active = true
@@ -66,7 +70,7 @@ func activateOrAppendLayer(layers *[]ObjectLayerState, itemID string) {
 			return
 		}
 	}
-	*layers = append(*layers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+	*layers = append(*layers, world.ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
 }
 
 // deadItemIDList returns the resolved dead-item ids (all from gRPC config),

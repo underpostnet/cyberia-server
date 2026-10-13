@@ -1,4 +1,4 @@
-package game
+package world
 
 import (
 	"sync"
@@ -53,14 +53,14 @@ const (
 
 // Component bits of MapState.mask, in the §4 order.
 const (
-	maskData       ComponentMask = 1 << 0
-	maskTransform  ComponentMask = 1 << 1
-	maskAppearance ComponentMask = 1 << 2
-	maskVitals     ComponentMask = 1 << 3
-	maskMotion     ComponentMask = 1 << 5
-	maskAgent      ComponentMask = 1 << 6
-	maskPortal     ComponentMask = 1 << 7
-	maskPlayer     ComponentMask = 1 << 8 // a client controls the entity; no array yet
+	MaskData       ComponentMask = 1 << 0
+	MaskTransform  ComponentMask = 1 << 1
+	MaskAppearance ComponentMask = 1 << 2
+	MaskVitals     ComponentMask = 1 << 3
+	MaskMotion     ComponentMask = 1 << 5
+	MaskAgent      ComponentMask = 1 << 6
+	MaskPortal     ComponentMask = 1 << 7
+	MaskPlayer     ComponentMask = 1 << 8 // a client controls the entity; no array yet
 )
 
 type Cell struct {
@@ -68,12 +68,12 @@ type Cell struct {
 	Y int `json:"y"`
 }
 
-// cellKey identifies a map cell. Both cyberia-action and cyberia-quest bind to
+// CellKey identifies a map cell. Both cyberia-action and cyberia-quest bind to
 // entities by this cell, so a bot on a quest's cell can offer it.
-type cellKey struct {
-	mapCode string
-	cellX   int
-	cellY   int
+type CellKey struct {
+	MapCode string
+	CellX   int
+	CellY   int
 }
 
 type Rectangle struct {
@@ -123,7 +123,7 @@ type Mortal struct {
 	BaseMaxLife            float64
 	PreRespawnObjectLayers []ObjectLayerState
 	LifeRegen              float64
-	// RespawnDuration is the wait before the entity comes back; 0 takes respawnDurationDefaultMs.
+	// RespawnDuration is the wait before the entity comes back; 0 takes the default (see respawnWait).
 	RespawnDuration time.Duration
 	// DamageLedger is the per-victim threat/contribution ledger: attacker id →
 	// cumulative damage dealt to this entity. Populated by the skill-collision
@@ -160,16 +160,8 @@ type Portal struct {
 	TargetCell Cell
 }
 
-// ghost reports whether the entity is dead and waiting to respawn.
-func (v *Vitals) ghost() bool { return !v.RespawnAt.IsZero() }
-
-// respawnDuration is the wait before the entity comes back.
-func (m *Mortal) respawnDuration() time.Duration {
-	if m.RespawnDuration > 0 {
-		return m.RespawnDuration
-	}
-	return respawnDurationDefaultMs * time.Millisecond
-}
+// Ghost reports whether the entity is dead and waiting to respawn.
+func (v *Vitals) Ghost() bool { return !v.RespawnAt.IsZero() }
 
 // Session is the server-only side table row of a connected player: its link,
 // its map, its economy, its quests and its input stream.
@@ -220,6 +212,40 @@ type Session struct {
 	InputQueue []InputCommand `json:"-"`
 }
 
+// ── Token semantics ───────────────────────────────────────────────────────
+
+// LootOrigin is where a token comes from.
+type LootOrigin uint8
+
+const (
+	LootOriginDeath LootOrigin = iota // scattered from a dying entity
+	LootOriginWorld                   // placed on the map by the world build
+)
+
+func (o LootOrigin) String() string {
+	if o == LootOriginWorld {
+		return "world"
+	}
+	return "death"
+}
+
+// LootCollection is who may collect a token.
+type LootCollection uint8
+
+const (
+	LootCollectContributors LootCollection = iota // a damage contributor only
+	LootCollectFirstContact                       // any living player or bot it benefits
+)
+
+// LootOutcome is what a collection does.
+type LootOutcome uint8
+
+const (
+	LootOutcomeItem    LootOutcome = iota // the item enters the collector's inventory
+	LootOutcomeCoin                       // the quantity credits the collector's wallet
+	LootOutcomeConsume                    // a collector that misses life consumes the item at once (see the game package)
+)
+
 // Brain is the server-only side table row of a bot: its AI, its lifetime and,
 // for a drop, its loot.
 type Brain struct {
@@ -229,8 +255,8 @@ type Brain struct {
 	SpawnRadius          float64   `json:"spawnRadius"`
 	AggroRange           float64   `json:"aggroRange"`
 	CurrentTargetPlayer  EntityID  `json:"-"` // player ID currently being pursued (if any)
-	lastPursuitTargetPos Cell      `json:"-"` // cached player's last cell to know when to re-path
-	lastAction           time.Time `json:"-"`
+	LastPursuitTargetPos Cell      `json:"-"` // cached player's last cell to know when to re-path
+	LastAction           time.Time `json:"-"`
 	ExpiresAt            time.Time `json:"-"` // bots with a lifetime will be removed after this time
 	// Coins is the canonical flat coin balance — the single source of truth
 	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
@@ -360,24 +386,24 @@ type ItemConsume struct {
 	Behavior string   `json:"behavior"`
 }
 
-// sendMessage packs a message and queues it for the player. The send never
+// SendMessage packs a message and queues it for the player. The send never
 // blocks: a full queue drops the message.
-func sendMessage(player *Session, msgType string, payload any) {
+func SendMessage(player *Session, msgType string, payload any) {
 	if player != nil && player.Client != nil {
 		player.Client.Send(msgType, payload)
 	}
 }
 
-// sendAck answers a request with the {ok, reason} pair every ack carries, plus
+// SendAck answers a request with the {ok, reason} pair every ack carries, plus
 // the caller's own fields. An empty reason means success.
-func sendAck(player *Session, msgType, reason string, fields map[string]interface{}) {
+func SendAck(player *Session, msgType, reason string, fields map[string]interface{}) {
 	fields["ok"] = reason == ""
 	fields["reason"] = reason
-	sendMessage(player, msgType, fields)
+	SendMessage(player, msgType, fields)
 }
 
-// frameAt is the client step that tick stands for. 0 before the first consumed event.
-func (p *Session) frameAt(tick uint32) uint32 {
+// FrameAt is the client step that tick stands for. 0 before the first consumed event.
+func (p *Session) FrameAt(tick uint32) uint32 {
 	if p.InputConsumedThrough == 0 {
 		return 0
 	}
@@ -386,8 +412,8 @@ func (p *Session) frameAt(tick uint32) uint32 {
 
 // World is the entity state: every map and the session of every player.
 type World struct {
-	mu           sync.Mutex // guards maps and sessions
-	maps         map[string]*MapState
+	Mu           sync.Mutex // guards maps and sessions
+	Maps         map[string]*MapState
 	lastEntityID EntityID // only goes up, so a freed id never comes back
-	sessions     map[EntityID]*Session
+	Sessions     map[EntityID]*Session
 }

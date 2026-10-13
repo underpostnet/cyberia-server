@@ -3,34 +3,36 @@ package game
 import (
 	"testing"
 	"time"
+
+	"cyberia-server/game/world"
 )
 
 // movementFixture builds the smallest world phaseInput needs: one walkable grid
 // and a player holding a client.
-func movementFixture(t *testing.T) (*Sim, *MapState, *Session) {
+func movementFixture(t *testing.T) (*Sim, *world.MapState, *world.Session) {
 	t.Helper()
 
-	mapState := NewMapState("test", 20, 20)
+	mapState := world.NewMapState("test", 20, 20)
 
 	s := &Sim{Content: &Content{
-		World: &World{
-			maps:     map[string]*MapState{"test": mapState},
-			sessions: map[EntityID]*Session{},
+		World: &world.World{
+			Maps:     map[string]*world.MapState{"test": mapState},
+			Sessions: map[world.EntityID]*world.Session{},
 		},
 		entityBaseSpeed:             5,
 		entityBaseActionCooldown:    500 * time.Millisecond,
 		entityBaseMinActionCooldown: 100 * time.Millisecond,
 	}}
 
-	player := &Session{}
+	player := &world.Session{}
 	player.ID = 1
 	player.MapCode = "test"
 	player.Client = nopConn{}
-	s.sessions[player.ID] = player
-	mapState.spawn(player.ID, EntityData{Kind: EntityPlayer}, Transform{Pos: Vec2{X: 1, Y: 1}, Size: Vec2{X: 1, Y: 1}}, Appearance{})
-	mapState.addVitals(player.ID, Vitals{Life: 100, MaxLife: 100})
-	mapState.addMotion(player.ID, Motion{Direction: NONE, Mode: IDLE})
-	mapState.addMortal(player.ID, &Mortal{})
+	s.Sessions[player.ID] = player
+	mapState.Spawn(player.ID, world.EntityData{Kind: world.EntityPlayer}, world.Transform{Pos: world.Vec2{X: 1, Y: 1}, Size: world.Vec2{X: 1, Y: 1}}, world.Appearance{})
+	mapState.AddVitals(player.ID, world.Vitals{Life: 100, MaxLife: 100})
+	mapState.AddMotion(player.ID, world.Motion{Direction: world.NONE, Mode: world.IDLE})
+	mapState.AddMortal(player.ID, &world.Mortal{})
 	mapState.AddPlayer(player.ID)
 
 	return s, mapState, player
@@ -41,51 +43,15 @@ type nopConn struct{}
 
 func (nopConn) Send(string, any) {}
 
-// testMap returns the map "test" of s, made on first use.
-func testMap(s *World) *MapState {
-	if s.maps == nil {
-		s.maps = map[string]*MapState{}
-	}
-	if s.maps["test"] == nil {
-		s.maps["test"] = NewMapState("test", 0, 0)
-	}
-	return s.maps["test"]
-}
-
-// placePlayer puts a player that holds layers on the map "test" of s.
-func placePlayer(s *World, id EntityID, layers []ObjectLayerState) *Session {
-	ms := testMap(s)
-	p := &Session{ID: id, MapCode: "test"}
-	if s.sessions == nil {
-		s.sessions = map[EntityID]*Session{}
-	}
-	s.sessions[id] = p
-	ms.spawn(id, EntityData{Kind: EntityPlayer}, Transform{}, Appearance{Layers: layers})
-	ms.addVitals(id, Vitals{})
-	ms.addMortal(id, &Mortal{})
-	ms.AddPlayer(id)
-	return p
-}
-
-// placeBot puts a bot with vitals v on the map "test" of s.
-func placeBot(s *World, id EntityID, v Vitals) EntityID {
-	ms := testMap(s)
-	ms.spawn(id, EntityData{Kind: EntityBot}, Transform{}, Appearance{})
-	ms.addVitals(id, v)
-	ms.addMortal(id, &Mortal{})
-	ms.addBrain(id, &Brain{})
-	return id
-}
-
 // tapTick queues taps and runs one full input phase over them, which is the only
 // path that re-plans movement.
-func tapTick(s *Sim, mapState *MapState, player *Session, taps ...InputCommand) {
-	EnqueueInputs(player, taps)
+func tapTick(s *Sim, mapState *world.MapState, player *world.Session, taps ...world.InputCommand) {
+	world.EnqueueInputs(player, taps)
 	s.phaseInput(0, mapState)
 }
 
-func tap(seq uint32, x, y float64) InputCommand {
-	return InputCommand{Kind: InputKindPlayerAction, Sequence: seq, TargetX: x, TargetY: y}
+func tap(seq uint32, x, y float64) world.InputCommand {
+	return world.InputCommand{Kind: world.InputKindPlayerAction, Sequence: seq, TargetX: x, TargetY: y}
 }
 
 // A tap re-plans on the tick it lands.
@@ -94,8 +60,8 @@ func TestTapReplansOnTheSameTick(t *testing.T) {
 
 	tapTick(s, mapState, player, tap(7, 10, 10))
 
-	if mapState.mo(player.ID).Mode != WALKING {
-		t.Fatalf("mode = %v, want WALKING", mapState.mo(player.ID).Mode)
+	if mapState.Mo(player.ID).Mode != world.WALKING {
+		t.Fatalf("mode = %v, want WALKING", mapState.Mo(player.ID).Mode)
 	}
 	if player.TargetPos.X != 10 || player.TargetPos.Y != 10 {
 		t.Fatalf("target = %v, want (10,10)", player.TargetPos)
@@ -143,7 +109,7 @@ func TestTapsInOneTickCoalesceToTheNewest(t *testing.T) {
 func TestEnqueueIsNotConsumption(t *testing.T) {
 	s, mapState, player := movementFixture(t)
 
-	EnqueueInputs(player, []InputCommand{tap(1, 18, 1), tap(2, 1, 18)})
+	world.EnqueueInputs(player, []world.InputCommand{tap(1, 18, 1), tap(2, 1, 18)})
 
 	if player.InputConsumedThrough != 0 {
 		t.Fatalf("cursor = %d, want 0 — enqueue is not consumption",
@@ -166,7 +132,7 @@ func TestRepeatOfTheCurrentTargetSkipsThePathfinder(t *testing.T) {
 
 	tapTick(s, mapState, player, tap(1, 10, 10))
 
-	sentinel := []Cell{{X: 42, Y: 42}}
+	sentinel := []world.Cell{{X: 42, Y: 42}}
 	player.Path = sentinel
 
 	tapTick(s, mapState, player, tap(2, 10, 10))
@@ -185,7 +151,7 @@ func TestFrozenPlayerNeverPlansMovement(t *testing.T) {
 
 	tapTick(s, mapState, player, tap(1, 10, 10))
 
-	if mapState.mo(player.ID).Mode == WALKING {
+	if mapState.Mo(player.ID).Mode == world.WALKING {
 		t.Fatal("mode = WALKING — a frozen player does not move")
 	}
 	if player.HasPendingMove {
@@ -216,11 +182,11 @@ func TestSnapshotActionReadyInFollowsTheSkillGate(t *testing.T) {
 	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready != 0 {
 		t.Fatalf("actionReadyInMs = %d before any tap, want 0", ready)
 	}
-	s.HandlePlayerTapAction(player, mapState, Vec2{X: 2, Y: 2})
+	s.HandlePlayerTapAction(player, mapState, world.Vec2{X: 2, Y: 2})
 	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready <= 0 || ready > 500 {
 		t.Fatalf("actionReadyInMs = %d after a tap, want 1..500", ready)
 	}
-	mapState.mt(player.ID).NextSkillAt = time.Now().Add(-time.Millisecond)
+	mapState.Mt(player.ID).NextSkillAt = time.Now().Add(-time.Millisecond)
 	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready != 0 {
 		t.Fatalf("actionReadyInMs = %d after the cooldown, want 0", ready)
 	}

@@ -4,6 +4,8 @@ import (
 	"math"
 	"strings"
 	"testing"
+
+	"cyberia-server/game/world"
 )
 
 func TestValidTapTargetRejectsUnusableCoordinates(t *testing.T) {
@@ -25,24 +27,6 @@ func TestValidTapTargetRejectsUnusableCoordinates(t *testing.T) {
 	for _, c := range bad {
 		if validTapTarget(c[0], c[1]) {
 			t.Fatalf("(%v,%v) must be rejected before it reaches the pathfinder", c[0], c[1])
-		}
-	}
-}
-
-func TestClampCellToGridKeepsTargetsOnTheMap(t *testing.T) {
-	const w, h = 100, 80
-	cases := []struct{ in, want Cell }{
-		{Cell{50, 40}, Cell{50, 40}},
-		{Cell{-1, -1}, Cell{0, 0}},
-		{Cell{-9999, 5}, Cell{0, 5}},
-		{Cell{100, 80}, Cell{99, 79}},
-		{Cell{99999, 99999}, Cell{99, 79}},
-		{Cell{0, 0}, Cell{0, 0}},
-		{Cell{99, 79}, Cell{99, 79}},
-	}
-	for _, c := range cases {
-		if got := clampCellToGrid(c.in, w, h); got != c.want {
-			t.Fatalf("clampCellToGrid(%v) = %v, want %v", c.in, got, c.want)
 		}
 	}
 }
@@ -94,7 +78,7 @@ func TestValidIdentifierBoundsClientSuppliedIDs(t *testing.T) {
 func TestParseInputCarriesTheStasisBool(t *testing.T) {
 	for _, want := range []bool{true, false} {
 		cmd, ok := parseInput("player_stasis", &inputPayload{Stasis: want})
-		if !ok || cmd.Kind != InputKindPlayerStasis || cmd.Active != want {
+		if !ok || cmd.Kind != world.InputKindPlayerStasis || cmd.Active != want {
 			t.Fatalf("player_stasis %v: got ok=%v %+v", want, ok, cmd)
 		}
 	}

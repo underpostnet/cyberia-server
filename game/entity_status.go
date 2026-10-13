@@ -19,6 +19,8 @@
 // MUST stay in sync with the C client constants in entity_status.h.
 package game
 
+import "cyberia-server/game/world"
+
 // Presence status IDs (0–7) — the single, mutually-exclusive lifecycle icon
 // stamped into the AOI `statusIcon` u8 for every entity.
 const (
@@ -73,8 +75,8 @@ const (
 //  1. Dead/respawning → StatusDead
 //  2. Frozen (modal)  → StatusFrozen
 //  3. Alive           → StatusPlayer
-func PlayerStatusIcon(p *Session, v *Vitals) uint8 {
-	if v.ghost() {
+func PlayerStatusIcon(p *world.Session, v *world.Vitals) uint8 {
+	if v.Ghost() {
 		return StatusDead
 	}
 	if p.Frozen {
@@ -90,11 +92,11 @@ func PlayerStatusIcon(p *Session, v *Vitals) uint8 {
 //  2. Dead/respawning → StatusDead
 //  3. Hostile         → StatusHostile
 //  4. Default         → StatusPassive
-func BotStatusIcon(a *Agent, v *Vitals) uint8 {
+func BotStatusIcon(a *world.Agent, v *world.Vitals) uint8 {
 	if a.Behavior == BehaviorSkill || a.Behavior == BehaviorCoin || a.Behavior == BehaviorDrop {
 		return StatusNone
 	}
-	if v.ghost() {
+	if v.Ghost() {
 		return StatusDead
 	}
 	if a.Behavior == BehaviorHostile {
@@ -108,8 +110,8 @@ func BotStatusIcon(a *Agent, v *Vitals) uint8 {
 // Priority chain:
 //  1. Dead/destroyed  → StatusResourceExtracted
 //  2. Alive           → StatusResource
-func ResourceStatusIcon(v *Vitals) uint8 {
-	if v.ghost() {
+func ResourceStatusIcon(v *world.Vitals) uint8 {
+	if v.Ghost() {
 		return StatusResourceExtracted
 	}
 	return StatusResource

@@ -7,19 +7,21 @@
 package game
 
 import (
-	"cyberia-server/logx"
 	"fmt"
 	"log"
 	"math"
 	"math/rand"
 	"time"
 
+	"cyberia-server/game/world"
+	"cyberia-server/logx"
+
 	pb "cyberia-server/gen/proto"
 )
 
 // portalEntry tracks a portal entity for cross-map linking.
 type portalEntry struct {
-	portal  EntityID
+	portal  world.EntityID
 	cellX   int
 	cellY   int
 	mapCode string
@@ -49,8 +51,8 @@ func (s *Sim) BuildWorldFromInstance(
 	actions []*pb.CyberiaActionMessage,
 	quests []*pb.CyberiaQuestMessage,
 ) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
 	logx.Infof("[InstanceLoader] Building world for instance %q (%d maps, %d object layers)",
 		instance.GetCode(), len(mapMsgs), len(olMsgs))
@@ -63,16 +65,16 @@ func (s *Sim) BuildWorldFromInstance(
 	s.bindQuests(instance.GetMapCodes(), quests)
 	s.bindActions(instance.GetMapCodes(), actions)
 
-	logx.Infof("[InstanceLoader] World built: %d maps loaded.", len(s.maps))
+	logx.Infof("[InstanceLoader] World built: %d maps loaded.", len(s.Maps))
 
 	// Log entity counts per map
-	for code, ms := range s.maps {
+	for code, ms := range s.Maps {
 		logx.Debugf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots",
-			code, ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), ms.sceneryCount("foreground"), ms.count(EntityPortal), ms.count(EntityBot))
+			code, ms.SceneryCount("floor"), ms.SceneryCount("obstacle"), ms.SceneryCount("foreground"), ms.Count(world.EntityPortal), ms.Count(world.EntityBot))
 	}
 
 	// Print ASCII graph of portal topology
-	printInstanceGraph(instance, s.maps)
+	printInstanceGraph(instance, s.Maps)
 
 	// List the entities bound to a CyberiaAction and the quests each cell offers.
 	s.logActionProviders()
@@ -83,9 +85,9 @@ func (s *Sim) BuildWorldFromInstance(
 // "TEST", new players always spawn on the first declared map (deterministic for
 // testing) instead of a random one.
 func (s *Sim) SetInstanceCode(code string) {
-	s.mu.Lock()
+	s.Mu.Lock()
 	s.instanceCode = code
-	s.mu.Unlock()
+	s.Mu.Unlock()
 }
 
 // RebuildWorld re-fetches instance data and rebuilds all map entities
@@ -99,20 +101,20 @@ func (s *Sim) RebuildWorld(
 	actions []*pb.CyberiaActionMessage,
 	quests []*pb.CyberiaQuestMessage,
 ) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
 	logx.Infof("[InstanceLoader] RebuildWorld for instance %q (%d maps)", instance.GetCode(), len(mapMsgs))
 
 	// Snapshot existing players per map so they survive the rebuild.
 	type savedPlayer struct {
-		id  EntityID
-		row EntityRow
+		id  world.EntityID
+		row world.EntityRow
 	}
 	savedPlayers := make(map[string][]savedPlayer)
-	for code, ms := range s.maps {
-		for id := range ms.ofKind(EntityPlayer) {
-			savedPlayers[code] = append(savedPlayers[code], savedPlayer{id, ms.take(id)})
+	for code, ms := range s.Maps {
+		for id := range ms.OfKind(world.EntityPlayer) {
+			savedPlayers[code] = append(savedPlayers[code], savedPlayer{id, ms.Take(id)})
 		}
 	}
 	s.forgetNonPlayers()
@@ -125,7 +127,7 @@ func (s *Sim) RebuildWorld(
 
 	// Restore players into the (possibly new) map states.
 	for code, players := range savedPlayers {
-		ms, ok := s.maps[code]
+		ms, ok := s.Maps[code]
 		if !ok {
 			// Map was removed — players will be orphaned and eventually
 			// time out or reconnect.  Log a warning.
@@ -133,16 +135,16 @@ func (s *Sim) RebuildWorld(
 			continue
 		}
 		for _, p := range players {
-			ms.put(p.id, p.row)
+			ms.Put(p.id, p.row)
 		}
 	}
 
-	logx.Infof("[InstanceLoader] RebuildWorld complete: %d maps.", len(s.maps))
-	for code, ms := range s.maps {
+	logx.Infof("[InstanceLoader] RebuildWorld complete: %d maps.", len(s.Maps))
+	for code, ms := range s.Maps {
 		logx.Debugf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots, %d resources, %d statics, %d players",
-			code, ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), ms.sceneryCount("foreground"), ms.count(EntityPortal), ms.count(EntityBot), ms.count(EntityResource), ms.sceneryCount("static"), ms.count(EntityPlayer))
+			code, ms.SceneryCount("floor"), ms.SceneryCount("obstacle"), ms.SceneryCount("foreground"), ms.Count(world.EntityPortal), ms.Count(world.EntityBot), ms.Count(world.EntityResource), ms.SceneryCount("static"), ms.Count(world.EntityPlayer))
 	}
-	printInstanceGraph(instance, s.maps)
+	printInstanceGraph(instance, s.Maps)
 }
 
 // buildMapsFromInstance is the shared implementation for BuildWorldFromInstance
@@ -156,7 +158,7 @@ func (s *Sim) buildMapsFromInstance(
 		mapMsgByCode[m.GetCode()] = m
 	}
 
-	s.maps = make(map[string]*MapState)
+	s.Maps = make(map[string]*world.MapState)
 	s.lootRespawns = nil
 	allPortals := make(map[string][]portalEntry)
 
@@ -176,9 +178,9 @@ func (s *Sim) buildMapsFromInstance(
 			gridH = 100
 		}
 
-		ms := NewMapState(mapCode, gridW, gridH)
+		ms := world.NewMapState(mapCode, gridW, gridH)
 		// Register the map first: a builder reads its components through s.maps.
-		s.maps[mapCode] = ms
+		s.Maps[mapCode] = ms
 
 		for _, ent := range mapMsg.GetEntities() {
 			switch ent.GetEntityType() {
@@ -214,8 +216,8 @@ func (s *Sim) buildMapsFromInstance(
 		srcMapCode := edge.GetSourceMapCode()
 		dstMapCode := edge.GetTargetMapCode()
 
-		_, srcOk := s.maps[srcMapCode]
-		_, dstOk := s.maps[dstMapCode]
+		_, srcOk := s.Maps[srcMapCode]
+		_, dstOk := s.Maps[dstMapCode]
 		if !srcOk || !dstOk {
 			logx.Warnf("[InstanceLoader] portal edge references unknown map: %q → %q", srcMapCode, dstMapCode)
 			continue
@@ -236,16 +238,16 @@ func (s *Sim) buildMapsFromInstance(
 
 		// A random mode spawns anywhere on the target map: a negative target
 		// cell says so to the teleport and to the client label.
-		targetCell := Cell{X: int(edge.GetTargetCellX()), Y: int(edge.GetTargetCellY())}
+		targetCell := world.Cell{X: int(edge.GetTargetCellX()), Y: int(edge.GetTargetCellY())}
 		if portalMode == "inter-random" || portalMode == "intra-random" {
-			targetCell = Cell{X: -1, Y: -1}
+			targetCell = world.Cell{X: -1, Y: -1}
 		}
-		s.maps[srcMapCode].addPortal(srcPortal, Portal{TargetMap: dstMapCode, TargetCell: targetCell})
+		s.Maps[srcMapCode].AddPortal(srcPortal, world.Portal{TargetMap: dstMapCode, TargetCell: targetCell})
 	}
 }
 
 // findPortalByCell finds a portal entry by cell coordinates.
-func findPortalByCell(entries []portalEntry, cellX, cellY int) EntityID {
+func findPortalByCell(entries []portalEntry, cellX, cellY int) world.EntityID {
 	for _, e := range entries {
 		if e.cellX == cellX && e.cellY == cellY {
 			return e.portal
@@ -257,19 +259,19 @@ func findPortalByCell(entries []portalEntry, cellX, cellY int) EntityID {
 // ── Entity builders ──────────────────────────────────────────────
 
 // entSize is the size the map editor gave the entity.
-func entSize(ent *pb.EntityMessage) Vec2 {
-	return Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
+func entSize(ent *pb.EntityMessage) world.Vec2 {
+	return world.Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
 }
 
 // entTransform places an entity of `size` on its initial cell.
-func entTransform(ent *pb.EntityMessage, size Vec2) Transform {
-	return Transform{Pos: Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}, Size: size}
+func entTransform(ent *pb.EntityMessage, size world.Vec2) world.Transform {
+	return world.Transform{Pos: world.Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}, Size: size}
 }
 
-func (s *Sim) buildFloor(ms *MapState, ent *pb.EntityMessage) {
-	var layers []ObjectLayerState
+func (s *Sim) buildFloor(ms *world.MapState, ent *pb.EntityMessage) {
+	var layers []world.ObjectLayerState
 	for _, itemID := range ent.GetObjectLayerItemIds() {
-		layers = append(layers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+		layers = append(layers, world.ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
 	}
 	if len(layers) == 0 && ent.GetColorA() == 0 {
 		// Apply instance-level default OLs only when the entity has no
@@ -277,16 +279,16 @@ func (s *Sim) buildFloor(ms *MapState, ent *pb.EntityMessage) {
 		// intentionally placed a solid-colour floor without sprites.
 		if d, ok := s.entityDefaults["floor"]; ok && len(d.LiveItemIDs) > 0 {
 			for _, itemID := range d.LiveItemIDs {
-				layers = append(layers, ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+				layers = append(layers, world.ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
 			}
 		}
 	}
-	ms.spawn(s.newEntityID(), EntityData{Kind: EntityScenery, DrawOrder: DrawFloor},
-		entTransform(ent, entSize(ent)), Appearance{Layers: layers})
+	ms.Spawn(s.NewEntityID(), world.EntityData{Kind: world.EntityScenery, DrawOrder: world.DrawFloor},
+		entTransform(ent, entSize(ent)), world.Appearance{Layers: layers})
 }
 
-func (s *Sim) buildBot(ms *MapState, ent *pb.EntityMessage) {
-	dims := Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
+func (s *Sim) buildBot(ms *world.MapState, ent *pb.EntityMessage) {
+	dims := world.Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
 	if dims.X <= 0 {
 		dims.X = float64(rand.Intn(4) + 1)
 	}
@@ -294,7 +296,7 @@ func (s *Sim) buildBot(ms *MapState, ent *pb.EntityMessage) {
 		dims.Y = float64(rand.Intn(4) + 1)
 	}
 
-	startPos := Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
+	startPos := world.Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
 
 	// Determine max life
 	maxLife := s.placedMaxLife(ent)
@@ -318,46 +320,46 @@ func (s *Sim) buildBot(ms *MapState, ent *pb.EntityMessage) {
 	// sprites, so it carries no default layers.
 	objectLayers := s.spawnObjectLayers("bot", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
-	id := s.newEntityID()
-	bot := &Brain{
-		Path:        []Cell{},
-		TargetPos:   Cell{-1, -1},
+	id := s.NewEntityID()
+	bot := &world.Brain{
+		Path:        []world.Cell{},
+		TargetPos:   world.Cell{X: -1, Y: -1},
 		SpawnCenter: startPos,
 		SpawnRadius: spawnRadius,
 		AggroRange:  aggroRange,
 	}
-	ms.addBrain(id, bot)
-	ms.spawn(id, EntityData{Kind: EntityBot}, Transform{Pos: startPos, Size: dims}, Appearance{Layers: objectLayers})
-	ms.addVitals(id, Vitals{MaxLife: maxLife, Life: maxLife * s.initialLifeFraction})
-	ms.addMotion(id, Motion{Direction: NONE, Mode: IDLE})
-	ms.addAgent(id, Agent{Behavior: s.resolveEntityBehavior("bot", objectLayers)})
-	ms.addMortal(id, &Mortal{BaseMaxLife: maxLife, LifeRegen: lifeRegen, RespawnDuration: placedRespawnDuration(ent)})
+	ms.AddBrain(id, bot)
+	ms.Spawn(id, world.EntityData{Kind: world.EntityBot}, world.Transform{Pos: startPos, Size: dims}, world.Appearance{Layers: objectLayers})
+	ms.AddVitals(id, world.Vitals{MaxLife: maxLife, Life: maxLife * s.initialLifeFraction})
+	ms.AddMotion(id, world.Motion{Direction: world.NONE, Mode: world.IDLE})
+	ms.AddAgent(id, world.Agent{Behavior: s.resolveEntityBehavior("bot", objectLayers)})
+	ms.AddMortal(id, &world.Mortal{BaseMaxLife: maxLife, LifeRegen: lifeRegen, RespawnDuration: placedRespawnDuration(ent)})
 	s.setProgression(id, NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig()))
 	s.ApplyResistanceStat(id, ms)
-	ms.vt(id).Life = ms.vt(id).MaxLife * s.initialLifeFraction
+	ms.Vt(id).Life = ms.Vt(id).MaxLife * s.initialLifeFraction
 
 	// Fountain: credit the bot's starting coin supply (same path as respawn).
 	s.FountainInitBot(id, ms)
 
 	// Initial wandering path — skipped for providers, which stay at their spawn
 	// (provider-static never moves; provider only takes sporadic short steps).
-	if !behaviorIsProvider(ms.ag(id).Behavior) {
+	if !behaviorIsProvider(ms.Ag(id).Behavior) {
 		target := s.randomPointWithinRadius(ms, bot.SpawnCenter, bot.SpawnRadius, dims)
 		if target.X >= 0 {
 			if pth, err := ms.Pathfinder().Astar(
-				Cell{X: int(math.Round(startPos.X)), Y: int(math.Round(startPos.Y))},
+				world.Cell{X: int(math.Round(startPos.X)), Y: int(math.Round(startPos.Y))},
 				target, dims,
 			); err == nil && len(pth) > 0 {
 				bot.Path = pth
 				bot.TargetPos = target
-				ms.mo(id).Mode = WALKING
+				ms.Mo(id).Mode = world.WALKING
 			}
 		}
 	}
 }
 
-func (s *Sim) buildResource(ms *MapState, ent *pb.EntityMessage) {
-	dims := Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
+func (s *Sim) buildResource(ms *world.MapState, ent *pb.EntityMessage) {
+	dims := world.Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
 	if dims.X <= 0 {
 		dims.X = 2
 	}
@@ -365,21 +367,21 @@ func (s *Sim) buildResource(ms *MapState, ent *pb.EntityMessage) {
 		dims.Y = 2
 	}
 
-	startPos := Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
+	startPos := world.Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
 
 	maxLife := s.placedMaxLife(ent)
 
 	objectLayers := s.spawnObjectLayers("resource", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
-	res := s.newEntityID()
-	ms.spawn(res, EntityData{Kind: EntityResource}, Transform{Pos: startPos, Size: dims}, Appearance{Layers: objectLayers})
-	ms.addVitals(res, Vitals{MaxLife: maxLife, Life: maxLife})
-	ms.addMortal(res, &Mortal{BaseMaxLife: maxLife, RespawnDuration: placedRespawnDuration(ent)})
+	res := s.NewEntityID()
+	ms.Spawn(res, world.EntityData{Kind: world.EntityResource}, world.Transform{Pos: startPos, Size: dims}, world.Appearance{Layers: objectLayers})
+	ms.AddVitals(res, world.Vitals{MaxLife: maxLife, Life: maxLife})
+	ms.AddMortal(res, &world.Mortal{BaseMaxLife: maxLife, RespawnDuration: placedRespawnDuration(ent)})
 	s.setProgression(res, NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig()))
 
 	// Apply stats (resistance may increase MaxLife)
 	s.ApplyResistanceStat(res, ms)
-	ms.vt(res).Life = ms.vt(res).MaxLife
+	ms.Vt(res).Life = ms.Vt(res).MaxLife
 }
 
 // placedMaxLife is the max life a map entity names, or the instance base when it
@@ -399,14 +401,14 @@ func placedRespawnDuration(ent *pb.EntityMessage) time.Duration {
 // buildObstacle places an obstacle and blocks its cells. The destructible
 // behavior binds only on a live-item match: an obstacle that falls back to the
 // first default of its type stays ordinary.
-func (s *Sim) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
-	dims := Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
-	pos := Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
+func (s *Sim) buildObstacle(ms *world.MapState, ent *pb.EntityMessage) {
+	dims := world.Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
+	pos := world.Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
 	objectLayers := s.spawnObjectLayers("obstacle", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
-	id := s.newEntityID()
-	ms.Pathfinder().occupy(pos, dims, 1)
-	ms.spawn(id, EntityData{Kind: EntityScenery, Flags: FlagBlocks},
-		Transform{Pos: pos, Size: dims}, Appearance{Layers: objectLayers})
+	id := s.NewEntityID()
+	ms.Pathfinder().Occupy(pos, dims, 1)
+	ms.Spawn(id, world.EntityData{Kind: world.EntityScenery, Flags: world.FlagBlocks},
+		world.Transform{Pos: pos, Size: dims}, world.Appearance{Layers: objectLayers})
 
 	activeIDs := activeObjectLayerItemIDs(objectLayers)
 	build, _ := s.resolveEntityDefaultBuild("obstacle", activeIDs)
@@ -414,33 +416,33 @@ func (s *Sim) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
 		return
 	}
 	maxLife := s.placedMaxLife(ent)
-	ms.addVitals(id, Vitals{Life: maxLife, MaxLife: maxLife})
-	ms.addMortal(id, &Mortal{BaseMaxLife: maxLife, RespawnDuration: placedRespawnDuration(ent)})
+	ms.AddVitals(id, world.Vitals{Life: maxLife, MaxLife: maxLife})
+	ms.AddMortal(id, &world.Mortal{BaseMaxLife: maxLife, RespawnDuration: placedRespawnDuration(ent)})
 }
 
 // entAppearance gives an entity of `kind` its layers. One that carries neither
 // object layers nor a colour falls back to the kind's default live items.
-func (s *Sim) entAppearance(ent *pb.EntityMessage, kind string) Appearance {
-	return Appearance{Layers: s.spawnObjectLayers(kind, ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)}
+func (s *Sim) entAppearance(ent *pb.EntityMessage, kind string) world.Appearance {
+	return world.Appearance{Layers: s.spawnObjectLayers(kind, ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)}
 }
 
-func (s *Sim) buildForeground(ms *MapState, ent *pb.EntityMessage) {
+func (s *Sim) buildForeground(ms *world.MapState, ent *pb.EntityMessage) {
 	ap := s.entAppearance(ent, "foreground")
-	data := EntityData{Kind: EntityScenery, DrawOrder: DrawForeground}
+	data := world.EntityData{Kind: world.EntityScenery, DrawOrder: world.DrawForeground}
 	if s.boundBehavior("foreground", ap.Layers) == BehaviorOverheadOcclusion {
-		data.Flags |= FlagOverheadOcclusion
+		data.Flags |= world.FlagOverheadOcclusion
 	}
-	ms.spawn(s.newEntityID(), data, entTransform(ent, entSize(ent)), ap)
+	ms.Spawn(s.NewEntityID(), data, entTransform(ent, entSize(ent)), ap)
 }
 
-func (s *Sim) buildStatic(ms *MapState, ent *pb.EntityMessage) {
+func (s *Sim) buildStatic(ms *world.MapState, ent *pb.EntityMessage) {
 	// Statics are passable: no pathfinder cells are blocked.
-	ms.spawn(s.newEntityID(), EntityData{Kind: EntityScenery},
+	ms.Spawn(s.NewEntityID(), world.EntityData{Kind: world.EntityScenery},
 		entTransform(ent, entSize(ent)), s.entAppearance(ent, "static"))
 }
 
-func (s *Sim) buildPortal(ms *MapState, ent *pb.EntityMessage) EntityID {
-	dims := Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
+func (s *Sim) buildPortal(ms *world.MapState, ent *pb.EntityMessage) world.EntityID {
+	dims := world.Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
 	if dims.X <= 0 {
 		dims.X = 3
 	}
@@ -450,8 +452,8 @@ func (s *Sim) buildPortal(ms *MapState, ent *pb.EntityMessage) EntityID {
 
 	objectLayers := s.spawnObjectLayers("portal", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
-	portal := s.newEntityID()
-	ms.spawn(portal, EntityData{Kind: EntityPortal}, entTransform(ent, dims), Appearance{Layers: objectLayers})
+	portal := s.NewEntityID()
+	ms.Spawn(portal, world.EntityData{Kind: world.EntityPortal}, entTransform(ent, dims), world.Appearance{Layers: objectLayers})
 
 	// Portals are walkable — no grid cells are blocked.
 	// The player must stand on the portal for portalHoldTime to trigger transport.
@@ -460,7 +462,7 @@ func (s *Sim) buildPortal(ms *MapState, ent *pb.EntityMessage) EntityID {
 }
 
 // printInstanceGraph prints an ASCII representation of the instance's map/portal graph.
-func printInstanceGraph(instance *pb.InstanceMessage, maps map[string]*MapState) {
+func printInstanceGraph(instance *pb.InstanceMessage, maps map[string]*world.MapState) {
 	mapCodes := instance.GetMapCodes()
 	edges := instance.GetPortals()
 
@@ -504,7 +506,7 @@ func printInstanceGraph(instance *pb.InstanceMessage, maps map[string]*MapState)
 		line := fmt.Sprintf("    [%s]", code)
 		if ms, ok := maps[code]; ok {
 			line += fmt.Sprintf("  [F:%d O:%d B:%d P:%d]",
-				ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), ms.count(EntityBot), ms.count(EntityPortal))
+				ms.SceneryCount("floor"), ms.SceneryCount("obstacle"), ms.Count(world.EntityBot), ms.Count(world.EntityPortal))
 		}
 		content = append(content, line)
 	}

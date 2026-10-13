@@ -1,5 +1,5 @@
 //go:build race
 
-package game
+package world
 
 const raceEnabled = true

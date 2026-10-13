@@ -1,4 +1,4 @@
-// Package game — input_command.go
+// Package world — input_command.go
 //
 // InputCommand is one client event: the unit of client→server input.
 //
@@ -15,7 +15,7 @@
 //   - Session.InputQueue is the single rendezvous; no other code path
 //     mutates entity state in response to client input.
 
-package game
+package world
 
 // InputKind enumerates the input categories the server accepts. It is
 // internal — only receiveMessage knows which wire word maps to which kind.
@@ -53,27 +53,27 @@ type InputCommand struct {
 	DialogCode  string   // TalkDone — the dialogue group the player just read
 	Quantity    int      // ShopBuy — units (clamped server-side)
 	RecipeIndex int      // CraftItem — index into the action's craftRecipes
-	Ops         []itemOp // ItemOps — applied front to back
+	Ops         []ItemOp // ItemOps — applied front to back
 }
 
-// maxInputQueue bounds one player's queue between two ticks. It equals the
+// MaxInputQueue bounds one player's queue between two ticks. It equals the
 // client CLIENT_EVENT_CAP, so one batch from a correct client always fits.
-const maxInputQueue = 512
+const MaxInputQueue = 512
 
 // EnqueueInputs appends one batch to the player's InputQueue, whole, so one
 // phaseInput drains it. Called under the world mutex. It never drops: a batch
 // that does not fit returns false, and the caller evicts the client.
 func EnqueueInputs(p *Session, cmds []InputCommand) bool {
-	if len(p.InputQueue)+len(cmds) > maxInputQueue {
+	if len(p.InputQueue)+len(cmds) > MaxInputQueue {
 		return false
 	}
 	p.InputQueue = append(p.InputQueue, cmds...)
 	return true
 }
 
-// itemOp is one replayed vault operation: Qty of ItemID into the vault when
+// ItemOp is one replayed vault operation: Qty of ItemID into the vault when
 // ToVault, else out of it.
-type itemOp struct {
+type ItemOp struct {
 	ItemID  string `json:"itemId"`
 	Qty     int    `json:"qty"`
 	ToVault bool   `json:"toVault"`

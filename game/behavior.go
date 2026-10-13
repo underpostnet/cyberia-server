@@ -1,5 +1,7 @@
 package game
 
+import "cyberia-server/game/world"
+
 // Canonical bot, obstacle and loot behaviors. Mirrors the bot, obstacle and loot behaviors of
 // SharedDefaultsCyberia.ENTITY_BEHAVIORS. A bot's behavior is content-authored on its matched
 // entity-type default (resolved by active itemId), or derived when unset. `skill` / `coin` are
@@ -60,7 +62,7 @@ func behaviorIsStationary(b string) bool {
 // canonical behavior is bound: any active weapon-type layer → hostile, else
 // passive. Runtime-spawned entities (projectiles, doppelgangers) set behavior
 // directly and never go through here.
-func (s *Content) deriveBehaviorFromLayers(layers []ObjectLayerState) string {
+func (s *Content) deriveBehaviorFromLayers(layers []world.ObjectLayerState) string {
 	for _, ol := range layers {
 		if data, ok := s.GetObjectLayerData(ol.ItemID); ok {
 			if data.Data.Item.Type == "weapon" {
@@ -74,7 +76,7 @@ func (s *Content) deriveBehaviorFromLayers(layers []ObjectLayerState) string {
 // boundBehavior is the behavior bound to the entity-type default the layers
 // match (by active itemId — the same liveItemIds match used for the
 // live/dead/drop sets), or "" when that default binds none.
-func (s *Content) boundBehavior(entityType string, layers []ObjectLayerState) string {
+func (s *Content) boundBehavior(entityType string, layers []world.ObjectLayerState) string {
 	build, _ := s.resolveEntityDefaultBuild(entityType, activeObjectLayerItemIDs(layers))
 	return build.Behavior
 }
@@ -82,7 +84,7 @@ func (s *Content) boundBehavior(entityType string, layers []ObjectLayerState) st
 // resolveEntityBehavior picks a bot's behavior: the bound behavior when set,
 // otherwise derived from the layers. This is the single entry point for
 // assigning a spawned bot's behavior.
-func (s *Content) resolveEntityBehavior(entityType string, layers []ObjectLayerState) string {
+func (s *Content) resolveEntityBehavior(entityType string, layers []world.ObjectLayerState) string {
 	if behavior := s.boundBehavior(entityType, layers); behavior != "" {
 		return behavior
 	}

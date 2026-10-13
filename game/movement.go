@@ -5,16 +5,17 @@ import (
 	"math/rand"
 	"time"
 
+	"cyberia-server/game/world"
 	"cyberia-server/logx"
 )
 
 // directionFromVector maps a movement vector onto one of the eight facings.
-func directionFromVector(dirX, dirY float64) Direction {
+func directionFromVector(dirX, dirY float64) world.Direction {
 	angle := math.Atan2(dirY, dirX)
 	if angle < 0 {
 		angle += 2 * math.Pi
 	}
-	return Direction((int(math.Round(angle/(math.Pi/4))) + 2) % 8)
+	return world.Direction((int(math.Round(angle/(math.Pi/4))) + 2) % 8)
 }
 
 // stepAlongPath advances pos toward the head of path by speed*dt cells.
@@ -26,9 +27,9 @@ func directionFromVector(dirX, dirY float64) Direction {
 // It returns the new position, the path left to walk, and the facing for this
 // step. The bool is false when the step produced no heading — an empty path
 // or a zero-length hop — so the caller decides what an arriving entity faces.
-func stepAlongPath(pos Vec2, path []Cell, speed, dt float64) (Vec2, []Cell, Direction, bool) {
+func stepAlongPath(pos world.Vec2, path []world.Cell, speed, dt float64) (world.Vec2, []world.Cell, world.Direction, bool) {
 	if len(path) == 0 {
-		return pos, path, NONE, false
+		return pos, path, world.NONE, false
 	}
 
 	targetNode := path[0]
@@ -45,10 +46,10 @@ func stepAlongPath(pos Vec2, path []Cell, speed, dt float64) (Vec2, []Cell, Dire
 	}
 
 	// Node reached. Face the next leg, if there is one.
-	pos = Vec2{X: float64(targetNode.X), Y: float64(targetNode.Y)}
+	pos = world.Vec2{X: float64(targetNode.X), Y: float64(targetNode.Y)}
 	path = path[1:]
 	if len(path) == 0 {
-		return pos, path, NONE, false
+		return pos, path, world.NONE, false
 	}
 
 	next := path[0]
@@ -56,51 +57,51 @@ func stepAlongPath(pos Vec2, path []Cell, speed, dt float64) (Vec2, []Cell, Dire
 	dirY := float64(next.Y) - pos.Y
 	norm := math.Sqrt(dirX*dirX + dirY*dirY)
 	if norm == 0 {
-		return pos, path, NONE, false
+		return pos, path, world.NONE, false
 	}
 	return pos, path, directionFromVector(dirX/norm, dirY/norm), true
 }
 
-func (s *Sim) updatePlayerPosition(player *Session, mapState *MapState) {
+func (s *Sim) updatePlayerPosition(player *world.Session, mapState *world.MapState) {
 	// Dead players can't move.
-	if mapState.vt(player.ID).ghost() {
+	if mapState.Vt(player.ID).Ghost() {
 		return
 	}
 
 	playerStats := s.CalculateStats(player.ID, mapState)
 	speed := s.CalculatePlayerMovementSpeed(playerStats)
 
-	if mapState.mo(player.ID).Mode != WALKING {
+	if mapState.Mo(player.ID).Mode != world.WALKING {
 		return
 	}
 
-	tf := mapState.tf(player.ID)
+	tf := mapState.Tf(player.ID)
 	pos, path, dir, facing := stepAlongPath(tf.Pos, player.Path, speed, tickDuration.Seconds())
 	tf.Pos, player.Path = pos, path
 	if facing {
-		mapState.mo(player.ID).Direction = dir
+		mapState.Mo(player.ID).Direction = dir
 	}
 	if len(player.Path) == 0 {
-		mapState.mo(player.ID).Mode = IDLE
-		mapState.mo(player.ID).Direction = NONE
+		mapState.Mo(player.ID).Mode = world.IDLE
+		mapState.Mo(player.ID).Direction = world.NONE
 	}
 }
 
 // ---------- Portals ----------
-func (s *Sim) checkPortal(player *Session, mapState *MapState) {
+func (s *Sim) checkPortal(player *world.Session, mapState *world.MapState) {
 	// Teleport is only possible while alive. A dead player standing on a portal
 	// neither accrues hold progress nor teleports; entering ghost state cancels
 	// any in-progress hold.
-	if mapState.vt(player.ID).ghost() {
+	if mapState.Vt(player.ID).Ghost() {
 		player.OnPortal = false
 		return
 	}
 
 	onPortal := false
-	var activePortal EntityID
-	playerRect := mapState.tf(player.ID).rect()
-	for portal := range mapState.ofKind(EntityPortal) {
-		if rectsOverlap(playerRect, mapState.tf(portal).rect()) {
+	var activePortal world.EntityID
+	playerRect := mapState.Tf(player.ID).Rect()
+	for portal := range mapState.OfKind(world.EntityPortal) {
+		if world.RectsOverlap(playerRect, mapState.Tf(portal).Rect()) {
 			onPortal = true
 			activePortal = portal
 			break
@@ -118,17 +119,17 @@ func (s *Sim) checkPortal(player *Session, mapState *MapState) {
 	}
 }
 
-func (s *Sim) teleportPlayer(player *Session, mapState *MapState, portal EntityID) {
+func (s *Sim) teleportPlayer(player *world.Session, mapState *world.MapState, portal world.EntityID) {
 	// s.mu is held by the caller (phasePortals). Do not release it: map
 	// mutations of the map slots must not race other readers.
 
-	target, linked := mapState.pt(portal)
+	target, linked := mapState.Pt(portal)
 	if !linked {
 		logx.Warnf("Teleportation failed: portal %s has no target.", portal)
 		return
 	}
 	destMapCode := target.TargetMap
-	destMapState, ok := s.maps[destMapCode]
+	destMapState, ok := s.Maps[destMapCode]
 	if !ok {
 		logx.Warnf("Teleportation failed: destination map %q not found.", destMapCode)
 		return
@@ -145,20 +146,20 @@ func (s *Sim) teleportPlayer(player *Session, mapState *MapState, portal EntityI
 		spawnY = float64(target.TargetCell.Y) + rand.Float64()*s.portalSpawnRadius*2 - s.portalSpawnRadius
 	}
 
-	currentMapState := s.maps[player.MapCode]
-	size := currentMapState.tf(player.ID).Size
-	destPosI, err := destMapState.Pathfinder().findClosestWalkablePoint(Cell{X: int(spawnX), Y: int(spawnY)}, size)
+	currentMapState := s.Maps[player.MapCode]
+	size := currentMapState.Tf(player.ID).Size
+	destPosI, err := destMapState.Pathfinder().FindClosestWalkablePoint(world.Cell{X: int(spawnX), Y: int(spawnY)}, size)
 	if err != nil {
 		logx.Warnf("Could not find a walkable spawn point: %v", err)
 		return
 	}
-	row := currentMapState.take(player.ID)
-	row.Transform.Pos = Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}
+	row := currentMapState.Take(player.ID)
+	row.Transform.Pos = world.Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}
 	player.MapCode = destMapCode
-	player.TargetPos = Cell{}
-	player.Path = []Cell{}
-	row.Motion.Mode = TELEPORTING
+	player.TargetPos = world.Cell{}
+	player.Path = []world.Cell{}
+	row.Motion.Mode = world.TELEPORTING
 	player.OnPortal = false
-	destMapState.put(player.ID, row)
+	destMapState.Put(player.ID, row)
 	s.teleported = append(s.teleported, player)
 }

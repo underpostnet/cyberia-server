@@ -24,28 +24,29 @@ package game
 import (
 	"math"
 
+	"cyberia-server/game/world"
 	"cyberia-server/logx"
 )
 
 // Taps record movement and request cooldown-limited skills.
-func (s *Sim) handlePlayerActionInput(player *Session, mapState *MapState, cmd *InputCommand) {
-	if mapState.vt(player.ID).ghost() {
+func (s *Sim) handlePlayerActionInput(player *world.Session, mapState *world.MapState, cmd *world.InputCommand) {
+	if mapState.Vt(player.ID).Ghost() {
 		return
 	}
 	if player.Frozen {
 		return
 	}
 
-	target := Vec2{X: cmd.TargetX, Y: cmd.TargetY}
+	target := world.Vec2{X: cmd.TargetX, Y: cmd.TargetY}
 	s.HandlePlayerTapAction(player, mapState, target)
 
-	player.PendingMove = Cell{X: int(math.Round(cmd.TargetX)), Y: int(math.Round(cmd.TargetY))}
+	player.PendingMove = world.Cell{X: int(math.Round(cmd.TargetX)), Y: int(math.Round(cmd.TargetY))}
 	player.HasPendingMove = true
 }
 
 // flushPendingMove re-plans the walk from the newest tap of this tick. Called
 // once per player per tick by phaseInput, after the input queue is drained.
-func (s *Sim) flushPendingMove(player *Session, mapState *MapState) {
+func (s *Sim) flushPendingMove(player *world.Session, mapState *world.MapState) {
 	if !player.HasPendingMove {
 		return
 	}
@@ -55,35 +56,35 @@ func (s *Sim) flushPendingMove(player *Session, mapState *MapState) {
 	// Re-check the refusals the recording handler already applied: a player_stasis
 	// or a death later in the same queue lands between the record and this
 	// flush, and the tap must not outlive it.
-	if mapState.vt(player.ID).ghost() || player.Frozen {
+	if mapState.Vt(player.ID).Ghost() || player.Frozen {
 		return
 	}
 
 	// Clamp into the map. An off-grid target would otherwise make Astar expand
 	// the full reachable area and then fail, spending the tick budget.
-	startPosI := clampCellToGrid(
-		Cell{X: int(math.Round(mapState.tf(player.ID).Pos.X)), Y: int(math.Round(mapState.tf(player.ID).Pos.Y))},
+	startPosI := world.ClampCellToGrid(
+		world.Cell{X: int(math.Round(mapState.Tf(player.ID).Pos.X)), Y: int(math.Round(mapState.Tf(player.ID).Pos.Y))},
 		mapState.GridW(), mapState.GridH())
-	targetPosI := clampCellToGrid(target, mapState.GridW(), mapState.GridH())
+	targetPosI := world.ClampCellToGrid(target, mapState.GridW(), mapState.GridH())
 
 	// A repeat of the destination already being walked needs no search. This is
 	// the shape a spam-tapping client takes, and it is also the shape of a held
 	// steering key, so skipping it removes the cheapest attack and the most
 	// common redundant search at once.
-	if mapState.mo(player.ID).Mode == WALKING && player.TargetPos == targetPosI && len(player.Path) > 0 {
+	if mapState.Mo(player.ID).Mode == world.WALKING && player.TargetPos == targetPosI && len(player.Path) > 0 {
 		return
 	}
 
-	newPath, err := mapState.Pathfinder().Astar(startPosI, targetPosI, mapState.tf(player.ID).Size)
+	newPath, err := mapState.Pathfinder().Astar(startPosI, targetPosI, mapState.Tf(player.ID).Size)
 	usedTarget := targetPosI
 	if err != nil {
-		closest, cerr := mapState.Pathfinder().findClosestWalkablePoint(targetPosI, mapState.tf(player.ID).Size)
+		closest, cerr := mapState.Pathfinder().FindClosestWalkablePoint(targetPosI, mapState.Tf(player.ID).Size)
 		if cerr != nil {
 			s.faceTargetWithoutPath(player, mapState, float64(targetPosI.X), float64(targetPosI.Y))
 			player.TargetPos = targetPosI
 			return
 		}
-		newPath, err = mapState.Pathfinder().Astar(startPosI, closest, mapState.tf(player.ID).Size)
+		newPath, err = mapState.Pathfinder().Astar(startPosI, closest, mapState.Tf(player.ID).Size)
 		if err != nil {
 			s.faceTargetWithoutPath(player, mapState, float64(closest.X), float64(closest.Y))
 			player.TargetPos = closest
@@ -96,40 +97,40 @@ func (s *Sim) flushPendingMove(player *Session, mapState *MapState) {
 		first := newPath[0]
 		player.Path = newPath
 		player.TargetPos = usedTarget
-		mapState.mo(player.ID).Mode = WALKING
-		dx := float64(first.X) - mapState.tf(player.ID).Pos.X
-		dy := float64(first.Y) - mapState.tf(player.ID).Pos.Y
+		mapState.Mo(player.ID).Mode = world.WALKING
+		dx := float64(first.X) - mapState.Tf(player.ID).Pos.X
+		dy := float64(first.Y) - mapState.Tf(player.ID).Pos.Y
 		if dist := math.Sqrt(dx*dx + dy*dy); dist > 0 {
-			mapState.mo(player.ID).Direction = directionFromVector(dx/dist, dy/dist)
+			mapState.Mo(player.ID).Direction = directionFromVector(dx/dist, dy/dist)
 		}
 	} else if startPosI.X == targetPosI.X && startPosI.Y == targetPosI.Y {
-		mapState.mo(player.ID).Mode = IDLE
+		mapState.Mo(player.ID).Mode = world.IDLE
 	}
 }
 
 // faceTargetWithoutPath updates direction/mode when pathfinding fails but
 // we still want the entity to face the tap. Extracted from the JSON
 // handler so both PlayerAction fallback branches share one helper.
-func (s *Sim) faceTargetWithoutPath(player *Session, mapState *MapState, tx, ty float64) {
-	dx := tx - mapState.tf(player.ID).Pos.X
-	dy := ty - mapState.tf(player.ID).Pos.Y
+func (s *Sim) faceTargetWithoutPath(player *world.Session, mapState *world.MapState, tx, ty float64) {
+	dx := tx - mapState.Tf(player.ID).Pos.X
+	dy := ty - mapState.Tf(player.ID).Pos.Y
 	dist := math.Sqrt(dx*dx + dy*dy)
 	if dist > 0 {
-		mapState.mo(player.ID).Direction = directionFromVector(dx/dist, dy/dist)
-		mapState.mo(player.ID).Mode = WALKING
+		mapState.Mo(player.ID).Direction = directionFromVector(dx/dist, dy/dist)
+		mapState.Mo(player.ID).Mode = world.WALKING
 	} else {
-		mapState.mo(player.ID).Mode = IDLE
+		mapState.Mo(player.ID).Mode = world.IDLE
 	}
 }
 
 // handleItemActivationInput toggles an inventory slot and re-validates
 // the equipment rules.
-func (s *Sim) handleItemActivationInput(player *Session, cmd *InputCommand) {
+func (s *Sim) handleItemActivationInput(player *world.Session, cmd *world.InputCommand) {
 	itemID := cmd.ItemID
 	active := cmd.Active
 
-	v := s.vt(player.ID, player.MapCode)
-	isDead := v.ghost() || v.Life <= 0
+	v := s.Vt(player.ID, player.MapCode)
+	isDead := v.Ghost() || v.Life <= 0
 	isDeadItem := s.deadItemIDs[itemID]
 
 	// Dead-state items are the Fragmented State's aesthetic loadout — they
@@ -148,8 +149,8 @@ func (s *Sim) handleItemActivationInput(player *Session, cmd *InputCommand) {
 	}
 
 	targetItemIndex := -1
-	for i := range s.ap(player.ID, player.MapCode).Layers {
-		if s.ap(player.ID, player.MapCode).Layers[i].ItemID == itemID {
+	for i := range s.Ap(player.ID, player.MapCode).Layers {
+		if s.Ap(player.ID, player.MapCode).Layers[i].ItemID == itemID {
 			targetItemIndex = i
 			break
 		}
@@ -159,8 +160,8 @@ func (s *Sim) handleItemActivationInput(player *Session, cmd *InputCommand) {
 		return
 	}
 
-	originalState := s.ap(player.ID, player.MapCode).Layers[targetItemIndex].Active
-	s.ap(player.ID, player.MapCode).Layers[targetItemIndex].Active = active
+	originalState := s.Ap(player.ID, player.MapCode).Layers[targetItemIndex].Active
+	s.Ap(player.ID, player.MapCode).Layers[targetItemIndex].Active = active
 
 	// Type guard — only activeItemTypes may be turned active.
 	if active && len(s.equipmentRules.ActiveItemTypes) > 0 {
@@ -168,7 +169,7 @@ func (s *Sim) handleItemActivationInput(player *Session, cmd *InputCommand) {
 		if reqType != "" && !s.equipmentRules.ActiveItemTypes[reqType] {
 			logx.Debugf("Player %s tried to activate '%s' (type=%q) — not in activeItemTypes; rejecting.",
 				player.ID, itemID, reqType)
-			s.ap(player.ID, player.MapCode).Layers[targetItemIndex].Active = originalState
+			s.Ap(player.ID, player.MapCode).Layers[targetItemIndex].Active = originalState
 			return
 		}
 	}
@@ -181,15 +182,15 @@ func (s *Sim) handleItemActivationInput(player *Session, cmd *InputCommand) {
 	if active && s.equipmentRules.OnePerType {
 		requested := s.itemType(itemID)
 		if requested != "" {
-			for i := range s.ap(player.ID, player.MapCode).Layers {
+			for i := range s.Ap(player.ID, player.MapCode).Layers {
 				if i == targetItemIndex {
 					continue
 				}
-				if !s.ap(player.ID, player.MapCode).Layers[i].Active || !inState(s.ap(player.ID, player.MapCode).Layers[i].ItemID) {
+				if !s.Ap(player.ID, player.MapCode).Layers[i].Active || !inState(s.Ap(player.ID, player.MapCode).Layers[i].ItemID) {
 					continue
 				}
-				if s.itemType(s.ap(player.ID, player.MapCode).Layers[i].ItemID) == requested {
-					s.ap(player.ID, player.MapCode).Layers[i].Active = false
+				if s.itemType(s.Ap(player.ID, player.MapCode).Layers[i].ItemID) == requested {
+					s.Ap(player.ID, player.MapCode).Layers[i].Active = false
 				}
 			}
 		}
@@ -197,7 +198,7 @@ func (s *Sim) handleItemActivationInput(player *Session, cmd *InputCommand) {
 
 	// RequireSkin / maxActiveLayers corrections, scoped to in-state items.
 	activeLayerCount, activeSkinCount, hasAnySkin, firstSkinIndex := 0, 0, false, -1
-	for i, layer := range s.ap(player.ID, player.MapCode).Layers {
+	for i, layer := range s.Ap(player.ID, player.MapCode).Layers {
 		isSkin := inState(layer.ItemID) && s.itemType(layer.ItemID) == "skin"
 		if isSkin {
 			hasAnySkin = true
@@ -216,28 +217,28 @@ func (s *Sim) handleItemActivationInput(player *Session, cmd *InputCommand) {
 		if isDead && s.ghostItemID != "" {
 			// Unequipping the last dead skin is allowed: the ghost item from
 			// gRPC config takes over as the Fragmented State visual.
-			activateOrAppendLayer(&s.ap(player.ID, player.MapCode).Layers, s.ghostItemID)
+			activateOrAppendLayer(&s.Ap(player.ID, player.MapCode).Layers, s.ghostItemID)
 		} else if hasAnySkin && firstSkinIndex != -1 {
-			s.ap(player.ID, player.MapCode).Layers[firstSkinIndex].Active = true
+			s.Ap(player.ID, player.MapCode).Layers[firstSkinIndex].Active = true
 		}
 	}
 	if activeLayerCount > s.maxActiveLayers {
-		s.ap(player.ID, player.MapCode).Layers[targetItemIndex].Active = originalState
+		s.Ap(player.ID, player.MapCode).Layers[targetItemIndex].Active = originalState
 	}
 
 	// The Fragmented State loadout persists across deaths.
 	if isDead {
-		player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(s.ap(player.ID, player.MapCode).Layers)
+		player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(s.Ap(player.ID, player.MapCode).Layers)
 	}
 
-	s.ApplyResistanceStat(player.ID, s.maps[player.MapCode])
+	s.ApplyResistanceStat(player.ID, s.Maps[player.MapCode])
 }
 
 // queuePreRespawnActivation marks a pending activation that takes effect
 // when the dead player respawns. Extracted to keep handleItemActivationInput
 // readable.
-func (s *Sim) queuePreRespawnActivation(player *Session, itemID string) {
-	layers := s.maps[player.MapCode].mt(player.ID).PreRespawnObjectLayers
+func (s *Sim) queuePreRespawnActivation(player *world.Session, itemID string) {
+	layers := s.Maps[player.MapCode].Mt(player.ID).PreRespawnObjectLayers
 	if layers == nil {
 		return
 	}
@@ -267,7 +268,7 @@ func (s *Sim) queuePreRespawnActivation(player *Session, itemID string) {
 
 // handleChatInput is a pure relay — no game-state mutation. Forwards a
 // chat message to the target player on the same map.
-func (s *Sim) handleChatInput(sender *Session, mapState *MapState, cmd *InputCommand) {
+func (s *Sim) handleChatInput(sender *world.Session, mapState *world.MapState, cmd *world.InputCommand) {
 	toID := cmd.EntityID
 	text := cmd.ChatText
 	if toID == 0 || text == "" {
@@ -276,11 +277,11 @@ func (s *Sim) handleChatInput(sender *Session, mapState *MapState, cmd *InputCom
 	if len(text) > 256 {
 		text = text[:256]
 	}
-	target := s.playerOn(mapState, toID)
+	target := s.PlayerOn(mapState, toID)
 	if target == nil {
 		return
 	}
-	sendMessage(target, "chat", map[string]interface{}{
+	world.SendMessage(target, "chat", map[string]interface{}{
 		"from": sender.ID,
 		"text": text,
 	})

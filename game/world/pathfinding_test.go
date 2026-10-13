@@ -1,4 +1,4 @@
-package game
+package world
 
 import (
 	"testing"
@@ -54,7 +54,7 @@ func TestAstarPathIsContiguousAndWalkable(t *testing.T) {
 		t.Fatalf("path must end at the target, got %v", path[len(path)-1])
 	}
 	for i, cell := range path {
-		if !pf.isWalkable(cell.X, cell.Y, unitDims) {
+		if !pf.IsWalkable(cell.X, cell.Y, unitDims) {
 			t.Fatalf("path step %d enters a blocked cell %v", i, cell)
 		}
 		if i == 0 {
@@ -144,16 +144,16 @@ func TestFindClosestWalkablePointHandlesOffGridInput(t *testing.T) {
 	pf := splitGrid(20)
 
 	// A blocked cell resolves to a walkable neighbour.
-	got, err := pf.findClosestWalkablePoint(Cell{10, 5}, unitDims)
+	got, err := pf.FindClosestWalkablePoint(Cell{10, 5}, unitDims)
 	if err != nil {
 		t.Fatalf("a blocked cell must resolve to a neighbour: %v", err)
 	}
-	if !pf.isWalkable(got.X, got.Y, unitDims) {
+	if !pf.IsWalkable(got.X, got.Y, unitDims) {
 		t.Fatalf("resolved cell %v is not walkable", got)
 	}
 
 	// A point far outside has no in-grid neighbour and must fail fast.
-	if _, err := pf.findClosestWalkablePoint(Cell{1 << 20, 1 << 20}, unitDims); err == nil {
+	if _, err := pf.FindClosestWalkablePoint(Cell{1 << 20, 1 << 20}, unitDims); err == nil {
 		t.Fatal("a far off-grid point must not resolve")
 	}
 }

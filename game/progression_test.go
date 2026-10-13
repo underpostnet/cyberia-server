@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 )
 
@@ -40,13 +41,13 @@ func TestSignedAggregationAcrossEntities(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	layers := []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 20}, {ItemID: "buff", Active: true, Quantity: 1}}
-	entities := []EntityID{1, 2, 3}
-	ms := &MapState{}
+	layers := []world.ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 20}, {ItemID: "buff", Active: true, Quantity: 1}}
+	entities := []world.EntityID{1, 2, 3}
+	ms := &world.MapState{}
 	for _, id := range entities {
-		ms.spawn(id, EntityData{}, Transform{}, Appearance{Layers: layers})
-		ms.addAgent(id, Agent{Behavior: "provider"})
-		ms.addMortal(id, &Mortal{})
+		ms.Spawn(id, world.EntityData{}, world.Transform{}, world.Appearance{Layers: layers})
+		ms.AddAgent(id, world.Agent{Behavior: "provider"})
+		ms.AddMortal(id, &world.Mortal{})
 	}
 	for _, id := range entities {
 		s.setProgression(id, NewEntityProgression(4, true, s.progressionConfig()))
@@ -133,10 +134,10 @@ func TestProgressionRateAndRepeatLimits(t *testing.T) {
 
 func TestRawTapSpamDoesNotAwardXP(t *testing.T) {
 	s, ms, p := movementFixture(t)
-	m := ms.mt(p.ID)
+	m := ms.Mt(p.ID)
 	progression := s.setProgression(p.ID, NewEntityProgression(1, false, s.progressionConfig()))
 	for i := uint32(1); i <= 1000; i++ {
-		s.HandlePlayerTapAction(p, ms, Vec2{X: 2, Y: 2})
+		s.HandlePlayerTapAction(p, ms, world.Vec2{X: 2, Y: 2})
 	}
 	if progression.XP != 0 || progression.Level != 1 {
 		t.Fatal("raw taps award XP")
@@ -154,25 +155,25 @@ func TestRawTapSpamDoesNotAwardXP(t *testing.T) {
 
 func TestDefeatAwardsOnlyEligibleContributors(t *testing.T) {
 	s, ms, p := movementFixture(t)
-	victim := EntityID(10)
-	ms.spawn(victim, EntityData{Kind: EntityBot}, Transform{}, Appearance{})
-	ms.addVitals(victim, Vitals{})
-	ms.addAgent(victim, Agent{Behavior: "hostile"})
-	ms.addMortal(victim, &Mortal{})
+	victim := world.EntityID(10)
+	ms.Spawn(victim, world.EntityData{Kind: world.EntityBot}, world.Transform{}, world.Appearance{})
+	ms.AddVitals(victim, world.Vitals{})
+	ms.AddAgent(victim, world.Agent{Behavior: "hostile"})
+	ms.AddMortal(victim, &world.Mortal{})
 	s.setProgression(victim, NewEntityProgression(1, true, s.progressionConfig()))
-	ms.mt(victim).DamageLedger = map[EntityID]float64{p.ID: 100}
+	ms.Mt(victim).DamageLedger = map[world.EntityID]float64{p.ID: 100}
 	s.awardDefeat(victim, "bot", ms)
 	if xp := s.progression[p.ID].XP; xp != 25 {
 		t.Fatalf("kill XP = %d", xp)
 	}
 	s.setProgression(p.ID, NewEntityProgression(1, false, s.progressionConfig()))
-	ms.ag(victim).CasterID = p.ID
+	ms.Ag(victim).CasterID = p.ID
 	s.awardDefeat(victim, "bot", ms)
 	if s.progression[p.ID].XP != 0 {
 		t.Fatal("summon farming awards XP")
 	}
-	ms.ag(victim).CasterID = 0
-	ms.mt(victim).DamageLedger = map[EntityID]float64{p.ID: 1, 999: 100}
+	ms.Ag(victim).CasterID = 0
+	ms.Mt(victim).DamageLedger = map[world.EntityID]float64{p.ID: 1, 999: 100}
 	s.awardDefeat(victim, "bot", ms)
 	if s.progression[p.ID].XP != 0 {
 		t.Fatal("low contribution awards XP")
@@ -202,7 +203,7 @@ func TestSnapshotCarriesProgressionAndSignedBreakdown(t *testing.T) {
 	if err := s.ReplaceObjectLayerCache(map[string]*ObjectLayer{"nerf": {Data: ObjectLayerData{Stats: Stats{Agility: -100}}}}); err != nil {
 		t.Fatal(err)
 	}
-	ms.ap(p.ID).Layers = []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
+	ms.Ap(p.ID).Layers = []world.ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
 	s.setProgression(p.ID, NewEntityProgression(2, false, s.progressionConfig()))
 	snap := (&GameServer{Sim: s}).buildSnapshotSelf(p, ms)
 	if snap.Level != 2 || snap.XP != 100 || snap.LevelXP != 100 || snap.NextLevelXP != 400 || snap.LayerStats[2] != -100 || snap.Stats[2] != -90 {
@@ -227,15 +228,15 @@ func TestSummonFloorsAfterAllContributions(t *testing.T) {
 		"nerf": {Data: ObjectLayerData{Stats: Stats{Effect: -100}}},
 		"buff": {Data: ObjectLayerData{Stats: Stats{Effect: 100}}},
 	})
-	ms.ap(p.ID).Layers = []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
-	summon := EntityID(11)
-	ms.spawn(summon, EntityData{Kind: EntityBot}, Transform{}, Appearance{Layers: []ObjectLayerState{{ItemID: "buff", Active: true, Quantity: 1}}})
-	ms.addAgent(summon, Agent{CasterID: p.ID})
-	ms.addMortal(summon, &Mortal{})
+	ms.Ap(p.ID).Layers = []world.ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
+	summon := world.EntityID(11)
+	ms.Spawn(summon, world.EntityData{Kind: world.EntityBot}, world.Transform{}, world.Appearance{Layers: []world.ObjectLayerState{{ItemID: "buff", Active: true, Quantity: 1}}})
+	ms.AddAgent(summon, world.Agent{CasterID: p.ID})
+	ms.AddMortal(summon, &world.Mortal{})
 	if got := s.CalculateStats(summon, ms).Effect; got != 5 {
 		t.Fatalf("floor applied before full sum: %v", got)
 	}
-	ms.ag(summon).CasterID = summon
+	ms.Ag(summon).CasterID = summon
 	if got := s.CalculateStats(summon, ms).Effect; math.IsNaN(got) {
 		t.Fatal("caster cycle produces invalid stats")
 	}
@@ -243,9 +244,9 @@ func TestSummonFloorsAfterAllContributions(t *testing.T) {
 
 func TestProgressionNormalizesAfterCurveChange(t *testing.T) {
 	s := &Content{progressionRules: defaultProgressionRules()}
-	ms := &MapState{}
-	ms.spawn(1, EntityData{Kind: EntityPlayer}, Transform{}, Appearance{})
-	ms.addMortal(1, &Mortal{})
+	ms := &world.MapState{}
+	ms.Spawn(1, world.EntityData{Kind: world.EntityPlayer}, world.Transform{}, world.Appearance{})
+	ms.AddMortal(1, &world.Mortal{})
 	s.setProgression(1, NewEntityProgression(3, false, s.progressionConfig()))
 	s.progressionRules.XpPerLevel = 200
 	if got := s.entityProgression(1, ms); got.Level != 2 || got.XP != 400 {
@@ -276,8 +277,8 @@ func TestQuestCompletionAwardsAfterKillAndRejectsReplay(t *testing.T) {
 func TestAuthoredLevelsUseCommonBaseCurve(t *testing.T) {
 	s, ms, _ := movementFixture(t)
 	s.buildResource(ms, &pb.EntityMessage{Level: 7, MaxLife: 50, ColorA: 255})
-	for resource := range ms.ofKind(EntityResource) {
-		if p := s.progression[resource]; !p.Frozen || p.Level != 7 || ms.vt(resource).MaxLife != 90 {
+	for resource := range ms.OfKind(world.EntityResource) {
+		if p := s.progression[resource]; !p.Frozen || p.Level != 7 || ms.Vt(resource).MaxLife != 90 {
 			t.Fatalf("resource curve: %+v", p)
 		}
 	}

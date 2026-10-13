@@ -3,6 +3,7 @@ package game
 import (
 	"time"
 
+	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 )
 
@@ -14,7 +15,7 @@ type Sim struct {
 	portalHoldTime time.Duration
 	// teleported holds the players a portal moved this map step. gameLoop
 	// sends their snapshots after phasePortals and clears it.
-	teleported []*Session
+	teleported []*world.Session
 
 	// bot related defaults
 	botAggroRange float64

@@ -4,15 +4,16 @@ import (
 	"sync"
 	"time"
 
+	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 )
 
 // Content is the rules and the content of the game: the instance config,
 // the engine content caches and the content rows of each entity.
 type Content struct {
-	*World
+	*world.World
 	progressionRules ProgressionRules
-	questsByCell     map[cellKey][]string // quest codes bound to each action cell
+	questsByCell     map[world.CellKey][]string // quest codes bound to each action cell
 
 	// Caches (protected by olMu)
 	olMu                 sync.RWMutex
@@ -89,23 +90,23 @@ type Content struct {
 	//                  on every talk_done; the client never declares it).
 	//   questDefs    — questCode → CyberiaQuest definition (steps/rewards).
 	// Both are rebuilt on every world (re)build; access is under s.mu.
-	actionCache map[EntityID]*CyberiaAction
+	actionCache map[world.EntityID]*CyberiaAction
 	// storage — per (player, action code) vault contents. Session state
 	// only; the slot shape is the future persistence document.
 	storage   map[storageKey][]StorageSlot
 	questDefs map[string]*CyberiaQuest
 	// progression is the level and XP of each mortal entity. despawn deletes
 	// the row.
-	progression map[EntityID]*EntityProgression
+	progression map[world.EntityID]*EntityProgression
 	// quests is the quest progress of each player, keyed by quest code.
 	// Authoritative for the session; best-effort mirrored to engine-cyberia
 	// quest-progress REST for persistence.
-	quests map[EntityID]map[string]*QuestProgress
+	quests map[world.EntityID]map[string]*QuestProgress
 	// crafts is the assembly running for each player. A craft consumes its
 	// ingredients up front and pays out only when the timer elapses, so the
 	// row is also the refund receipt a cancel needs. One at a time:
 	// assembling is a modal operation.
-	crafts map[EntityID]*ActiveCraft
+	crafts map[world.EntityID]*ActiveCraft
 	// lootRespawns are the consumed world tokens waiting to come back, by map
 	// code (loot.go). A world build starts it empty.
 	lootRespawns map[string][]lootRespawn
@@ -115,7 +116,7 @@ type Content struct {
 }
 
 // NewContent returns the content over w with empty caches.
-func NewContent(w *World) *Content {
+func NewContent(w *world.World) *Content {
 	return &Content{
 		World:                w,
 		objectLayerDataCache: make(map[string]*ObjectLayer),
@@ -190,10 +191,10 @@ func (s *Content) applyConfig(cfg *pb.InstanceConfig, rules ProgressionRules) {
 	s.entityDefaults = make(map[string]EntityTypeDefaultConfig, len(cfg.GetEntityDefaults()))
 	s.entityDefaultBuilds = make([]EntityTypeDefaultConfig, 0, len(cfg.GetEntityDefaults()))
 	for _, etd := range cfg.GetEntityDefaults() {
-		var dols []ObjectLayerState
+		var dols []world.ObjectLayerState
 		dropChances := make(map[string]float64)
 		for _, dol := range etd.GetDefaultObjectLayers() {
-			dols = append(dols, ObjectLayerState{
+			dols = append(dols, world.ObjectLayerState{
 				ItemID:   dol.GetItemId(),
 				Active:   dol.GetActive(),
 				Quantity: int(dol.GetQuantity()),

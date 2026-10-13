@@ -17,14 +17,16 @@
 package game
 
 import (
-	"cyberia-server/logx"
 	"time"
+
+	"cyberia-server/game/world"
+	"cyberia-server/logx"
 )
 
 // FreezePlayer puts a player into FrozenInteractionState. No-op when frozen.
 //
 // Caller MUST hold server.mu.
-func FreezePlayer(player *Session, mapState *MapState) {
+func FreezePlayer(player *world.Session, mapState *world.MapState) {
 	if player.Frozen {
 		return
 	}
@@ -33,7 +35,7 @@ func FreezePlayer(player *Session, mapState *MapState) {
 
 	// Clear any in-flight movement so the player doesn't drift while frozen.
 	player.Path = nil
-	mapState.mo(player.ID).Mode = IDLE
+	mapState.Mo(player.ID).Mode = world.IDLE
 
 	logx.Debugf("[FREEZE] Player %s frozen", player.ID)
 }
@@ -41,7 +43,7 @@ func FreezePlayer(player *Session, mapState *MapState) {
 // ThawPlayer exits FrozenInteractionState. No-op when not frozen.
 //
 // Caller MUST hold server.mu.
-func ThawPlayer(player *Session) {
+func ThawPlayer(player *world.Session) {
 	if !player.Frozen {
 		return
 	}

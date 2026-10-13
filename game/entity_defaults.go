@@ -1,6 +1,7 @@
 package game
 
 import (
+	"cyberia-server/game/world"
 	"slices"
 
 	"cyberia-server/logx"
@@ -102,13 +103,13 @@ func dropChance(build EntityTypeDefaultConfig, itemID string) float64 {
 
 // buildLayer is a placed id as the build states it: its row when the build carries one, and a
 // plainly worn single item when it does not.
-func buildLayer(build EntityTypeDefaultConfig, itemID string) ObjectLayerState {
+func buildLayer(build EntityTypeDefaultConfig, itemID string) world.ObjectLayerState {
 	for _, layer := range build.DefaultObjectLayers {
 		if layer.ItemID == itemID {
 			return layer
 		}
 	}
-	return ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1}
+	return world.ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1}
 }
 
 // spawnObjectLayers is the one way every entity type reads its object-layer stack.
@@ -123,11 +124,11 @@ func buildLayer(build EntityTypeDefaultConfig, itemID string) ObjectLayerState {
 //
 // A placed id is active by definition: it is what the author put there. seedDefaults is false for
 // a solid-colour entity placed without sprites, which carries no default layers at all.
-func (s *Content) spawnObjectLayers(entityType string, placedItemIDs []string, seedDefaults bool) []ObjectLayerState {
+func (s *Content) spawnObjectLayers(entityType string, placedItemIDs []string, seedDefaults bool) []world.ObjectLayerState {
 	build, hasBuild := s.resolveEntityDefaultBuild(entityType, placedItemIDs)
-	layers := make([]ObjectLayerState, 0, len(placedItemIDs))
+	layers := make([]world.ObjectLayerState, 0, len(placedItemIDs))
 	seen := make(map[string]struct{}, len(placedItemIDs))
-	appendLayer := func(layer ObjectLayerState) {
+	appendLayer := func(layer world.ObjectLayerState) {
 		if layer.ItemID == "" {
 			return
 		}
@@ -156,7 +157,7 @@ func (s *Content) spawnObjectLayers(entityType string, placedItemIDs []string, s
 	// A build seeded before engine-cyberia derived its inventory still names its live ids.
 	if len(layers) == 0 {
 		for _, itemID := range build.LiveItemIDs {
-			appendLayer(ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
+			appendLayer(world.ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
 		}
 	}
 	return s.normalizeLoadout(layers)
@@ -171,10 +172,10 @@ func (s *Content) spawnObjectLayers(entityType string, placedItemIDs []string, s
 // reached it any other way. A type the rules do not govern — a resource visual, a coin — passes
 // through, and so does an item whose type this server has not cached, exactly as an activation
 // request does.
-func (s *Content) normalizeLoadout(layers []ObjectLayerState) []ObjectLayerState {
+func (s *Content) normalizeLoadout(layers []world.ObjectLayerState) []world.ObjectLayerState {
 	claimed := make(map[string]bool, len(layers))
 	active := 0
-	out := make([]ObjectLayerState, len(layers))
+	out := make([]world.ObjectLayerState, len(layers))
 	copy(out, layers)
 	for i := range out {
 		if !out[i].Active {
@@ -197,7 +198,7 @@ func (s *Content) normalizeLoadout(layers []ObjectLayerState) []ObjectLayerState
 	return out
 }
 
-func activeObjectLayerItemIDs(objectLayers []ObjectLayerState) []string {
+func activeObjectLayerItemIDs(objectLayers []world.ObjectLayerState) []string {
 	itemIDs := make([]string, 0, len(objectLayers))
 	for _, objectLayer := range objectLayers {
 		if !objectLayer.Active || objectLayer.ItemID == "" {
@@ -210,11 +211,11 @@ func activeObjectLayerItemIDs(objectLayers []ObjectLayerState) []string {
 
 // EntityTypeDefaultConfig — gameplay defaults for one entity type.
 type EntityTypeDefaultConfig struct {
-	EntityType          string             `json:"entityType"`
-	LiveItemIDs         []string           `json:"liveItemIds"`
-	DeadItemIDs         []string           `json:"deadItemIds"`
-	DropItemIDs         []string           `json:"dropItemIds"`
-	DefaultObjectLayers []ObjectLayerState `json:"defaultObjectLayers,omitempty"`
+	EntityType          string                   `json:"entityType"`
+	LiveItemIDs         []string                 `json:"liveItemIds"`
+	DeadItemIDs         []string                 `json:"deadItemIds"`
+	DropItemIDs         []string                 `json:"dropItemIds"`
+	DefaultObjectLayers []world.ObjectLayerState `json:"defaultObjectLayers,omitempty"`
 	// DropChances is itemID → probability in [0,1] that the id scatters on death. It lives on the
 	// build rather than on ObjectLayerState because it describes what an entity type drops, not
 	// what one entity is currently wearing — and ObjectLayerState rides every snapshot, where a

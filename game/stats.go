@@ -3,6 +3,8 @@ package game
 import (
 	"math"
 	"time"
+
+	"cyberia-server/game/world"
 )
 
 type StatBreakdown struct {
@@ -13,7 +15,7 @@ type StatBreakdown struct {
 }
 
 // statBreakdown applies floors once, after all signed contributions.
-func (s *Content) statBreakdown(id EntityID, mapState *MapState, visited map[EntityID]bool) StatBreakdown {
+func (s *Content) statBreakdown(id world.EntityID, mapState *world.MapState, visited map[world.EntityID]bool) StatBreakdown {
 	var out StatBreakdown
 	if visited[id] {
 		return out
@@ -23,7 +25,7 @@ func (s *Content) statBreakdown(id EntityID, mapState *MapState, visited map[Ent
 	progression := s.entityProgression(id, mapState)
 	out.Base = s.progressionConfig().BaseAtLevel(progression.Level)
 	var layers, temporary [StatCount]float64
-	for _, layer := range mapState.ap(id).Layers {
+	for _, layer := range mapState.Ap(id).Layers {
 		if !layer.Active || layer.Quantity <= 0 {
 			continue
 		}
@@ -34,9 +36,9 @@ func (s *Content) statBreakdown(id EntityID, mapState *MapState, visited map[Ent
 		}
 	}
 	out.Layers = statsFromValues(layers)
-	if mapState.has(id, maskAgent) {
+	if mapState.Has(id, world.MaskAgent) {
 		// A summon inherits the stats of a caster still on its map.
-		if caster := mapState.ag(id).CasterID; mapState.HasMortal(caster) {
+		if caster := mapState.Ag(id).CasterID; mapState.HasMortal(caster) {
 			inherited := s.statBreakdown(caster, mapState, visited)
 			out.Base = inherited.Base
 			inheritedLayers, inheritedTemporary := inherited.Layers.Values(), inherited.Temporary.Values()
@@ -50,17 +52,17 @@ func (s *Content) statBreakdown(id EntityID, mapState *MapState, visited map[Ent
 	return out
 }
 
-func (s *Content) CalculateStats(id EntityID, mapState *MapState) ComputedStats {
-	return s.statBreakdown(id, mapState, make(map[EntityID]bool)).Effective
+func (s *Content) CalculateStats(id world.EntityID, mapState *world.MapState) ComputedStats {
+	return s.statBreakdown(id, mapState, make(map[world.EntityID]bool)).Effective
 }
 
 // ApplyResistanceStat keeps life within the effective maximum.
-func (s *Content) ApplyResistanceStat(id EntityID, mapState *MapState) {
-	base := mapState.mt(id).BaseMaxLife
+func (s *Content) ApplyResistanceStat(id world.EntityID, mapState *world.MapState) {
+	base := mapState.Mt(id).BaseMaxLife
 	if base <= 0 {
 		base = s.entityBaseMaxLife
 	}
-	v := mapState.vt(id)
+	v := mapState.Vt(id)
 	v.MaxLife = max(1, base+s.CalculateStats(id, mapState).Resistance)
 	v.Life = min(v.Life, v.MaxLife)
 }

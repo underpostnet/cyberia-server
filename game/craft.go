@@ -21,6 +21,7 @@ package game
 import (
 	"time"
 
+	"cyberia-server/game/world"
 	"cyberia-server/logx"
 )
 
@@ -32,7 +33,7 @@ const craftMaxTimeMs = 60000
 // ActiveCraft is one assembly in flight. Ingredients are already consumed, so
 // Refund is what a cancel returns and Outputs is what completion grants.
 type ActiveCraft struct {
-	EntityID    EntityID
+	EntityID    world.EntityID
 	RecipeIndex int
 	Refund      []ActionCraftItem
 	Outputs     []ActionCraftItem
@@ -58,8 +59,8 @@ func craftRecipeAt(action *CyberiaAction, index int) *ActionCraftRecipe {
 // botHasUsableAction alongside the vendor capability.
 //
 // Caller MUST hold s.mu.
-func (s *Content) botHasCraft(id EntityID, ms *MapState) bool {
-	if ms == nil || ms.vt(id).ghost() {
+func (s *Content) botHasCraft(id world.EntityID, ms *world.MapState) bool {
+	if ms == nil || ms.Vt(id).Ghost() {
 		return false
 	}
 	action := s.actionCache[id]
@@ -70,7 +71,7 @@ func (s *Content) botHasCraft(id EntityID, ms *MapState) bool {
 // needs. A line with a non-positive quantity is free.
 //
 // Caller MUST hold s.mu.
-func (s *Content) playerCanCraft(player *Session, recipe *ActionCraftRecipe) bool {
+func (s *Content) playerCanCraft(player *world.Session, recipe *ActionCraftRecipe) bool {
 	for _, in := range recipe.Ingredients {
 		if in.Qty <= 0 {
 			continue
@@ -88,8 +89,8 @@ func (s *Content) playerCanCraft(player *Session, recipe *ActionCraftRecipe) boo
 // the progress bar starts; a cancel before completion refunds them.
 //
 // Caller MUST hold s.mu.
-func (s *Content) handleCraftItem(player *Session, cmd *InputCommand) {
-	if s.vt(player.ID, player.MapCode).ghost() {
+func (s *Content) handleCraftItem(player *world.Session, cmd *world.InputCommand) {
+	if s.Vt(player.ID, player.MapCode).Ghost() {
 		return
 	}
 	if s.crafts[player.ID] != nil {
@@ -120,7 +121,7 @@ func (s *Content) handleCraftItem(player *Session, cmd *InputCommand) {
 
 	durationMs := craftTimeMs(recipe)
 	if s.crafts == nil {
-		s.crafts = make(map[EntityID]*ActiveCraft)
+		s.crafts = make(map[world.EntityID]*ActiveCraft)
 	}
 	s.crafts[player.ID] = &ActiveCraft{
 		EntityID:    id,
@@ -138,7 +139,7 @@ func (s *Content) handleCraftItem(player *Session, cmd *InputCommand) {
 // Ignored once the timer has already paid out — there is nothing to abort.
 //
 // Caller MUST hold s.mu.
-func (s *Content) handleCraftCancel(player *Session) {
+func (s *Content) handleCraftCancel(player *world.Session) {
 	active := s.crafts[player.ID]
 	if active == nil {
 		return
@@ -154,9 +155,9 @@ func (s *Content) handleCraftCancel(player *Session) {
 // phaseLifecycle alongside the other timed transitions.
 //
 // Caller MUST hold s.mu.
-func (s *Content) completeCrafts(mapState *MapState) {
+func (s *Content) completeCrafts(mapState *world.MapState) {
 	now := time.Now()
-	for player := range s.playersOn(mapState) {
+	for player := range s.PlayersOn(mapState) {
 		active := s.crafts[player.ID]
 		if active == nil || now.Before(active.CompleteAt) {
 			continue
@@ -174,13 +175,13 @@ func (s *Content) completeCrafts(mapState *MapState) {
 
 // SnapshotCraft is the running assembly in the self block.
 type SnapshotCraft struct {
-	EntityID    EntityID `json:"entityId"`
-	RecipeIndex int      `json:"recipeIndex"`
-	RemainingMs int      `json:"remainingMs"`
+	EntityID    world.EntityID `json:"entityId"`
+	RecipeIndex int            `json:"recipeIndex"`
+	RemainingMs int            `json:"remainingMs"`
 }
 
 // snapshotCraft is the player's running assembly, or nil when none runs.
-func (s *Content) snapshotCraft(player *Session) *SnapshotCraft {
+func (s *Content) snapshotCraft(player *world.Session) *SnapshotCraft {
 	active := s.crafts[player.ID]
 	if active == nil {
 		return nil

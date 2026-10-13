@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 )
 
@@ -30,13 +31,13 @@ func (s *Content) progressionConfig() ProgressionRules {
 	return s.progressionRules
 }
 
-func (s *Content) entityProgression(id EntityID, ms *MapState) *EntityProgression {
+func (s *Content) entityProgression(id world.EntityID, ms *world.MapState) *EntityProgression {
 	p := s.progression[id]
 	if p == nil {
 		p = s.setProgression(id, EntityProgression{})
 	}
 	if p.Level == 0 {
-		player := ms.has(id, maskPlayer)
+		player := ms.Has(id, world.MaskPlayer)
 		level := s.progressionConfig().DefaultBotLevel
 		if player {
 			level = 1
@@ -55,9 +56,9 @@ func (s *Content) entityProgression(id EntityID, ms *MapState) *EntityProgressio
 }
 
 // setProgression stores the progression of id and returns it.
-func (s *Content) setProgression(id EntityID, p EntityProgression) *EntityProgression {
+func (s *Content) setProgression(id world.EntityID, p EntityProgression) *EntityProgression {
 	if s.progression == nil {
-		s.progression = make(map[EntityID]*EntityProgression)
+		s.progression = make(map[world.EntityID]*EntityProgression)
 	}
 	s.progression[id] = &p
 	return &p
@@ -65,8 +66,8 @@ func (s *Content) setProgression(id EntityID, p EntityProgression) *EntityProgre
 
 // despawn frees the slot of id and its content rows. A move between maps
 // uses MapState.take, which keeps them.
-func (s *Content) despawn(ms *MapState, id EntityID) {
-	ms.despawn(id)
+func (s *Content) despawn(ms *world.MapState, id world.EntityID) {
+	ms.Despawn(id)
 	delete(s.progression, id)
 	delete(s.quests, id)
 	delete(s.crafts, id)
@@ -76,7 +77,7 @@ func (s *Content) despawn(ms *MapState, id EntityID) {
 // A world rebuild drops every entity but the players.
 func (s *Content) forgetNonPlayers() {
 	for id := range s.progression {
-		if s.sessions[id] == nil {
+		if s.Sessions[id] == nil {
 			delete(s.progression, id)
 		}
 	}
@@ -85,8 +86,8 @@ func (s *Content) forgetNonPlayers() {
 // awardProgression runs under the simulation lock after a gameplay result.
 // XP is private, so its floating text goes to the earner alone; a level gained
 // is public, so its sound reaches every viewer in the earner's area.
-func (s *Content) awardProgression(player *Session, event progressionEvent, key string, targetLevel int, now time.Time) uint64 {
-	ms := s.maps[player.MapCode]
+func (s *Content) awardProgression(player *world.Session, event progressionEvent, key string, targetLevel int, now time.Time) uint64 {
+	ms := s.Maps[player.MapCode]
 	p := s.entityProgression(player.ID, ms)
 	before := p.Level
 	amount := p.award(s.progressionConfig(), event, key, targetLevel, now)
@@ -94,26 +95,26 @@ func (s *Content) awardProgression(player *Session, event progressionEvent, key 
 		return 0
 	}
 	s.ApplyResistanceStat(player.ID, ms)
-	tf := ms.tf(player.ID)
-	sendMessage(player, "combat_text", CombatText{Kind: FCTXp, WorldX: tf.Pos.X, WorldY: tf.Pos.Y, Value: int(amount)})
+	tf := ms.Tf(player.ID)
+	world.SendMessage(player, "combat_text", world.CombatText{Kind: world.FCTXp, WorldX: tf.Pos.X, WorldY: tf.Pos.Y, Value: int(amount)})
 	if p.Level > before {
-		s.broadcastAudioEvent(ms, AudioEventLevelUp, Vec2{X: tf.Pos.X + tf.Size.X*0.5, Y: tf.Pos.Y + tf.Size.Y*0.5})
+		s.broadcastAudioEvent(ms, world.AudioEventLevelUp, world.Vec2{X: tf.Pos.X + tf.Size.X*0.5, Y: tf.Pos.Y + tf.Size.Y*0.5})
 	}
 	return amount
 }
 
 // awardDefeat uses damage shares and excludes summoned entities, self kills
 // and obstacles.
-func (s *Content) awardDefeat(victim EntityID, kind string, ms *MapState) {
-	if ms == nil || ms.vt(victim).ghost() || kind == "obstacle" {
+func (s *Content) awardDefeat(victim world.EntityID, kind string, ms *world.MapState) {
+	if ms == nil || ms.Vt(victim).Ghost() || kind == "obstacle" {
 		return
 	}
-	if ms.has(victim, maskAgent) {
-		if a := ms.ag(victim); a.CasterID != 0 || behaviorIsProvider(a.Behavior) || a.Behavior == BehaviorDrop {
+	if ms.Has(victim, world.MaskAgent) {
+		if a := ms.Ag(victim); a.CasterID != 0 || behaviorIsProvider(a.Behavior) || a.Behavior == BehaviorDrop {
 			return
 		}
 	}
-	ledger := ms.mt(victim).DamageLedger
+	ledger := ms.Mt(victim).DamageLedger
 	level := 1
 	if p := s.progression[victim]; p != nil {
 		level = max(1, p.Level)
@@ -128,8 +129,8 @@ func (s *Content) awardDefeat(victim EntityID, kind string, ms *MapState) {
 		if id == victim || damage <= 0 || damage < total*0.1 {
 			continue
 		}
-		entity := s.playerOn(ms, id)
-		if entity == nil || ms.vt(entity.ID).ghost() || entity.Frozen {
+		entity := s.PlayerOn(ms, id)
+		if entity == nil || ms.Vt(entity.ID).Ghost() || entity.Frozen {
 			continue
 		}
 		key := fmt.Sprintf("%s:%d", kind, victim)

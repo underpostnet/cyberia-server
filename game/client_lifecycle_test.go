@@ -2,22 +2,24 @@ package game
 
 import (
 	"testing"
+
+	"cyberia-server/game/world"
 )
 
-func lifecycleServer() (*GameServer, *MapState, *MapState) {
-	home := NewMapState("home", 20, 20)
-	away := NewMapState("away", 20, 20)
+func lifecycleServer() (*GameServer, *world.MapState, *world.MapState) {
+	home := world.NewMapState("home", 20, 20)
+	away := world.NewMapState("away", 20, 20)
 	s := NewGameServer()
-	s.maps = map[string]*MapState{"home": home, "away": away}
+	s.Maps = map[string]*world.MapState{"home": home, "away": away}
 	return s, home, away
 }
 
-func joinedClient(s *GameServer, mapState *MapState, id EntityID, mapCode, ip string) *Client {
-	player := &Session{ID: id, MapCode: mapCode}
+func joinedClient(s *GameServer, mapState *world.MapState, id world.EntityID, mapCode, ip string) *Client {
+	player := &world.Session{ID: id, MapCode: mapCode}
 	client := &Client{playerID: id, playerState: player, ip: ip, limiter: newInputLimiter(s.limits)}
 	player.Client = client
-	s.sessions[id] = player
-	mapState.spawn(id, EntityData{Kind: EntityPlayer}, Transform{}, Appearance{})
+	s.Sessions[id] = player
+	mapState.Spawn(id, world.EntityData{Kind: world.EntityPlayer}, world.Transform{}, world.Appearance{})
 	s.clients[id] = client
 	s.guard.admit(ip)
 	return client
@@ -35,7 +37,7 @@ func TestDetachClientClearsEveryReference(t *testing.T) {
 
 	s.detachClient(client)
 
-	if home.IsKind(1, EntityPlayer) {
+	if home.IsKind(1, world.EntityPlayer) {
 		t.Fatal("the player must leave the map")
 	}
 	if _, still := s.clients[1]; still {
@@ -53,11 +55,11 @@ func TestDetachClientFindsPlayerAfterAMapChange(t *testing.T) {
 	client := joinedClient(s, home, 1, "home", "10.0.0.1")
 
 	// Simulate a portal: the player moved but MapCode is stale.
-	away.put(1, home.take(1))
+	away.Put(1, home.Take(1))
 
 	s.detachClient(client)
 
-	if away.IsKind(1, EntityPlayer) {
+	if away.IsKind(1, world.EntityPlayer) {
 		t.Fatal("the player must be removed from the map it actually occupies")
 	}
 }
@@ -96,8 +98,8 @@ func TestRegisterTimeoutLeavesNoPlayerBehind(t *testing.T) {
 	// This is what HandleConnections runs when the register send times out.
 	s.detachClient(client)
 
-	if home.count(EntityPlayer) != 0 {
-		t.Fatalf("no player may survive a failed register, found %d", home.count(EntityPlayer))
+	if home.Count(world.EntityPlayer) != 0 {
+		t.Fatalf("no player may survive a failed register, found %d", home.Count(world.EntityPlayer))
 	}
 	if total, _ := s.guard.counts(); total != 0 {
 		t.Fatalf("no guard slot may survive a failed register, found %d", total)
@@ -122,7 +124,7 @@ func TestUnregisterFallbackTearsDownWhenQueueIsFull(t *testing.T) {
 		s.detachClient(client)
 	}
 
-	if home.IsKind(1, EntityPlayer) {
+	if home.IsKind(1, world.EntityPlayer) {
 		t.Fatal("the fallback path must remove the player")
 	}
 	if total, _ := s.guard.counts(); total != 0 {

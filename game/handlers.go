@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"cyberia-server/game/world"
 	"cyberia-server/logx"
 	"cyberia-server/serial"
 	"cyberia-server/socket"
@@ -86,30 +87,30 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.mu.Lock()
+	s.Mu.Lock()
 	logx.Debugf("[HandleConnections] s.mu acquired, building player")
 
-	if len(s.maps) == 0 {
+	if len(s.Maps) == 0 {
 		logx.Warnf("[HandleConnections] No maps loaded — rejecting connection. Ensure INSTANCE_CODE is set and Engine gRPC is reachable.")
 		conn.Close()
-		s.mu.Unlock()
+		s.Mu.Unlock()
 		releaseSlot()
 		return
 	}
 
-	playerID := s.newEntityID()
-	playerDims := Vec2{X: s.defaultPlayerWidth, Y: s.defaultPlayerHeight}
+	playerID := s.NewEntityID()
+	playerDims := world.Vec2{X: s.defaultPlayerWidth, Y: s.defaultPlayerHeight}
 
 	// Resolve the starting map + cell from the instance's PlayerSpawn config. A
 	// fixed spawn (Random=false) on a loaded map with a walkable cell is honoured
 	// verbatim; anything else falls back to a random walkable cell on a random map.
 	startMapCode := ""
-	fixedPos := Cell{}
+	fixedPos := world.Cell{}
 	hasFixedPos := false
 	if !s.playerSpawn.Random && s.playerSpawn.MapCode != "" {
-		if ms, ok := s.maps[s.playerSpawn.MapCode]; ok {
-			cell := Cell{X: s.playerSpawn.CellX, Y: s.playerSpawn.CellY}
-			if ms.Pathfinder().isWalkable(cell.X, cell.Y, playerDims) {
+		if ms, ok := s.Maps[s.playerSpawn.MapCode]; ok {
+			cell := world.Cell{X: s.playerSpawn.CellX, Y: s.playerSpawn.CellY}
+			if ms.Pathfinder().IsWalkable(cell.X, cell.Y, playerDims) {
 				startMapCode = s.playerSpawn.MapCode
 				fixedPos = cell
 				hasFixedPos = true
@@ -117,21 +118,21 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if startMapCode == "" {
-		mapCodes := make([]string, 0, len(s.maps))
-		for code := range s.maps {
+		mapCodes := make([]string, 0, len(s.Maps))
+		for code := range s.Maps {
 			mapCodes = append(mapCodes, code)
 		}
 		startMapCode = mapCodes[rand.Intn(len(mapCodes))]
 	}
-	startMapState := s.maps[startMapCode]
+	startMapState := s.Maps[startMapCode]
 
 	startPosI := fixedPos
 	if !hasFixedPos {
-		p, err := startMapState.Pathfinder().findRandomWalkablePoint(playerDims)
+		p, err := startMapState.Pathfinder().FindRandomWalkablePoint(playerDims)
 		if err != nil {
 			logx.Warnf("Could not place new player: %v", err)
 			conn.Close()
-			s.mu.Unlock()
+			s.Mu.Unlock()
 			releaseSlot()
 			return
 		}
@@ -142,12 +143,12 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// A player is placed by nothing, so its whole stack comes from its default — read the one way
 	// every entity type reads it.
 	playerOLs := s.spawnObjectLayers("player", nil, true)
-	playerState := &Session{
+	playerState := &world.Session{
 		ID:        playerID,
 		EngineID:  uuid.New().String(),
 		MapCode:   startMapCode,
-		Path:      []Cell{},
-		TargetPos: Cell{-1, -1},
+		Path:      []world.Cell{},
+		TargetPos: world.Cell{X: -1, Y: -1},
 	}
 	client := &Client{
 		playerID: playerID,
@@ -164,14 +165,14 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	slotOwned = false // the Client owns the guard slot from here
 	playerState.Client = client
 
-	s.sessions[playerID] = playerState
-	startMapState.spawn(playerID, EntityData{Kind: EntityPlayer}, Transform{
-		Pos:  Vec2{X: float64(startPosI.X), Y: float64(startPosI.Y)},
+	s.Sessions[playerID] = playerState
+	startMapState.Spawn(playerID, world.EntityData{Kind: world.EntityPlayer}, world.Transform{
+		Pos:  world.Vec2{X: float64(startPosI.X), Y: float64(startPosI.Y)},
 		Size: playerDims,
-	}, Appearance{Layers: playerOLs})
-	startMapState.addVitals(playerID, Vitals{MaxLife: s.entityBaseMaxLife})
-	startMapState.addMotion(playerID, Motion{Direction: NONE, Mode: IDLE})
-	startMapState.addMortal(playerID, &Mortal{LifeRegen: lifeRegen})
+	}, world.Appearance{Layers: playerOLs})
+	startMapState.AddVitals(playerID, world.Vitals{MaxLife: s.entityBaseMaxLife})
+	startMapState.AddMotion(playerID, world.Motion{Direction: world.NONE, Mode: world.IDLE})
+	startMapState.AddMortal(playerID, &world.Mortal{LifeRegen: lifeRegen})
 	s.setProgression(playerID, NewEntityProgression(1, false, s.progressionConfig()))
 	startMapState.AddPlayer(playerID)
 
@@ -180,7 +181,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 
 	// Apply initial stats (like Resistance for MaxLife) after creation.
 	s.ApplyResistanceStat(playerState.ID, startMapState)
-	v := startMapState.vt(playerID)
+	v := startMapState.Vt(playerID)
 	v.Life = v.MaxLife * s.initialLifeFraction // Set life based on config fraction
 
 	// Every join spawns frozen. The client loading overlay is its first open
@@ -198,7 +199,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		GridW:          startMapState.GridW(),
 		GridH:          startMapState.GridH(),
 		AoiRadius:      s.aoiRadius,
-		ObjectLayers:   s.visibleInventory(startMapState.ap(playerID).Layers),
+		ObjectLayers:   s.visibleInventory(startMapState.Ap(playerID).Layers),
 		SkillMap:       s.buildSkillMap(),
 		EntityDefaults: s.buildEntityDefaultsSlice(),
 		DeadItemIds:    s.deadItemIDList(),
@@ -209,14 +210,14 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		"equipmentRules": s.equipmentRules,
 	}
 
-	s.mu.Unlock()
+	s.Mu.Unlock()
 
 	// The ObjectLayer metadata map and both JSON marshals are the costly part
 	// of a join. They run outside the world lock so a burst of connections
 	// cannot delay the simulation tick.
 	metadataPayload["objectLayers"] = s.buildOLMetadataMap()
-	sendMessage(playerState, "init_data", initPayload)
-	sendMessage(playerState, "metadata", metadataPayload)
+	world.SendMessage(playerState, "init_data", initPayload)
+	world.SendMessage(playerState, "metadata", metadataPayload)
 
 	// Register the client with listenForClients.
 	// Use a timeout so we get a clear log if listenForClients is dead rather
@@ -241,15 +242,15 @@ func (s *GameServer) detachClient(client *Client) {
 	if client == nil {
 		return
 	}
-	s.mu.Lock()
+	s.Mu.Lock()
 	client.detached = true
 	delete(s.clients, client.playerID)
-	delete(s.sessions, client.playerID)
+	delete(s.Sessions, client.playerID)
 	// Sweep every map: a portal can move a player after MapCode was read.
-	for _, mapState := range s.maps {
+	for _, mapState := range s.Maps {
 		s.despawn(mapState, client.playerID)
 	}
-	s.mu.Unlock()
+	s.Mu.Unlock()
 
 	if client.sock != nil {
 		client.sock.Close()
@@ -293,18 +294,18 @@ func (c *Client) readPump(server *GameServer) {
 
 // inputKinds maps the inner type word of a client event to the internal input
 // kind. The kind enum stays internal; only this table knows the wire words.
-var inputKinds = map[string]InputKind{
-	"player_action": InputKindPlayerAction,
-	"item_active":   InputKindItemActivation,
-	"player_stasis": InputKindPlayerStasis,
-	"chat":          InputKindChat,
-	"talk_done":     InputKindTalkDone,
-	"quest_abandon": InputKindQuestAbandon,
-	"quest_accept":  InputKindQuestAccept,
-	"shop_buy":      InputKindShopBuy,
-	"craft_item":    InputKindCraftItem,
-	"craft_cancel":  InputKindCraftCancel,
-	"item_ops":      InputKindItemOps,
+var inputKinds = map[string]world.InputKind{
+	"player_action": world.InputKindPlayerAction,
+	"item_active":   world.InputKindItemActivation,
+	"player_stasis": world.InputKindPlayerStasis,
+	"chat":          world.InputKindChat,
+	"talk_done":     world.InputKindTalkDone,
+	"quest_abandon": world.InputKindQuestAbandon,
+	"quest_accept":  world.InputKindQuestAccept,
+	"shop_buy":      world.InputKindShopBuy,
+	"craft_item":    world.InputKindCraftItem,
+	"craft_cancel":  world.InputKindCraftCancel,
+	"item_ops":      world.InputKindItemOps,
 }
 
 // inputPayload holds every client event payload field. Each event type fills
@@ -322,17 +323,17 @@ type inputPayload struct {
 
 	Stasis bool `json:"stasis"` // player_stasis
 
-	ToID EntityID `json:"toId"` // chat
-	Text string   `json:"text"`
+	ToID world.EntityID `json:"toId"` // chat
+	Text string         `json:"text"`
 
-	EntityID   EntityID `json:"entityId"`   // talk_done, quest_accept, shop_buy, item_ops
-	DialogCode string   `json:"dialogCode"` // talk_done
-	QuestCode  string   `json:"questCode"`  // quest_*
+	EntityID   world.EntityID `json:"entityId"`   // talk_done, quest_accept, shop_buy, item_ops
+	DialogCode string         `json:"dialogCode"` // talk_done
+	QuestCode  string         `json:"questCode"`  // quest_*
 
 	Quantity    int `json:"quantity"`    // shop_buy
 	RecipeIndex int `json:"recipeIndex"` // craft_item
 
-	Ops []itemOp `json:"ops"` // item_ops
+	Ops []world.ItemOp `json:"ops"` // item_ops
 }
 
 // eventsPayload is the payload of "events", the one uplink input message.
@@ -367,12 +368,12 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 		c.evict(server, "bad message")
 		return
 	}
-	if len(batch.Events) > maxInputQueue {
+	if len(batch.Events) > world.MaxInputQueue {
 		c.evict(server, "event batch too large")
 		return
 	}
 
-	cmds := make([]InputCommand, 0, len(batch.Events))
+	cmds := make([]world.InputCommand, 0, len(batch.Events))
 	for _, ev := range batch.Events {
 		var p inputPayload
 		if err := json.Unmarshal(ev.Payload, &p); err != nil || p.Seq == 0 {
@@ -386,7 +387,7 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 				c.evict(server, "repeated protocol violations")
 				return
 			}
-			cmd = InputCommand{Kind: InputKindUnknown}
+			cmd = world.InputCommand{Kind: world.InputKindUnknown}
 		}
 		cmd.Sequence, cmd.Frame, cmd.Timestamp = p.Seq, p.Frame, p.Timestamp
 		cmds = append(cmds, cmd)
@@ -396,73 +397,73 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 
 // parseInput validates one event payload and builds its command. False means
 // the type word is unknown or the payload fails validation.
-func parseInput(msgType string, p *inputPayload) (InputCommand, bool) {
+func parseInput(msgType string, p *inputPayload) (world.InputCommand, bool) {
 	kind, known := inputKinds[msgType]
 	if !known {
-		return InputCommand{}, false
+		return world.InputCommand{}, false
 	}
-	cmd := InputCommand{Kind: kind}
+	cmd := world.InputCommand{Kind: kind}
 	switch kind {
-	case InputKindPlayerAction:
+	case world.InputKindPlayerAction:
 		// A tap target reaches the pathfinder directly. Reject anything that
 		// is not a finite, plausible coordinate before it costs tick time.
 		if !validTapTarget(p.X, p.Y) {
-			return InputCommand{}, false
+			return world.InputCommand{}, false
 		}
 		cmd.TargetX = p.X
 		cmd.TargetY = p.Y
-	case InputKindItemActivation:
+	case world.InputKindItemActivation:
 		if p.ItemID == "" || !validIdentifier(p.ItemID) {
-			return InputCommand{}, false
+			return world.InputCommand{}, false
 		}
 		cmd.ItemID = p.ItemID
 		cmd.Active = p.Active
-	case InputKindPlayerStasis:
+	case world.InputKindPlayerStasis:
 		cmd.Active = p.Stasis
-	case InputKindChat:
+	case world.InputKindChat:
 		if p.ToID == 0 || p.Text == "" {
-			return InputCommand{}, false
+			return world.InputCommand{}, false
 		}
 		cmd.EntityID = p.ToID
 		cmd.ChatText = truncateRunes(p.Text, maxChatRunes)
-	case InputKindTalkDone:
+	case world.InputKindTalkDone:
 		if p.EntityID == 0 || !validIdentifier(p.DialogCode) {
-			return InputCommand{}, false
+			return world.InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.DialogCode = p.DialogCode
-	case InputKindQuestAbandon:
+	case world.InputKindQuestAbandon:
 		if p.QuestCode == "" || !validIdentifier(p.QuestCode) {
-			return InputCommand{}, false
+			return world.InputCommand{}, false
 		}
 		cmd.ItemID = p.QuestCode
-	case InputKindQuestAccept:
+	case world.InputKindQuestAccept:
 		if p.EntityID == 0 || p.QuestCode == "" || !validIdentifier(p.QuestCode) {
-			return InputCommand{}, false
+			return world.InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.QuestCode
-	case InputKindShopBuy:
+	case world.InputKindShopBuy:
 		if p.EntityID == 0 || p.ItemID == "" || !validIdentifier(p.ItemID) {
-			return InputCommand{}, false
+			return world.InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.ItemID = p.ItemID
 		cmd.Quantity = clampQuantity(p.Quantity)
-	case InputKindCraftItem:
+	case world.InputKindCraftItem:
 		if p.EntityID == 0 || p.RecipeIndex < 0 {
-			return InputCommand{}, false
+			return world.InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.RecipeIndex = p.RecipeIndex
-	case InputKindItemOps:
+	case world.InputKindItemOps:
 		// Trust boundary: the list replays under s.mu, so its length is capped.
 		if p.EntityID == 0 || len(p.Ops) == 0 || len(p.Ops) > storageMaxSlots {
-			return InputCommand{}, false
+			return world.InputCommand{}, false
 		}
 		for _, op := range p.Ops {
 			if op.ItemID == "" || !validIdentifier(op.ItemID) || op.Qty <= 0 {
-				return InputCommand{}, false
+				return world.InputCommand{}, false
 			}
 		}
 		cmd.EntityID = p.EntityID
@@ -482,13 +483,13 @@ func (c *Client) evict(server *GameServer, reason string) {
 // dispatchInputs enqueues one batch on the player's per-tick input queue.
 // phaseInput drains and applies each command exactly once. A batch that does
 // not fit evicts the client.
-func (c *Client) dispatchInputs(server *GameServer, cmds []InputCommand) {
+func (c *Client) dispatchInputs(server *GameServer, cmds []world.InputCommand) {
 	fits := true
-	server.mu.Lock()
-	if player := server.sessions[c.playerID]; player != nil {
-		fits = EnqueueInputs(player, cmds)
+	server.Mu.Lock()
+	if player := server.Sessions[c.playerID]; player != nil {
+		fits = world.EnqueueInputs(player, cmds)
 	}
-	server.mu.Unlock()
+	server.Mu.Unlock()
 	if !fits {
 		c.evict(server, "input queue full")
 	}

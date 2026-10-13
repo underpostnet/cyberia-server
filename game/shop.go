@@ -16,6 +16,7 @@
 package game
 
 import (
+	"cyberia-server/game/world"
 	"cyberia-server/logx"
 )
 
@@ -50,8 +51,8 @@ func shopItemFor(action *CyberiaAction, itemID string) *ActionShopItem {
 // attention icon, particle orbit, and border as a pending action-talk.
 //
 // Caller MUST hold s.mu.
-func (s *Content) botHasShop(id EntityID, ms *MapState) bool {
-	if ms == nil || ms.vt(id).ghost() {
+func (s *Content) botHasShop(id world.EntityID, ms *world.MapState) bool {
+	if ms == nil || ms.Vt(id).Ghost() {
 		return false
 	}
 	action := s.actionCache[id]
@@ -87,8 +88,8 @@ func shopBuyQuantity(requested int) int {
 // transaction landed.
 //
 // Caller MUST hold s.mu.
-func (s *Content) handleShopBuy(player *Session, cmd *InputCommand) {
-	if s.vt(player.ID, player.MapCode).ghost() {
+func (s *Content) handleShopBuy(player *world.Session, cmd *world.InputCommand) {
+	if s.Vt(player.ID, player.MapCode).Ghost() {
 		return
 	}
 	qty := shopBuyQuantity(cmd.Quantity)
@@ -129,8 +130,8 @@ func (s *Content) handleShopBuy(player *Session, cmd *InputCommand) {
 
 // sendShopAck notifies the buyer of the outcome. An empty reason means the
 // purchase was applied; anything else is a rejection code the client renders.
-func (s *Content) sendShopAck(player *Session, entityID EntityID, itemID string, quantity int, reason string) {
-	sendAck(player, "shop_ack", reason, map[string]interface{}{
+func (s *Content) sendShopAck(player *world.Session, entityID world.EntityID, itemID string, quantity int, reason string) {
+	world.SendAck(player, "shop_ack", reason, map[string]interface{}{
 		"entityId": entityID,
 		"itemId":   itemID,
 		"quantity": quantity,

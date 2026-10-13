@@ -3,6 +3,8 @@ package game
 import (
 	"sync/atomic"
 	"time"
+
+	"cyberia-server/game/world"
 )
 
 // runtimeCounters holds lock-free, monotonically increasing counters
@@ -82,10 +84,10 @@ func (s *GameServer) recordWsEvicted()     { s.counters.wsEvictedTotal.Add(1) }
 func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 	// aoiRadius is only mutated inside ApplyInstanceConfig, which holds
 	// s.mu. Read under the same lock to avoid a torn read.
-	s.mu.Lock()
+	s.Mu.Lock()
 	aoi := s.aoiRadius
 	tick := s.currentTick
-	s.mu.Unlock()
+	s.Mu.Unlock()
 
 	s.counters.lastObservedTick.Store(tick)
 	s.counters.lastObservedAt.Store(time.Now().UnixNano())
@@ -132,9 +134,9 @@ type MapBreakdown struct {
 // initial LoadAll. Used by the readiness probe to surface 503 until
 // the world is ready.
 func (s *GameServer) HasMaps() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return len(s.maps) > 0
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	return len(s.Maps) > 0
 }
 
 // EntityTypeCensus pairs an entity-type count with the ObjectLayer
@@ -158,8 +160,8 @@ type EntityTypeCensus struct {
 // The returned map always contains the same seven keys so that
 // callers can render a stable, ordered table without nil checks.
 func (s *GameServer) EntityCensus() map[string]EntityTypeCensus {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
 	out := map[string]EntityTypeCensus{
 		"player":     {},
@@ -171,7 +173,7 @@ func (s *GameServer) EntityCensus() map[string]EntityTypeCensus {
 		"resource":   {},
 	}
 
-	addObj := func(key string, layers []ObjectLayerState) {
+	addObj := func(key string, layers []world.ObjectLayerState) {
 		c := out[key]
 		c.Count++
 		for _, l := range layers {
@@ -185,12 +187,12 @@ func (s *GameServer) EntityCensus() map[string]EntityTypeCensus {
 		out[key] = c
 	}
 
-	for _, m := range s.maps {
+	for _, m := range s.Maps {
 		for id := range m.IDs() {
 			row := m.Row(id)
 			class := row.Data.Kind
-			if class == EntityScenery {
-				if class = sceneryClass(row.Data); class == "static" {
+			if class == world.EntityScenery {
+				if class = world.SceneryClass(row.Data); class == "static" {
 					continue
 				}
 			}
@@ -203,22 +205,22 @@ func (s *GameServer) EntityCensus() map[string]EntityTypeCensus {
 // MapBreakdowns returns a per-map entity census in stable map-code order.
 // Stable order lets the dashboard render deterministically.
 func (s *GameServer) MapBreakdowns() []MapBreakdown {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
-	out := make([]MapBreakdown, 0, len(s.maps))
-	for code, m := range s.maps {
+	out := make([]MapBreakdown, 0, len(s.Maps))
+	for code, m := range s.Maps {
 		b := MapBreakdown{
 			MapCode:     code,
 			GridW:       m.GridW(),
 			GridH:       m.GridH(),
-			Players:     m.count(EntityPlayer),
-			Bots:        m.count(EntityBot),
-			Floors:      m.sceneryCount("floor"),
-			Obstacles:   m.sceneryCount("obstacle"),
-			Foregrounds: m.sceneryCount("foreground"),
-			Portals:     m.count(EntityPortal),
-			Resources:   m.count(EntityResource),
+			Players:     m.Count(world.EntityPlayer),
+			Bots:        m.Count(world.EntityBot),
+			Floors:      m.SceneryCount("floor"),
+			Obstacles:   m.SceneryCount("obstacle"),
+			Foregrounds: m.SceneryCount("foreground"),
+			Portals:     m.Count(world.EntityPortal),
+			Resources:   m.Count(world.EntityResource),
 		}
 		b.Total = b.Players + b.Bots + b.Floors + b.Obstacles + b.Foregrounds + b.Portals + b.Resources
 		out = append(out, b)
@@ -230,9 +232,9 @@ func (s *GameServer) MapBreakdowns() []MapBreakdown {
 // MapBreakdownByCode returns the breakdown for a specific map, or
 // (zero, false) if no map with that code is loaded.
 func (s *GameServer) MapBreakdownByCode(code string) (MapBreakdown, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	m, ok := s.maps[code]
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	m, ok := s.Maps[code]
 	if !ok {
 		return MapBreakdown{}, false
 	}
@@ -240,13 +242,13 @@ func (s *GameServer) MapBreakdownByCode(code string) (MapBreakdown, bool) {
 		MapCode:     code,
 		GridW:       m.GridW(),
 		GridH:       m.GridH(),
-		Players:     m.count(EntityPlayer),
-		Bots:        m.count(EntityBot),
-		Floors:      m.sceneryCount("floor"),
-		Obstacles:   m.sceneryCount("obstacle"),
-		Foregrounds: m.sceneryCount("foreground"),
-		Portals:     m.count(EntityPortal),
-		Resources:   m.count(EntityResource),
+		Players:     m.Count(world.EntityPlayer),
+		Bots:        m.Count(world.EntityBot),
+		Floors:      m.SceneryCount("floor"),
+		Obstacles:   m.SceneryCount("obstacle"),
+		Foregrounds: m.SceneryCount("foreground"),
+		Portals:     m.Count(world.EntityPortal),
+		Resources:   m.Count(world.EntityResource),
 	}
 	b.Total = b.Players + b.Bots + b.Floors + b.Obstacles + b.Foregrounds + b.Portals + b.Resources
 	return b, true

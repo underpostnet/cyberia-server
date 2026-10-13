@@ -16,6 +16,7 @@
 package game
 
 import (
+	"cyberia-server/game/world"
 	"cyberia-server/logx"
 
 	pb "cyberia-server/gen/proto"
@@ -66,8 +67,8 @@ type CyberiaAction struct {
 }
 
 // actionCell returns the cell key for an action's source cell.
-func actionCell(a *CyberiaAction) cellKey {
-	return cellKey{a.SourceMapCode, a.SourceCellX, a.SourceCellY}
+func actionCell(a *CyberiaAction) world.CellKey {
+	return world.CellKey{MapCode: a.SourceMapCode, CellX: a.SourceCellX, CellY: a.SourceCellY}
 }
 
 func protoToAction(a *pb.CyberiaActionMessage) *CyberiaAction {
@@ -117,7 +118,7 @@ func protoToCraftItems(items []*pb.ActionCraftItem) []ActionCraftItem {
 //
 // Caller MUST hold s.mu.
 func (s *Content) bindActions(mapCodes []string, actions []*pb.CyberiaActionMessage) {
-	s.actionCache = make(map[EntityID]*CyberiaAction)
+	s.actionCache = make(map[world.EntityID]*CyberiaAction)
 	if s.storage == nil {
 		s.storage = make(map[storageKey][]StorageSlot)
 	}
@@ -127,7 +128,7 @@ func (s *Content) bindActions(mapCodes []string, actions []*pb.CyberiaActionMess
 		mapSet[c] = true
 	}
 
-	byCell := make(map[cellKey]*CyberiaAction)
+	byCell := make(map[world.CellKey]*CyberiaAction)
 	for _, a := range actions {
 		ca := protoToAction(a)
 		if !mapSet[ca.SourceMapCode] {
@@ -137,13 +138,13 @@ func (s *Content) bindActions(mapCodes []string, actions []*pb.CyberiaActionMess
 	}
 
 	bound := 0
-	for _, ms := range s.maps {
-		for id := range ms.ofKind(EntityBot) {
+	for _, ms := range s.Maps {
+		for id := range ms.OfKind(world.EntityBot) {
 			action, ok := byCell[botSpawnCell(ms, id)]
 			if !ok {
 				continue
 			}
-			ms.ag(id).ActionCode = action.Code
+			ms.Ag(id).ActionCode = action.Code
 			s.actionCache[id] = action
 			bound++
 		}
@@ -161,9 +162,9 @@ func (s *Content) logActionProviders() {
 		return
 	}
 	logx.Debugf("[ActionProviders] %d action-provider entities:", len(s.actionCache))
-	for _, ms := range s.maps {
-		for id := range ms.ofKind(EntityBot) {
-			if ms.ag(id).ActionCode == "" {
+	for _, ms := range s.Maps {
+		for id := range ms.OfKind(world.EntityBot) {
+			if ms.Ag(id).ActionCode == "" {
 				continue
 			}
 			a := s.actionCache[id]
@@ -174,8 +175,8 @@ func (s *Content) logActionProviders() {
 				quests = s.questsByCell[actionCell(a)]
 			}
 			logx.Debugf("[ActionProviders]   map=%s action=%s label=%q quests=%v entity=%d initPos=(%d,%d)",
-				ms.Code(), ms.ag(id).ActionCode, label, quests, id,
-				int(ms.tf(id).Pos.X), int(ms.tf(id).Pos.Y))
+				ms.Code(), ms.Ag(id).ActionCode, label, quests, id,
+				int(ms.Tf(id).Pos.X), int(ms.Tf(id).Pos.Y))
 		}
 	}
 }
@@ -183,9 +184,9 @@ func (s *Content) logActionProviders() {
 // findBot returns the map that holds the bot with this entity ID, or nil.
 //
 // Caller MUST hold s.mu.
-func (s *Content) findBot(id EntityID) *MapState {
-	for _, ms := range s.maps {
-		if ms.IsKind(id, EntityBot) {
+func (s *Content) findBot(id world.EntityID) *world.MapState {
+	for _, ms := range s.Maps {
+		if ms.IsKind(id, world.EntityBot) {
 			return ms
 		}
 	}
@@ -195,7 +196,7 @@ func (s *Content) findBot(id EntityID) *MapState {
 // botActiveSkin returns the active skin item ID of the bot with this entity ID
 // (searched across maps), or "" if not found. The bot's own active skin — not
 // any action field — is what 'talk' objectives match against.
-func (s *Content) botActiveSkin(id EntityID) string {
+func (s *Content) botActiveSkin(id world.EntityID) string {
 	ms := s.findBot(id)
 	if ms == nil {
 		return ""
@@ -205,14 +206,14 @@ func (s *Content) botActiveSkin(id EntityID) string {
 
 // botActiveSkinOf reads a bot's active skin directly (no lookup), so the AOI
 // path that already holds the bot avoids an O(N) per-entity map search.
-func (s *Content) botActiveSkinOf(id EntityID, ms *MapState) string {
+func (s *Content) botActiveSkinOf(id world.EntityID, ms *world.MapState) string {
 	// When the NPC is dead its active layers hold the ghost skin; the live skin
 	// is preserved in PreRespawnObjectLayers. Read from there so a talk objective
 	// still validates against a quest-giver that just died — the interaction
 	// context is independent of the entity's alive/AOI state.
-	layers := ms.ap(id).Layers
-	if ms.vt(id).ghost() && len(ms.mt(id).PreRespawnObjectLayers) > 0 {
-		layers = ms.mt(id).PreRespawnObjectLayers
+	layers := ms.Ap(id).Layers
+	if ms.Vt(id).Ghost() && len(ms.Mt(id).PreRespawnObjectLayers) > 0 {
+		layers = ms.Mt(id).PreRespawnObjectLayers
 	}
 	for _, ol := range layers {
 		if ol.Active && s.itemType(ol.ItemID) == "skin" {
@@ -256,7 +257,7 @@ func (s *Content) botInteractionFlags(hasActionableQuest, hasPendingActionTalk, 
 // capability lives in shop.go.
 //
 // Caller MUST hold s.mu.
-func (s *Content) pendingActionTalkDialogs(player *Session, id EntityID, ms *MapState, questCodes []string) []string {
+func (s *Content) pendingActionTalkDialogs(player *world.Session, id world.EntityID, ms *world.MapState, questCodes []string) []string {
 	dialogs := make([]string, len(questCodes))
 	action := s.actionCache[id]
 	if action == nil || len(action.QuestDialogueCodes) == 0 {
@@ -286,7 +287,7 @@ func (s *Content) pendingActionTalkDialogs(player *Session, id EntityID, ms *Map
 // not grow botInteractionFlags.
 //
 // Caller MUST hold s.mu.
-func (s *Content) botHasUsableAction(id EntityID, ms *MapState) bool {
+func (s *Content) botHasUsableAction(id world.EntityID, ms *world.MapState) bool {
 	return s.botHasShop(id, ms) || s.botHasCraft(id, ms) || s.botHasStorage(id, ms)
 }
 
@@ -295,16 +296,16 @@ func (s *Content) botHasUsableAction(id EntityID, ms *MapState) bool {
 // screen in the first place.
 //
 // Caller MUST hold s.mu.
-func (s *Content) botInPlayerRange(player *Session, id EntityID, ms *MapState) bool {
+func (s *Content) botInPlayerRange(player *world.Session, id world.EntityID, ms *world.MapState) bool {
 	if ms.Code() != player.MapCode {
 		return false
 	}
-	tf := ms.tf(id)
-	botRect := Rectangle{
+	tf := ms.Tf(id)
+	botRect := world.Rectangle{
 		MinX: tf.Pos.X, MinY: tf.Pos.Y,
 		MaxX: tf.Pos.X + tf.Size.X, MaxY: tf.Pos.Y + tf.Size.Y,
 	}
-	return rectsOverlap(player.AOI, botRect)
+	return world.RectsOverlap(player.AOI, botRect)
 }
 
 // ── Dialogue (phaseInput) ───────────────────────────────────────────────────
@@ -316,8 +317,8 @@ func (s *Content) botInPlayerRange(player *Session, id EntityID, ms *MapState) b
 // (advanceTalkObjectives). It never grants a quest — that is quest_accept.
 //
 // Caller MUST hold s.mu.
-func (s *Content) handleTalkDone(player *Session, cmd *InputCommand) {
-	if s.vt(player.ID, player.MapCode).ghost() {
+func (s *Content) handleTalkDone(player *world.Session, cmd *world.InputCommand) {
+	if s.Vt(player.ID, player.MapCode).Ghost() {
 		return
 	}
 	var affected []QuestSnapshotEntry

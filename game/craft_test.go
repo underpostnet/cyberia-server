@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"cyberia-server/game/world"
+	"cyberia-server/game/world/worldtest"
 	pb "cyberia-server/gen/proto"
 )
 
@@ -59,8 +61,8 @@ func TestCraftRecipeAtBoundsTheIndex(t *testing.T) {
 }
 
 func TestPlayerCanCraftChecksEveryIngredient(t *testing.T) {
-	s := &Content{World: &World{}, coinItemID: "coin"}
-	player := placePlayer(s.World, 1, []ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
+	s := &Content{World: &world.World{}, coinItemID: "coin"}
+	player := worldtest.PlacePlayer(s.World, 1, []world.ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
 	player.Coins = 5
 	recipe := &ActionCraftRecipe{Ingredients: []ActionCraftItem{
 		{ItemID: "wood-drop-1", Qty: 2},
@@ -76,7 +78,7 @@ func TestPlayerCanCraftChecksEveryIngredient(t *testing.T) {
 		t.Fatal("a short currency line must block the synthesis")
 	}
 	player.Coins = 5
-	s.ap(player.ID, player.MapCode).Layers[0].Quantity = 1
+	s.Ap(player.ID, player.MapCode).Layers[0].Quantity = 1
 	if s.playerCanCraft(player, recipe) {
 		t.Fatal("a short component line must block the synthesis")
 	}
@@ -94,23 +96,23 @@ func TestBotHasCraftGatesTheCapabilityBit(t *testing.T) {
 	book := &CyberiaAction{CraftRecipes: []ActionCraftRecipe{
 		{OutputItems: []ActionCraftItem{{ItemID: "hatchet", Qty: 1}}},
 	}}
-	s := &Content{World: &World{}, actionCache: map[EntityID]*CyberiaAction{
+	s := &Content{World: &world.World{}, actionCache: map[world.EntityID]*CyberiaAction{
 		1: book,
 		2: {DialogCode: "default-lain"},
 		3: book,
 	}}
 
-	assembler := placeBot(s.World, 1, Vitals{})
-	talker := placeBot(s.World, 2, Vitals{})
-	dead := placeBot(s.World, 3, Vitals{RespawnAt: time.Now().Add(time.Second)})
+	assembler := worldtest.PlaceBot(s.World, 1, world.Vitals{})
+	talker := worldtest.PlaceBot(s.World, 2, world.Vitals{})
+	dead := worldtest.PlaceBot(s.World, 3, world.Vitals{RespawnAt: time.Now().Add(time.Second)})
 
-	if !s.botHasCraft(assembler, testMap(s.World)) || !s.botHasUsableAction(assembler, testMap(s.World)) {
+	if !s.botHasCraft(assembler, worldtest.Map(s.World)) || !s.botHasUsableAction(assembler, worldtest.Map(s.World)) {
 		t.Fatal("a live bot with a recipe book is an assembler")
 	}
-	if s.botHasCraft(talker, testMap(s.World)) || s.botHasUsableAction(talker, testMap(s.World)) {
+	if s.botHasCraft(talker, worldtest.Map(s.World)) || s.botHasUsableAction(talker, worldtest.Map(s.World)) {
 		t.Fatal("an action with no recipes is not an assembler")
 	}
-	if s.botHasCraft(dead, testMap(s.World)) {
+	if s.botHasCraft(dead, worldtest.Map(s.World)) {
 		t.Fatal("a dead assembler must not advertise")
 	}
 	if flags := s.botInteractionFlags(false, false, true); flags&InteractionFlagAction == 0 {
@@ -136,11 +138,11 @@ func TestCraftTimeMsValidatesTheAuthoredDuration(t *testing.T) {
 // The ingredients leave the inventory when the bar starts, so cancelling before
 // the timer elapses has to put every one of them back and pay out nothing.
 func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
-	s := &Content{World: &World{}, coinItemID: "coin", crafts: map[EntityID]*ActiveCraft{}}
-	next := EntityID(0)
-	newPlayer := func() *Session {
+	s := &Content{World: &world.World{}, coinItemID: "coin", crafts: map[world.EntityID]*ActiveCraft{}}
+	next := world.EntityID(0)
+	newPlayer := func() *world.Session {
 		next++
-		p := placePlayer(s.World, next, []ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
+		p := worldtest.PlacePlayer(s.World, next, []world.ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
 		p.Coins = 5
 		return p
 	}
@@ -152,7 +154,7 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 		},
 	}
 	// Stand in for the consume phase handleCraftItem runs before arming a timer.
-	start := func(p *Session, at time.Time) {
+	start := func(p *world.Session, at time.Time) {
 		for _, in := range recipe.Ingredients {
 			s.removePlayerItem(p, in.ItemID, in.Qty)
 		}
@@ -190,7 +192,7 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 	start(pending, time.Now().Add(time.Hour))
 	elapsed := newPlayer()
 	start(elapsed, time.Now().Add(-time.Millisecond))
-	mapState := s.maps["test"]
+	mapState := s.Maps["test"]
 
 	s.completeCrafts(mapState)
 	if s.crafts[pending.ID] == nil || s.playerItemQuantity(pending, "hatchet") != 0 {

@@ -14,7 +14,10 @@
 // Caller MUST hold s.mu for every function here (they run inside the tick).
 package game
 
-import "time"
+import (
+	"cyberia-server/game/world"
+	"time"
+)
 
 // consumableHeal is the life one unit of itemID restores: its resistance, at the stat scale.
 func (s *Content) consumableHeal(itemID string) float64 {
@@ -27,17 +30,17 @@ func (s *Content) consumableHeal(itemID string) float64 {
 
 // canConsume reports whether a consumable changes anything for the consumer: a
 // heal needs missing life.
-func canConsume(consumer *Vitals) bool {
+func canConsume(consumer *world.Vitals) bool {
 	return consumer.Life < consumer.MaxLife
 }
 
 // consumeItem applies the effect of one unit of itemID to the consumer: it
 // restores the item's heal, never past max life, and tells every viewer.
-func (s *Content) consumeItem(mapState *MapState, id EntityID, itemID string) {
-	pos := mapState.tf(id).Pos
-	s.restoreLife(mapState, mapState.vt(id), pos, s.consumableHeal(itemID))
+func (s *Content) consumeItem(mapState *world.MapState, id world.EntityID, itemID string) {
+	pos := mapState.Tf(id).Pos
+	s.restoreLife(mapState, mapState.Vt(id), pos, s.consumableHeal(itemID))
 	build, _ := s.lootBuild(itemID)
-	event := ItemConsume{EntityID: id, ItemID: itemID, Behavior: build.Behavior}
+	event := world.ItemConsume{EntityID: id, ItemID: itemID, Behavior: build.Behavior}
 	s.broadcastAt(mapState, "item_consume", event, pos.X, pos.Y)
 }
 
@@ -48,14 +51,14 @@ func (s *Sim) executeZeroWasteHeal(ctx SkillContext) {
 	ms, id := ctx.MapState, ctx.CasterID
 	now := time.Now()
 	heal := s.consumableHeal(ctx.TriggerItemID)
-	vitals, mortal := ms.vt(id), ms.mt(id)
-	if vitals.ghost() || now.Before(mortal.NextConsumeAt) || heal <= 0 || vitals.MaxLife-vitals.Life < heal {
+	vitals, mortal := ms.Vt(id), ms.Mt(id)
+	if vitals.Ghost() || now.Before(mortal.NextConsumeAt) || heal <= 0 || vitals.MaxLife-vitals.Life < heal {
 		return
 	}
-	if layerQuantity(ms.ap(id).Layers, ctx.TriggerItemID) < 1 {
+	if layerQuantity(ms.Ap(id).Layers, ctx.TriggerItemID) < 1 {
 		return
 	}
 	s.consumeItem(ms, id, ctx.TriggerItemID)
-	removeLayerItem(&ms.ap(id).Layers, ctx.TriggerItemID, 1)
+	removeLayerItem(&ms.Ap(id).Layers, ctx.TriggerItemID, 1)
 	mortal.NextConsumeAt = now.Add(s.CalculateActionCooldown(s.CalculateStats(id, ms)))
 }

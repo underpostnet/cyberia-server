@@ -3,6 +3,7 @@ package game
 import (
 	"testing"
 
+	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 )
 
@@ -17,7 +18,7 @@ func resourceServer() *Content {
 			LiveItemIDs: []string{"wood-1"},
 			DeadItemIDs: []string{"wood-extracted-1"},
 			DropItemIDs: []string{"wood-drop-1"},
-			DefaultObjectLayers: []ObjectLayerState{
+			DefaultObjectLayers: []world.ObjectLayerState{
 				{ItemID: "wood-1", Active: true, Quantity: 1},
 				{ItemID: "wood-extracted-1", Active: false, Quantity: 0},
 				{ItemID: "wood-drop-1", Active: false, Quantity: 2},
@@ -27,13 +28,13 @@ func resourceServer() *Content {
 	}
 }
 
-func layerOf(layers []ObjectLayerState, itemID string) (ObjectLayerState, int) {
+func layerOf(layers []world.ObjectLayerState, itemID string) (world.ObjectLayerState, int) {
 	for index, layer := range layers {
 		if layer.ItemID == itemID {
 			return layer, index
 		}
 	}
-	return ObjectLayerState{}, -1
+	return world.ObjectLayerState{}, -1
 }
 
 func TestSpawnObjectLayersSeedsTheWholeInventoryOverThePlacedSkin(t *testing.T) {
@@ -113,22 +114,22 @@ func TestResourceSpawnedFromInstanceConfigCarriesTheOverriddenItem(t *testing.T)
 		}},
 	})
 
-	mapState := &MapState{}
+	mapState := &world.MapState{}
 	server.buildResource(mapState, &pb.EntityMessage{
 		ObjectLayerItemIds: []string{"wood-1"},
 		DimX:               2,
 		DimY:               2,
 	})
-	if mapState.count(EntityResource) != 1 {
-		t.Fatalf("want one resource, got %d", mapState.count(EntityResource))
+	if mapState.Count(world.EntityResource) != 1 {
+		t.Fatalf("want one resource, got %d", mapState.Count(world.EntityResource))
 	}
 
-	var spawned EntityID
-	for resource := range mapState.ofKind(EntityResource) {
+	var spawned world.EntityID
+	for resource := range mapState.OfKind(world.EntityResource) {
 		spawned = resource
 	}
 	// What the wire carries to the client is the active set, in stack order.
-	sent := activeLayers(mapState.ap(spawned).Layers)
+	sent := activeLayers(mapState.Ap(spawned).Layers)
 	if len(sent) != 2 || sent[0].ItemID != "wood-1" || sent[1].ItemID != "tim-knife" {
 		t.Fatalf("the client must receive the skin and the item worn over it, got %+v", sent)
 	}
@@ -178,7 +179,7 @@ func TestNormalizeLoadoutKeepsTheStackOfWhatItUnseats(t *testing.T) {
 			"kaneki": {Data: ObjectLayerData{Item: Item{Type: "skin"}}},
 		},
 	}
-	out := server.normalizeLoadout([]ObjectLayerState{
+	out := server.normalizeLoadout([]world.ObjectLayerState{
 		{ItemID: "anon", Active: true, Quantity: 1},
 		{ItemID: "kaneki", Active: true, Quantity: 1},
 	})
@@ -197,7 +198,7 @@ func TestSpawnObjectLayersTakesTheBuildStateForAPlacedID(t *testing.T) {
 		entityDefaultBuilds: []EntityTypeDefaultConfig{{
 			EntityType:  "bot",
 			LiveItemIDs: []string{"purple", "atlas_pistol_mk2"},
-			DefaultObjectLayers: []ObjectLayerState{
+			DefaultObjectLayers: []world.ObjectLayerState{
 				{ItemID: "purple", Active: true, Quantity: 1},
 				// The override wears the hatchet, so the pistol the map places is carried, not worn.
 				{ItemID: "atlas_pistol_mk2", Active: false, Quantity: 1},

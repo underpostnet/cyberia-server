@@ -32,6 +32,8 @@ package game
 
 import (
 	"time"
+
+	"cyberia-server/game/world"
 )
 
 // phaseInput drains queued InputCommand entries for each player in this
@@ -49,8 +51,8 @@ import (
 //   - Movement re-plans at most once per player per tick. Handlers record the
 //     intent; flushPendingMove runs the single A*. This is the only bound on
 //     pathfinder cost, so no other path may call it.
-func (s *Sim) phaseInput(tick uint32, mapState *MapState) {
-	for player := range s.playersOn(mapState) {
+func (s *Sim) phaseInput(tick uint32, mapState *world.MapState) {
+	for player := range s.PlayersOn(mapState) {
 		if len(player.InputQueue) == 0 {
 			continue
 		}
@@ -74,35 +76,35 @@ func (s *Sim) phaseInput(tick uint32, mapState *MapState) {
 // applyInputCommand is the typed dispatcher. Kept on *GameServer so it
 // can call into existing simulation helpers without re-acquiring the
 // world lock. Each branch maps to one InputKind constant.
-func (s *Sim) applyInputCommand(player *Session, mapState *MapState, cmd *InputCommand) {
+func (s *Sim) applyInputCommand(player *world.Session, mapState *world.MapState, cmd *world.InputCommand) {
 	switch cmd.Kind {
-	case InputKindPlayerAction:
+	case world.InputKindPlayerAction:
 		s.handlePlayerActionInput(player, mapState, cmd)
-	case InputKindItemActivation:
+	case world.InputKindItemActivation:
 		s.handleItemActivationInput(player, cmd)
-	case InputKindPlayerStasis:
+	case world.InputKindPlayerStasis:
 		if cmd.Active {
 			FreezePlayer(player, mapState)
 		} else {
 			ThawPlayer(player)
 		}
-	case InputKindChat:
+	case world.InputKindChat:
 		s.handleChatInput(player, mapState, cmd)
-	case InputKindTalkDone:
+	case world.InputKindTalkDone:
 		s.handleTalkDone(player, cmd)
-	case InputKindQuestAbandon:
+	case world.InputKindQuestAbandon:
 		s.handleQuestAbandon(player, cmd)
-	case InputKindQuestAccept:
+	case world.InputKindQuestAccept:
 		s.handleQuestAccept(player, cmd)
-	case InputKindShopBuy:
+	case world.InputKindShopBuy:
 		s.handleShopBuy(player, cmd)
-	case InputKindCraftItem:
+	case world.InputKindCraftItem:
 		s.handleCraftItem(player, cmd)
-	case InputKindCraftCancel:
+	case world.InputKindCraftCancel:
 		s.handleCraftCancel(player)
-	case InputKindItemOps:
+	case world.InputKindItemOps:
 		s.handleItemOps(player, cmd)
-	case InputKindUnknown:
+	case world.InputKindUnknown:
 		// failed validation: consumed, never applied
 	}
 }
@@ -110,7 +112,7 @@ func (s *Sim) applyInputCommand(player *Session, mapState *MapState, cmd *InputC
 // phaseLifecycle handles respawn timers and similar lifecycle transitions.
 // Currently delegates to the existing helper which also subsumes coin-drop
 // FCT events (those will move to phaseEconomy in a follow-up).
-func (s *Sim) phaseLifecycle(tick uint32, mapState *MapState) {
+func (s *Sim) phaseLifecycle(tick uint32, mapState *world.MapState) {
 	_ = tick
 	for id := range mapState.Mortals() {
 		s.ApplyResistanceStat(id, mapState)
@@ -120,14 +122,14 @@ func (s *Sim) phaseLifecycle(tick uint32, mapState *MapState) {
 }
 
 // phaseSkills resolves skill projectile collisions and runs the skills of held items for this tick.
-func (s *Sim) phaseSkills(tick uint32, mapState *MapState) {
+func (s *Sim) phaseSkills(tick uint32, mapState *world.MapState) {
 	_ = tick
 	s.handleSkillCollisions(mapState)
-	for player := range s.playersOn(mapState) {
+	for player := range s.PlayersOn(mapState) {
 		s.dispatchHeldSkills(player.ID, mapState)
 	}
-	for id := range mapState.brains {
-		if behaviorCollectsLoot(mapState.ag(id).Behavior) {
+	for id := range mapState.OfKind(world.EntityBot) {
+		if behaviorCollectsLoot(mapState.Ag(id).Behavior) {
 			s.dispatchHeldSkills(id, mapState)
 		}
 	}
@@ -137,16 +139,16 @@ func (s *Sim) phaseSkills(tick uint32, mapState *MapState) {
 // bot's positional integration inside updateBots — that movement remains
 // here for now but should be split out to phaseMovement in a follow-up so
 // that ai/movement separation is enforced on both player and bot paths.
-func (s *Sim) phaseAI(tick uint32, mapState *MapState) {
+func (s *Sim) phaseAI(tick uint32, mapState *world.MapState) {
 	_ = tick
 	s.updateBots(mapState)
 }
 
 // phaseMovement integrates player positions using dt = tickDuration.
 // Bots are handled inside phaseAI for now (see note above).
-func (s *Sim) phaseMovement(tick uint32, mapState *MapState) {
+func (s *Sim) phaseMovement(tick uint32, mapState *world.MapState) {
 	_ = tick
-	for player := range s.playersOn(mapState) {
+	for player := range s.PlayersOn(mapState) {
 		s.updatePlayerPosition(player, mapState)
 		// TELEPORTING is a one-snapshot-interval signal set by teleportPlayer.
 		// phaseReplication (or the immediate send after phasePortals) delivers
@@ -154,17 +156,17 @@ func (s *Sim) phaseMovement(tick uint32, mapState *MapState) {
 		// TELEPORTING indefinitely.  The client uses this flag to suppress
 		// pos_prev interpolation on the teleport snapshot, preventing a visible
 		// cross-map lerp.
-		if mapState.mo(player.ID).Mode == TELEPORTING {
-			mapState.mo(player.ID).Mode = IDLE
+		if mapState.Mo(player.ID).Mode == world.TELEPORTING {
+			mapState.Mo(player.ID).Mode = world.IDLE
 		}
 	}
 }
 
 // phasePortals checks each player against portals and triggers teleports
 // when the portal hold time has elapsed.
-func (s *Sim) phasePortals(tick uint32, mapState *MapState) {
+func (s *Sim) phasePortals(tick uint32, mapState *world.MapState) {
 	_ = tick
-	for player := range s.playersOn(mapState) {
+	for player := range s.PlayersOn(mapState) {
 		s.checkPortal(player, mapState)
 	}
 }
@@ -173,14 +175,14 @@ func (s *Sim) phasePortals(tick uint32, mapState *MapState) {
 // token's collection policy admits takes it, players before bots: its outcome
 // applies, the pickup animation event goes to every viewer and the token is
 // removed in the same step, so one token applies once. Caller holds s.mu.
-func (s *Sim) phaseLoot(tick uint32, mapState *MapState) {
+func (s *Sim) phaseLoot(tick uint32, mapState *world.MapState) {
 	_ = tick
 	now := time.Now()
 	s.respawnWorldLoot(mapState, now)
 
-	for dropID := range mapState.ofKind(EntityBot) {
-		drop := mapState.br(dropID)
-		if !behaviorIsInert(mapState.ag(dropID).Behavior) {
+	for dropID := range mapState.OfKind(world.EntityBot) {
+		drop := mapState.Br(dropID)
+		if !behaviorIsInert(mapState.Ag(dropID).Behavior) {
 			continue
 		}
 		// Mid-launch tokens register no collision until they settle on the cell.
@@ -188,10 +190,10 @@ func (s *Sim) phaseLoot(tick uint32, mapState *MapState) {
 			continue
 		}
 
-		cx := mapState.tf(dropID).Pos.X + mapState.tf(dropID).Size.X*0.5
-		cy := mapState.tf(dropID).Pos.Y + mapState.tf(dropID).Size.Y*0.5
+		cx := mapState.Tf(dropID).Pos.X + mapState.Tf(dropID).Size.X*0.5
+		cy := mapState.Tf(dropID).Pos.Y + mapState.Tf(dropID).Size.Y*0.5
 
-		var collectorID EntityID
+		var collectorID world.EntityID
 		var granted bool
 		if player := s.resolveDropCollector(mapState, dropID); player != nil {
 			granted, collectorID = s.applyLootToPlayer(mapState, drop, player), player.ID
@@ -201,7 +203,7 @@ func (s *Sim) phaseLoot(tick uint32, mapState *MapState) {
 			continue
 		}
 		s.broadcastDropCollect(mapState, dropID, collectorID, cx, cy, granted)
-		if drop.LootOrigin == LootOriginWorld && drop.LootOutcome == LootOutcomeConsume {
+		if drop.LootOrigin == world.LootOriginWorld && drop.LootOutcome == world.LootOutcomeConsume {
 			s.scheduleLootRespawn(mapState, dropID, now)
 		}
 		s.despawn(mapState, dropID)

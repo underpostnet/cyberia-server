@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"cyberia-server/game/world"
 	"cyberia-server/serial"
 
 	"github.com/gorilla/websocket"
@@ -26,11 +27,11 @@ type wsTestServer struct {
 func newWSTestServer(t *testing.T, limits ConnectionLimits) *wsTestServer {
 	t.Helper()
 
-	mapState := NewMapState("test", 40, 40)
+	mapState := world.NewMapState("test", 40, 40)
 
 	s := NewGameServer()
 	s.SetConnectionLimits(limits)
-	s.maps["test"] = mapState
+	s.Maps["test"] = mapState
 	s.aoiRadius = 10
 	s.defaultPlayerWidth, s.defaultPlayerHeight = 2, 2
 	s.entityBaseMaxLife, s.initialLifeFraction = 100, 1
@@ -51,18 +52,18 @@ func newWSTestServer(t *testing.T, limits ConnectionLimits) *wsTestServer {
 
 // playerCount reports how many players the world holds across every map.
 func (w *wsTestServer) playerCount() int {
-	w.game.mu.Lock()
-	defer w.game.mu.Unlock()
+	w.game.Mu.Lock()
+	defer w.game.Mu.Unlock()
 	n := 0
-	for _, m := range w.game.maps {
-		n += m.count(EntityPlayer)
+	for _, m := range w.game.Maps {
+		n += m.Count(world.EntityPlayer)
 	}
 	return n
 }
 
 func (w *wsTestServer) clientCount() int {
-	w.game.mu.Lock()
-	defer w.game.mu.Unlock()
+	w.game.Mu.Lock()
+	defer w.game.Mu.Unlock()
 	return len(w.game.clients)
 }
 
@@ -410,21 +411,21 @@ func TestWSBatchWithAnInvalidEventIsConsumedWhole(t *testing.T) {
 		t.Fatalf("send batch: %v", err)
 	}
 
-	mapState := srv.game.maps["test"]
+	mapState := srv.game.Maps["test"]
 	queued := func() int {
-		srv.game.mu.Lock()
-		defer srv.game.mu.Unlock()
-		for p := range srv.game.playersOn(mapState) {
+		srv.game.Mu.Lock()
+		defer srv.game.Mu.Unlock()
+		for p := range srv.game.PlayersOn(mapState) {
 			return len(p.InputQueue)
 		}
 		return 0
 	}
 	waitFor(t, "the batch to be queued", func() bool { return queued() == 3 })
 
-	srv.game.mu.Lock()
-	defer srv.game.mu.Unlock()
+	srv.game.Mu.Lock()
+	defer srv.game.Mu.Unlock()
 	srv.game.phaseInput(0, mapState)
-	for p := range srv.game.playersOn(mapState) {
+	for p := range srv.game.PlayersOn(mapState) {
 		if p.InputConsumedThrough != 3 || len(p.InputQueue) != 0 {
 			t.Fatalf("cursor = %d, queue = %d, want 3, 0", p.InputConsumedThrough, len(p.InputQueue))
 		}
@@ -444,7 +445,7 @@ func TestWSOversizedBatchEvictsTheClient(t *testing.T) {
 	readInitData(t, conn)
 	waitFor(t, "the client to register", func() bool { return srv.clientCount() == 1 })
 
-	payloads := make([]map[string]any, maxInputQueue+1)
+	payloads := make([]map[string]any, world.MaxInputQueue+1)
 	for i := range payloads {
 		payloads[i] = map[string]any{"x": 10, "y": 10, "frame": 0, "seq": i + 1}
 	}

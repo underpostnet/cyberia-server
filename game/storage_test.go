@@ -1,6 +1,11 @@
 package game
 
-import "testing"
+import (
+	"testing"
+
+	"cyberia-server/game/world"
+	"cyberia-server/game/world/worldtest"
+)
 
 // An authored capacity is taken as-is and only clamped at the ceiling the
 // client can render — the vault wraps into rows, so it need not be a square.
@@ -22,12 +27,12 @@ func TestStorageCapacityClampsToTheRenderableCeiling(t *testing.T) {
 // what the source actually holds, so a spoofed count can never mint items.
 func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 	s := &Content{
-		World:      &World{},
+		World:      &world.World{},
 		coinItemID: "coin",
 
 		storage: map[storageKey][]StorageSlot{},
 	}
-	player := placePlayer(s.World, 1, []ObjectLayerState{{ItemID: "hatchet", Quantity: 2}})
+	player := worldtest.PlacePlayer(s.World, 1, []world.ObjectLayerState{{ItemID: "hatchet", Quantity: 2}})
 
 	// Deposit more than held → clamped to the 2 the player actually has.
 	slots := s.storageDeposit(player, nil, 2, "hatchet", 9)
@@ -39,7 +44,7 @@ func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 	}
 
 	// A second deposit of the same item merges into its stack.
-	s.ap(player.ID, player.MapCode).Layers = append(s.ap(player.ID, player.MapCode).Layers, ObjectLayerState{ItemID: "hatchet", Quantity: 1})
+	s.Ap(player.ID, player.MapCode).Layers = append(s.Ap(player.ID, player.MapCode).Layers, world.ObjectLayerState{ItemID: "hatchet", Quantity: 1})
 	slots = s.storageDeposit(player, slots, 2, "hatchet", 1)
 	if len(slots) != 1 || slots[0].Qty != 3 {
 		t.Fatalf("same-item deposit must merge, got %+v", slots)
@@ -47,8 +52,8 @@ func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 
 	// A worn item is taken off as it is banked; only the equipment rules hold one back, and this
 	// server configures none. See TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive.
-	s.ap(player.ID, player.MapCode).Layers = append(s.ap(player.ID, player.MapCode).Layers,
-		ObjectLayerState{ItemID: "helmet", Quantity: 1, Active: true})
+	s.Ap(player.ID, player.MapCode).Layers = append(s.Ap(player.ID, player.MapCode).Layers,
+		world.ObjectLayerState{ItemID: "helmet", Quantity: 1, Active: true})
 	if slots = s.storageDeposit(player, slots, 2, "helmet", 1); len(slots) != 2 {
 		t.Fatalf("a worn item with nothing holding it back is storable, got %+v", slots)
 	}
@@ -57,7 +62,7 @@ func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 	}
 
 	// A full vault refuses a new stack and keeps the item with the player.
-	s.ap(player.ID, player.MapCode).Layers = append(s.ap(player.ID, player.MapCode).Layers, ObjectLayerState{ItemID: "gem", Quantity: 4})
+	s.Ap(player.ID, player.MapCode).Layers = append(s.Ap(player.ID, player.MapCode).Layers, world.ObjectLayerState{ItemID: "gem", Quantity: 4})
 	if got := s.storageDeposit(player, slots, 2, "gem", 4); len(got) != 2 {
 		t.Fatalf("a full vault must refuse a new stack, got %+v", got)
 	}
@@ -79,15 +84,15 @@ func TestStorageTransferMovesAcrossTheBoundary(t *testing.T) {
 // item_ops is a trust boundary: every op names an item and a positive count,
 // and the list never exceeds the largest vault.
 func TestParseInputBoundsItemOps(t *testing.T) {
-	op := itemOp{ItemID: "hatchet", Qty: 1, ToVault: true}
-	full := make([]itemOp, storageMaxSlots)
+	op := world.ItemOp{ItemID: "hatchet", Qty: 1, ToVault: true}
+	full := make([]world.ItemOp, storageMaxSlots)
 	for i := range full {
 		full[i] = op
 	}
 	if _, ok := parseInput("item_ops", &inputPayload{EntityID: 7, Ops: full}); !ok {
 		t.Fatal("a list at the cap must pass")
 	}
-	for name, ops := range map[string][]itemOp{
+	for name, ops := range map[string][]world.ItemOp{
 		"empty":    nil,
 		"over cap": append(full, op),
 		"zero qty": {{ItemID: "hatchet", Qty: 0}},
@@ -103,7 +108,7 @@ func TestParseInputBoundsItemOps(t *testing.T) {
 // an entity dressed, it does not pin one particular skin to it for good.
 func TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive(t *testing.T) {
 	server := &Content{
-		World: &World{},
+		World: &world.World{},
 		equipmentRules: EquipmentRulesConfig{
 			ActiveItemTypes: map[string]bool{"skin": true, "weapon": true},
 			OnePerType:      true,
@@ -114,7 +119,7 @@ func TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive(t *testing.T) {
 			"punk": {Data: ObjectLayerData{Item: Item{Type: "skin"}}},
 		},
 	}
-	player := placePlayer(server.World, 1, []ObjectLayerState{
+	player := worldtest.PlacePlayer(server.World, 1, []world.ObjectLayerState{
 		{ItemID: "anon", Active: true, Quantity: 1},
 		{ItemID: "punk", Active: true, Quantity: 1},
 	})
@@ -123,9 +128,9 @@ func TestStorageDepositTakesOffAWornSkinWhenAnotherIsActive(t *testing.T) {
 	if len(slots) != 1 || slots[0].ItemID != "anon" {
 		t.Fatalf("the skin belongs in the vault: %+v", slots)
 	}
-	for _, layer := range server.ap(player.ID, player.MapCode).Layers {
+	for _, layer := range server.Ap(player.ID, player.MapCode).Layers {
 		if layer.ItemID == "anon" {
-			t.Fatalf("a banked skin is no longer carried: %+v", server.ap(player.ID, player.MapCode).Layers)
+			t.Fatalf("a banked skin is no longer carried: %+v", server.Ap(player.ID, player.MapCode).Layers)
 		}
 	}
 

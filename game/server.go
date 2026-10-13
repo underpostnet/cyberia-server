@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 	"cyberia-server/logx"
 	"cyberia-server/socket"
@@ -14,13 +15,13 @@ import (
 // NewGameServer creates an empty game server with no hardcoded defaults.
 // All configuration must be applied via ApplyInstanceConfig from gRPC data.
 func NewGameServer() *GameServer {
-	w := &World{
-		maps:     make(map[string]*MapState),
-		sessions: make(map[EntityID]*Session),
+	w := &world.World{
+		Maps:     make(map[string]*world.MapState),
+		Sessions: make(map[world.EntityID]*world.Session),
 	}
 	gs := &GameServer{
 		Sim:     &Sim{Content: NewContent(w)},
-		clients: make(map[EntityID]*Client),
+		clients: make(map[world.EntityID]*Client),
 		// Buffer register/unregister so HandleConnections never blocks the
 		// HTTP handler goroutine waiting for listenForClients to win the
 		// world lock against gameLoop. 64 outstanding connect/disconnect
@@ -50,8 +51,8 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 	if err := rules.Validate(); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 
 	// ── Simulation cadence ─────────────────────────────────────────────────
 	// Presentation defaults (cell-pixel size, object default dims, camera,
@@ -74,8 +75,8 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 // content-authority calls, and the key those calls carry. Never forwarded to
 // clients.
 func (s *GameServer) SetDataServerURL(url, apiKey string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 	s.dataServerURL = url
 	s.dataServerAPIKey = apiKey
 	logx.Infof("Data Server URL set to: %s", url)
@@ -98,13 +99,13 @@ func (s *GameServer) listenForClients() {
 	for {
 		select {
 		case client := <-s.register:
-			s.mu.Lock()
+			s.Mu.Lock()
 			// A disconnect already handled for this client wins: re-adding it
 			// here would leave an entry nothing will ever remove.
 			if !client.detached {
 				s.clients[client.playerID] = client
 			}
-			s.mu.Unlock()
+			s.Mu.Unlock()
 			logx.Debugf("[listenForClients] registered player=%s", client.playerID)
 		case client := <-s.unregister:
 			s.detachClient(client)
@@ -144,10 +145,10 @@ func (s *GameServer) gameLoop() {
 					logx.Errorf("[GameServer] PANIC in simulation tick: %v", r)
 				}
 			}()
-			s.mu.Lock()
-			defer s.mu.Unlock()
+			s.Mu.Lock()
+			defer s.Mu.Unlock()
 			tick := s.currentTick
-			for _, mapState := range s.maps {
+			for _, mapState := range s.Maps {
 				s.phaseInput(tick, mapState)
 				s.phaseLifecycle(tick, mapState)
 				s.phaseSkills(tick, mapState)
@@ -160,7 +161,7 @@ func (s *GameServer) gameLoop() {
 				}
 				s.teleported = s.teleported[:0]
 			}
-			for _, mapState := range s.maps {
+			for _, mapState := range s.Maps {
 				s.phaseReplication(mapState)
 			}
 			s.currentTick++
@@ -182,27 +183,27 @@ func (s *GameServer) gameLoop() {
 //
 // Outside these two call sites, simulation code MUST NOT send a snapshot —
 // replication is the only path that may produce AOI frames.
-func (s *GameServer) sendAOI(player *Session) {
-	mapState, ok := s.maps[player.MapCode]
+func (s *GameServer) sendAOI(player *world.Session) {
+	mapState, ok := s.Maps[player.MapCode]
 	if !ok {
 		logx.Warnf("Map %q not found for player %s.", player.MapCode, player.ID)
 		return
 	}
 
-	sendMessage(player, "snapshot", s.buildSnapshot(player, mapState))
+	world.SendMessage(player, "snapshot", s.buildSnapshot(player, mapState))
 }
 
 // GetConnectedClientsCount returns the current connection count.
 func (s *GameServer) GetConnectedClientsCount() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 	return len(s.clients)
 }
 
 type Client struct {
 	sock        *socket.Socket
-	playerID    EntityID
-	playerState *Session
+	playerID    world.EntityID
+	playerState *world.Session
 
 	// ip is the address the guard counts this connection against.
 	ip string
@@ -222,7 +223,7 @@ type Client struct {
 // replication. Sim runs the simulation.
 type GameServer struct {
 	*Sim
-	clients    map[EntityID]*Client
+	clients    map[world.EntityID]*Client
 	register   chan *Client
 	unregister chan *Client
 	aoiRadius  float64
@@ -267,7 +268,7 @@ type InitPayload struct {
 	GridW          int                        `json:"gridW"`
 	GridH          int                        `json:"gridH"`
 	AoiRadius      float64                    `json:"aoiRadius"`
-	ObjectLayers   []ObjectLayerState         `json:"objectLayers"`
+	ObjectLayers   []world.ObjectLayerState   `json:"objectLayers"`
 	SkillMap       map[string][]SkillMapEntry `json:"skillMap"`
 	EntityDefaults []EntityTypeDefaultConfig  `json:"entityDefaults"`
 	// Resolved dead-state (Fragmentation) ids — the client labels these in
@@ -283,13 +284,13 @@ type InitPayload struct {
 // this map, computes their AOI, encodes a snapshot, and sends it. This path
 // is the only one that produces server→client AOI frames at steady state
 // (the bootstrap full snapshot on connect is sent from handlers.go).
-func (s *GameServer) phaseReplication(mapState *MapState) {
-	for player := range s.playersOn(mapState) {
-		player.AOI = Rectangle{
-			MinX: mapState.tf(player.ID).Pos.X - s.aoiRadius,
-			MinY: mapState.tf(player.ID).Pos.Y - s.aoiRadius,
-			MaxX: mapState.tf(player.ID).Pos.X + mapState.tf(player.ID).Size.X + s.aoiRadius,
-			MaxY: mapState.tf(player.ID).Pos.Y + mapState.tf(player.ID).Size.Y + s.aoiRadius,
+func (s *GameServer) phaseReplication(mapState *world.MapState) {
+	for player := range s.PlayersOn(mapState) {
+		player.AOI = world.Rectangle{
+			MinX: mapState.Tf(player.ID).Pos.X - s.aoiRadius,
+			MinY: mapState.Tf(player.ID).Pos.Y - s.aoiRadius,
+			MaxX: mapState.Tf(player.ID).Pos.X + mapState.Tf(player.ID).Size.X + s.aoiRadius,
+			MaxY: mapState.Tf(player.ID).Pos.Y + mapState.Tf(player.ID).Size.Y + s.aoiRadius,
 		}
 		s.sendAOI(player)
 	}

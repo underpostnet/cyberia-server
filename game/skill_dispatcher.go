@@ -1,16 +1,19 @@
 package game
 
-import "cyberia-server/logx"
+import (
+	"cyberia-server/game/world"
+	"cyberia-server/logx"
+)
 
 // SkillContext carries all information needed by a skill handler.
 // It unifies player and bot execution into a single call signature.
 type SkillContext struct {
 	// CasterID is the player or bot that triggered the skill.
-	CasterID EntityID
+	CasterID world.EntityID
 	// MapState is the map the caster belongs to.
-	MapState *MapState
+	MapState *world.MapState
 	// Target is the world-space point the caster acted upon (tap destination).
-	Target Vec2
+	Target world.Vec2
 	// TriggerItemID is the ObjectLayer item that matched the skillConfig entry.
 	TriggerItemID string
 	// SummonedEntityItemID is the item ID of the entity this skill should spawn
@@ -82,8 +85,8 @@ func (s *Sim) DispatchSkill(logicID string, ctx SkillContext) {
 // dispatchSkillsForEntity iterates the entity's active ObjectLayers, looks up
 // matching entries in skillConfig, and dispatches each logicEventID.
 // This replaces the duplicated switch blocks in HandlePlayerTapAction and handleBotSkills.
-func (s *Sim) dispatchSkillsForEntity(casterID EntityID, mapState *MapState, target Vec2, callerHoldsLock bool) {
-	for _, layer := range mapState.ap(casterID).Layers {
+func (s *Sim) dispatchSkillsForEntity(casterID world.EntityID, mapState *world.MapState, target world.Vec2, callerHoldsLock bool) {
+	for _, layer := range mapState.Ap(casterID).Layers {
 		if !layer.Active {
 			continue
 		}
@@ -104,9 +107,9 @@ func (s *Sim) dispatchSkillsForEntity(casterID EntityID, mapState *MapState, tar
 
 // dispatchHeldSkills runs the held-item skills of every stack the caster holds, active or not.
 // A handler may spend units, so each stack is read from the live layers. Caller holds s.mu.
-func (s *Sim) dispatchHeldSkills(casterID EntityID, mapState *MapState) {
-	for i := 0; i < len(mapState.ap(casterID).Layers); i++ {
-		layer := mapState.ap(casterID).Layers[i]
+func (s *Sim) dispatchHeldSkills(casterID world.EntityID, mapState *world.MapState) {
+	for i := 0; i < len(mapState.Ap(casterID).Layers); i++ {
+		layer := mapState.Ap(casterID).Layers[i]
 		if layer.Quantity < 1 {
 			continue
 		}

@@ -1,4 +1,4 @@
-package game
+package world
 
 import (
 	"container/heap"
@@ -91,9 +91,9 @@ func (pf *Pathfinder) beginSearch() {
 	}
 }
 
-// occupy adds `delta` blockers to every grid cell the rectangle covers, so
+// Occupy adds `delta` blockers to every grid cell the rectangle covers, so
 // overlapping obstacles free a cell only when the last of them leaves it.
-func (pf *Pathfinder) occupy(pos, size Vec2, delta int) {
+func (pf *Pathfinder) Occupy(pos, size Vec2, delta int) {
 	for y := int(pos.Y); y < int(pos.Y+size.Y); y++ {
 		for x := int(pos.X); x < int(pos.X+size.X); x++ {
 			if pf.inGrid(x, y) {
@@ -115,8 +115,8 @@ func (pf *Pathfinder) isCellWalkable(x, y int) bool {
 	return x >= 0 && x < pf.gridW && y >= 0 && y < pf.gridH && pf.grid[y][x] == 0
 }
 
-// isWalkable checks if a rectangle of a given dimension is walkable.
-func (pf *Pathfinder) isWalkable(x, y int, playerDims Vec2) bool {
+// IsWalkable checks if a rectangle of a given dimension is walkable.
+func (pf *Pathfinder) IsWalkable(x, y int, playerDims Vec2) bool {
 	w, h := int(math.Ceil(playerDims.X)), int(math.Ceil(playerDims.Y))
 	for dy := 0; dy < h; dy++ {
 		for dx := 0; dx < w; dx++ {
@@ -128,20 +128,20 @@ func (pf *Pathfinder) isWalkable(x, y int, playerDims Vec2) bool {
 	return true
 }
 
-// findRandomWalkablePoint finds a random walkable point for a given dimension.
-func (pf *Pathfinder) findRandomWalkablePoint(dims Vec2) (Cell, error) {
+// FindRandomWalkablePoint finds a random walkable point for a given dimension.
+func (pf *Pathfinder) FindRandomWalkablePoint(dims Vec2) (Cell, error) {
 	for attempts := 0; attempts < 200; attempts++ {
 		x, y := rand.Intn(pf.gridW-int(dims.X)), rand.Intn(pf.gridH-int(dims.Y))
-		if pf.isWalkable(x, y, dims) {
+		if pf.IsWalkable(x, y, dims) {
 			return Cell{X: x, Y: y}, nil
 		}
 	}
 	return Cell{}, fmt.Errorf("could not find a walkable point")
 }
 
-// findClosestWalkablePoint finds the closest walkable point to a given point.
-func (pf *Pathfinder) findClosestWalkablePoint(p Cell, playerDims Vec2) (Cell, error) {
-	if pf.isWalkable(p.X, p.Y, playerDims) {
+// FindClosestWalkablePoint finds the closest walkable point to a given point.
+func (pf *Pathfinder) FindClosestWalkablePoint(p Cell, playerDims Vec2) (Cell, error) {
+	if pf.IsWalkable(p.X, p.Y, playerDims) {
 		return p, nil
 	}
 	// Only in-grid cells enter the queue, so the sweep visits each cell once.
@@ -153,7 +153,7 @@ func (pf *Pathfinder) findClosestWalkablePoint(p Cell, playerDims Vec2) (Cell, e
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-		if pf.isWalkable(current.X, current.Y, playerDims) {
+		if pf.IsWalkable(current.X, current.Y, playerDims) {
 			return current, nil
 		}
 		for _, move := range [4]Cell{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
@@ -205,7 +205,7 @@ func (pf *Pathfinder) Astar(start, end Cell, playerDims Vec2) ([]Cell, error) {
 
 		for _, move := range astarMoves {
 			nx, ny := current.X+move.X, current.Y+move.Y
-			if !pf.isWalkable(nx, ny, playerDims) {
+			if !pf.IsWalkable(nx, ny, playerDims) {
 				continue
 			}
 			idx := pf.cellIndex(nx, ny)
@@ -253,13 +253,13 @@ func reconstructPath(n *Node) []Cell {
 	return path
 }
 
-// rectsOverlap checks if two rectangles overlap.
-func rectsOverlap(r1, r2 Rectangle) bool {
+// RectsOverlap checks if two rectangles overlap.
+func RectsOverlap(r1, r2 Rectangle) bool {
 	return r1.MinX < r2.MaxX && r1.MaxX > r2.MinX && r1.MinY < r2.MaxY && r1.MaxY > r2.MinY
 }
 
-// checkAABBCollision checks for collision between two axis-aligned bounding boxes.
-func checkAABBCollision(pos1 Vec2, dims1 Vec2, pos2 Vec2, dims2 Vec2) bool {
+// CheckAABBCollision checks for collision between two axis-aligned bounding boxes.
+func CheckAABBCollision(pos1 Vec2, dims1 Vec2, pos2 Vec2, dims2 Vec2) bool {
 	// Check for overlap on X axis
 	if pos1.X < pos2.X+dims2.X && pos1.X+dims1.X > pos2.X {
 		// Check for overlap on Y axis
@@ -270,9 +270,9 @@ func checkAABBCollision(pos1 Vec2, dims1 Vec2, pos2 Vec2, dims2 Vec2) bool {
 	return false
 }
 
-// clampCellToGrid puts a cell inside the map. The handler applies it so a tap
+// ClampCellToGrid puts a cell inside the map. The handler applies it so a tap
 // near an edge still moves the player instead of failing the path search.
-func clampCellToGrid(p Cell, gridW, gridH int) Cell {
+func ClampCellToGrid(p Cell, gridW, gridH int) Cell {
 	if p.X < 0 {
 		p.X = 0
 	} else if p.X > gridW-1 {
