@@ -3,15 +3,16 @@ package game
 import (
 	"testing"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 )
 
 func TestForegroundCarriesOnlyTheBehaviorItsDefaultBinds(t *testing.T) {
-	s := &Sim{Content: &Content{
+	s := &Sim{Content: &content.Content{
 		World:          &world.World{},
-		entityDefaults: map[string]EntityTypeDefaultConfig{},
-		entityDefaultBuilds: []EntityTypeDefaultConfig{
+		EntityDefaults: map[string]content.EntityTypeDefaultConfig{},
+		EntityDefaultBuilds: []content.EntityTypeDefaultConfig{
 			{EntityType: "foreground", LiveItemIDs: []string{"canopy"}},
 			{EntityType: "foreground", LiveItemIDs: []string{"roof"}, Behavior: "overhead-occlusion"},
 		},

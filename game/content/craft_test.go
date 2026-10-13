@@ -1,4 +1,4 @@
-package game
+package content
 
 import (
 	"testing"
@@ -61,7 +61,7 @@ func TestCraftRecipeAtBoundsTheIndex(t *testing.T) {
 }
 
 func TestPlayerCanCraftChecksEveryIngredient(t *testing.T) {
-	s := &Content{World: &world.World{}, coinItemID: "coin"}
+	s := &Content{World: &world.World{}, CoinItemID: "coin"}
 	player := worldtest.PlacePlayer(s.World, 1, []world.ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
 	player.Coins = 5
 	recipe := &ActionCraftRecipe{Ingredients: []ActionCraftItem{
@@ -106,16 +106,16 @@ func TestBotHasCraftGatesTheCapabilityBit(t *testing.T) {
 	talker := worldtest.PlaceBot(s.World, 2, world.Vitals{})
 	dead := worldtest.PlaceBot(s.World, 3, world.Vitals{RespawnAt: time.Now().Add(time.Second)})
 
-	if !s.botHasCraft(assembler, worldtest.Map(s.World)) || !s.botHasUsableAction(assembler, worldtest.Map(s.World)) {
+	if !s.botHasCraft(assembler, worldtest.Map(s.World)) || !s.BotHasUsableAction(assembler, worldtest.Map(s.World)) {
 		t.Fatal("a live bot with a recipe book is an assembler")
 	}
-	if s.botHasCraft(talker, worldtest.Map(s.World)) || s.botHasUsableAction(talker, worldtest.Map(s.World)) {
+	if s.botHasCraft(talker, worldtest.Map(s.World)) || s.BotHasUsableAction(talker, worldtest.Map(s.World)) {
 		t.Fatal("an action with no recipes is not an assembler")
 	}
 	if s.botHasCraft(dead, worldtest.Map(s.World)) {
 		t.Fatal("a dead assembler must not advertise")
 	}
-	if flags := s.botInteractionFlags(false, false, true); flags&InteractionFlagAction == 0 {
+	if flags := s.BotInteractionFlags(false, false, true); flags&InteractionFlagAction == 0 {
 		t.Fatalf("a usable action must light the action bit, got 0x%x", flags)
 	}
 }
@@ -138,7 +138,7 @@ func TestCraftTimeMsValidatesTheAuthoredDuration(t *testing.T) {
 // The ingredients leave the inventory when the bar starts, so cancelling before
 // the timer elapses has to put every one of them back and pay out nothing.
 func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
-	s := &Content{World: &world.World{}, coinItemID: "coin", crafts: map[world.EntityID]*ActiveCraft{}}
+	s := &Content{World: &world.World{}, CoinItemID: "coin", crafts: map[world.EntityID]*ActiveCraft{}}
 	next := world.EntityID(0)
 	newPlayer := func() *world.Session {
 		next++
@@ -170,7 +170,7 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 	if s.playerItemQuantity(cancelled, "wood-drop-1") != 0 || cancelled.Coins != 0 {
 		t.Fatal("starting an assembly must consume its ingredients up front")
 	}
-	s.handleCraftCancel(cancelled)
+	s.HandleCraftCancel(cancelled)
 	if s.crafts[cancelled.ID] != nil {
 		t.Fatal("cancel must clear the running assembly")
 	}
@@ -182,7 +182,7 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 		t.Fatal("a cancelled assembly must not pay out")
 	}
 	// Cancelling again is a no-op rather than a second refund.
-	s.handleCraftCancel(cancelled)
+	s.HandleCraftCancel(cancelled)
 	if s.playerItemQuantity(cancelled, "wood-drop-1") != 2 {
 		t.Fatal("cancelling twice must not refund twice")
 	}
@@ -194,7 +194,7 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 	start(elapsed, time.Now().Add(-time.Millisecond))
 	mapState := s.Maps["test"]
 
-	s.completeCrafts(mapState)
+	s.CompleteCrafts(mapState)
 	if s.crafts[pending.ID] == nil || s.playerItemQuantity(pending, "hatchet") != 0 {
 		t.Fatal("an assembly whose timer has not elapsed must keep running")
 	}
@@ -202,7 +202,7 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 		t.Fatalf("an elapsed assembly must pay out once, got %d",
 			s.playerItemQuantity(elapsed, "hatchet"))
 	}
-	s.completeCrafts(mapState)
+	s.CompleteCrafts(mapState)
 	if s.playerItemQuantity(elapsed, "hatchet") != 1 {
 		t.Fatal("a completed assembly must not pay out again")
 	}

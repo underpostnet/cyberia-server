@@ -1,4 +1,4 @@
-package game
+package content
 
 import (
 	"sort"
@@ -6,24 +6,24 @@ import (
 	"cyberia-server/game/world"
 )
 
-// resolveDeadItemIDs returns the build's dead visuals. Every entity type that
+// ResolveDeadItemIDs returns the build's dead visuals. Every entity type that
 // needs a dead state must declare deadItemIds in its engine-cyberia config.
 // There is no hardcoded fallback — the gRPC boot is the single authority.
-func (s *Content) resolveDeadItemIDs(build EntityTypeDefaultConfig) []string {
+func (s *Content) ResolveDeadItemIDs(build EntityTypeDefaultConfig) []string {
 	return build.DeadItemIDs
 }
 
-// visibleInventory filters only the single default ghost item out of an
+// VisibleInventory filters only the single default ghost item out of an
 // inventory view.  Other configured dead-state ids stay visible as
 // Fragmentation items — equippable only while the player is dead
 // (handleItemActivationInput gates by state).  The default ghost item is
 // the first deadItemID declared for the "player" entity type in the gRPC
 // config; it is the auto-applied visual when no other dead items are
 // equipped and must not clutter the inventory.
-func (s *Content) visibleInventory(layers []world.ObjectLayerState) []world.ObjectLayerState {
+func (s *Content) VisibleInventory(layers []world.ObjectLayerState) []world.ObjectLayerState {
 	out := make([]world.ObjectLayerState, 0, len(layers))
 	for _, l := range layers {
-		if l.ItemID == s.ghostItemID {
+		if l.ItemID == s.GhostItemID {
 			continue
 		}
 		out = append(out, l)
@@ -31,11 +31,11 @@ func (s *Content) visibleInventory(layers []world.ObjectLayerState) []world.Obje
 	return out
 }
 
-// normalizeDeadLoadout applies the equipment rules to a dead loadout in id
+// NormalizeDeadLoadout applies the equipment rules to a dead loadout in id
 // order: one active per type (first wins, so the configured default leads)
 // and the maxActiveLayers cap. Unknown types pass through, matching the live
 // normalization.
-func (s *Content) normalizeDeadLoadout(ids []string) []string {
+func (s *Content) NormalizeDeadLoadout(ids []string) []string {
 	out := make([]string, 0, len(ids))
 	seenID := make(map[string]bool)
 	seenType := make(map[string]bool)
@@ -44,8 +44,8 @@ func (s *Content) normalizeDeadLoadout(ids []string) []string {
 			continue
 		}
 		seenID[id] = true
-		if s.equipmentRules.OnePerType {
-			if t := s.itemType(id); t != "" {
+		if s.EquipmentRules.OnePerType {
+			if t := s.ItemType(id); t != "" {
 				if seenType[t] {
 					continue
 				}
@@ -53,16 +53,16 @@ func (s *Content) normalizeDeadLoadout(ids []string) []string {
 			}
 		}
 		out = append(out, id)
-		if s.maxActiveLayers > 0 && len(out) >= s.maxActiveLayers {
+		if s.MaxActiveLayers > 0 && len(out) >= s.MaxActiveLayers {
 			break
 		}
 	}
 	return out
 }
 
-// activateOrAppendLayer activates the layer holding itemID, appending a new
+// ActivateOrAppendLayer activates the layer holding itemID, appending a new
 // row when the inventory has none — same append semantics as applyDeadItems.
-func activateOrAppendLayer(layers *[]world.ObjectLayerState, itemID string) {
+func ActivateOrAppendLayer(layers *[]world.ObjectLayerState, itemID string) {
 	for i := range *layers {
 		if (*layers)[i].ItemID == itemID {
 			(*layers)[i].Active = true
@@ -73,12 +73,12 @@ func activateOrAppendLayer(layers *[]world.ObjectLayerState, itemID string) {
 	*layers = append(*layers, world.ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
 }
 
-// deadItemIDList returns the resolved dead-item ids (all from gRPC config),
+// DeadItemIDList returns the resolved dead-item ids (all from gRPC config),
 // sorted for a deterministic wire order. Shipped in init_data so the client
 // can label Fragmentation items and gate their equip UI.
-func (s *Content) deadItemIDList() []string {
-	ids := make([]string, 0, len(s.deadItemIDs))
-	for id := range s.deadItemIDs {
+func (s *Content) DeadItemIDList() []string {
+	ids := make([]string, 0, len(s.DeadItemIDs))
+	for id := range s.DeadItemIDs {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)

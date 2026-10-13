@@ -4,6 +4,7 @@ import (
 	"math"
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 )
 
@@ -14,7 +15,7 @@ func (s *Sim) handleSkillCollisions(mapState *world.MapState) {
 	projectilesToDelete := []world.EntityID{}
 
 	for projectileID := range mapState.OfKind(world.EntityBot) {
-		if mapState.Ag(projectileID).Behavior != BehaviorSkill {
+		if mapState.Ag(projectileID).Behavior != content.BehaviorSkill {
 			continue
 		}
 
@@ -44,14 +45,14 @@ func (s *Sim) handleSkillCollisions(mapState *world.MapState) {
 				// count, so a bot-only kill still drops the victim's coins and the
 				// contributing bots can collect. Recorded before the death handler
 				// consumes the ledger.
-				recordDamage(&mapState.Mt(player.ID).DamageLedger, mapState, mapState.Ag(projectileID).CasterID, projectileStats.Effect)
+				content.RecordDamage(&mapState.Mt(player.ID).DamageLedger, mapState, mapState.Ag(projectileID).CasterID, projectileStats.Effect)
 				if mapState.Vt(player.ID).Life <= 0 {
 					mapState.Vt(player.ID).Life = 0
 					s.handlePlayerDeath(player, mapState)
 				}
 				// FCT: the same red "-N" for every AOI viewer.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
-					s.broadcastFCT(mapState, world.FCTDamage,
+					s.BroadcastFCT(mapState, world.FCTDamage,
 						mapState.Tf(projectileID).Pos.X+mapState.Tf(projectileID).Size.X*0.5,
 						mapState.Tf(projectileID).Pos.Y+mapState.Tf(projectileID).Size.Y*0.5, dmg)
 				}
@@ -68,15 +69,15 @@ func (s *Sim) handleSkillCollisions(mapState *world.MapState) {
 
 		// Check collision with other bots
 		for otherBotID := range mapState.OfKind(world.EntityBot) {
-			if projectileID == otherBotID || mapState.Ag(otherBotID).Behavior == BehaviorSkill || mapState.Vt(otherBotID).Ghost() {
+			if projectileID == otherBotID || mapState.Ag(otherBotID).Behavior == content.BehaviorSkill || mapState.Vt(otherBotID).Ghost() {
 				continue // Don't collide with self, other projectiles, or dead bots.
 			}
 			// Inert loot tokens are non-combat: projectiles pass through them.
-			if behaviorIsInert(mapState.Ag(otherBotID).Behavior) {
+			if content.BehaviorIsInert(mapState.Ag(otherBotID).Behavior) {
 				continue
 			}
 			// Provider NPCs are immortal — projectiles pass through without damage.
-			if behaviorIsImmortal(mapState.Ag(otherBotID).Behavior) {
+			if content.BehaviorIsImmortal(mapState.Ag(otherBotID).Behavior) {
 				continue
 			}
 			// Projectiles should not damage their caster.
@@ -86,11 +87,11 @@ func (s *Sim) handleSkillCollisions(mapState *world.MapState) {
 			if world.CheckAABBCollision(mapState.Tf(projectileID).Pos, mapState.Tf(projectileID).Size, mapState.Tf(otherBotID).Pos, mapState.Tf(otherBotID).Size) {
 				mapState.Vt(otherBotID).Life -= projectileStats.Effect
 				// Attribute damage to the firing player or bot for the loot race.
-				recordDamage(&mapState.Mt(otherBotID).DamageLedger, mapState, mapState.Ag(projectileID).CasterID, projectileStats.Effect)
+				content.RecordDamage(&mapState.Mt(otherBotID).DamageLedger, mapState, mapState.Ag(projectileID).CasterID, projectileStats.Effect)
 				// FCT: bot amounts are public — the same red "-N" for every AOI
 				// viewer, including the killing (one-shot) blow.
 				if dmg := int(projectileStats.Effect + 0.5); dmg > 0 {
-					s.broadcastFCT(mapState, world.FCTDamage,
+					s.BroadcastFCT(mapState, world.FCTDamage,
 						mapState.Tf(otherBotID).Pos.X+mapState.Tf(otherBotID).Size.X*0.5,
 						mapState.Tf(otherBotID).Pos.Y+mapState.Tf(otherBotID).Size.Y*0.5, dmg)
 				}
@@ -98,10 +99,10 @@ func (s *Sim) handleSkillCollisions(mapState *world.MapState) {
 					mapState.Vt(otherBotID).Life = 0
 					// Capture the victim's skin before death deactivates its
 					// layers — quest `kill` objectives match on it.
-					killedSkin := s.botActiveSkin(otherBotID)
+					killedSkin := s.BotActiveSkin(otherBotID)
 					s.handleBotDeath(otherBotID, mapState)
 					if killer := s.PlayerOn(mapState, mapState.Ag(projectileID).CasterID); killer != nil {
-						s.advancePlayerQuestsOnKill(killer, killedSkin)
+						s.AdvancePlayerQuestsOnKill(killer, killedSkin)
 					}
 				}
 
@@ -130,7 +131,7 @@ func (s *Sim) handleSkillCollisions(mapState *world.MapState) {
 
 		// If the projectile is colliding, it loses life.
 		if isColliding {
-			mapState.Vt(projectileID).Life -= s.collisionLifeLoss
+			mapState.Vt(projectileID).Life -= s.CollisionLifeLoss
 			if mapState.Vt(projectileID).Life <= 0 {
 				// Projectile is "dead" from collision damage, mark for deletion.
 				projectilesToDelete = append(projectilesToDelete, projectileID)
@@ -139,7 +140,7 @@ func (s *Sim) handleSkillCollisions(mapState *world.MapState) {
 	}
 
 	for _, id := range projectilesToDelete {
-		s.despawn(mapState, id)
+		s.Despawn(mapState, id)
 	}
 }
 
@@ -153,14 +154,14 @@ func (s *Sim) hitStatic(mapState *world.MapState, projectile world.EntityID, eff
 		return false
 	}
 	v.Life -= effect
-	recordDamage(&mapState.Mt(id).DamageLedger, mapState, mapState.Ag(projectile).CasterID, effect)
+	content.RecordDamage(&mapState.Mt(id).DamageLedger, mapState, mapState.Ag(projectile).CasterID, effect)
 	if v.Life <= 0 {
 		v.Life = 0
 		die()
 	}
 	// FCT: the amount is public — the same red "-N" for every AOI viewer.
 	if dmg := int(effect + 0.5); dmg > 0 {
-		s.broadcastFCT(mapState, world.FCTDamage, tf.Pos.X+tf.Size.X*0.5, tf.Pos.Y+tf.Size.Y*0.5, dmg)
+		s.BroadcastFCT(mapState, world.FCTDamage, tf.Pos.X+tf.Size.X*0.5, tf.Pos.Y+tf.Size.Y*0.5, dmg)
 	}
 	return true
 }
@@ -201,7 +202,7 @@ func applyDeadItems(layers []world.ObjectLayerState, deadItemIDs []string) []wor
 // nobody contributed to drops nothing.
 func (s *Sim) handlePlayerDeath(player *world.Session, mapState *world.MapState) {
 	mortal := mapState.Mt(player.ID)
-	s.awardDefeat(player.ID, "player", mapState)
+	s.AwardDefeat(player.ID, "player", mapState)
 	// Economy: apply respawn-cost sink before saving layers (disabled by default, rate = 0).
 	s.SinkRespawnCost(player)
 
@@ -210,19 +211,19 @@ func (s *Sim) handlePlayerDeath(player *world.Session, mapState *world.MapState)
 	layersToSave := make([]world.ObjectLayerState, len(mapState.Ap(player.ID).Layers))
 	copy(layersToSave, mapState.Ap(player.ID).Layers)
 	mortal.PreRespawnObjectLayers = layersToSave
-	build, _ := s.resolveEntityDefaultBuild("player", activeObjectLayerItemIDs(layersToSave))
+	build, _ := s.ResolveEntityDefaultBuild("player", content.ActiveObjectLayerItemIDs(layersToSave))
 
 	// No coin FCT — balance changes surface in the inventory-bar quantity FX.
 	coinDrop := 0
-	if len(contributorSet(mortal.DamageLedger)) > 0 {
-		coinDrop = s.pvpCoinDropAmount(player)
+	if len(content.ContributorSet(mortal.DamageLedger)) > 0 {
+		coinDrop = s.PvpCoinDropAmount(player)
 		if coinDrop > 0 {
-			s.addCoins(player.ID, mapState, -coinDrop)
+			s.AddCoins(player.ID, mapState, -coinDrop)
 		}
 	}
 	playerCenter := world.Vec2{X: mapState.Tf(player.ID).Pos.X + mapState.Tf(player.ID).Size.X*0.5, Y: mapState.Tf(player.ID).Pos.Y + mapState.Tf(player.ID).Size.Y*0.5}
-	s.spawnDrops(mapState, playerCenter, build, coinDrop, mortal.DamageLedger)
-	s.broadcastAudioEvent(mapState, world.AudioEventDeath, playerCenter)
+	s.SpawnDrops(mapState, playerCenter, build, coinDrop, mortal.DamageLedger)
+	s.BroadcastAudioEvent(mapState, world.AudioEventDeath, playerCenter)
 	mortal.DamageLedger = nil
 
 	// The Fragmented State reuses the loadout from the player's last death;
@@ -231,13 +232,13 @@ func (s *Sim) handlePlayerDeath(player *world.Session, mapState *world.MapState)
 	// id per type — the rest stay inventory the player can switch to.
 	deadLoadout := player.DeadLoadoutItemIDs
 	if len(deadLoadout) == 0 {
-		deadLoadout = s.resolveDeadItemIDs(build)
+		deadLoadout = s.ResolveDeadItemIDs(build)
 	}
-	deadLoadout = s.normalizeDeadLoadout(deadLoadout)
+	deadLoadout = s.NormalizeDeadLoadout(deadLoadout)
 	mapState.Ap(player.ID).Layers = applyDeadItems(mapState.Ap(player.ID).Layers, deadLoadout)
-	player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(mapState.Ap(player.ID).Layers)
+	player.DeadLoadoutItemIDs = content.ActiveObjectLayerItemIDs(mapState.Ap(player.ID).Layers)
 
-	mapState.Vt(player.ID).RespawnAt = time.Now().Add(respawnWait(mapState.Mt(player.ID)))
+	mapState.Vt(player.ID).RespawnAt = time.Now().Add(content.RespawnWait(mapState.Mt(player.ID)))
 	// Recalculate stats for the ghost state to ensure consistency (mainly MaxLife).
 	s.ApplyResistanceStat(player.ID, s.Maps[player.MapCode])
 	mapState.Mo(player.ID).Mode = world.IDLE // Stop movement
@@ -253,25 +254,25 @@ func (s *Sim) handlePlayerDeath(player *world.Session, mapState *world.MapState)
 // skin can carry different dead/drop sets depending on its full active set.
 func (s *Sim) killEntity(id world.EntityID, kind string, coins int, mapState *world.MapState) {
 	mortal := mapState.Mt(id)
-	s.awardDefeat(id, kind, mapState)
+	s.AwardDefeat(id, kind, mapState)
 	layersToSave := make([]world.ObjectLayerState, len(mapState.Ap(id).Layers))
 	copy(layersToSave, mapState.Ap(id).Layers)
 	mortal.PreRespawnObjectLayers = layersToSave
-	build, _ := s.resolveEntityDefaultBuild(kind, activeObjectLayerItemIDs(layersToSave))
+	build, _ := s.ResolveEntityDefaultBuild(kind, content.ActiveObjectLayerItemIDs(layersToSave))
 
 	center := world.Vec2{X: mapState.Tf(id).Pos.X + mapState.Tf(id).Size.X*0.5, Y: mapState.Tf(id).Pos.Y + mapState.Tf(id).Size.Y*0.5}
-	s.spawnDrops(mapState, center, build, coins, mortal.DamageLedger)
+	s.SpawnDrops(mapState, center, build, coins, mortal.DamageLedger)
 	mortal.DamageLedger = nil
-	s.broadcastAudioEvent(mapState, world.AudioEventDeath, center)
+	s.BroadcastAudioEvent(mapState, world.AudioEventDeath, center)
 
-	mapState.Ap(id).Layers = applyDeadItems(mapState.Ap(id).Layers, s.resolveDeadItemIDs(build))
-	mapState.Vt(id).RespawnAt = time.Now().Add(respawnWait(mortal))
+	mapState.Ap(id).Layers = applyDeadItems(mapState.Ap(id).Layers, s.ResolveDeadItemIDs(build))
+	mapState.Vt(id).RespawnAt = time.Now().Add(content.RespawnWait(mortal))
 }
 
 // handleBotDeath kills a bot. Loot and coins are not injected into the killer:
 // both scatter as collectible tokens.
 func (s *Sim) handleBotDeath(id world.EntityID, mapState *world.MapState) {
-	s.killEntity(id, "bot", s.botCoinDropAmount(id, mapState), mapState)
+	s.killEntity(id, "bot", s.BotCoinDropAmount(id, mapState), mapState)
 
 	s.ApplyResistanceStat(id, mapState)
 	mapState.Mo(id).Mode = world.IDLE // Stop movement
@@ -291,14 +292,6 @@ func (s *Sim) handleDestructibleDeath(obs world.EntityID, mapState *world.MapSta
 	mapState.Pathfinder().Occupy(tf.Pos, tf.Size, -1)
 }
 
-// respawnWait is the wait before a dead entity comes back.
-func respawnWait(m *world.Mortal) time.Duration {
-	if m.RespawnDuration > 0 {
-		return m.RespawnDuration
-	}
-	return respawnDurationDefaultMs * time.Millisecond
-}
-
 // handleRespawns checks and respawns dead players and bots.
 func (s *Sim) handleRespawns(mapState *world.MapState) {
 	// Respawn players
@@ -310,7 +303,7 @@ func (s *Sim) handleRespawns(mapState *world.MapState) {
 			// its coin slot is stale. Re-sync the display-only slot to the flat
 			// balance (the source of truth) — otherwise the client sees a bogus
 			// +N as the coin quantity jumps back up on respawn.
-			s.syncCoinOL(&mapState.Ap(player.ID).Layers, player.Coins)
+			s.SyncCoinOL(&mapState.Ap(player.ID).Layers, player.Coins)
 			s.ApplyResistanceStat(player.ID, mapState) // Recalculate stats with restored items.
 			mapState.Vt(player.ID).Life = mapState.Vt(player.ID).MaxLife
 			mapState.Vt(player.ID).RespawnAt = time.Time{}
@@ -379,7 +372,7 @@ func (s *Sim) clearObstacleCells(ms *world.MapState, obs world.Transform) {
 	}
 	for id := range ms.OfKind(world.EntityBot) {
 		bot := ms.Br(id)
-		if ms.Ag(id).Behavior == BehaviorSkill {
+		if ms.Ag(id).Behavior == content.BehaviorSkill {
 			continue
 		}
 		tf := ms.Tf(id)

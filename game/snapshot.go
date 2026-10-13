@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 )
 
@@ -23,10 +24,10 @@ type SnapshotEntity struct {
 	MaxLife   int `json:"maxLife"`
 	RespawnIn int `json:"respawnIn"` // whole seconds, 0 when alive
 
-	Level      int             `json:"level,omitempty"`
-	Stats      *[StatCount]int `json:"stats,omitempty"`
-	StatsSum   int             `json:"statsSum"`
-	StatusIcon uint8           `json:"statusIcon"`
+	Level      int                     `json:"level,omitempty"`
+	Stats      *[content.StatCount]int `json:"stats,omitempty"`
+	StatsSum   int                     `json:"statsSum"`
+	StatusIcon uint8                   `json:"statusIcon"`
 
 	// Player fields: the teleport charge, 0..1, while the player stands on a portal.
 	OnPortal           bool    `json:"onPortal,omitempty"`
@@ -73,12 +74,12 @@ type SnapshotSelf struct {
 
 	// XP is total. LevelXP and NextLevelXP are the thresholds that bound the
 	// current level, so the client can draw in-level progress without the curve.
-	XP             uint64         `json:"xp"`
-	LevelXP        uint64         `json:"levelXp"`
-	NextLevelXP    uint64         `json:"nextLevelXp"`
-	BaseStats      [StatCount]int `json:"baseStats"`
-	LayerStats     [StatCount]int `json:"layerStats"`
-	TemporaryStats [StatCount]int `json:"temporaryStats"`
+	XP             uint64                 `json:"xp"`
+	LevelXP        uint64                 `json:"levelXp"`
+	NextLevelXP    uint64                 `json:"nextLevelXp"`
+	BaseStats      [content.StatCount]int `json:"baseStats"`
+	LayerStats     [content.StatCount]int `json:"layerStats"`
+	TemporaryStats [content.StatCount]int `json:"temporaryStats"`
 
 	MapCode string       `json:"mapCode"`
 	Path    []world.Cell `json:"path"`
@@ -87,9 +88,9 @@ type SnapshotSelf struct {
 	// Inventory carries every visible layer, active and inactive.
 	Inventory []world.ObjectLayerState `json:"inventory"`
 	// Vaults carries every vault of the player.
-	Vaults []SnapshotVault `json:"vaults"`
+	Vaults []content.SnapshotVault `json:"vaults"`
 	// Craft is the running assembly, absent when none runs.
-	Craft *SnapshotCraft `json:"craft,omitempty"`
+	Craft *content.SnapshotCraft `json:"craft,omitempty"`
 	// Interaction has one row per bot in the AOI that offers something.
 	Interaction []SnapshotInteraction `json:"interaction"`
 
@@ -173,7 +174,7 @@ func baseEntity(ms *world.MapState, id world.EntityID) SnapshotEntity {
 // Stats sum helper
 // ═══════════════════════════════════════════════════════════════════
 
-func sumStats(cs ComputedStats) int {
+func sumStats(cs content.ComputedStats) int {
 	total := 0.0
 	for _, value := range cs.Values() {
 		total += value
@@ -183,8 +184,8 @@ func sumStats(cs ComputedStats) int {
 
 // wholeStats is the wire form of stats: every stat source is whole, so this
 // only drops the float type.
-func wholeStats(cs ComputedStats) [StatCount]int {
-	var out [StatCount]int
+func wholeStats(cs content.ComputedStats) [content.StatCount]int {
+	var out [content.StatCount]int
 	for i, v := range cs.Values() {
 		out[i] = int(math.Round(v))
 	}
@@ -194,7 +195,7 @@ func wholeStats(cs ComputedStats) [StatCount]int {
 func (s *GameServer) snapshotStats(snapshot *SnapshotEntity, ms *world.MapState) {
 	stats := s.CalculateStats(snapshot.ID, ms)
 	values := wholeStats(stats)
-	snapshot.Level = s.entityProgression(snapshot.ID, ms).Level
+	snapshot.Level = s.EntityProgression(snapshot.ID, ms).Level
 	snapshot.Stats = &values
 	snapshot.StatsSum = sumStats(stats)
 }
@@ -237,7 +238,7 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 		e.setVitals(mapState.Vt(op.ID))
 		s.snapshotStats(&e, mapState)
 		s.snapshotPortalHold(&e, op)
-		e.StatusIcon = PlayerStatusIcon(op, mapState.Vt(op.ID))
+		e.StatusIcon = content.PlayerStatusIcon(op, mapState.Vt(op.ID))
 		snap.Entities = append(snap.Entities, e)
 	}
 
@@ -294,9 +295,9 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 		}
 		// A negative target cell marks a random portal: it carries the
 		// 'portal-random' icon and the client omits the cell from the label.
-		e.StatusIcon = StatusPortal
+		e.StatusIcon = content.StatusPortal
 		if e.TargetCell.X < 0 || e.TargetCell.Y < 0 {
-			e.StatusIcon = StatusPortalRandom
+			e.StatusIcon = content.StatusPortalRandom
 		}
 		snap.Entities = append(snap.Entities, e)
 	}
@@ -309,7 +310,7 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 		e := baseEntity(mapState, r)
 		e.setVitals(mapState.Vt(r))
 		s.snapshotStats(&e, mapState)
-		e.StatusIcon = ResourceStatusIcon(mapState.Vt(r))
+		e.StatusIcon = content.ResourceStatusIcon(mapState.Vt(r))
 		snap.Entities = append(snap.Entities, e)
 	}
 
@@ -323,7 +324,7 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 		e := baseEntity(mapState, b)
 		e.setVitals(mapState.Vt(b))
 		s.snapshotStats(&e, mapState)
-		e.StatusIcon = BotStatusIcon(mapState.Ag(b), mapState.Vt(b))
+		e.StatusIcon = content.BotStatusIcon(mapState.Ag(b), mapState.Vt(b))
 		e.Behavior = mapState.Ag(b).Behavior
 		e.CasterID = mapState.Ag(b).CasterID
 		// The action code is location-scoped and position-independent. The
@@ -333,8 +334,8 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 		// Quests resolve per viewing player and per cell. QuestCodes carries
 		// every surfaced quest for the interact modal; the capability bits
 		// light only for actionable content.
-		row := SnapshotInteraction{ID: b, QuestCodes: s.botQuestCodes(player, b, mapState)}
-		row.QuestTalkDialogCodes = s.pendingActionTalkDialogs(player, b, mapState, row.QuestCodes)
+		row := SnapshotInteraction{ID: b, QuestCodes: s.BotQuestCodes(player, b, mapState)}
+		row.QuestTalkDialogCodes = s.PendingActionTalkDialogs(player, b, mapState, row.QuestCodes)
 		hasPendingTalk := false
 		for _, d := range row.QuestTalkDialogCodes {
 			if d != "" {
@@ -342,12 +343,12 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 				break
 			}
 		}
-		row.Flags = s.botInteractionFlags(s.botHasActionableQuest(player, b, mapState),
-			hasPendingTalk, s.botHasUsableAction(b, mapState))
+		row.Flags = s.BotInteractionFlags(s.BotHasActionableQuest(player, b, mapState),
+			hasPendingTalk, s.BotHasUsableAction(b, mapState))
 		// Loot eligibility is personal: the token's collection policy decides who
 		// may collect it, and the client colours the particles by this bit.
-		if mapState.Ag(b).Behavior == BehaviorDrop && lootAdmits(brain, player.ID) {
-			row.Flags |= InteractionFlagLootEligible
+		if mapState.Ag(b).Behavior == content.BehaviorDrop && content.LootAdmits(brain, player.ID) {
+			row.Flags |= content.InteractionFlagLootEligible
 		}
 		if row.Flags != 0 || len(row.QuestCodes) > 0 {
 			interaction = append(interaction, row)
@@ -363,8 +364,8 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 // buildSnapshotSelf fills the viewing player's own block.
 func (s *GameServer) buildSnapshotSelf(player *world.Session, mapState *world.MapState) SnapshotSelf {
 	stats := s.CalculateStats(player.ID, mapState)
-	breakdown := s.statBreakdown(player.ID, mapState, make(map[world.EntityID]bool))
-	progression := s.entityProgression(player.ID, mapState)
+	breakdown := s.StatBreakdown(player.ID, mapState, make(map[world.EntityID]bool))
+	progression := s.EntityProgression(player.ID, mapState)
 
 	self := SnapshotSelf{
 		SnapshotEntity: baseEntity(mapState, player.ID),
@@ -373,8 +374,8 @@ func (s *GameServer) buildSnapshotSelf(player *world.Session, mapState *world.Ma
 		AoiMaxX:        player.AOI.MaxX,
 		AoiMaxY:        player.AOI.MaxY,
 		XP:             progression.XP,
-		LevelXP:        s.progressionConfig().Threshold(progression.Level),
-		NextLevelXP:    s.progressionConfig().Threshold(progression.Level + 1),
+		LevelXP:        s.ProgressionConfig().Threshold(progression.Level),
+		NextLevelXP:    s.ProgressionConfig().Threshold(progression.Level + 1),
 		BaseStats:      wholeStats(breakdown.Base),
 		LayerStats:     wholeStats(breakdown.Layers),
 		TemporaryStats: wholeStats(breakdown.Temporary),
@@ -383,9 +384,9 @@ func (s *GameServer) buildSnapshotSelf(player *world.Session, mapState *world.Ma
 		Path:    player.Path,
 		// player.Coins is the canonical flat balance — read it directly.
 		CoinBalance:      player.Coins,
-		Vaults:           s.playerVaults(player),
-		Craft:            s.snapshotCraft(player),
-		Inventory:        s.visibleInventory(mapState.Ap(player.ID).Layers),
+		Vaults:           s.PlayerVaults(player),
+		Craft:            s.SnapshotCraft(player),
+		Inventory:        s.VisibleInventory(mapState.Ap(player.ID).Layers),
 		Frozen:           player.Frozen,
 		MoveSpeed:        s.CalculatePlayerMovementSpeed(stats),
 		ActionCooldownMs: int(s.CalculateActionCooldown(stats) / time.Millisecond),
@@ -395,6 +396,6 @@ func (s *GameServer) buildSnapshotSelf(player *world.Session, mapState *world.Ma
 	self.setVitals(mapState.Vt(player.ID))
 	s.snapshotStats(&self.SnapshotEntity, mapState)
 	s.snapshotPortalHold(&self.SnapshotEntity, player)
-	self.StatusIcon = PlayerStatusIcon(player, mapState.Vt(player.ID))
+	self.StatusIcon = content.PlayerStatusIcon(player, mapState.Vt(player.ID))
 	return self
 }

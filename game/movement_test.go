@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 )
 
@@ -14,14 +15,14 @@ func movementFixture(t *testing.T) (*Sim, *world.MapState, *world.Session) {
 
 	mapState := world.NewMapState("test", 20, 20)
 
-	s := &Sim{Content: &Content{
+	s := &Sim{Content: &content.Content{
 		World: &world.World{
 			Maps:     map[string]*world.MapState{"test": mapState},
 			Sessions: map[world.EntityID]*world.Session{},
 		},
-		entityBaseSpeed:             5,
-		entityBaseActionCooldown:    500 * time.Millisecond,
-		entityBaseMinActionCooldown: 100 * time.Millisecond,
+		EntityBaseSpeed:             5,
+		EntityBaseActionCooldown:    500 * time.Millisecond,
+		EntityBaseMinActionCooldown: 100 * time.Millisecond,
 	}}
 
 	player := &world.Session{}
@@ -162,12 +163,12 @@ func TestFrozenPlayerNeverPlansMovement(t *testing.T) {
 // The snapshot carries the player's effective action cooldown. It no longer
 // gates movement, but keyboard steering paces its refresh by it.
 func TestSnapshotActionCooldownAppliesUtility(t *testing.T) {
-	s := &Content{
-		entityBaseActionCooldown:    500 * time.Millisecond,
-		entityBaseMinActionCooldown: 100 * time.Millisecond,
+	s := &content.Content{
+		EntityBaseActionCooldown:    500 * time.Millisecond,
+		EntityBaseMinActionCooldown: 100 * time.Millisecond,
 	}
 
-	gate := s.CalculateActionCooldown(ComputedStats{Utility: 20})
+	gate := s.CalculateActionCooldown(content.ComputedStats{Utility: 20})
 	if wire := int(gate / time.Millisecond); wire != 400 {
 		t.Fatalf("actionCooldownMs = %d, want 400 (500 ms less 20%% Utility)", wire)
 	}

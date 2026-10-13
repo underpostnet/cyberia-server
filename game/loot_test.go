@@ -1,6 +1,7 @@
 package game
 
 import (
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	"testing"
 	"time"
@@ -10,7 +11,7 @@ import (
 
 // consumeLoot is a loot default that makes its collector consume the item.
 func consumeLoot(itemIDs ...string) *pb.EntityTypeDefault {
-	return &pb.EntityTypeDefault{EntityType: "loot", LiveItemIds: itemIDs, Behavior: BehaviorConsumeOnPickupHeal}
+	return &pb.EntityTypeDefault{EntityType: "loot", LiveItemIds: itemIDs, Behavior: content.BehaviorConsumeOnPickupHeal}
 }
 
 // lootServer is a server with the given defaults and an object-layer cache that
@@ -21,10 +22,10 @@ func lootServer(t *testing.T, defaults ...*pb.EntityTypeDefault) *GameServer {
 	if err := s.ApplyInstanceConfig(&pb.InstanceConfig{EntityBaseMaxLife: 100, EntityDefaults: defaults}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ReplaceObjectLayerCache(map[string]*ObjectLayer{
-		"gel":   {Data: ObjectLayerData{Item: Item{ID: "gel", Type: "consumable"}, Stats: Stats{Resistance: 10}}},
-		"salve": {Data: ObjectLayerData{Item: Item{ID: "salve", Type: "consumable"}, Stats: Stats{Resistance: 10}}},
-		"crate": {Data: ObjectLayerData{Item: Item{ID: "crate", Type: "resource"}}},
+	if err := s.ReplaceObjectLayerCache(map[string]*content.ObjectLayer{
+		"gel":   {Data: content.ObjectLayerData{Item: content.Item{ID: "gel", Type: "consumable"}, Stats: content.Stats{Resistance: 10}}},
+		"salve": {Data: content.ObjectLayerData{Item: content.Item{ID: "salve", Type: "consumable"}, Stats: content.Stats{Resistance: 10}}},
+		"crate": {Data: content.ObjectLayerData{Item: content.Item{ID: "crate", Type: "resource"}}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -76,6 +77,17 @@ func woundedPlayer(s *world.World, ms *world.MapState, id world.EntityID, at wor
 	ms.AddMotion(id, world.Motion{})
 	ms.AddMortal(id, &world.Mortal{})
 	return player
+}
+
+// itemQty is the quantity of itemID the player holds.
+func itemQty(s *world.World, player *world.Session, itemID string) int {
+	n := 0
+	for _, l := range s.Ap(player.ID, player.MapCode).Layers {
+		if l.ItemID == itemID {
+			n += l.Quantity
+		}
+	}
+	return n
 }
 
 // gelMap builds map "m" with one placed gel token and returns the map and the token.
@@ -207,7 +219,7 @@ func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 	ms.Vt(ghost.ID).RespawnAt = time.Now().Add(time.Minute)
 	frozen := woundedPlayer(s.World, ms, 106, ms.Tf(token).Pos, 10)
 	frozen.Frozen = true
-	for i, behavior := range []string{BehaviorSkill, BehaviorCoin, BehaviorDrop, BehaviorProvider} {
+	for i, behavior := range []string{content.BehaviorSkill, content.BehaviorCoin, content.BehaviorDrop, content.BehaviorProvider} {
 		bot := world.EntityID(200 + i)
 		addBot(ms, bot, *ms.Tf(token), &world.Brain{}, world.Motion{}, behavior)
 		ms.Vt(bot).Life = 10
@@ -235,21 +247,21 @@ func TestACollectorAtFullLifeKeepsAPickupAndTheTokenComesBack(t *testing.T) {
 	at := *ms.Tf(token)
 	player := woundedPlayer(s.World, ms, 104, at.Pos, 100)
 	const bot world.EntityID = 109
-	addBot(ms, bot, world.Transform{Pos: world.Vec2{X: 15, Y: 15}, Size: at.Size}, &world.Brain{}, world.Motion{}, BehaviorHostile)
+	addBot(ms, bot, world.Transform{Pos: world.Vec2{X: 15, Y: 15}, Size: at.Size}, &world.Brain{}, world.Motion{}, content.BehaviorHostile)
 
 	s.phaseLoot(0, ms)
-	if ok := ms.IsKind(token, world.EntityBot); ok || ms.Vt(player.ID).Life != 100 || s.playerItemQuantity(player, "gel") != 1 {
-		t.Fatalf("a full-life player must keep the gel: life=%v gel=%d", ms.Vt(player.ID).Life, s.playerItemQuantity(player, "gel"))
+	if ok := ms.IsKind(token, world.EntityBot); ok || ms.Vt(player.ID).Life != 100 || itemQty(s.World, player, "gel") != 1 {
+		t.Fatalf("a full-life player must keep the gel: life=%v gel=%d", ms.Vt(player.ID).Life, itemQty(s.World, player, "gel"))
 	}
-	if len(s.lootRespawns["m"]) != 1 {
-		t.Fatalf("respawns = %+v, want the kept token back like a consumed one", s.lootRespawns["m"])
+	if len(s.LootRespawns("m")) != 1 {
+		t.Fatalf("respawns = %+v, want the kept token back like a consumed one", s.LootRespawns("m"))
 	}
 
-	s.lootRespawns["m"][0].at = time.Now()
+	s.LootRespawns("m")[0].At = time.Now()
 	ms.Tf(player.ID).Pos = world.Vec2{X: -10, Y: -10}
 	ms.Tf(bot).Pos = at.Pos
 	s.phaseLoot(0, ms)
-	if layerQuantity(ms.Ap(bot).Layers, "gel") != 1 || ms.Vt(bot).Life != 100 {
+	if content.LayerQuantity(ms.Ap(bot).Layers, "gel") != 1 || ms.Vt(bot).Life != 100 {
 		t.Fatalf("a full-life bot must keep the gel: life=%v layers=%+v", ms.Vt(bot).Life, ms.Ap(bot).Layers)
 	}
 }
@@ -269,20 +281,20 @@ func TestAPickupHealsByItsResistanceAndComesBackAfterItsRespawnTime(t *testing.T
 	if ms.Vt(player.ID).Life != 60 || len(worldTokens(ms)) != 0 {
 		t.Fatalf("life=%v tokens=%d, want a heal of 10 that consumes the token", ms.Vt(player.ID).Life, len(worldTokens(ms)))
 	}
-	if len(s.lootRespawns["m"]) != 1 || s.lootRespawns["m"][0].at.Sub(now) < 5*time.Second {
-		t.Fatalf("respawns = %+v, want the gel back after 5 s", s.lootRespawns["m"])
+	if len(s.LootRespawns("m")) != 1 || s.LootRespawns("m")[0].At.Sub(now) < 5*time.Second {
+		t.Fatalf("respawns = %+v, want the gel back after 5 s", s.LootRespawns("m"))
 	}
 
 	s.phaseLoot(0, ms)
 	if len(worldTokens(ms)) != 0 {
 		t.Fatal("the token came back before its respawn time")
 	}
-	s.lootRespawns["m"][0].at = now
+	s.LootRespawns("m")[0].At = now
 	ms.Tf(player.ID).Pos = world.Vec2{X: -10, Y: -10}
 	s.phaseLoot(0, ms)
 	back := onlyToken(t, ms)
 	if ms.Tf(back).Pos != cell || ms.Br(back).LootOutcome != world.LootOutcomeConsume || ms.Mt(back).RespawnDuration != 5*time.Second ||
-		len(s.lootRespawns["m"]) != 0 {
+		len(s.LootRespawns("m")) != 0 {
 		t.Fatalf("the token must come back on its cell with its respawn time: %+v", back)
 	}
 }
@@ -299,9 +311,9 @@ func TestAPickupWithoutARespawnTimeTakesTheDefault(t *testing.T) {
 	s.phaseLoot(0, ms)
 
 	// The granted salve never comes back; the consumed gel does, after the default respawn time.
-	if len(s.lootRespawns["m"]) != 1 || s.lootRespawns["m"][0].itemID != "gel" ||
-		s.lootRespawns["m"][0].at.Sub(now) < respawnDurationDefaultMs*time.Millisecond {
-		t.Fatalf("respawns = %+v, want only the gel after the default respawn time", s.lootRespawns["m"])
+	if len(s.LootRespawns("m")) != 1 || s.LootRespawns("m")[0].ItemID != "gel" ||
+		s.LootRespawns("m")[0].At.Sub(now) < content.RespawnWait(&world.Mortal{}) {
+		t.Fatalf("respawns = %+v, want only the gel after the default respawn time", s.LootRespawns("m"))
 	}
 }
 
@@ -309,7 +321,7 @@ func TestABotConsumesAPickup(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
 	const bot world.EntityID = 300
-	addBot(ms, bot, *ms.Tf(token), &world.Brain{}, world.Motion{}, BehaviorHostile)
+	addBot(ms, bot, *ms.Tf(token), &world.Brain{}, world.Motion{}, content.BehaviorHostile)
 	ms.Vt(bot).Life = 30
 
 	s.phaseLoot(0, ms)
@@ -327,9 +339,9 @@ func TestAGrantPickupEntersTheInventoryUnused(t *testing.T) {
 
 	s.phaseLoot(0, ms)
 
-	if s.playerItemQuantity(player, "salve") != 1 || ms.Vt(player.ID).Life != 100 {
+	if itemQty(s.World, player, "salve") != 1 || ms.Vt(player.ID).Life != 100 {
 		t.Fatalf("a grant pickup must reach the inventory unused: qty=%d life=%v",
-			s.playerItemQuantity(player, "salve"), ms.Vt(player.ID).Life)
+			itemQty(s.World, player, "salve"), ms.Vt(player.ID).Life)
 	}
 }
 
@@ -338,11 +350,11 @@ func TestDeathDropsKeepTheContributorRace(t *testing.T) {
 	for range 1000 { // drops take ids after the players
 		s.NewEntityID()
 	}
-	s.coinItemID = "coin"
+	s.CoinItemID = "coin"
 	outsider := woundedPlayer(s.World, ms, 107, world.Vec2{}, 50)
 	ledger := map[world.EntityID]float64{contributor.ID: 5}
-	s.spawnDrops(ms, world.Vec2{X: 10, Y: 10},
-		EntityTypeDefaultConfig{DropItemIDs: []string{"shard"}}, 7, ledger)
+	s.SpawnDrops(ms, world.Vec2{X: 10, Y: 10},
+		content.EntityTypeDefaultConfig{DropItemIDs: []string{"shard"}}, 7, ledger)
 
 	tokens := drops(ms)
 	if len(tokens) != 2 {
@@ -379,20 +391,20 @@ func TestDeathDropsKeepTheContributorRace(t *testing.T) {
 			t.Fatalf("the contributor could not take %s", ms.Br(token).DropItemID)
 		}
 	}
-	if contributor.Coins != 7 || s.playerItemQuantity(contributor, "shard") != 1 {
-		t.Fatalf("coins = %d shards = %d, want 7 and 1", contributor.Coins, s.playerItemQuantity(contributor, "shard"))
+	if contributor.Coins != 7 || itemQty(s.World, contributor, "shard") != 1 {
+		t.Fatalf("coins = %d shards = %d, want 7 and 1", contributor.Coins, itemQty(s.World, contributor, "shard"))
 	}
 }
 
 func TestOnlyAWorldTokenAdmitsEveryViewer(t *testing.T) {
 	worldToken := &world.Brain{LootCollection: world.LootCollectFirstContact}
 	death := &world.Brain{LootCollection: world.LootCollectContributors, LootContributors: map[world.EntityID]struct{}{1: {}}}
-	if !lootAdmits(worldToken, 99) || !lootAdmits(death, 1) || lootAdmits(death, 2) {
+	if !content.LootAdmits(worldToken, 99) || !content.LootAdmits(death, 1) || content.LootAdmits(death, 2) {
 		t.Fatal("collection policy admits the wrong viewers")
 	}
 	consuming := &world.Brain{LootOutcome: world.LootOutcomeConsume}
-	if lootConsumes(death, &world.Vitals{Life: 10, MaxLife: 100}) || !lootConsumes(consuming, &world.Vitals{Life: 99, MaxLife: 100}) ||
-		lootConsumes(consuming, &world.Vitals{Life: 100, MaxLife: 100}) {
+	if content.LootConsumes(death, &world.Vitals{Life: 10, MaxLife: 100}) || !content.LootConsumes(consuming, &world.Vitals{Life: 99, MaxLife: 100}) ||
+		content.LootConsumes(consuming, &world.Vitals{Life: 100, MaxLife: 100}) {
 		t.Fatal("only a consuming token heals, and only a collector that misses life")
 	}
 }

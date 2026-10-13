@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 )
 
@@ -16,12 +17,12 @@ func (s *Sim) executeProjectileSkill(ctx SkillContext) {
 
 	projectileItemIDs := []string{ctx.SummonedEntityItemID}
 	if ctx.SummonedEntityItemID == "" {
-		if d, ok := s.entityDefaults["skill"]; ok && len(d.LiveItemIDs) > 0 {
+		if d, ok := s.EntityDefaults["skill"]; ok && len(d.LiveItemIDs) > 0 {
 			projectileItemIDs = d.LiveItemIDs
 		}
 	}
 
-	if rand.Float64() >= s.summonChance(s.projectileSpawnChance, casterStats) {
+	if rand.Float64() >= s.SummonChance(s.projectileSpawnChance, casterStats) {
 		return
 	}
 
@@ -53,15 +54,15 @@ func (s *Sim) executeProjectileSkill(ctx SkillContext) {
 		defer s.Mu.Unlock()
 	}
 
-	projectileLifetime := summonLifetime(s.projectileLifetimeMs, casterStats)
+	projectileLifetime := content.SummonLifetime(s.projectileLifetimeMs, casterStats)
 	projectileDims := world.Vec2{X: s.projectileWidth, Y: s.projectileHeight}
-	projectileBaseLife := s.entityBaseMaxLife
+	projectileBaseLife := s.EntityBaseMaxLife
 
 	// Pre-compensate for the first tick's movement so the projectile appears
 	// at the caster's position on the first rendered frame.
 	// dt-based: one-tick pre-displacement so the first replicated frame shows
 	// the projectile at the caster's position rather than one tick downstream.
-	projectileStep := s.entityBaseSpeed * s.projectileSpeedMultiplier * tickDuration.Seconds()
+	projectileStep := s.EntityBaseSpeed * s.projectileSpeedMultiplier * tickDuration.Seconds()
 	dirX, dirY := getDirectionVector(projectileDirection)
 	spawnX := casterPos.X - (dirX * projectileStep)
 	spawnY := casterPos.Y - (dirY * projectileStep)
@@ -81,7 +82,7 @@ func (s *Sim) executeProjectileSkill(ctx SkillContext) {
 	ctx.MapState.Spawn(projectileBot, world.EntityData{Kind: world.EntityBot}, world.Transform{Pos: world.Vec2{X: spawnX, Y: spawnY}, Size: projectileDims}, world.Appearance{Layers: projectileOLs})
 	ctx.MapState.AddVitals(projectileBot, world.Vitals{MaxLife: projectileBaseLife, Life: projectileBaseLife})
 	ctx.MapState.AddMotion(projectileBot, world.Motion{Direction: projectileDirection})
-	ctx.MapState.AddAgent(projectileBot, world.Agent{Behavior: BehaviorSkill, CasterID: casterID})
+	ctx.MapState.AddAgent(projectileBot, world.Agent{Behavior: content.BehaviorSkill, CasterID: casterID})
 	ctx.MapState.AddMortal(projectileBot, &world.Mortal{})
 	s.ApplyResistanceStat(projectileBot, ctx.MapState)
 	ctx.MapState.Vt(projectileBot).Life = ctx.MapState.Vt(projectileBot).MaxLife

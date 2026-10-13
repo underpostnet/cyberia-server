@@ -11,8 +11,8 @@ import (
 	"log"
 	"math"
 	"math/rand"
-	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	"cyberia-server/logx"
 
@@ -62,8 +62,8 @@ func (s *Sim) BuildWorldFromInstance(
 
 	// Bind the CyberiaAction / CyberiaQuest content the engine delivered with
 	// the world to the freshly built entities. No separate fetch.
-	s.bindQuests(instance.GetMapCodes(), quests)
-	s.bindActions(instance.GetMapCodes(), actions)
+	s.BindQuests(instance.GetMapCodes(), quests)
+	s.BindActions(instance.GetMapCodes(), actions)
 
 	logx.Infof("[InstanceLoader] World built: %d maps loaded.", len(s.Maps))
 
@@ -77,8 +77,8 @@ func (s *Sim) BuildWorldFromInstance(
 	printInstanceGraph(instance, s.Maps)
 
 	// List the entities bound to a CyberiaAction and the quests each cell offers.
-	s.logActionProviders()
-	s.logQuestProviders()
+	s.LogActionProviders()
+	s.LogQuestProviders()
 }
 
 // SetInstanceCode records the INSTANCE_CODE the world was loaded for. When it is
@@ -117,13 +117,13 @@ func (s *Sim) RebuildWorld(
 			savedPlayers[code] = append(savedPlayers[code], savedPlayer{id, ms.Take(id)})
 		}
 	}
-	s.forgetNonPlayers()
+	s.ForgetNonPlayers()
 
 	// Rebuild via the same path as initial load.
 	s.buildMapsFromInstance(instance, mapMsgs)
 	s.playerSpawn = playerSpawnFromInstance(instance)
-	s.bindQuests(instance.GetMapCodes(), quests)
-	s.bindActions(instance.GetMapCodes(), actions)
+	s.BindQuests(instance.GetMapCodes(), quests)
+	s.BindActions(instance.GetMapCodes(), actions)
 
 	// Restore players into the (possibly new) map states.
 	for code, players := range savedPlayers {
@@ -159,7 +159,7 @@ func (s *Sim) buildMapsFromInstance(
 	}
 
 	s.Maps = make(map[string]*world.MapState)
-	s.lootRespawns = nil
+	s.ForgetLootRespawns()
 	allPortals := make(map[string][]portalEntry)
 
 	for _, mapCode := range instance.GetMapCodes() {
@@ -197,7 +197,7 @@ func (s *Sim) buildMapsFromInstance(
 			case "foreground":
 				s.buildForeground(ms, ent)
 			case "loot":
-				s.buildLoot(ms, ent)
+				s.BuildLoot(ms, ent)
 			case "portal":
 				allPortals[mapCode] = append(allPortals[mapCode], portalEntry{
 					portal:  s.buildPortal(ms, ent),
@@ -277,7 +277,7 @@ func (s *Sim) buildFloor(ms *world.MapState, ent *pb.EntityMessage) {
 		// Apply instance-level default OLs only when the entity has no
 		// explicit DB colour.  A non-zero ColorA means the map creator
 		// intentionally placed a solid-colour floor without sprites.
-		if d, ok := s.entityDefaults["floor"]; ok && len(d.LiveItemIDs) > 0 {
+		if d, ok := s.EntityDefaults["floor"]; ok && len(d.LiveItemIDs) > 0 {
 			for _, itemID := range d.LiveItemIDs {
 				layers = append(layers, world.ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1})
 			}
@@ -301,7 +301,7 @@ func (s *Sim) buildBot(ms *world.MapState, ent *pb.EntityMessage) {
 	// Determine max life
 	maxLife := s.placedMaxLife(ent)
 
-	lifeRegen := s.playerBaseLifeRegenMin + rand.Float64()*(s.playerBaseLifeRegenMax-s.playerBaseLifeRegenMin)
+	lifeRegen := s.PlayerBaseLifeRegenMin + rand.Float64()*(s.PlayerBaseLifeRegenMax-s.PlayerBaseLifeRegenMin)
 	if ent.GetLifeRegen() > 0 {
 		lifeRegen = ent.GetLifeRegen()
 	}
@@ -318,7 +318,7 @@ func (s *Sim) buildBot(ms *world.MapState, ent *pb.EntityMessage) {
 
 	// A non-zero ColorA means the map creator intentionally placed a solid-colour bot without
 	// sprites, so it carries no default layers.
-	objectLayers := s.spawnObjectLayers("bot", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
+	objectLayers := s.SpawnObjectLayers("bot", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
 	id := s.NewEntityID()
 	bot := &world.Brain{
@@ -330,20 +330,20 @@ func (s *Sim) buildBot(ms *world.MapState, ent *pb.EntityMessage) {
 	}
 	ms.AddBrain(id, bot)
 	ms.Spawn(id, world.EntityData{Kind: world.EntityBot}, world.Transform{Pos: startPos, Size: dims}, world.Appearance{Layers: objectLayers})
-	ms.AddVitals(id, world.Vitals{MaxLife: maxLife, Life: maxLife * s.initialLifeFraction})
+	ms.AddVitals(id, world.Vitals{MaxLife: maxLife, Life: maxLife * s.InitialLifeFraction})
 	ms.AddMotion(id, world.Motion{Direction: world.NONE, Mode: world.IDLE})
-	ms.AddAgent(id, world.Agent{Behavior: s.resolveEntityBehavior("bot", objectLayers)})
-	ms.AddMortal(id, &world.Mortal{BaseMaxLife: maxLife, LifeRegen: lifeRegen, RespawnDuration: placedRespawnDuration(ent)})
-	s.setProgression(id, NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig()))
+	ms.AddAgent(id, world.Agent{Behavior: s.ResolveEntityBehavior("bot", objectLayers)})
+	ms.AddMortal(id, &world.Mortal{BaseMaxLife: maxLife, LifeRegen: lifeRegen, RespawnDuration: content.PlacedRespawnDuration(ent)})
+	s.SetProgression(id, content.NewEntityProgression(int(ent.GetLevel()), true, s.ProgressionConfig()))
 	s.ApplyResistanceStat(id, ms)
-	ms.Vt(id).Life = ms.Vt(id).MaxLife * s.initialLifeFraction
+	ms.Vt(id).Life = ms.Vt(id).MaxLife * s.InitialLifeFraction
 
 	// Fountain: credit the bot's starting coin supply (same path as respawn).
 	s.FountainInitBot(id, ms)
 
 	// Initial wandering path — skipped for providers, which stay at their spawn
 	// (provider-static never moves; provider only takes sporadic short steps).
-	if !behaviorIsProvider(ms.Ag(id).Behavior) {
+	if !content.BehaviorIsProvider(ms.Ag(id).Behavior) {
 		target := s.randomPointWithinRadius(ms, bot.SpawnCenter, bot.SpawnRadius, dims)
 		if target.X >= 0 {
 			if pth, err := ms.Pathfinder().Astar(
@@ -371,13 +371,13 @@ func (s *Sim) buildResource(ms *world.MapState, ent *pb.EntityMessage) {
 
 	maxLife := s.placedMaxLife(ent)
 
-	objectLayers := s.spawnObjectLayers("resource", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
+	objectLayers := s.SpawnObjectLayers("resource", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
 	res := s.NewEntityID()
 	ms.Spawn(res, world.EntityData{Kind: world.EntityResource}, world.Transform{Pos: startPos, Size: dims}, world.Appearance{Layers: objectLayers})
 	ms.AddVitals(res, world.Vitals{MaxLife: maxLife, Life: maxLife})
-	ms.AddMortal(res, &world.Mortal{BaseMaxLife: maxLife, RespawnDuration: placedRespawnDuration(ent)})
-	s.setProgression(res, NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig()))
+	ms.AddMortal(res, &world.Mortal{BaseMaxLife: maxLife, RespawnDuration: content.PlacedRespawnDuration(ent)})
+	s.SetProgression(res, content.NewEntityProgression(int(ent.GetLevel()), true, s.ProgressionConfig()))
 
 	// Apply stats (resistance may increase MaxLife)
 	s.ApplyResistanceStat(res, ms)
@@ -390,12 +390,7 @@ func (s *Sim) placedMaxLife(ent *pb.EntityMessage) float64 {
 	if ent.GetMaxLife() > 0 {
 		return ent.GetMaxLife()
 	}
-	return s.entityBaseMaxLife
-}
-
-// placedRespawnDuration is the respawn time a map entity names; 0 takes the default.
-func placedRespawnDuration(ent *pb.EntityMessage) time.Duration {
-	return time.Duration(ent.GetRespawnDurationMs()) * time.Millisecond
+	return s.EntityBaseMaxLife
 }
 
 // buildObstacle places an obstacle and blocks its cells. The destructible
@@ -404,32 +399,32 @@ func placedRespawnDuration(ent *pb.EntityMessage) time.Duration {
 func (s *Sim) buildObstacle(ms *world.MapState, ent *pb.EntityMessage) {
 	dims := world.Vec2{X: float64(ent.GetDimX()), Y: float64(ent.GetDimY())}
 	pos := world.Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
-	objectLayers := s.spawnObjectLayers("obstacle", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
+	objectLayers := s.SpawnObjectLayers("obstacle", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 	id := s.NewEntityID()
 	ms.Pathfinder().Occupy(pos, dims, 1)
 	ms.Spawn(id, world.EntityData{Kind: world.EntityScenery, Flags: world.FlagBlocks},
 		world.Transform{Pos: pos, Size: dims}, world.Appearance{Layers: objectLayers})
 
-	activeIDs := activeObjectLayerItemIDs(objectLayers)
-	build, _ := s.resolveEntityDefaultBuild("obstacle", activeIDs)
-	if build.Behavior != BehaviorDestructible || !matchesLiveItems(build, activeIDs) {
+	activeIDs := content.ActiveObjectLayerItemIDs(objectLayers)
+	build, _ := s.ResolveEntityDefaultBuild("obstacle", activeIDs)
+	if build.Behavior != content.BehaviorDestructible || !content.MatchesLiveItems(build, activeIDs) {
 		return
 	}
 	maxLife := s.placedMaxLife(ent)
 	ms.AddVitals(id, world.Vitals{Life: maxLife, MaxLife: maxLife})
-	ms.AddMortal(id, &world.Mortal{BaseMaxLife: maxLife, RespawnDuration: placedRespawnDuration(ent)})
+	ms.AddMortal(id, &world.Mortal{BaseMaxLife: maxLife, RespawnDuration: content.PlacedRespawnDuration(ent)})
 }
 
 // entAppearance gives an entity of `kind` its layers. One that carries neither
 // object layers nor a colour falls back to the kind's default live items.
 func (s *Sim) entAppearance(ent *pb.EntityMessage, kind string) world.Appearance {
-	return world.Appearance{Layers: s.spawnObjectLayers(kind, ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)}
+	return world.Appearance{Layers: s.SpawnObjectLayers(kind, ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)}
 }
 
 func (s *Sim) buildForeground(ms *world.MapState, ent *pb.EntityMessage) {
 	ap := s.entAppearance(ent, "foreground")
 	data := world.EntityData{Kind: world.EntityScenery, DrawOrder: world.DrawForeground}
-	if s.boundBehavior("foreground", ap.Layers) == BehaviorOverheadOcclusion {
+	if s.BoundBehavior("foreground", ap.Layers) == content.BehaviorOverheadOcclusion {
 		data.Flags |= world.FlagOverheadOcclusion
 	}
 	ms.Spawn(s.NewEntityID(), data, entTransform(ent, entSize(ent)), ap)
@@ -450,7 +445,7 @@ func (s *Sim) buildPortal(ms *world.MapState, ent *pb.EntityMessage) world.Entit
 		dims.Y = 3
 	}
 
-	objectLayers := s.spawnObjectLayers("portal", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
+	objectLayers := s.SpawnObjectLayers("portal", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 
 	portal := s.NewEntityID()
 	ms.Spawn(portal, world.EntityData{Kind: world.EntityPortal}, entTransform(ent, dims), world.Appearance{Layers: objectLayers})

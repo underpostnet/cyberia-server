@@ -4,9 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"cyberia-server/game"
-	pb "cyberia-server/gen/proto"
 	"google.golang.org/protobuf/proto"
+
+	"cyberia-server/game"
+	"cyberia-server/game/content"
+	pb "cyberia-server/gen/proto"
 )
 
 type progressionDataSource struct {
@@ -20,8 +22,8 @@ func (source *progressionDataSource) FetchFullInstance(context.Context, string) 
 
 func TestReloadRejectsInvalidStatsBeforeMutationAndAllowsRetry(t *testing.T) {
 	server := game.NewGameServer()
-	if err := server.ReplaceObjectLayerCache(map[string]*game.ObjectLayer{
-		"sword": {Data: game.ObjectLayerData{Stats: game.Stats{Effect: -100}}},
+	if err := server.ReplaceObjectLayerCache(map[string]*content.ObjectLayer{
+		"sword": {Data: content.ObjectLayerData{Stats: content.Stats{Effect: -100}}},
 	}); err != nil {
 		t.Fatal(err)
 	}

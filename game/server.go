@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 	"cyberia-server/logx"
@@ -20,7 +21,7 @@ func NewGameServer() *GameServer {
 		Sessions: make(map[world.EntityID]*world.Session),
 	}
 	gs := &GameServer{
-		Sim:     &Sim{Content: NewContent(w)},
+		Sim:     &Sim{Content: content.NewContent(w)},
 		clients: make(map[world.EntityID]*Client),
 		// Buffer register/unregister so HandleConnections never blocks the
 		// HTTP handler goroutine waiting for listenForClients to win the
@@ -47,7 +48,7 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 		return fmt.Errorf("instance config is required")
 	}
 
-	rules := progressionRulesFromProto(cfg.GetProgressionRules())
+	rules := content.ProgressionRulesFromProto(cfg.GetProgressionRules())
 	if err := rules.Validate(); err != nil {
 		return err
 	}
@@ -67,7 +68,7 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 	s.Sim.applyConfig(cfg, rules)
 
 	logx.Infof("[GameServer] Instance config applied: tickRate=%dHz, tickDuration=%v, aoiRadius=%.1f, entityBaseSpeed=%.1f, entityBaseMaxLife=%.1f, %d skills, %d entityDefaultTypes, %d entityDefaultBuilds, floorItem=%q, ghostItem=%q, coinItem=%q",
-		DefaultTickRate, tickDuration, s.aoiRadius, s.entityBaseSpeed, s.entityBaseMaxLife, len(s.skillConfig), len(s.entityDefaults), len(s.entityDefaultBuilds), s.defaultFloorItemID, s.ghostItemID, s.coinItemID)
+		DefaultTickRate, tickDuration, s.aoiRadius, s.EntityBaseSpeed, s.EntityBaseMaxLife, len(s.SkillConfig), len(s.EntityDefaults), len(s.EntityDefaultBuilds), s.DefaultFloorItemID, s.GhostItemID, s.CoinItemID)
 	return nil
 }
 
@@ -77,15 +78,15 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 func (s *GameServer) SetDataServerURL(url, apiKey string) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
-	s.dataServerURL = url
-	s.dataServerAPIKey = apiKey
+	s.DataServerURL = url
+	s.DataServerAPIKey = apiKey
 	logx.Infof("Data Server URL set to: %s", url)
 }
 
 func (s *GameServer) Run() {
 	go s.listenForClients()
 	go s.gameLoop()
-	go s.persistLoop()
+	go s.PersistLoop()
 }
 
 func (s *GameServer) listenForClients() {
@@ -264,20 +265,20 @@ type SkillMapEntry struct {
 // its own CYBERIA_CLIENT_HINTS_CODE.
 type InitPayload struct {
 	// EngineID is the own player id for the client's engine REST calls.
-	EngineID       string                     `json:"engineId"`
-	GridW          int                        `json:"gridW"`
-	GridH          int                        `json:"gridH"`
-	AoiRadius      float64                    `json:"aoiRadius"`
-	ObjectLayers   []world.ObjectLayerState   `json:"objectLayers"`
-	SkillMap       map[string][]SkillMapEntry `json:"skillMap"`
-	EntityDefaults []EntityTypeDefaultConfig  `json:"entityDefaults"`
+	EngineID       string                            `json:"engineId"`
+	GridW          int                               `json:"gridW"`
+	GridH          int                               `json:"gridH"`
+	AoiRadius      float64                           `json:"aoiRadius"`
+	ObjectLayers   []world.ObjectLayerState          `json:"objectLayers"`
+	SkillMap       map[string][]SkillMapEntry        `json:"skillMap"`
+	EntityDefaults []content.EntityTypeDefaultConfig `json:"entityDefaults"`
 	// Resolved dead-state (Fragmentation) ids — the client labels these in
 	// the inventory and disables their equip UI.
 	DeadItemIds []string `json:"deadItemIds"`
 	// Quests is the player's active/completed quest snapshot on connect.
 	// Empty for a fresh guest. The C client seeds its local quest_store from
 	// this and keeps it live via dialog_ack events (see Quest Journal).
-	Quests []QuestSnapshotEntry `json:"quests"`
+	Quests []content.QuestSnapshotEntry `json:"quests"`
 }
 
 // phaseReplication runs last in each tick. Iterates connected players for

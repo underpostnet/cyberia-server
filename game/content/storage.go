@@ -1,4 +1,4 @@
-// Package game — storage.go
+// Package content — storage.go
 //
 // Authoritative personal storage. engine-cyberia owns the vault's capacity: a
 // CyberiaAction carrying `storageSlots` makes the entity on its source cell a
@@ -18,7 +18,7 @@
 // carries the inventory and the vaults.
 //
 // Caller MUST hold s.mu for every handler here (they run inside phaseInput).
-package game
+package content
 
 import (
 	"sort"
@@ -33,39 +33,39 @@ type StorageSlot struct {
 	Qty    int    `json:"qty"`
 }
 
-// storageKey scopes a vault to one player at one action cell — storage is
+// StorageKey scopes a vault to one player at one action cell — storage is
 // personal, so two players at the same terminal never see each other's stock.
-type storageKey struct {
+type StorageKey struct {
 	PlayerID   world.EntityID
 	ActionCode string
 }
 
-// storageMaxSlots bounds an authored capacity, matching ITEM_SLOT_GRID_MAX_SLOTS
+// StorageMaxSlots bounds an authored capacity, matching ITEM_SLOT_GRID_MAX_SLOTS
 // on the client so a vault can never exceed the grid that renders it.
-const storageMaxSlots = 64
+const StorageMaxSlots = 64
 
 // storageCapacity clamps an authored capacity into the renderable range.
 func storageCapacity(slots int) int {
-	return min(max(slots, 0), storageMaxSlots)
+	return min(max(slots, 0), StorageMaxSlots)
 }
 
 // storageVault resolves the vault a player has at a bot's bound action, or nil
 // when that entity is not a storage terminal.
 //
 // Caller MUST hold s.mu.
-func (s *Content) storageVault(player *world.Session, id world.EntityID, ms *world.MapState) (storageKey, int, bool) {
+func (s *Content) storageVault(player *world.Session, id world.EntityID, ms *world.MapState) (StorageKey, int, bool) {
 	if ms == nil || ms.Vt(id).Ghost() {
-		return storageKey{}, 0, false
+		return StorageKey{}, 0, false
 	}
 	action := s.actionCache[id]
 	if action == nil {
-		return storageKey{}, 0, false
+		return StorageKey{}, 0, false
 	}
 	capacity := storageCapacity(action.StorageSlots)
 	if capacity < 1 {
-		return storageKey{}, 0, false
+		return StorageKey{}, 0, false
 	}
-	return storageKey{PlayerID: player.ID, ActionCode: action.Code}, capacity, true
+	return StorageKey{PlayerID: player.ID, ActionCode: action.Code}, capacity, true
 }
 
 // botHasStorage reports whether a bot is a live storage terminal. Feeds
@@ -94,32 +94,32 @@ func storageStackOf(slots []StorageSlot, itemID string) int {
 // the vault's key, capacity and liveness. Every handler starts here.
 //
 // Caller MUST hold s.mu.
-func (s *Content) resolveStorage(player *world.Session, entityID world.EntityID) (storageKey, int, bool) {
+func (s *Content) resolveStorage(player *world.Session, entityID world.EntityID) (StorageKey, int, bool) {
 	if s.Vt(player.ID, player.MapCode).Ghost() {
-		return storageKey{}, 0, false
+		return StorageKey{}, 0, false
 	}
 	id := entityID
 	ms := s.findBot(id)
 	if ms == nil || !s.botInPlayerRange(player, id, ms) {
-		return storageKey{}, 0, false
+		return StorageKey{}, 0, false
 	}
 	key, capacity, ok := s.storageVault(player, id, ms)
 	if !ok {
-		return storageKey{}, 0, false
+		return StorageKey{}, 0, false
 	}
 	return key, capacity, true
 }
 
-// handleItemOps replays one session's vault ops, front to back, against the
+// HandleItemOps replays one session's vault ops, front to back, against the
 // server's own items. It sends no reply.
 //
 // Caller MUST hold s.mu.
-func (s *Content) handleItemOps(player *world.Session, cmd *world.InputCommand) {
+func (s *Content) HandleItemOps(player *world.Session, cmd *world.InputCommand) {
 	key, capacity, ok := s.resolveStorage(player, cmd.EntityID)
 	if !ok {
 		return
 	}
-	slots := s.storage[key]
+	slots := s.Storage[key]
 	for _, op := range cmd.Ops {
 		if op.ToVault {
 			slots = s.storageDeposit(player, slots, capacity, op.ItemID, op.Qty)
@@ -127,7 +127,7 @@ func (s *Content) handleItemOps(player *world.Session, cmd *world.InputCommand) 
 			slots = s.storageWithdraw(player, slots, op.ItemID, op.Qty)
 		}
 	}
-	s.storage[key] = slots
+	s.Storage[key] = slots
 }
 
 // playerItemActive reports whether the player currently has this item equipped.
@@ -147,7 +147,7 @@ func (s *Content) playerItemActive(player *world.Session, itemID string) bool {
 // keeps a skin on the entity, so the last active one stays put while a second skin — or a weapon,
 // or a breastplate — is free to go. Anything the rules do not govern was never held back.
 func (s *Content) bankableWhileWorn(player *world.Session, itemID string) bool {
-	if !s.equipmentRules.RequireSkin || s.itemType(itemID) != "skin" {
+	if !s.EquipmentRules.RequireSkin || s.ItemType(itemID) != "skin" {
 		return true
 	}
 	for i := range s.Ap(player.ID, player.MapCode).Layers {
@@ -155,7 +155,7 @@ func (s *Content) bankableWhileWorn(player *world.Session, itemID string) bool {
 		if layer.ItemID == itemID || !layer.Active {
 			continue
 		}
-		if s.itemType(layer.ItemID) == "skin" {
+		if s.ItemType(layer.ItemID) == "skin" {
 			return true
 		}
 	}
@@ -223,10 +223,10 @@ func (s *Content) storageWithdraw(player *world.Session, slots []StorageSlot,
 		return slots
 	}
 
-	s.addPlayerItem(player, slots[at].ItemID, qty)
+	s.AddPlayerItem(player, slots[at].ItemID, qty)
 	// A withdrawal is an inventory gain like any other — reconcile collect
 	// objectives so a quest step satisfied by it advances immediately.
-	s.advancePlayerQuestsOnGain(player)
+	s.AdvancePlayerQuestsOnGain(player)
 
 	slots[at].Qty -= qty
 	if slots[at].Qty > 0 {
@@ -243,14 +243,14 @@ type SnapshotVault struct {
 	Items      []StorageSlot `json:"items"`
 }
 
-// playerVaults lists every vault of the player, in action code order.
+// PlayerVaults lists every vault of the player, in action code order.
 //
 // Caller MUST hold s.mu.
-func (s *Content) playerVaults(player *world.Session) []SnapshotVault {
+func (s *Content) PlayerVaults(player *world.Session) []SnapshotVault {
 	// ponytail: a walk over every vault of every player, per player per tick;
 	// key the store by player if the vault count grows.
 	vaults := []SnapshotVault{}
-	for key, slots := range s.storage {
+	for key, slots := range s.Storage {
 		if key.PlayerID == player.ID {
 			vaults = append(vaults, SnapshotVault{ActionCode: key.ActionCode, Items: slots})
 		}

@@ -3,13 +3,14 @@ package game
 import (
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 )
 
 // Sim is the simulation step and its config.
 type Sim struct {
-	*Content
+	*content.Content
 	instanceCode   string            // INSTANCE_CODE — selects which instance to load
 	playerSpawn    PlayerSpawnConfig // authoritative initial spawn for new players
 	portalHoldTime time.Duration
@@ -37,8 +38,8 @@ type Sim struct {
 
 // applyConfig applies the simulation part of the instance config, then the
 // content part. Caller holds s.mu.
-func (s *Sim) applyConfig(cfg *pb.InstanceConfig, rules ProgressionRules) {
-	s.Content.applyConfig(cfg, rules)
+func (s *Sim) applyConfig(cfg *pb.InstanceConfig, rules content.ProgressionRules) {
+	s.Content.ApplyConfig(cfg, rules)
 	s.portalHoldTime = time.Duration(cfg.GetPortalHoldTimeMs()) * time.Millisecond
 	s.portalSpawnRadius = cfg.GetPortalSpawnRadius()
 

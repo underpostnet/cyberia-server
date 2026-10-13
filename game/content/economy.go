@@ -1,4 +1,4 @@
-package game
+package content
 
 // economy.go — Fountain & Sink Economy Module
 //
@@ -70,14 +70,14 @@ func (s *Content) broadcastAt(mapState *world.MapState, msgType string, payload 
 	}
 }
 
-// broadcastFCT delivers the same combat-text event to every viewer in reach.
-func (s *Content) broadcastFCT(mapState *world.MapState, kind string, worldX, worldY float64, value int) {
+// BroadcastFCT delivers the same combat-text event to every viewer in reach.
+func (s *Content) BroadcastFCT(mapState *world.MapState, kind string, worldX, worldY float64, value int) {
 	s.broadcastAt(mapState, "combat_text", world.CombatText{Kind: kind, WorldX: worldX, WorldY: worldY, Value: value}, worldX, worldY)
 }
 
-// broadcastAudioEvent raises one audio logic id for every viewer in reach, so
+// BroadcastAudioEvent raises one audio logic id for every viewer in reach, so
 // a defeat or a level gained sounds for everyone who can see it.
-func (s *Content) broadcastAudioEvent(mapState *world.MapState, logicEventID string, at world.Vec2) {
+func (s *Content) BroadcastAudioEvent(mapState *world.MapState, logicEventID string, at world.Vec2) {
 	s.broadcastAt(mapState, "audio_event", world.AudioEvent{LogicEventID: logicEventID, WorldX: at.X, WorldY: at.Y}, at.X, at.Y)
 }
 
@@ -90,11 +90,11 @@ func (s *Content) broadcastAudioEvent(mapState *world.MapState, logicEventID str
 //   entity.Coins == coin ObjectLayer slot .Quantity
 //   coin ObjectLayer slot .Active == false (always)
 
-// syncCoinOL ensures the coin ObjectLayer slot reflects the current flat balance.
+// SyncCoinOL ensures the coin ObjectLayer slot reflects the current flat balance.
 // The slot is created if absent.  Active is always forced to false: coins are
 // a non-activable item (display-only in the inventory bar and modal).
-func (s *Content) syncCoinOL(layers *[]world.ObjectLayerState, amount uint32) {
-	ol := getOrCreateItemOL(layers, s.coinItemID)
+func (s *Content) SyncCoinOL(layers *[]world.ObjectLayerState, amount uint32) {
+	ol := getOrCreateItemOL(layers, s.CoinItemID)
 	ol.Quantity = int(amount)
 	ol.Active = false // coins are never activable — enforced here
 }
@@ -111,12 +111,12 @@ func (s *Content) wallet(id world.EntityID, ms *world.MapState) *uint32 {
 // ObjectLayer slot (Active: false, Quantity = amount).
 func (s *Content) setCoins(id world.EntityID, ms *world.MapState, amount uint32) {
 	*s.wallet(id, ms) = amount
-	s.syncCoinOL(&ms.Ap(id).Layers, amount)
+	s.SyncCoinOL(&ms.Ap(id).Layers, amount)
 }
 
-// addCoins adds delta to the balance of id (clamped to [0, MaxUint32]) and
+// AddCoins adds delta to the balance of id (clamped to [0, MaxUint32]) and
 // syncs the display coin OL slot. Returns the new balance.
-func (s *Content) addCoins(id world.EntityID, ms *world.MapState, delta int) uint32 {
+func (s *Content) AddCoins(id world.EntityID, ms *world.MapState, delta int) uint32 {
 	next := uint32(max(int(*s.wallet(id, ms))+delta, 0))
 	s.setCoins(id, ms, next)
 	return next
@@ -139,8 +139,8 @@ func getOrCreateItemOL(layers *[]world.ObjectLayerState, itemID string) *world.O
 	return &(*layers)[len(*layers)-1]
 }
 
-// layerQuantity is how many units of itemID the stacks of layers hold.
-func layerQuantity(layers []world.ObjectLayerState, itemID string) int {
+// LayerQuantity is how many units of itemID the stacks of layers hold.
+func LayerQuantity(layers []world.ObjectLayerState, itemID string) int {
 	total := 0
 	for _, ol := range layers {
 		if ol.ItemID == itemID {
@@ -150,9 +150,9 @@ func layerQuantity(layers []world.ObjectLayerState, itemID string) int {
 	return total
 }
 
-// removeLayerItem drains qty of itemID from the stacks of layers. An emptied stack leaves them, so
+// RemoveLayerItem drains qty of itemID from the stacks of layers. An emptied stack leaves them, so
 // it leaves the inventory bar.
-func removeLayerItem(layers *[]world.ObjectLayerState, itemID string, qty int) {
+func RemoveLayerItem(layers *[]world.ObjectLayerState, itemID string, qty int) {
 	kept := (*layers)[:0]
 	for _, ol := range *layers {
 		if ol.ItemID == itemID && qty > 0 {
@@ -168,17 +168,17 @@ func removeLayerItem(layers *[]world.ObjectLayerState, itemID string, qty int) {
 	*layers = kept
 }
 
-// addPlayerItem credits qty of itemID to the player's inventory — the single
+// AddPlayerItem credits qty of itemID to the player's inventory — the single
 // grant path for quest rewards, shop purchases, and any future item fountain.
 // Coins route through the flat balance so the display slot stays in sync;
 // everything else lands on its ObjectLayer stack, inactive. The counterpart of
 // removePlayerItem (quest.go).
-func (s *Content) addPlayerItem(player *world.Session, itemID string, qty int) {
+func (s *Content) AddPlayerItem(player *world.Session, itemID string, qty int) {
 	if itemID == "" || qty <= 0 {
 		return
 	}
-	if itemID == s.coinItemID {
-		s.addCoins(player.ID, s.Maps[player.MapCode], qty)
+	if itemID == s.CoinItemID {
+		s.AddCoins(player.ID, s.Maps[player.MapCode], qty)
 	} else {
 		getOrCreateItemOL(&s.Ap(player.ID, player.MapCode).Layers, itemID).Quantity += qty
 	}
@@ -201,11 +201,11 @@ func (s *Content) FountainInitBot(id world.EntityID, ms *world.MapState) {
 
 // ── Kill loot amounts ─────────────────────────────────────────────────────
 
-// pvpCoinDropAmount computes how many coins a dead player scatters as a grid
+// PvpCoinDropAmount computes how many coins a dead player scatters as a grid
 // drop, mirroring botCoinDropAmount at the vs-player rate: the victim's
 // balance, floored, with the configured minimum, capped at the balance.
 // Players carry only what they hold (no mint). Caller holds s.mu.
-func (s *Content) pvpCoinDropAmount(player *world.Session) int {
+func (s *Content) PvpCoinDropAmount(player *world.Session) int {
 	effectiveBalance := int(player.Coins)
 	if effectiveBalance <= 0 {
 		return 0
@@ -220,10 +220,10 @@ func (s *Content) pvpCoinDropAmount(player *world.Session) int {
 	return amount
 }
 
-// botCoinDropAmount computes how many coins a dead bot scatters, mirroring the
+// BotCoinDropAmount computes how many coins a dead bot scatters, mirroring the
 // PvE kill-transfer formula: the bot's balance (minted up to botSpawnCoins) at
 // the vs-bot rate, floored, with the configured minimum. Caller holds s.mu.
-func (s *Content) botCoinDropAmount(id world.EntityID, ms *world.MapState) int {
+func (s *Content) BotCoinDropAmount(id world.EntityID, ms *world.MapState) int {
 	effectiveBalance := int(ms.Br(id).Coins)
 	if effectiveBalance < s.botSpawnCoins {
 		effectiveBalance = s.botSpawnCoins
@@ -255,7 +255,7 @@ func (s *Content) SinkRespawnCost(player *world.Session) {
 		return
 	}
 	// No coin FCT — balance changes surface in the inventory-bar quantity FX.
-	s.addCoins(player.ID, s.Maps[player.MapCode], -burn)
+	s.AddCoins(player.ID, s.Maps[player.MapCode], -burn)
 	logx.Debugf("[ECONOMY] Respawn sink: %s burned %d coins (%.0f%%)",
 		player.ID, burn, s.respawnCostPercent*100)
 }

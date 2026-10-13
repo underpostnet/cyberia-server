@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	"cyberia-server/logx"
 	"cyberia-server/serial"
@@ -17,15 +18,15 @@ import (
 // OLMeta is the JSON shape sent to the client for each ObjectLayer: the cid of the definition
 // bound to the label, and its content. Matches populate_object_layer_from_json.
 type OLMeta struct {
-	Cid  string          `json:"cid"`
-	Data ObjectLayerData `json:"data"`
+	Cid  string                  `json:"cid"`
+	Data content.ObjectLayerData `json:"data"`
 }
 
 // buildSkillMap returns a compact { triggerItemId → [SkillMapEntry] } map
 // derived from the server's skillConfig — sent to clients in init_data.
 func (s *GameServer) buildSkillMap() map[string][]SkillMapEntry {
-	out := make(map[string][]SkillMapEntry, len(s.skillConfig))
-	for triggerID, defs := range s.skillConfig {
+	out := make(map[string][]SkillMapEntry, len(s.SkillConfig))
+	for triggerID, defs := range s.SkillConfig {
 		entries := make([]SkillMapEntry, 0, len(defs))
 		for _, def := range defs {
 			entries = append(entries, SkillMapEntry{
@@ -44,11 +45,11 @@ func (s *GameServer) buildSkillMap() map[string][]SkillMapEntry {
 // buildOLMetadataMap creates the map[itemID] → OLMeta for the metadata message.
 // Must be called while s.olMu is held (read).
 func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
-	s.olMu.RLock()
-	defer s.olMu.RUnlock()
+	s.OlMu.RLock()
+	defer s.OlMu.RUnlock()
 	// Pre-allocated capacity per type hint; typical cache has ~400 items.
-	out := make(map[string]*OLMeta, len(s.objectLayerDataCache))
-	for itemID, ol := range s.objectLayerDataCache {
+	out := make(map[string]*OLMeta, len(s.ObjectLayerDataCache))
+	for itemID, ol := range s.ObjectLayerDataCache {
 		out[itemID] = &OLMeta{Cid: ol.Cid, Data: ol.Data}
 	}
 	return out
@@ -99,7 +100,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 
 	playerID := s.NewEntityID()
-	playerDims := world.Vec2{X: s.defaultPlayerWidth, Y: s.defaultPlayerHeight}
+	playerDims := world.Vec2{X: s.DefaultPlayerWidth, Y: s.DefaultPlayerHeight}
 
 	// Resolve the starting map + cell from the instance's PlayerSpawn config. A
 	// fixed spawn (Random=false) on a loaded map with a walkable cell is honoured
@@ -138,11 +139,11 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		}
 		startPosI = p
 	}
-	lifeRegen := s.playerBaseLifeRegenMin + rand.Float64()*(s.playerBaseLifeRegenMax-s.playerBaseLifeRegenMin)
+	lifeRegen := s.PlayerBaseLifeRegenMin + rand.Float64()*(s.PlayerBaseLifeRegenMax-s.PlayerBaseLifeRegenMin)
 
 	// A player is placed by nothing, so its whole stack comes from its default — read the one way
 	// every entity type reads it.
-	playerOLs := s.spawnObjectLayers("player", nil, true)
+	playerOLs := s.SpawnObjectLayers("player", nil, true)
 	playerState := &world.Session{
 		ID:        playerID,
 		EngineID:  uuid.New().String(),
@@ -170,10 +171,10 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		Pos:  world.Vec2{X: float64(startPosI.X), Y: float64(startPosI.Y)},
 		Size: playerDims,
 	}, world.Appearance{Layers: playerOLs})
-	startMapState.AddVitals(playerID, world.Vitals{MaxLife: s.entityBaseMaxLife})
+	startMapState.AddVitals(playerID, world.Vitals{MaxLife: s.EntityBaseMaxLife})
 	startMapState.AddMotion(playerID, world.Motion{Direction: world.NONE, Mode: world.IDLE})
 	startMapState.AddMortal(playerID, &world.Mortal{LifeRegen: lifeRegen})
-	s.setProgression(playerID, NewEntityProgression(1, false, s.progressionConfig()))
+	s.SetProgression(playerID, content.NewEntityProgression(1, false, s.ProgressionConfig()))
 	startMapState.AddPlayer(playerID)
 
 	// Economy: credit the player's starting wallet (Fountain: playerSpawnCoins).
@@ -182,7 +183,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// Apply initial stats (like Resistance for MaxLife) after creation.
 	s.ApplyResistanceStat(playerState.ID, startMapState)
 	v := startMapState.Vt(playerID)
-	v.Life = v.MaxLife * s.initialLifeFraction // Set life based on config fraction
+	v.Life = v.MaxLife * s.InitialLifeFraction // Set life based on config fraction
 
 	// Every join spawns frozen. The client loading overlay is its first open
 	// modal; Tap-to-Start closes it and sends player_stasis false.
@@ -199,15 +200,15 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		GridW:          startMapState.GridW(),
 		GridH:          startMapState.GridH(),
 		AoiRadius:      s.aoiRadius,
-		ObjectLayers:   s.visibleInventory(startMapState.Ap(playerID).Layers),
+		ObjectLayers:   s.VisibleInventory(startMapState.Ap(playerID).Layers),
 		SkillMap:       s.buildSkillMap(),
-		EntityDefaults: s.buildEntityDefaultsSlice(),
-		DeadItemIds:    s.deadItemIDList(),
-		Quests:         s.buildQuestSnapshot(playerState),
+		EntityDefaults: s.BuildEntityDefaultsSlice(),
+		DeadItemIds:    s.DeadItemIDList(),
+		Quests:         s.BuildQuestSnapshot(playerState),
 	}
 	metadataPayload := map[string]interface{}{
 		"instanceCode":   s.instanceCode,
-		"equipmentRules": s.equipmentRules,
+		"equipmentRules": s.EquipmentRules,
 	}
 
 	s.Mu.Unlock()
@@ -248,7 +249,7 @@ func (s *GameServer) detachClient(client *Client) {
 	delete(s.Sessions, client.playerID)
 	// Sweep every map: a portal can move a player after MapCode was read.
 	for _, mapState := range s.Maps {
-		s.despawn(mapState, client.playerID)
+		s.Despawn(mapState, client.playerID)
 	}
 	s.Mu.Unlock()
 
@@ -458,7 +459,7 @@ func parseInput(msgType string, p *inputPayload) (world.InputCommand, bool) {
 		cmd.RecipeIndex = p.RecipeIndex
 	case world.InputKindItemOps:
 		// Trust boundary: the list replays under s.mu, so its length is capped.
-		if p.EntityID == 0 || len(p.Ops) == 0 || len(p.Ops) > storageMaxSlots {
+		if p.EntityID == 0 || len(p.Ops) == 0 || len(p.Ops) > content.StorageMaxSlots {
 			return world.InputCommand{}, false
 		}
 		for _, op := range p.Ops {

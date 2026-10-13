@@ -1,4 +1,4 @@
-// Package game — action.go
+// Package content — action.go
 //
 // Server-side cyberia-action runtime: the interactive-NPC / dialogue (talk)
 // layer. engine-cyberia owns the persisted CyberiaAction content and exposes it
@@ -13,7 +13,7 @@
 //
 // Caller MUST hold s.mu for every handler / mutation helper here (they run inside
 // phaseInput). Binding runs at world (re)build time, also under s.mu.
-package game
+package content
 
 import (
 	"cyberia-server/game/world"
@@ -111,16 +111,16 @@ func protoToCraftItems(items []*pb.ActionCraftItem) []ActionCraftItem {
 	return out
 }
 
-// bindActions caches the CyberiaAction content the engine delivered with the
+// BindActions caches the CyberiaAction content the engine delivered with the
 // world over gRPC and binds each action to the runtime entity on its source cell
 // — keyed by the bot's stable spawn-centre, not its live position, since action
 // NPCs wander within their radius.
 //
 // Caller MUST hold s.mu.
-func (s *Content) bindActions(mapCodes []string, actions []*pb.CyberiaActionMessage) {
+func (s *Content) BindActions(mapCodes []string, actions []*pb.CyberiaActionMessage) {
 	s.actionCache = make(map[world.EntityID]*CyberiaAction)
-	if s.storage == nil {
-		s.storage = make(map[storageKey][]StorageSlot)
+	if s.Storage == nil {
+		s.Storage = make(map[StorageKey][]StorageSlot)
 	}
 
 	mapSet := make(map[string]bool, len(mapCodes))
@@ -152,11 +152,11 @@ func (s *Content) bindActions(mapCodes []string, actions []*pb.CyberiaActionMess
 	logx.Infof("[ActionContent] gRPC delivered %d actions; bound %d entities", len(actions), bound)
 }
 
-// logActionProviders prints every entity bound to a cyberia-action — map, action
+// LogActionProviders prints every entity bound to a cyberia-action — map, action
 // code, label, the quests bound to its cell, entity id, and initial cell. Called
 // after the instance graph so operators can confirm the action NPCs were
 // instantiated and bound.
-func (s *Content) logActionProviders() {
+func (s *Content) LogActionProviders() {
 	if len(s.actionCache) == 0 {
 		logx.Infof("[ActionProviders] none bound (no actions delivered via gRPC, or none match an entity cell)")
 		return
@@ -193,10 +193,10 @@ func (s *Content) findBot(id world.EntityID) *world.MapState {
 	return nil
 }
 
-// botActiveSkin returns the active skin item ID of the bot with this entity ID
+// BotActiveSkin returns the active skin item ID of the bot with this entity ID
 // (searched across maps), or "" if not found. The bot's own active skin — not
 // any action field — is what 'talk' objectives match against.
-func (s *Content) botActiveSkin(id world.EntityID) string {
+func (s *Content) BotActiveSkin(id world.EntityID) string {
 	ms := s.findBot(id)
 	if ms == nil {
 		return ""
@@ -216,14 +216,14 @@ func (s *Content) botActiveSkinOf(id world.EntityID, ms *world.MapState) string 
 		layers = ms.Mt(id).PreRespawnObjectLayers
 	}
 	for _, ol := range layers {
-		if ol.Active && s.itemType(ol.ItemID) == "skin" {
+		if ol.Active && s.ItemType(ol.ItemID) == "skin" {
 			return ol.ItemID
 		}
 	}
 	return ""
 }
 
-// botInteractionFlags builds the per-player interaction capability bitmask.
+// BotInteractionFlags builds the per-player interaction capability bitmask.
 // Both bits mean "something actionable for this player right now" — they drive
 // the overhead attention icons, so neither may light for mere presence of
 // interactions: the action bit when a pending action-talk-quest can be advanced
@@ -234,7 +234,7 @@ func (s *Content) botActiveSkinOf(id world.EntityID, ms *world.MapState) string 
 // never completed feedback). The full quest list still travels separately in
 // the bot block (botQuestCodes), so the interact modal keeps its Quest tab and
 // completed feedback without any icon.
-func (s *Content) botInteractionFlags(hasActionableQuest, hasPendingActionTalk, hasUsableAction bool) uint8 {
+func (s *Content) BotInteractionFlags(hasActionableQuest, hasPendingActionTalk, hasUsableAction bool) uint8 {
 	var flags uint8
 	if hasPendingActionTalk || hasUsableAction {
 		flags |= InteractionFlagAction
@@ -245,7 +245,7 @@ func (s *Content) botInteractionFlags(hasActionableQuest, hasPendingActionTalk, 
 	return flags
 }
 
-// pendingActionTalkDialogs returns, PARALLEL to questCodes, the dialogue code
+// PendingActionTalkDialogs returns, PARALLEL to questCodes, the dialogue code
 // this NPC's action maps for each quest the player can advance here right now:
 // entry i is non-empty when questCodes[i] is active, its current step has an
 // incomplete `talk` objective matching this bot's skin, and the action maps
@@ -257,7 +257,7 @@ func (s *Content) botInteractionFlags(hasActionableQuest, hasPendingActionTalk, 
 // capability lives in shop.go.
 //
 // Caller MUST hold s.mu.
-func (s *Content) pendingActionTalkDialogs(player *world.Session, id world.EntityID, ms *world.MapState, questCodes []string) []string {
+func (s *Content) PendingActionTalkDialogs(player *world.Session, id world.EntityID, ms *world.MapState, questCodes []string) []string {
 	dialogs := make([]string, len(questCodes))
 	action := s.actionCache[id]
 	if action == nil || len(action.QuestDialogueCodes) == 0 {
@@ -281,13 +281,13 @@ func (s *Content) pendingActionTalkDialogs(player *world.Session, id world.Entit
 	return dialogs
 }
 
-// botHasUsableAction reports whether a bot exposes an action capability any
+// BotHasUsableAction reports whether a bot exposes an action capability any
 // player can use on sight — a live vendor or assembler today. The single place
 // that decides what lights the action-provider bit, so adding a capability does
 // not grow botInteractionFlags.
 //
 // Caller MUST hold s.mu.
-func (s *Content) botHasUsableAction(id world.EntityID, ms *world.MapState) bool {
+func (s *Content) BotHasUsableAction(id world.EntityID, ms *world.MapState) bool {
 	return s.botHasShop(id, ms) || s.botHasCraft(id, ms) || s.botHasStorage(id, ms)
 }
 
@@ -310,19 +310,19 @@ func (s *Content) botInPlayerRange(player *world.Session, id world.EntityID, ms 
 
 // ── Dialogue (phaseInput) ───────────────────────────────────────────────────
 
-// handleTalkDone advances the `talk` objectives for a dialogue the client read
+// HandleTalkDone advances the `talk` objectives for a dialogue the client read
 // to the end. The skin comes from botActiveSkin at apply time, which reads a
 // dead bot's pre-respawn skin and has no AOI test. When the NPC's action maps a
 // quest→dialogue, the dialogue code must match that mapping
 // (advanceTalkObjectives). It never grants a quest — that is quest_accept.
 //
 // Caller MUST hold s.mu.
-func (s *Content) handleTalkDone(player *world.Session, cmd *world.InputCommand) {
+func (s *Content) HandleTalkDone(player *world.Session, cmd *world.InputCommand) {
 	if s.Vt(player.ID, player.MapCode).Ghost() {
 		return
 	}
 	var affected []QuestSnapshotEntry
-	s.advanceTalkObjectives(player, s.botActiveSkin(cmd.EntityID), s.actionCache[cmd.EntityID],
+	s.advanceTalkObjectives(player, s.BotActiveSkin(cmd.EntityID), s.actionCache[cmd.EntityID],
 		cmd.DialogCode, &affected)
 	s.advanceCollectObjectives(player, &affected)
 	s.sendQuestUpdate(player, affected)

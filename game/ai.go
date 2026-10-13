@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 )
 
@@ -49,13 +50,13 @@ func (s *Sim) updateBots(mapState *world.MapState) {
 
 		// Check for expiration
 		if !bot.ExpiresAt.IsZero() && time.Now().After(bot.ExpiresAt) {
-			s.despawn(mapState, id)
+			s.Despawn(mapState, id)
 			continue
 		}
 
 		// Inert tokens (scattered loot drops) hold position: no wander, aggro,
 		// or skills. Collection and lifetime are handled elsewhere (loot.go).
-		if behaviorIsInert(mapState.Ag(id).Behavior) {
+		if content.BehaviorIsInert(mapState.Ag(id).Behavior) {
 			continue
 		}
 
@@ -63,12 +64,12 @@ func (s *Sim) updateBots(mapState *world.MapState) {
 
 		// --- SKILL PROJECTILE BEHAVIOR ---
 		// Skill projectile bots move in a straight line and are removed if they go out of bounds.
-		if mapState.Ag(id).Behavior == BehaviorSkill {
+		if mapState.Ag(id).Behavior == content.BehaviorSkill {
 			// dt-based integration. entityBaseSpeed is cells/second; one tick
 			// is tickDuration. (The old code used `... / s.fps` which is a
 			// frame-count integration that silently misbehaves when the loop
 			// runs slow or tickRate changes.)
-			projectileStep := s.entityBaseSpeed * s.projectileSpeedMultiplier * tickDuration.Seconds()
+			projectileStep := s.EntityBaseSpeed * s.projectileSpeedMultiplier * tickDuration.Seconds()
 			// Calculate movement vector from bot's direction
 			dirX, dirY := getDirectionVector(mapState.Mo(id).Direction)
 
@@ -79,7 +80,7 @@ func (s *Sim) updateBots(mapState *world.MapState) {
 			// Remove projectile if it goes out of map bounds
 			if mapState.Tf(id).Pos.X < 0 || mapState.Tf(id).Pos.X > float64(mapState.GridW()) ||
 				mapState.Tf(id).Pos.Y < 0 || mapState.Tf(id).Pos.Y > float64(mapState.GridH()) {
-				s.despawn(mapState, id)
+				s.Despawn(mapState, id)
 				continue // Skip further processing for this bot
 			}
 			s.handleBotSkills(id, mapState, world.Vec2{X: mapState.Tf(id).Pos.X, Y: mapState.Tf(id).Pos.Y})
@@ -92,8 +93,8 @@ func (s *Sim) updateBots(mapState *world.MapState) {
 		// --- PROVIDER BEHAVIOR (mission/action givers) ---
 		// Immortal and near-stationary: never aggroes or casts. provider-static
 		// stays put; provider takes an occasional short step near its spawn.
-		if behaviorIsProvider(mapState.Ag(id).Behavior) {
-			if !behaviorIsStationary(mapState.Ag(id).Behavior) {
+		if content.BehaviorIsProvider(mapState.Ag(id).Behavior) {
+			if !content.BehaviorIsStationary(mapState.Ag(id).Behavior) {
 				if (mapState.Mo(id).Mode != world.WALKING || len(bot.Path) == 0) && rand.Float64() < providerWanderChancePerTick {
 					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, providerWanderRadius, mapState.Tf(id).Size)
 					if target.X >= 0 {
@@ -111,7 +112,7 @@ func (s *Sim) updateBots(mapState *world.MapState) {
 		// --- END PROVIDER BEHAVIOR ---
 
 		// Hostile logic: check for nearest player in aggro range
-		if mapState.Ag(id).Behavior == BehaviorHostile {
+		if mapState.Ag(id).Behavior == content.BehaviorHostile {
 			var nearestID world.EntityID
 			nearestDist := math.MaxFloat64
 			var nearestPlayer *world.Session
@@ -247,7 +248,7 @@ func (s *Sim) updateBots(mapState *world.MapState) {
 }
 
 // update bot movement similar to players
-func (s *Sim) updateBotPosition(id world.EntityID, mapState *world.MapState, stats ComputedStats) {
+func (s *Sim) updateBotPosition(id world.EntityID, mapState *world.MapState, stats content.ComputedStats) {
 	bot := mapState.Br(id)
 	if mapState.Mo(id).Mode != world.WALKING {
 		return

@@ -1,4 +1,4 @@
-package game
+package content
 
 import (
 	"sync"
@@ -16,47 +16,47 @@ type Content struct {
 	questsByCell     map[world.CellKey][]string // quest codes bound to each action cell
 
 	// Caches (protected by olMu)
-	olMu                 sync.RWMutex
-	objectLayerDataCache map[string]*ObjectLayer
+	OlMu                 sync.RWMutex
+	ObjectLayerDataCache map[string]*ObjectLayer
 
-	// dataServerURL is the Data Server origin for server-to-server
+	// DataServerURL is the Data Server origin for server-to-server
 	// content-authority calls (quest persistence). Never forwarded to clients:
 	// each client learns its own Data Server URL from its command line.
-	dataServerURL string
-	// dataServerAPIKey is CYBERIA_SERVER_API_KEY, sent with every server-to-server
+	DataServerURL string
+	// DataServerAPIKey is CYBERIA_SERVER_API_KEY, sent with every server-to-server
 	// write. An empty key disables them.
-	dataServerAPIKey string
+	DataServerAPIKey string
 	// persistQueue holds engine POSTs for persistLoop, so no HTTP call runs
 	// under s.mu.
 	persistQueue chan persistJob
 
-	entityBaseSpeed float64
+	EntityBaseSpeed float64
 	// playerBaseSpeed applies to the player entity only. 0 means unset, and
 	// CalculatePlayerMovementSpeed then falls back to entityBaseSpeed.
 	playerBaseSpeed             float64
-	entityBaseMaxLife           float64
-	entityBaseActionCooldown    time.Duration
-	entityBaseMinActionCooldown time.Duration
+	EntityBaseMaxLife           float64
+	EntityBaseActionCooldown    time.Duration
+	EntityBaseMinActionCooldown time.Duration
 
 	// Player defaults
-	defaultPlayerWidth     float64
-	defaultPlayerHeight    float64
-	playerBaseLifeRegenMin float64
-	playerBaseLifeRegenMax float64
-	maxActiveLayers        int
-	initialLifeFraction    float64
+	DefaultPlayerWidth     float64
+	DefaultPlayerHeight    float64
+	PlayerBaseLifeRegenMin float64
+	PlayerBaseLifeRegenMax float64
+	MaxActiveLayers        int
+	InitialLifeFraction    float64
 
 	// Combat / death
-	ghostItemID       string
-	collisionLifeLoss float64
+	GhostItemID       string
+	CollisionLifeLoss float64
 	// Every configured dead-item id — excluded from the player inventory wire
 	// and from item activation. Populated exclusively from gRPC
 	// entity_defaults.dead_item_ids (no hardcoded fallback).
-	deadItemIDs map[string]bool
+	DeadItemIDs map[string]bool
 
 	// Economy — Fountain & Sink model
 	// Fountains (coin injection)
-	coinItemID       string
+	CoinItemID       string
 	botSpawnCoins    int // coins every bot carries on spawn (infinite mint)
 	playerSpawnCoins int // coins given to player on first connect (guest wallet)
 	// Kill Transfer (redistribution)
@@ -69,20 +69,20 @@ type Content struct {
 	craftingFeePercent float64 // fraction of item value burned on crafting
 
 	// Regen
-	lifeRegenChance float64
-	maxChance       float64
+	LifeRegenChance float64
+	MaxChance       float64
 
 	// Floor defaults
-	defaultFloorItemID string
+	DefaultFloorItemID string
 
 	// Per-entity-type visual defaults.
 	// entityDefaults keeps the last build per type for unique lookups.
 	// entityDefaultBuilds preserves the full ordered config, including duplicates.
-	entityDefaults      map[string]EntityTypeDefaultConfig
-	entityDefaultBuilds []EntityTypeDefaultConfig
+	EntityDefaults      map[string]EntityTypeDefaultConfig
+	EntityDefaultBuilds []EntityTypeDefaultConfig
 
 	// Skill map (runtime): trigger item ID → []SkillDefinition
-	skillConfig map[string][]SkillDefinition
+	SkillConfig map[string][]SkillDefinition
 
 	// Action / quest content fetched from engine-cyberia REST at instance
 	// init (actions and quests are not part of the gRPC world payload).
@@ -91,13 +91,13 @@ type Content struct {
 	//   questDefs    — questCode → CyberiaQuest definition (steps/rewards).
 	// Both are rebuilt on every world (re)build; access is under s.mu.
 	actionCache map[world.EntityID]*CyberiaAction
-	// storage — per (player, action code) vault contents. Session state
+	// Storage — per (player, action code) vault contents. Session state
 	// only; the slot shape is the future persistence document.
-	storage   map[storageKey][]StorageSlot
+	Storage   map[StorageKey][]StorageSlot
 	questDefs map[string]*CyberiaQuest
-	// progression is the level and XP of each mortal entity. despawn deletes
+	// Progression is the level and XP of each mortal entity. despawn deletes
 	// the row.
-	progression map[world.EntityID]*EntityProgression
+	Progression map[world.EntityID]*EntityProgression
 	// quests is the quest progress of each player, keyed by quest code.
 	// Authoritative for the session; best-effort mirrored to engine-cyberia
 	// quest-progress REST for persistence.
@@ -109,44 +109,44 @@ type Content struct {
 	crafts map[world.EntityID]*ActiveCraft
 	// lootRespawns are the consumed world tokens waiting to come back, by map
 	// code (loot.go). A world build starts it empty.
-	lootRespawns map[string][]lootRespawn
+	lootRespawns map[string][]LootRespawn
 
 	// Equipment rules — governs activation constraints.
-	equipmentRules EquipmentRulesConfig
+	EquipmentRules EquipmentRulesConfig
 }
 
 // NewContent returns the content over w with empty caches.
 func NewContent(w *world.World) *Content {
 	return &Content{
 		World:                w,
-		objectLayerDataCache: make(map[string]*ObjectLayer),
-		skillConfig:          make(map[string][]SkillDefinition),
+		ObjectLayerDataCache: make(map[string]*ObjectLayer),
+		SkillConfig:          make(map[string][]SkillDefinition),
 		persistQueue:         make(chan persistJob, 256),
 	}
 }
 
-// applyConfig applies the rules and the content of the instance config.
+// ApplyConfig applies the rules and the content of the instance config.
 // Caller holds s.mu.
-func (s *Content) applyConfig(cfg *pb.InstanceConfig, rules ProgressionRules) {
+func (s *Content) ApplyConfig(cfg *pb.InstanceConfig, rules ProgressionRules) {
 	s.progressionRules = rules
 
 	// Entity base stats
-	s.entityBaseSpeed = cfg.GetEntityBaseSpeed()
+	s.EntityBaseSpeed = cfg.GetEntityBaseSpeed()
 	s.playerBaseSpeed = cfg.GetPlayerBaseSpeed()
-	s.entityBaseMaxLife = cfg.GetEntityBaseMaxLife()
-	s.entityBaseActionCooldown = time.Duration(cfg.GetEntityBaseActionCooldownMs()) * time.Millisecond
-	s.entityBaseMinActionCooldown = time.Duration(cfg.GetEntityBaseMinActionCooldownMs()) * time.Millisecond
+	s.EntityBaseMaxLife = cfg.GetEntityBaseMaxLife()
+	s.EntityBaseActionCooldown = time.Duration(cfg.GetEntityBaseActionCooldownMs()) * time.Millisecond
+	s.EntityBaseMinActionCooldown = time.Duration(cfg.GetEntityBaseMinActionCooldownMs()) * time.Millisecond
 
 	// Player defaults
-	s.defaultPlayerWidth = cfg.GetDefaultPlayerWidth()
-	s.defaultPlayerHeight = cfg.GetDefaultPlayerHeight()
-	s.playerBaseLifeRegenMin = cfg.GetPlayerBaseLifeRegenMin()
-	s.playerBaseLifeRegenMax = cfg.GetPlayerBaseLifeRegenMax()
-	s.maxActiveLayers = int(cfg.GetMaxActiveLayers())
-	s.initialLifeFraction = cfg.GetInitialLifeFraction()
+	s.DefaultPlayerWidth = cfg.GetDefaultPlayerWidth()
+	s.DefaultPlayerHeight = cfg.GetDefaultPlayerHeight()
+	s.PlayerBaseLifeRegenMin = cfg.GetPlayerBaseLifeRegenMin()
+	s.PlayerBaseLifeRegenMax = cfg.GetPlayerBaseLifeRegenMax()
+	s.MaxActiveLayers = int(cfg.GetMaxActiveLayers())
+	s.InitialLifeFraction = cfg.GetInitialLifeFraction()
 
 	// Combat / death
-	s.collisionLifeLoss = cfg.GetCollisionLifeLoss()
+	s.CollisionLifeLoss = cfg.GetCollisionLifeLoss()
 
 	// Economy — Fountain & Sink model (nested EconomyRules proto message).
 	er := cfg.GetEconomyRules()
@@ -165,31 +165,31 @@ func (s *Content) applyConfig(cfg *pb.InstanceConfig, rules ProgressionRules) {
 	s.respawnCostPercent = er.GetRespawnCostPercent()
 	s.portalFee = int(er.GetPortalFee())
 	s.craftingFeePercent = er.GetCraftingFeePercent()
-	s.lifeRegenChance = cfg.GetLifeRegenChance()
-	s.maxChance = cfg.GetMaxChance()
+	s.LifeRegenChance = cfg.GetLifeRegenChance()
+	s.MaxChance = cfg.GetMaxChance()
 
 	// Equipment rules — governs which item types can be active.
 	eqr := cfg.GetEquipmentRules()
 	if eqr != nil {
-		s.equipmentRules.ActiveItemTypes = make(map[string]bool, len(eqr.GetActiveItemTypes()))
+		s.EquipmentRules.ActiveItemTypes = make(map[string]bool, len(eqr.GetActiveItemTypes()))
 		for _, t := range eqr.GetActiveItemTypes() {
-			s.equipmentRules.ActiveItemTypes[t] = true
+			s.EquipmentRules.ActiveItemTypes[t] = true
 		}
-		s.equipmentRules.OnePerType = eqr.GetOnePerType()
-		s.equipmentRules.RequireSkin = eqr.GetRequireSkin()
+		s.EquipmentRules.OnePerType = eqr.GetOnePerType()
+		s.EquipmentRules.RequireSkin = eqr.GetRequireSkin()
 	} else {
 		// Sensible defaults when no equipment rules are provided.
-		s.equipmentRules.ActiveItemTypes = map[string]bool{
+		s.EquipmentRules.ActiveItemTypes = map[string]bool{
 			"skin": true, "breastplate": true, "weapon": true, "skill": true,
 		}
-		s.equipmentRules.OnePerType = true
-		s.equipmentRules.RequireSkin = true
+		s.EquipmentRules.OnePerType = true
+		s.EquipmentRules.RequireSkin = true
 	}
 
 	// Per-entity-type visual defaults — keep both the ordered build list and
 	// the last-seen per-type lookup for unique entity types.
-	s.entityDefaults = make(map[string]EntityTypeDefaultConfig, len(cfg.GetEntityDefaults()))
-	s.entityDefaultBuilds = make([]EntityTypeDefaultConfig, 0, len(cfg.GetEntityDefaults()))
+	s.EntityDefaults = make(map[string]EntityTypeDefaultConfig, len(cfg.GetEntityDefaults()))
+	s.EntityDefaultBuilds = make([]EntityTypeDefaultConfig, 0, len(cfg.GetEntityDefaults()))
 	for _, etd := range cfg.GetEntityDefaults() {
 		var dols []world.ObjectLayerState
 		dropChances := make(map[string]float64)
@@ -215,27 +215,27 @@ func (s *Content) applyConfig(cfg *pb.InstanceConfig, rules ProgressionRules) {
 			DropChances:         dropChances,
 			Behavior:            etd.GetBehavior(),
 		}
-		s.entityDefaultBuilds = append(s.entityDefaultBuilds, defaultBuild)
-		s.entityDefaults[defaultBuild.EntityType] = defaultBuild
+		s.EntityDefaultBuilds = append(s.EntityDefaultBuilds, defaultBuild)
+		s.EntityDefaults[defaultBuild.EntityType] = defaultBuild
 	}
-	if d, ok := s.entityDefaults["player"]; ok && len(d.DeadItemIDs) > 0 {
-		s.ghostItemID = d.DeadItemIDs[0]
+	if d, ok := s.EntityDefaults["player"]; ok && len(d.DeadItemIDs) > 0 {
+		s.GhostItemID = d.DeadItemIDs[0]
 	} else {
-		s.ghostItemID = ""
+		s.GhostItemID = ""
 	}
-	s.deadItemIDs = make(map[string]bool)
-	for _, build := range s.entityDefaultBuilds {
+	s.DeadItemIDs = make(map[string]bool)
+	for _, build := range s.EntityDefaultBuilds {
 		for _, id := range build.DeadItemIDs {
 			if id != "" {
-				s.deadItemIDs[id] = true
+				s.DeadItemIDs[id] = true
 			}
 		}
 	}
-	if d, ok := s.entityDefaults["coin"]; ok && len(d.LiveItemIDs) > 0 {
-		s.coinItemID = d.LiveItemIDs[0]
+	if d, ok := s.EntityDefaults["coin"]; ok && len(d.LiveItemIDs) > 0 {
+		s.CoinItemID = d.LiveItemIDs[0]
 	}
-	if d, ok := s.entityDefaults["floor"]; ok && len(d.LiveItemIDs) > 0 {
-		s.defaultFloorItemID = d.LiveItemIDs[0]
+	if d, ok := s.EntityDefaults["floor"]; ok && len(d.LiveItemIDs) > 0 {
+		s.DefaultFloorItemID = d.LiveItemIDs[0]
 	}
 
 	// Status-icon visuals (iconId + borderColor) are not on the server.
@@ -244,11 +244,11 @@ func (s *Content) applyConfig(cfg *pb.InstanceConfig, rules ProgressionRules) {
 	// and the optional /api/v1/cyberia-client-hints override.
 
 	// Skill map
-	s.skillConfig = make(map[string][]SkillDefinition, len(cfg.GetSkillConfig()))
+	s.SkillConfig = make(map[string][]SkillDefinition, len(cfg.GetSkillConfig()))
 	for _, sc := range cfg.GetSkillConfig() {
 		triggerID := sc.GetTriggerItemId()
 		for _, sk := range sc.GetSkills() {
-			s.skillConfig[triggerID] = append(s.skillConfig[triggerID], SkillDefinition{
+			s.SkillConfig[triggerID] = append(s.SkillConfig[triggerID], SkillDefinition{
 				LogicEventID:         sk.GetLogicEventId(),
 				Name:                 sk.GetName(),
 				Description:          sk.GetDescription(),

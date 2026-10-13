@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 )
 
@@ -13,7 +14,7 @@ import (
 func (s *Sim) executeDoppelgangerSkill(ctx SkillContext) {
 	casterStats := s.CalculateStats(ctx.CasterID, ctx.MapState)
 
-	if rand.Float64() >= s.summonChance(s.doppelgangerSpawnChance, casterStats) {
+	if rand.Float64() >= s.SummonChance(s.doppelgangerSpawnChance, casterStats) {
 		return
 	}
 
@@ -28,7 +29,7 @@ func (s *Sim) executeDoppelgangerSkill(ctx SkillContext) {
 		defer s.Mu.Unlock()
 	}
 
-	botLifetime := summonLifetime(s.doppelgangerLifetimeMs, casterStats)
+	botLifetime := content.SummonLifetime(s.doppelgangerLifetimeMs, casterStats)
 
 	// Find the caster's active skin layer. Fall back to the first active layer if no skin is found.
 	var doppelgangerLayers []world.ObjectLayerState
@@ -69,9 +70,9 @@ func (s *Sim) executeDoppelgangerSkill(ctx SkillContext) {
 
 	ctx.MapState.AddBrain(doppelgangerBot, brain)
 	ctx.MapState.Spawn(doppelgangerBot, world.EntityData{Kind: world.EntityBot}, world.Transform{Pos: casterPos, Size: casterDims}, world.Appearance{Layers: doppelgangerLayers})
-	ctx.MapState.AddVitals(doppelgangerBot, world.Vitals{MaxLife: s.entityBaseMaxLife, Life: s.entityBaseMaxLife * s.doppelgangerInitialLifeFraction})
+	ctx.MapState.AddVitals(doppelgangerBot, world.Vitals{MaxLife: s.EntityBaseMaxLife, Life: s.EntityBaseMaxLife * s.doppelgangerInitialLifeFraction})
 	ctx.MapState.AddMotion(doppelgangerBot, world.Motion{})
-	ctx.MapState.AddAgent(doppelgangerBot, world.Agent{Behavior: BehaviorPassive, CasterID: casterID})
+	ctx.MapState.AddAgent(doppelgangerBot, world.Agent{Behavior: content.BehaviorPassive, CasterID: casterID})
 	ctx.MapState.AddMortal(doppelgangerBot, &world.Mortal{})
 	s.ApplyResistanceStat(doppelgangerBot, ctx.MapState)
 	ctx.MapState.Vt(doppelgangerBot).Life = ctx.MapState.Vt(doppelgangerBot).MaxLife

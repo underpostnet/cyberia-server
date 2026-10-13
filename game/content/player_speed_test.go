@@ -1,10 +1,10 @@
-package game
+package content
 
 import "testing"
 
 // Players walk on playerBaseSpeed; every other entity keeps entityBaseSpeed.
 func TestPlayerMovementSpeedIsSeparateFromEntitySpeed(t *testing.T) {
-	s := &Content{entityBaseSpeed: 5, playerBaseSpeed: 9}
+	s := &Content{EntityBaseSpeed: 5, playerBaseSpeed: 9}
 	none := ComputedStats{}
 
 	if got := s.CalculatePlayerMovementSpeed(none); got != 9 {
@@ -17,7 +17,7 @@ func TestPlayerMovementSpeedIsSeparateFromEntitySpeed(t *testing.T) {
 
 // An instance that never sets playerBaseSpeed keeps its current pace.
 func TestPlayerMovementSpeedFallsBackToEntitySpeed(t *testing.T) {
-	s := &Content{entityBaseSpeed: 5}
+	s := &Content{EntityBaseSpeed: 5}
 	for _, unset := range []float64{0, -1} {
 		s.playerBaseSpeed = unset
 		if got := s.CalculatePlayerMovementSpeed(ComputedStats{}); got != 5 {
@@ -28,7 +28,7 @@ func TestPlayerMovementSpeedFallsBackToEntitySpeed(t *testing.T) {
 
 // Agility scales the player base, not the entity base.
 func TestPlayerMovementSpeedAppliesAgilityToThePlayerBase(t *testing.T) {
-	s := &Content{entityBaseSpeed: 5, playerBaseSpeed: 10}
+	s := &Content{EntityBaseSpeed: 5, playerBaseSpeed: 10}
 	got := s.CalculatePlayerMovementSpeed(ComputedStats{Agility: 50})
 	if got != 15 {
 		t.Fatalf("10 base at +50%% agility = 15, got %v", got)
@@ -39,7 +39,7 @@ func TestPlayerMovementSpeedAppliesAgilityToThePlayerBase(t *testing.T) {
 // predicts with the speed the snapshot carries, so a mismatch would show up as
 // a correction on every frame.
 func TestPlayerSpeedIsConsistentBetweenMovementAndSnapshot(t *testing.T) {
-	s := &Content{entityBaseSpeed: 5, playerBaseSpeed: 9}
+	s := &Content{EntityBaseSpeed: 5, playerBaseSpeed: 9}
 	stats := ComputedStats{Agility: 20}
 	movement := s.CalculatePlayerMovementSpeed(stats)
 	// buildSnapshotSelf writes MoveSpeed from the same call.

@@ -33,6 +33,7 @@ package game
 import (
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 )
 
@@ -91,19 +92,19 @@ func (s *Sim) applyInputCommand(player *world.Session, mapState *world.MapState,
 	case world.InputKindChat:
 		s.handleChatInput(player, mapState, cmd)
 	case world.InputKindTalkDone:
-		s.handleTalkDone(player, cmd)
+		s.HandleTalkDone(player, cmd)
 	case world.InputKindQuestAbandon:
-		s.handleQuestAbandon(player, cmd)
+		s.HandleQuestAbandon(player, cmd)
 	case world.InputKindQuestAccept:
-		s.handleQuestAccept(player, cmd)
+		s.HandleQuestAccept(player, cmd)
 	case world.InputKindShopBuy:
-		s.handleShopBuy(player, cmd)
+		s.HandleShopBuy(player, cmd)
 	case world.InputKindCraftItem:
-		s.handleCraftItem(player, cmd)
+		s.HandleCraftItem(player, cmd)
 	case world.InputKindCraftCancel:
-		s.handleCraftCancel(player)
+		s.HandleCraftCancel(player)
 	case world.InputKindItemOps:
-		s.handleItemOps(player, cmd)
+		s.HandleItemOps(player, cmd)
 	case world.InputKindUnknown:
 		// failed validation: consumed, never applied
 	}
@@ -118,7 +119,7 @@ func (s *Sim) phaseLifecycle(tick uint32, mapState *world.MapState) {
 		s.ApplyResistanceStat(id, mapState)
 	}
 	s.handleRespawns(mapState)
-	s.completeCrafts(mapState)
+	s.CompleteCrafts(mapState)
 }
 
 // phaseSkills resolves skill projectile collisions and runs the skills of held items for this tick.
@@ -129,7 +130,7 @@ func (s *Sim) phaseSkills(tick uint32, mapState *world.MapState) {
 		s.dispatchHeldSkills(player.ID, mapState)
 	}
 	for id := range mapState.OfKind(world.EntityBot) {
-		if behaviorCollectsLoot(mapState.Ag(id).Behavior) {
+		if content.BehaviorCollectsLoot(mapState.Ag(id).Behavior) {
 			s.dispatchHeldSkills(id, mapState)
 		}
 	}
@@ -178,11 +179,11 @@ func (s *Sim) phasePortals(tick uint32, mapState *world.MapState) {
 func (s *Sim) phaseLoot(tick uint32, mapState *world.MapState) {
 	_ = tick
 	now := time.Now()
-	s.respawnWorldLoot(mapState, now)
+	s.RespawnWorldLoot(mapState, now)
 
 	for dropID := range mapState.OfKind(world.EntityBot) {
 		drop := mapState.Br(dropID)
-		if !behaviorIsInert(mapState.Ag(dropID).Behavior) {
+		if !content.BehaviorIsInert(mapState.Ag(dropID).Behavior) {
 			continue
 		}
 		// Mid-launch tokens register no collision until they settle on the cell.
@@ -195,17 +196,17 @@ func (s *Sim) phaseLoot(tick uint32, mapState *world.MapState) {
 
 		var collectorID world.EntityID
 		var granted bool
-		if player := s.resolveDropCollector(mapState, dropID); player != nil {
-			granted, collectorID = s.applyLootToPlayer(mapState, drop, player), player.ID
-		} else if bot := s.resolveBotDropCollector(mapState, dropID); bot != 0 {
-			granted, collectorID = s.applyLootToBot(mapState, drop, bot), bot
+		if player := s.ResolveDropCollector(mapState, dropID); player != nil {
+			granted, collectorID = s.ApplyLootToPlayer(mapState, drop, player), player.ID
+		} else if bot := s.ResolveBotDropCollector(mapState, dropID); bot != 0 {
+			granted, collectorID = s.ApplyLootToBot(mapState, drop, bot), bot
 		} else {
 			continue
 		}
-		s.broadcastDropCollect(mapState, dropID, collectorID, cx, cy, granted)
+		s.BroadcastDropCollect(mapState, dropID, collectorID, cx, cy, granted)
 		if drop.LootOrigin == world.LootOriginWorld && drop.LootOutcome == world.LootOutcomeConsume {
-			s.scheduleLootRespawn(mapState, dropID, now)
+			s.ScheduleLootRespawn(mapState, dropID, now)
 		}
-		s.despawn(mapState, dropID)
+		s.Despawn(mapState, dropID)
 	}
 }

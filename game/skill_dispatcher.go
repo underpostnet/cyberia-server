@@ -90,7 +90,7 @@ func (s *Sim) dispatchSkillsForEntity(casterID world.EntityID, mapState *world.M
 		if !layer.Active {
 			continue
 		}
-		if skillDefs, ok := s.skillConfig[layer.ItemID]; ok {
+		if skillDefs, ok := s.SkillConfig[layer.ItemID]; ok {
 			for _, skillDef := range skillDefs {
 				s.DispatchSkill(skillDef.LogicEventID, SkillContext{
 					CasterID:             casterID,
@@ -113,7 +113,7 @@ func (s *Sim) dispatchHeldSkills(casterID world.EntityID, mapState *world.MapSta
 		if layer.Quantity < 1 {
 			continue
 		}
-		for _, skillDef := range s.skillConfig[layer.ItemID] {
+		for _, skillDef := range s.SkillConfig[layer.ItemID] {
 			if handler, ok := heldSkillRegistry[skillDef.LogicEventID]; ok {
 				handler(s, SkillContext{
 					CasterID:             casterID,

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	"cyberia-server/serial"
 
@@ -33,13 +34,13 @@ func newWSTestServer(t *testing.T, limits ConnectionLimits) *wsTestServer {
 	s.SetConnectionLimits(limits)
 	s.Maps["test"] = mapState
 	s.aoiRadius = 10
-	s.defaultPlayerWidth, s.defaultPlayerHeight = 2, 2
-	s.entityBaseMaxLife, s.initialLifeFraction = 100, 1
-	s.entityBaseSpeed = 5
-	s.entityBaseActionCooldown = 100 * time.Millisecond
-	s.entityBaseMinActionCooldown = 50 * time.Millisecond
-	s.storage = map[storageKey][]StorageSlot{}
-	s.entityDefaults = map[string]EntityTypeDefaultConfig{}
+	s.DefaultPlayerWidth, s.DefaultPlayerHeight = 2, 2
+	s.EntityBaseMaxLife, s.InitialLifeFraction = 100, 1
+	s.EntityBaseSpeed = 5
+	s.EntityBaseActionCooldown = 100 * time.Millisecond
+	s.EntityBaseMinActionCooldown = 50 * time.Millisecond
+	s.Storage = map[content.StorageKey][]content.StorageSlot{}
+	s.EntityDefaults = map[string]content.EntityTypeDefaultConfig{}
 	s.playerSpawn = PlayerSpawnConfig{Random: true}
 
 	go s.listenForClients()

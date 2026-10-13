@@ -1,6 +1,7 @@
 package game
 
 import (
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	"fmt"
 	"iter"
@@ -13,15 +14,15 @@ import (
 
 // destructibleFixture is the movement map with a damaging bullet item and the
 // obstacle defaults a test resolves against.
-func destructibleFixture(t *testing.T, builds ...EntityTypeDefaultConfig) (*Sim, *world.MapState, *world.Session) {
+func destructibleFixture(t *testing.T, builds ...content.EntityTypeDefaultConfig) (*Sim, *world.MapState, *world.Session) {
 	t.Helper()
 	s, ms, player := movementFixture(t)
-	s.entityDefaults = map[string]EntityTypeDefaultConfig{}
-	s.entityDefaultBuilds = builds
-	s.entityBaseMaxLife = 10
+	s.EntityDefaults = map[string]content.EntityTypeDefaultConfig{}
+	s.EntityDefaultBuilds = builds
+	s.EntityBaseMaxLife = 10
 	s.NewEntityID() // built entities take ids after the player
-	if err := s.ReplaceObjectLayerCache(map[string]*ObjectLayer{
-		"bullet": {Data: ObjectLayerData{Stats: Stats{Effect: 4}, Item: Item{Type: "skill"}}},
+	if err := s.ReplaceObjectLayerCache(map[string]*content.ObjectLayer{
+		"bullet": {Data: content.ObjectLayerData{Stats: content.Stats{Effect: 4}, Item: content.Item{Type: "skill"}}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +52,7 @@ func shot(ms *world.MapState, caster *world.Session, at world.Vec2) world.Entity
 		world.Appearance{Layers: []world.ObjectLayerState{{ItemID: "bullet", Active: true, Quantity: 1}}})
 	ms.AddVitals(bullet, world.Vitals{MaxLife: 100, Life: 100})
 	ms.AddMotion(bullet, world.Motion{})
-	ms.AddAgent(bullet, world.Agent{Behavior: BehaviorSkill, CasterID: caster.ID})
+	ms.AddAgent(bullet, world.Agent{Behavior: content.BehaviorSkill, CasterID: caster.ID})
 	ms.AddMortal(bullet, &world.Mortal{})
 	return bullet
 }
@@ -60,7 +61,7 @@ func shot(ms *world.MapState, caster *world.Session, at world.Vec2) world.Entity
 func fire(s *Sim, ms *world.MapState, caster *world.Session, at world.Vec2) {
 	bullet := shot(ms, caster, at)
 	s.handleSkillCollisions(ms)
-	s.despawn(ms, bullet)
+	s.Despawn(ms, bullet)
 }
 
 // addBot gives bot id a slot at tf with the brain, walking in the motion.
@@ -77,7 +78,7 @@ func addBot(ms *world.MapState, id world.EntityID, tf world.Transform, brain *wo
 func drops(ms *world.MapState) []world.EntityID {
 	var out []world.EntityID
 	for id := range ms.OfKind(world.EntityBot) {
-		if ms.Ag(id).Behavior == BehaviorDrop {
+		if ms.Ag(id).Behavior == content.BehaviorDrop {
 			out = append(out, id)
 		}
 	}
@@ -92,13 +93,13 @@ func countOf(seq iter.Seq[world.EntityID]) int {
 	return n
 }
 
-var crystalRock = EntityTypeDefaultConfig{
+var crystalRock = content.EntityTypeDefaultConfig{
 	EntityType:          "obstacle",
 	LiveItemIDs:         []string{"crystal"},
 	DeadItemIDs:         []string{"rubble"},
 	DropItemIDs:         []string{"shard"},
 	DefaultObjectLayers: []world.ObjectLayerState{{ItemID: "shard", Quantity: 3}},
-	Behavior:            BehaviorDestructible,
+	Behavior:            content.BehaviorDestructible,
 }
 
 // An obstacle no default matches stays ordinary, even when the first obstacle
@@ -118,7 +119,7 @@ func TestOrdinaryObstacleBlocksAndTakesNoDamage(t *testing.T) {
 
 // Behavior and lifecycle come from the same most specific default.
 func TestTheMostSpecificObstacleDefaultDecidesDestructibility(t *testing.T) {
-	mossy := EntityTypeDefaultConfig{EntityType: "obstacle", LiveItemIDs: []string{"crystal", "moss"}}
+	mossy := content.EntityTypeDefaultConfig{EntityType: "obstacle", LiveItemIDs: []string{"crystal", "moss"}}
 	s, ms, _ := destructibleFixture(t, crystalRock, mossy)
 
 	if !ms.Has(placeObstacle(s, ms, 0, "crystal"), world.MaskVitals) {
@@ -168,7 +169,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	if !ms.Vt(obs).Ghost() || ms.Vt(obs).Life != 0 || !ms.Pathfinder().IsWalkable(10, 10, world.Vec2{X: 2, Y: 2}) {
 		t.Fatalf("depletion frees the cells: %+v", ms.Vt(obs))
 	}
-	if active := activeObjectLayerItemIDs(ms.Ap(obs).Layers); len(active) != 1 || active[0] != "rubble" {
+	if active := content.ActiveObjectLayerItemIDs(ms.Ap(obs).Layers); len(active) != 1 || active[0] != "rubble" {
 		t.Fatalf("depleted visual: %v", active)
 	}
 	scattered := drops(ms)
@@ -178,7 +179,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	if _, ok := ms.Br(scattered[0]).LootContributors[player.ID]; !ok {
 		t.Fatal("the damage contributor may collect the drop")
 	}
-	if s.entityProgression(player.ID, ms).XP != 0 {
+	if s.EntityProgression(player.ID, ms).XP != 0 {
 		t.Fatal("an obstacle awards no XP")
 	}
 
@@ -192,7 +193,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	ptf.Pos, player.Path, ms.Mo(player.ID).Mode = world.Vec2{X: 10, Y: 10}, []world.Cell{{X: 12, Y: 12}}, world.WALKING
 	const botID world.EntityID = 901
 	bot := addBot(ms, botID, world.Transform{Pos: world.Vec2{X: 10.5, Y: 10.5}, Size: cell},
-		&world.Brain{Path: []world.Cell{{X: 11, Y: 11}}, CurrentTargetPlayer: player.ID}, world.Motion{Mode: world.WALKING}, BehaviorHostile)
+		&world.Brain{Path: []world.Cell{{X: 11, Y: 11}}, CurrentTargetPlayer: player.ID}, world.Motion{Mode: world.WALKING}, content.BehaviorHostile)
 	projectile := shot(ms, player, world.Vec2{X: 10, Y: 10})
 	ptf = ms.Tf(player.ID) // a spawn may move the transform array
 	s.handleRespawns(ms)
@@ -220,7 +221,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 		!ms.Pathfinder().IsWalkable(int(btf.Pos.X), int(btf.Pos.Y), btf.Size) {
 		t.Fatalf("the displaced bot clears its movement and pursuit: %+v", bot)
 	}
-	if active := activeObjectLayerItemIDs(ms.Ap(obs).Layers); len(active) != 1 || active[0] != "crystal" {
+	if active := content.ActiveObjectLayerItemIDs(ms.Ap(obs).Layers); len(active) != 1 || active[0] != "crystal" {
 		t.Fatalf("respawned visual: %v", active)
 	}
 	s.handleRespawns(ms)
@@ -243,7 +244,7 @@ func TestRestoredObstacleReplansCrossingPaths(t *testing.T) {
 	}
 	const botID world.EntityID = 902
 	bot := addBot(ms, botID, world.Transform{Pos: world.Vec2{X: 9, Y: 10}, Size: ptf.Size},
-		&world.Brain{Path: []world.Cell{{X: 10, Y: 10}, {X: 12, Y: 10}}, CurrentTargetPlayer: player.ID}, world.Motion{Mode: world.WALKING}, BehaviorHostile)
+		&world.Brain{Path: []world.Cell{{X: 10, Y: 10}, {X: 12, Y: 10}}, CurrentTargetPlayer: player.ID}, world.Motion{Mode: world.WALKING}, content.BehaviorHostile)
 	ptf = ms.Tf(player.ID) // a spawn may move the transform array
 	s.handleRespawns(ms)
 	if !ms.Vt(obs).Ghost() || !pathCrossesObstacle(player.Path, ptf.Size, otf) {
@@ -368,18 +369,18 @@ func TestResourceDepletionKeepsItsObjectiveXP(t *testing.T) {
 			fire(s, ms, player, world.Vec2{X: 10, Y: 10})
 		}
 	}
-	if s.entityProgression(player.ID, ms).XP == 0 {
+	if s.EntityProgression(player.ID, ms).XP == 0 {
 		t.Fatal("a depleted resource awards objective XP")
 	}
 }
 
 func TestDestructibleObstacleDropsOnlyWhatItsDefaultRolls(t *testing.T) {
-	bare := EntityTypeDefaultConfig{EntityType: "obstacle", LiveItemIDs: []string{"crate"}, Behavior: BehaviorDestructible}
-	never := EntityTypeDefaultConfig{
+	bare := content.EntityTypeDefaultConfig{EntityType: "obstacle", LiveItemIDs: []string{"crate"}, Behavior: content.BehaviorDestructible}
+	never := content.EntityTypeDefaultConfig{
 		EntityType: "obstacle", LiveItemIDs: []string{"urn"}, DropItemIDs: []string{"shard"},
-		DropChances: map[string]float64{"shard": 0}, Behavior: BehaviorDestructible,
+		DropChances: map[string]float64{"shard": 0}, Behavior: content.BehaviorDestructible,
 	}
-	for _, build := range []EntityTypeDefaultConfig{bare, never} {
+	for _, build := range []content.EntityTypeDefaultConfig{bare, never} {
 		s, ms, player := destructibleFixture(t, build)
 		obs := placeObstacle(s, ms, 1, build.LiveItemIDs[0])
 		fire(s, ms, player, world.Vec2{X: 10, Y: 10})

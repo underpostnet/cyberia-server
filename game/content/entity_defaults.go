@@ -1,4 +1,4 @@
-package game
+package content
 
 import (
 	"cyberia-server/game/world"
@@ -7,33 +7,33 @@ import (
 	"cyberia-server/logx"
 )
 
-func (s *Content) buildEntityDefaultsSlice() []EntityTypeDefaultConfig {
-	result := make([]EntityTypeDefaultConfig, len(s.entityDefaultBuilds))
-	copy(result, s.entityDefaultBuilds)
+func (s *Content) BuildEntityDefaultsSlice() []EntityTypeDefaultConfig {
+	result := make([]EntityTypeDefaultConfig, len(s.EntityDefaultBuilds))
+	copy(result, s.EntityDefaultBuilds)
 	return result
 }
 
-// resolveEntityDefaultBuild picks the entity-type default for an entity from its
+// ResolveEntityDefaultBuild picks the entity-type default for an entity from its
 // active item IDs. A default matches only when ALL of its liveItemIds are present
 // on the entity (subset containment), and the MOST SPECIFIC match wins — the one
 // requiring the largest item set. This lets the same skin carry different
 // defaults by its full active set, e.g. {purple, atlas_pistol_mk2} → hostile but
 // {purple} → passive. With no containing match it falls back to the first build
 // of the type, then the per-type lookup.
-func (s *Content) resolveEntityDefaultBuild(entityType string, itemIDs []string) (EntityTypeDefaultConfig, bool) {
+func (s *Content) ResolveEntityDefaultBuild(entityType string, itemIDs []string) (EntityTypeDefaultConfig, bool) {
 	var firstTypeBuild *EntityTypeDefaultConfig
 	bestIndex := -1
 	bestSize := 0
 
-	for i := range s.entityDefaultBuilds {
-		build := s.entityDefaultBuilds[i]
+	for i := range s.EntityDefaultBuilds {
+		build := s.EntityDefaultBuilds[i]
 		if build.EntityType != entityType {
 			continue
 		}
 		if firstTypeBuild == nil {
-			firstTypeBuild = &s.entityDefaultBuilds[i]
+			firstTypeBuild = &s.EntityDefaultBuilds[i]
 		}
-		if !matchesLiveItems(build, itemIDs) {
+		if !MatchesLiveItems(build, itemIDs) {
 			continue
 		}
 		// Most specific wins: the largest fully-contained liveItemIds set. Ties
@@ -45,19 +45,19 @@ func (s *Content) resolveEntityDefaultBuild(entityType string, itemIDs []string)
 	}
 
 	if bestIndex >= 0 {
-		return s.entityDefaultBuilds[bestIndex], true
+		return s.EntityDefaultBuilds[bestIndex], true
 	}
 	if firstTypeBuild != nil {
 		return *firstTypeBuild, true
 	}
-	build, ok := s.entityDefaults[entityType]
+	build, ok := s.EntityDefaults[entityType]
 	return build, ok
 }
 
-// matchesLiveItems reports whether every live item of the build is among
+// MatchesLiveItems reports whether every live item of the build is among
 // itemIDs. A build with no live items matches nothing; it only stands in as
 // the first build of its type.
-func matchesLiveItems(build EntityTypeDefaultConfig, itemIDs []string) bool {
+func MatchesLiveItems(build EntityTypeDefaultConfig, itemIDs []string) bool {
 	if len(build.LiveItemIDs) == 0 {
 		return false
 	}
@@ -112,7 +112,7 @@ func buildLayer(build EntityTypeDefaultConfig, itemID string) world.ObjectLayerS
 	return world.ObjectLayerState{ItemID: itemID, Active: true, Quantity: 1}
 }
 
-// spawnObjectLayers is the one way every entity type reads its object-layer stack.
+// SpawnObjectLayers is the one way every entity type reads its object-layer stack.
 //
 // A map definition names what an entity *is* — the skin and visuals its author placed on it — and
 // the entity-type default names everything it carries: the lifecycle discriminators (live, dead,
@@ -124,8 +124,8 @@ func buildLayer(build EntityTypeDefaultConfig, itemID string) world.ObjectLayerS
 //
 // A placed id is active by definition: it is what the author put there. seedDefaults is false for
 // a solid-colour entity placed without sprites, which carries no default layers at all.
-func (s *Content) spawnObjectLayers(entityType string, placedItemIDs []string, seedDefaults bool) []world.ObjectLayerState {
-	build, hasBuild := s.resolveEntityDefaultBuild(entityType, placedItemIDs)
+func (s *Content) SpawnObjectLayers(entityType string, placedItemIDs []string, seedDefaults bool) []world.ObjectLayerState {
+	build, hasBuild := s.ResolveEntityDefaultBuild(entityType, placedItemIDs)
 	layers := make([]world.ObjectLayerState, 0, len(placedItemIDs))
 	seen := make(map[string]struct{}, len(placedItemIDs))
 	appendLayer := func(layer world.ObjectLayerState) {
@@ -181,8 +181,8 @@ func (s *Content) normalizeLoadout(layers []world.ObjectLayerState) []world.Obje
 		if !out[i].Active {
 			continue
 		}
-		if itemType := s.itemType(out[i].ItemID); itemType != "" && s.equipmentRules.ActiveItemTypes[itemType] {
-			if s.equipmentRules.OnePerType && claimed[itemType] {
+		if itemType := s.ItemType(out[i].ItemID); itemType != "" && s.EquipmentRules.ActiveItemTypes[itemType] {
+			if s.EquipmentRules.OnePerType && claimed[itemType] {
 				// Taken off, not taken away: the entity still carries the stack.
 				out[i].Active = false
 				continue
@@ -190,7 +190,7 @@ func (s *Content) normalizeLoadout(layers []world.ObjectLayerState) []world.Obje
 			claimed[itemType] = true
 		}
 		active++
-		if s.maxActiveLayers > 0 && active > s.maxActiveLayers {
+		if s.MaxActiveLayers > 0 && active > s.MaxActiveLayers {
 			out[i].Active = false
 			active--
 		}
@@ -198,7 +198,7 @@ func (s *Content) normalizeLoadout(layers []world.ObjectLayerState) []world.Obje
 	return out
 }
 
-func activeObjectLayerItemIDs(objectLayers []world.ObjectLayerState) []string {
+func ActiveObjectLayerItemIDs(objectLayers []world.ObjectLayerState) []string {
 	itemIDs := make([]string, 0, len(objectLayers))
 	for _, objectLayer := range objectLayers {
 		if !objectLayer.Active || objectLayer.ItemID == "" {
@@ -244,9 +244,9 @@ type SkillDefinition struct {
 	SummonedEntityItemID string
 }
 
-// itemType returns the ObjectLayer item type for an itemID, or "" if the
+// ItemType returns the ObjectLayer item type for an itemID, or "" if the
 // ObjectLayer cache has no entry. Pure helper — no state mutation.
-func (s *Content) itemType(itemID string) string {
+func (s *Content) ItemType(itemID string) string {
 	if data, ok := s.GetObjectLayerData(itemID); ok {
 		return data.Data.Item.Type
 	}

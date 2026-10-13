@@ -1,4 +1,4 @@
-package game
+package content
 
 import "cyberia-server/game/world"
 
@@ -29,32 +29,32 @@ const (
 	BehaviorOverheadOcclusion = "overhead-occlusion"
 )
 
-// behaviorIsInert reports whether entities with behavior b run no AI: they hold
+// BehaviorIsInert reports whether entities with behavior b run no AI: they hold
 // position until removed. Covers scattered loot drops.
-func behaviorIsInert(b string) bool {
+func BehaviorIsInert(b string) bool {
 	return b == BehaviorDrop
 }
 
-// behaviorCollectsLoot reports whether a bot with behavior b may collect a loot token: a combat
+// BehaviorCollectsLoot reports whether a bot with behavior b may collect a loot token: a combat
 // bot, never a projectile, a coin, a token or an immortal provider.
-func behaviorCollectsLoot(b string) bool {
-	return b != BehaviorSkill && b != BehaviorCoin && !behaviorIsInert(b) && !behaviorIsImmortal(b)
+func BehaviorCollectsLoot(b string) bool {
+	return b != BehaviorSkill && b != BehaviorCoin && !BehaviorIsInert(b) && !BehaviorIsImmortal(b)
 }
 
-// behaviorIsProvider reports whether b is a mission/action giver — immortal and
+// BehaviorIsProvider reports whether b is a mission/action giver — immortal and
 // near-stationary, whether it takes occasional short steps or is fully static.
-func behaviorIsProvider(b string) bool {
+func BehaviorIsProvider(b string) bool {
 	return b == BehaviorProvider || b == BehaviorProviderStatic
 }
 
-// behaviorIsImmortal reports whether entities with behavior b ignore combat
+// BehaviorIsImmortal reports whether entities with behavior b ignore combat
 // damage entirely.
-func behaviorIsImmortal(b string) bool {
-	return behaviorIsProvider(b)
+func BehaviorIsImmortal(b string) bool {
+	return BehaviorIsProvider(b)
 }
 
-// behaviorIsStationary reports whether entities with behavior b never move.
-func behaviorIsStationary(b string) bool {
+// BehaviorIsStationary reports whether entities with behavior b never move.
+func BehaviorIsStationary(b string) bool {
 	return b == BehaviorProviderStatic
 }
 
@@ -73,19 +73,19 @@ func (s *Content) deriveBehaviorFromLayers(layers []world.ObjectLayerState) stri
 	return BehaviorPassive
 }
 
-// boundBehavior is the behavior bound to the entity-type default the layers
+// BoundBehavior is the behavior bound to the entity-type default the layers
 // match (by active itemId — the same liveItemIds match used for the
 // live/dead/drop sets), or "" when that default binds none.
-func (s *Content) boundBehavior(entityType string, layers []world.ObjectLayerState) string {
-	build, _ := s.resolveEntityDefaultBuild(entityType, activeObjectLayerItemIDs(layers))
+func (s *Content) BoundBehavior(entityType string, layers []world.ObjectLayerState) string {
+	build, _ := s.ResolveEntityDefaultBuild(entityType, ActiveObjectLayerItemIDs(layers))
 	return build.Behavior
 }
 
-// resolveEntityBehavior picks a bot's behavior: the bound behavior when set,
+// ResolveEntityBehavior picks a bot's behavior: the bound behavior when set,
 // otherwise derived from the layers. This is the single entry point for
 // assigning a spawned bot's behavior.
-func (s *Content) resolveEntityBehavior(entityType string, layers []world.ObjectLayerState) string {
-	if behavior := s.boundBehavior(entityType, layers); behavior != "" {
+func (s *Content) ResolveEntityBehavior(entityType string, layers []world.ObjectLayerState) string {
+	if behavior := s.BoundBehavior(entityType, layers); behavior != "" {
 		return behavior
 	}
 	return s.deriveBehaviorFromLayers(layers)

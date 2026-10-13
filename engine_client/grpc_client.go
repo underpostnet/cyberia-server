@@ -7,12 +7,13 @@ package engine_client
 
 import (
 	"context"
-	"cyberia-server/logx"
 	"fmt"
 	"sync"
 	"time"
 
-	game "cyberia-server/game"
+	"cyberia-server/game/content"
+	"cyberia-server/logx"
+
 	pb "cyberia-server/gen/proto"
 
 	"google.golang.org/grpc"
@@ -92,7 +93,7 @@ func (c *GrpcClient) Ping(ctx context.Context) (int64, error) {
 }
 
 // FetchObjectLayer fetches a single ObjectLayer by item ID.
-func (c *GrpcClient) FetchObjectLayer(ctx context.Context, itemID string) (*game.ObjectLayer, error) {
+func (c *GrpcClient) FetchObjectLayer(ctx context.Context, itemID string) (*content.ObjectLayer, error) {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 
@@ -142,11 +143,11 @@ func (c *GrpcClient) FetchObjectLayerManifest(ctx context.Context) ([]ManifestEn
 // Proto → domain converters
 // ═══════════════════════════════════════════════════════════════════
 
-func protoToObjectLayer(msg *pb.ObjectLayerMessage) *game.ObjectLayer {
-	ol := &game.ObjectLayer{
+func protoToObjectLayer(msg *pb.ObjectLayerMessage) *content.ObjectLayer {
+	ol := &content.ObjectLayer{
 		Cid: msg.GetCid(),
-		Data: game.ObjectLayerData{
-			Stats: game.Stats{
+		Data: content.ObjectLayerData{
+			Stats: content.Stats{
 				Effect:       int(msg.GetStats().GetEffect()),
 				Resistance:   int(msg.GetStats().GetResistance()),
 				Agility:      int(msg.GetStats().GetAgility()),
@@ -154,7 +155,7 @@ func protoToObjectLayer(msg *pb.ObjectLayerMessage) *game.ObjectLayer {
 				Intelligence: int(msg.GetStats().GetIntelligence()),
 				Utility:      int(msg.GetStats().GetUtility()),
 			},
-			Item: game.Item{
+			Item: content.Item{
 				ID:          msg.GetItem().GetId(),
 				Type:        msg.GetItem().GetType(),
 				Description: msg.GetItem().GetDescription(),
@@ -164,7 +165,7 @@ func protoToObjectLayer(msg *pb.ObjectLayerMessage) *game.ObjectLayer {
 	}
 
 	if l := msg.GetLedger(); l != nil && l.GetStandard() != "" {
-		ol.Data.Ledger = &game.Ledger{
+		ol.Data.Ledger = &content.Ledger{
 			Standard:        l.GetStandard(),
 			ChainID:         l.GetChainId(),
 			ContractAddress: l.GetContractAddress(),
@@ -172,7 +173,7 @@ func protoToObjectLayer(msg *pb.ObjectLayerMessage) *game.ObjectLayer {
 		}
 	}
 	if r := msg.GetRender(); r != nil {
-		ol.Data.Render = &game.Render{
+		ol.Data.Render = &content.Render{
 			Cid:         r.GetCid(),
 			MetadataCid: r.GetMetadataCid(),
 		}

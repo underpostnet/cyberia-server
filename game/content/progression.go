@@ -1,4 +1,4 @@
-package game
+package content
 
 import (
 	"fmt"
@@ -80,7 +80,7 @@ func NewEntityProgression(level int, frozen bool, rules ProgressionRules) Entity
 type progressionEvent uint8
 
 const (
-	xpKill progressionEvent = iota + 1
+	XpKill progressionEvent = iota + 1
 	xpQuest
 	xpObjective
 )
@@ -92,7 +92,7 @@ func (p *EntityProgression) award(r ProgressionRules, event progressionEvent, ke
 	}
 	var reward int
 	switch event {
-	case xpKill:
+	case XpKill:
 		reward = r.KillXp
 	case xpQuest:
 		reward = r.QuestXp

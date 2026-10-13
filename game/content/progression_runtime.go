@@ -1,4 +1,4 @@
-package game
+package content
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	pb "cyberia-server/gen/proto"
 )
 
-func progressionRulesFromProto(p *pb.ProgressionRules) ProgressionRules {
+func ProgressionRulesFromProto(p *pb.ProgressionRules) ProgressionRules {
 	if p == nil {
 		return defaultProgressionRules()
 	}
@@ -24,27 +24,27 @@ func progressionRulesFromProto(p *pb.ProgressionRules) ProgressionRules {
 	}
 }
 
-func (s *Content) progressionConfig() ProgressionRules {
+func (s *Content) ProgressionConfig() ProgressionRules {
 	if s.progressionRules.MaxLevel == 0 {
 		return defaultProgressionRules()
 	}
 	return s.progressionRules
 }
 
-func (s *Content) entityProgression(id world.EntityID, ms *world.MapState) *EntityProgression {
-	p := s.progression[id]
+func (s *Content) EntityProgression(id world.EntityID, ms *world.MapState) *EntityProgression {
+	p := s.Progression[id]
 	if p == nil {
-		p = s.setProgression(id, EntityProgression{})
+		p = s.SetProgression(id, EntityProgression{})
 	}
 	if p.Level == 0 {
 		player := ms.Has(id, world.MaskPlayer)
-		level := s.progressionConfig().DefaultBotLevel
+		level := s.ProgressionConfig().DefaultBotLevel
 		if player {
 			level = 1
 		}
-		*p = NewEntityProgression(level, !player, s.progressionConfig())
+		*p = NewEntityProgression(level, !player, s.ProgressionConfig())
 	}
-	rules := s.progressionConfig()
+	rules := s.ProgressionConfig()
 	if p.Frozen {
 		p.Level = max(1, min(p.Level, rules.MaxLevel))
 		p.XP = rules.Threshold(p.Level)
@@ -55,42 +55,42 @@ func (s *Content) entityProgression(id world.EntityID, ms *world.MapState) *Enti
 	return p
 }
 
-// setProgression stores the progression of id and returns it.
-func (s *Content) setProgression(id world.EntityID, p EntityProgression) *EntityProgression {
-	if s.progression == nil {
-		s.progression = make(map[world.EntityID]*EntityProgression)
+// SetProgression stores the progression of id and returns it.
+func (s *Content) SetProgression(id world.EntityID, p EntityProgression) *EntityProgression {
+	if s.Progression == nil {
+		s.Progression = make(map[world.EntityID]*EntityProgression)
 	}
-	s.progression[id] = &p
+	s.Progression[id] = &p
 	return &p
 }
 
-// despawn frees the slot of id and its content rows. A move between maps
+// Despawn frees the slot of id and its content rows. A move between maps
 // uses MapState.take, which keeps them.
-func (s *Content) despawn(ms *world.MapState, id world.EntityID) {
+func (s *Content) Despawn(ms *world.MapState, id world.EntityID) {
 	ms.Despawn(id)
-	delete(s.progression, id)
+	delete(s.Progression, id)
 	delete(s.quests, id)
 	delete(s.crafts, id)
 }
 
-// forgetNonPlayers drops the content rows of every entity without a session.
+// ForgetNonPlayers drops the content rows of every entity without a session.
 // A world rebuild drops every entity but the players.
-func (s *Content) forgetNonPlayers() {
-	for id := range s.progression {
+func (s *Content) ForgetNonPlayers() {
+	for id := range s.Progression {
 		if s.Sessions[id] == nil {
-			delete(s.progression, id)
+			delete(s.Progression, id)
 		}
 	}
 }
 
-// awardProgression runs under the simulation lock after a gameplay result.
+// AwardProgression runs under the simulation lock after a gameplay result.
 // XP is private, so its floating text goes to the earner alone; a level gained
 // is public, so its sound reaches every viewer in the earner's area.
-func (s *Content) awardProgression(player *world.Session, event progressionEvent, key string, targetLevel int, now time.Time) uint64 {
+func (s *Content) AwardProgression(player *world.Session, event progressionEvent, key string, targetLevel int, now time.Time) uint64 {
 	ms := s.Maps[player.MapCode]
-	p := s.entityProgression(player.ID, ms)
+	p := s.EntityProgression(player.ID, ms)
 	before := p.Level
-	amount := p.award(s.progressionConfig(), event, key, targetLevel, now)
+	amount := p.award(s.ProgressionConfig(), event, key, targetLevel, now)
 	if amount == 0 {
 		return 0
 	}
@@ -98,25 +98,25 @@ func (s *Content) awardProgression(player *world.Session, event progressionEvent
 	tf := ms.Tf(player.ID)
 	world.SendMessage(player, "combat_text", world.CombatText{Kind: world.FCTXp, WorldX: tf.Pos.X, WorldY: tf.Pos.Y, Value: int(amount)})
 	if p.Level > before {
-		s.broadcastAudioEvent(ms, world.AudioEventLevelUp, world.Vec2{X: tf.Pos.X + tf.Size.X*0.5, Y: tf.Pos.Y + tf.Size.Y*0.5})
+		s.BroadcastAudioEvent(ms, world.AudioEventLevelUp, world.Vec2{X: tf.Pos.X + tf.Size.X*0.5, Y: tf.Pos.Y + tf.Size.Y*0.5})
 	}
 	return amount
 }
 
-// awardDefeat uses damage shares and excludes summoned entities, self kills
+// AwardDefeat uses damage shares and excludes summoned entities, self kills
 // and obstacles.
-func (s *Content) awardDefeat(victim world.EntityID, kind string, ms *world.MapState) {
+func (s *Content) AwardDefeat(victim world.EntityID, kind string, ms *world.MapState) {
 	if ms == nil || ms.Vt(victim).Ghost() || kind == "obstacle" {
 		return
 	}
 	if ms.Has(victim, world.MaskAgent) {
-		if a := ms.Ag(victim); a.CasterID != 0 || behaviorIsProvider(a.Behavior) || a.Behavior == BehaviorDrop {
+		if a := ms.Ag(victim); a.CasterID != 0 || BehaviorIsProvider(a.Behavior) || a.Behavior == BehaviorDrop {
 			return
 		}
 	}
 	ledger := ms.Mt(victim).DamageLedger
 	level := 1
-	if p := s.progression[victim]; p != nil {
+	if p := s.Progression[victim]; p != nil {
 		level = max(1, p.Level)
 	}
 	var total float64
@@ -134,11 +134,11 @@ func (s *Content) awardDefeat(victim world.EntityID, kind string, ms *world.MapS
 			continue
 		}
 		key := fmt.Sprintf("%s:%d", kind, victim)
-		event := xpKill
+		event := XpKill
 		if kind == "resource" {
 			event = xpObjective
 		}
-		s.awardProgression(entity, event, key, level, time.Now())
+		s.AwardProgression(entity, event, key, level, time.Now())
 	}
 }
 
@@ -158,7 +158,7 @@ func ValidateWorldProgression(config *pb.InstanceConfig, maps []*pb.MapDataMessa
 	if config == nil {
 		return fmt.Errorf("instance config is required")
 	}
-	rules := progressionRulesFromProto(config.GetProgressionRules())
+	rules := ProgressionRulesFromProto(config.GetProgressionRules())
 	if err := rules.Validate(); err != nil {
 		return err
 	}

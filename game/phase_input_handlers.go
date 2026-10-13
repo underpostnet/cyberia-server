@@ -24,6 +24,7 @@ package game
 import (
 	"math"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	"cyberia-server/logx"
 )
@@ -131,7 +132,7 @@ func (s *Sim) handleItemActivationInput(player *world.Session, cmd *world.InputC
 
 	v := s.Vt(player.ID, player.MapCode)
 	isDead := v.Ghost() || v.Life <= 0
-	isDeadItem := s.deadItemIDs[itemID]
+	isDeadItem := s.DeadItemIDs[itemID]
 
 	// Dead-state items are the Fragmented State's aesthetic loadout — they
 	// equip only while dead, under the same equipment rules as live items.
@@ -164,9 +165,9 @@ func (s *Sim) handleItemActivationInput(player *world.Session, cmd *world.InputC
 	s.Ap(player.ID, player.MapCode).Layers[targetItemIndex].Active = active
 
 	// Type guard — only activeItemTypes may be turned active.
-	if active && len(s.equipmentRules.ActiveItemTypes) > 0 {
-		reqType := s.itemType(itemID)
-		if reqType != "" && !s.equipmentRules.ActiveItemTypes[reqType] {
+	if active && len(s.EquipmentRules.ActiveItemTypes) > 0 {
+		reqType := s.ItemType(itemID)
+		if reqType != "" && !s.EquipmentRules.ActiveItemTypes[reqType] {
 			logx.Debugf("Player %s tried to activate '%s' (type=%q) — not in activeItemTypes; rejecting.",
 				player.ID, itemID, reqType)
 			s.Ap(player.ID, player.MapCode).Layers[targetItemIndex].Active = originalState
@@ -176,11 +177,11 @@ func (s *Sim) handleItemActivationInput(player *world.Session, cmd *world.InputC
 
 	// Rules operate within the current state's item set: dead items during
 	// the Fragmented State, live items otherwise.
-	inState := func(id string) bool { return s.deadItemIDs[id] == isDead }
+	inState := func(id string) bool { return s.DeadItemIDs[id] == isDead }
 
 	// OnePerType — deactivate any other active in-state item with the same type.
-	if active && s.equipmentRules.OnePerType {
-		requested := s.itemType(itemID)
+	if active && s.EquipmentRules.OnePerType {
+		requested := s.ItemType(itemID)
 		if requested != "" {
 			for i := range s.Ap(player.ID, player.MapCode).Layers {
 				if i == targetItemIndex {
@@ -189,7 +190,7 @@ func (s *Sim) handleItemActivationInput(player *world.Session, cmd *world.InputC
 				if !s.Ap(player.ID, player.MapCode).Layers[i].Active || !inState(s.Ap(player.ID, player.MapCode).Layers[i].ItemID) {
 					continue
 				}
-				if s.itemType(s.Ap(player.ID, player.MapCode).Layers[i].ItemID) == requested {
+				if s.ItemType(s.Ap(player.ID, player.MapCode).Layers[i].ItemID) == requested {
 					s.Ap(player.ID, player.MapCode).Layers[i].Active = false
 				}
 			}
@@ -199,7 +200,7 @@ func (s *Sim) handleItemActivationInput(player *world.Session, cmd *world.InputC
 	// RequireSkin / maxActiveLayers corrections, scoped to in-state items.
 	activeLayerCount, activeSkinCount, hasAnySkin, firstSkinIndex := 0, 0, false, -1
 	for i, layer := range s.Ap(player.ID, player.MapCode).Layers {
-		isSkin := inState(layer.ItemID) && s.itemType(layer.ItemID) == "skin"
+		isSkin := inState(layer.ItemID) && s.ItemType(layer.ItemID) == "skin"
 		if isSkin {
 			hasAnySkin = true
 			if firstSkinIndex == -1 {
@@ -213,22 +214,22 @@ func (s *Sim) handleItemActivationInput(player *world.Session, cmd *world.InputC
 			activeLayerCount++
 		}
 	}
-	if s.equipmentRules.RequireSkin && activeSkinCount == 0 {
-		if isDead && s.ghostItemID != "" {
+	if s.EquipmentRules.RequireSkin && activeSkinCount == 0 {
+		if isDead && s.GhostItemID != "" {
 			// Unequipping the last dead skin is allowed: the ghost item from
 			// gRPC config takes over as the Fragmented State visual.
-			activateOrAppendLayer(&s.Ap(player.ID, player.MapCode).Layers, s.ghostItemID)
+			content.ActivateOrAppendLayer(&s.Ap(player.ID, player.MapCode).Layers, s.GhostItemID)
 		} else if hasAnySkin && firstSkinIndex != -1 {
 			s.Ap(player.ID, player.MapCode).Layers[firstSkinIndex].Active = true
 		}
 	}
-	if activeLayerCount > s.maxActiveLayers {
+	if activeLayerCount > s.MaxActiveLayers {
 		s.Ap(player.ID, player.MapCode).Layers[targetItemIndex].Active = originalState
 	}
 
 	// The Fragmented State loadout persists across deaths.
 	if isDead {
-		player.DeadLoadoutItemIDs = activeObjectLayerItemIDs(s.Ap(player.ID, player.MapCode).Layers)
+		player.DeadLoadoutItemIDs = content.ActiveObjectLayerItemIDs(s.Ap(player.ID, player.MapCode).Layers)
 	}
 
 	s.ApplyResistanceStat(player.ID, s.Maps[player.MapCode])
@@ -248,15 +249,15 @@ func (s *Sim) queuePreRespawnActivation(player *world.Session, itemID string) {
 		}
 		layers[i].Active = true
 		logx.Debugf("Player %s is dead — queued activation of '%s' on revive.", player.ID, itemID)
-		if s.equipmentRules.OnePerType {
-			reqType := s.itemType(itemID)
+		if s.EquipmentRules.OnePerType {
+			reqType := s.ItemType(itemID)
 			if reqType != "" {
 				for j := range layers {
 					if j == i {
 						continue
 					}
 					if layers[j].Active &&
-						s.itemType(layers[j].ItemID) == reqType {
+						s.ItemType(layers[j].ItemID) == reqType {
 						layers[j].Active = false
 					}
 				}

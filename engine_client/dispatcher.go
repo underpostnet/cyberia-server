@@ -8,17 +8,18 @@ package engine_client
 
 import (
 	"context"
-	"cyberia-server/logx"
 	"fmt"
 
-	game "cyberia-server/game"
+	"cyberia-server/game/content"
+	"cyberia-server/logx"
+
 	pb "cyberia-server/gen/proto"
 )
 
 // DataSource provides the engine world-load surface used by WorldBuilder.
 type DataSource interface {
 	Ping(ctx context.Context) (int64, error)
-	FetchObjectLayer(ctx context.Context, itemID string) (*game.ObjectLayer, error)
+	FetchObjectLayer(ctx context.Context, itemID string) (*content.ObjectLayer, error)
 	FetchFullInstance(ctx context.Context, instanceCode string) (*pb.GetFullInstanceResponse, error)
 	FetchObjectLayerManifest(ctx context.Context) ([]ManifestEntry, error)
 	Close() error
@@ -95,8 +96,8 @@ func (d *Dispatcher) Ping(ctx context.Context) (int64, error) {
 	return dispatch(d, "Ping", func(ds DataSource) (int64, error) { return ds.Ping(ctx) })
 }
 
-func (d *Dispatcher) FetchObjectLayer(ctx context.Context, itemID string) (*game.ObjectLayer, error) {
-	return dispatch(d, "FetchObjectLayer", func(ds DataSource) (*game.ObjectLayer, error) {
+func (d *Dispatcher) FetchObjectLayer(ctx context.Context, itemID string) (*content.ObjectLayer, error) {
+	return dispatch(d, "FetchObjectLayer", func(ds DataSource) (*content.ObjectLayer, error) {
 		return ds.FetchObjectLayer(ctx, itemID)
 	})
 }

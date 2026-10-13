@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"cyberia-server/engineapi"
-	game "cyberia-server/game"
+	"cyberia-server/game/content"
 	pb "cyberia-server/gen/proto"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -102,7 +102,7 @@ func (c *RestClient) Ping(ctx context.Context) (int64, error) {
 }
 
 // FetchObjectLayer fetches a single ObjectLayer by item ID (boot/object-layer/:itemId).
-func (c *RestClient) FetchObjectLayer(ctx context.Context, itemID string) (*game.ObjectLayer, error) {
+func (c *RestClient) FetchObjectLayer(ctx context.Context, itemID string) (*content.ObjectLayer, error) {
 	var msg pb.ObjectLayerMessage
 	if err := c.getProto(ctx, "/object-layer/"+url.PathEscape(itemID), callTimeout, &msg); err != nil {
 		return nil, err

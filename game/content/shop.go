@@ -1,4 +1,4 @@
-// Package game — shop.go
+// Package content — shop.go
 //
 // Authoritative vendor transactions. engine-cyberia owns the catalog: a
 // CyberiaAction carrying `shopItems` makes the entity on its source cell a
@@ -13,7 +13,7 @@
 //	                           play the purchase FX or surface the reason
 //
 // Caller MUST hold s.mu for every handler here (they run inside phaseInput).
-package game
+package content
 
 import (
 	"cyberia-server/game/world"
@@ -65,7 +65,7 @@ func (s *Content) botHasShop(id world.EntityID, ms *world.MapState) bool {
 func (s *Content) shopPrice(item *ActionShopItem) (string, int) {
 	priceItemID := item.PriceItemID
 	if priceItemID == "" {
-		priceItemID = s.coinItemID
+		priceItemID = s.CoinItemID
 	}
 	qty := item.PriceQty
 	if qty < 0 {
@@ -81,14 +81,14 @@ func shopBuyQuantity(requested int) int {
 	return min(max(requested, 1), shopBuyMaxQty)
 }
 
-// handleShopBuy is the authoritative purchase path: validate the vendor, the
+// HandleShopBuy is the authoritative purchase path: validate the vendor, the
 // catalog row, and the player's balance, then move the price out and the items
 // in as one mutation. The updated inventory reaches the client through the next
 // AOI self-player block; shop_ack only tells the presentation layer whether the
 // transaction landed.
 //
 // Caller MUST hold s.mu.
-func (s *Content) handleShopBuy(player *world.Session, cmd *world.InputCommand) {
+func (s *Content) HandleShopBuy(player *world.Session, cmd *world.InputCommand) {
 	if s.Vt(player.ID, player.MapCode).Ghost() {
 		return
 	}
@@ -118,10 +118,10 @@ func (s *Content) handleShopBuy(player *world.Session, cmd *world.InputCommand) 
 	}
 
 	s.removePlayerItem(player, priceItemID, total)
-	s.addPlayerItem(player, item.ItemID, qty)
+	s.AddPlayerItem(player, item.ItemID, qty)
 	// A purchase is an inventory gain like any other — reconcile collect
 	// objectives so a quest step satisfied by buying advances immediately.
-	s.advancePlayerQuestsOnGain(player)
+	s.AdvancePlayerQuestsOnGain(player)
 	s.sendShopAck(player, cmd.EntityID, item.ItemID, qty, "")
 
 	logx.Debugf("[SHOP] player %s bought %dx %q from %s for %d %s",

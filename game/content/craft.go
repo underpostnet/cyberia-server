@@ -1,4 +1,4 @@
-// Package game — craft.go
+// Package content — craft.go
 //
 // Authoritative assembler transactions. engine-cyberia owns the recipe book: a
 // CyberiaAction carrying `craftRecipes` makes the entity on its source cell a
@@ -16,7 +16,7 @@
 // and the server drops it without an answer.
 //
 // Caller MUST hold s.mu for every handler here (they run inside phaseInput).
-package game
+package content
 
 import (
 	"time"
@@ -83,13 +83,13 @@ func (s *Content) playerCanCraft(player *world.Session, recipe *ActionCraftRecip
 	return true
 }
 
-// handleCraftItem starts an assembly: validate the assembler, the recipe and
+// HandleCraftItem starts an assembly: validate the assembler, the recipe and
 // every ingredient, then consume the inputs and arm the timer. Consuming up
 // front is what lets the client play the ingredient-loss animation the moment
 // the progress bar starts; a cancel before completion refunds them.
 //
 // Caller MUST hold s.mu.
-func (s *Content) handleCraftItem(player *world.Session, cmd *world.InputCommand) {
+func (s *Content) HandleCraftItem(player *world.Session, cmd *world.InputCommand) {
 	if s.Vt(player.ID, player.MapCode).Ghost() {
 		return
 	}
@@ -135,27 +135,27 @@ func (s *Content) handleCraftItem(player *world.Session, cmd *world.InputCommand
 		player.ID, cmd.RecipeIndex, id, durationMs)
 }
 
-// handleCraftCancel aborts the running assembly and refunds its ingredients.
+// HandleCraftCancel aborts the running assembly and refunds its ingredients.
 // Ignored once the timer has already paid out — there is nothing to abort.
 //
 // Caller MUST hold s.mu.
-func (s *Content) handleCraftCancel(player *world.Session) {
+func (s *Content) HandleCraftCancel(player *world.Session) {
 	active := s.crafts[player.ID]
 	if active == nil {
 		return
 	}
 	delete(s.crafts, player.ID)
 	for _, in := range active.Refund {
-		s.addPlayerItem(player, in.ItemID, in.Qty)
+		s.AddPlayerItem(player, in.ItemID, in.Qty)
 	}
 	logx.Debugf("[CRAFT] player %s cancelled recipe %d", player.ID, active.RecipeIndex)
 }
 
-// completeCrafts pays out every assembly whose timer elapsed this tick. Runs in
+// CompleteCrafts pays out every assembly whose timer elapsed this tick. Runs in
 // phaseLifecycle alongside the other timed transitions.
 //
 // Caller MUST hold s.mu.
-func (s *Content) completeCrafts(mapState *world.MapState) {
+func (s *Content) CompleteCrafts(mapState *world.MapState) {
 	now := time.Now()
 	for player := range s.PlayersOn(mapState) {
 		active := s.crafts[player.ID]
@@ -164,11 +164,11 @@ func (s *Content) completeCrafts(mapState *world.MapState) {
 		}
 		delete(s.crafts, player.ID)
 		for _, out := range active.Outputs {
-			s.addPlayerItem(player, out.ItemID, out.Qty)
+			s.AddPlayerItem(player, out.ItemID, out.Qty)
 		}
 		// An assembly is an inventory gain like any other — reconcile collect
 		// objectives so a quest step satisfied by assembling advances at once.
-		s.advancePlayerQuestsOnGain(player)
+		s.AdvancePlayerQuestsOnGain(player)
 		logx.Debugf("[CRAFT] player %s completed recipe %d", player.ID, active.RecipeIndex)
 	}
 }
@@ -180,8 +180,8 @@ type SnapshotCraft struct {
 	RemainingMs int            `json:"remainingMs"`
 }
 
-// snapshotCraft is the player's running assembly, or nil when none runs.
-func (s *Content) snapshotCraft(player *world.Session) *SnapshotCraft {
+// SnapshotCraft is the player's running assembly, or nil when none runs.
+func (s *Content) SnapshotCraft(player *world.Session) *SnapshotCraft {
 	active := s.crafts[player.ID]
 	if active == nil {
 		return nil

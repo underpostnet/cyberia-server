@@ -1,4 +1,4 @@
-// Package game — entity_status.go
+// Package content — entity_status.go
 //
 // Entity Status Indicator (ESI) system — the server-authoritative module that
 // computes the overhead status icon for every entity in the AOI each tick.
@@ -17,7 +17,7 @@
 //
 // ── Status Icon ID Constants ─────────────────────────────────────────────
 // MUST stay in sync with the C client constants in entity_status.h.
-package game
+package content
 
 import "cyberia-server/game/world"
 

@@ -1,4 +1,4 @@
-package game
+package content
 
 import (
 	"testing"
@@ -57,7 +57,7 @@ func TestShopItemForSelectsByItemID(t *testing.T) {
 }
 
 func TestShopPriceFillsSchemaDefaults(t *testing.T) {
-	s := &Content{World: &world.World{}, coinItemID: "coin"}
+	s := &Content{World: &world.World{}, CoinItemID: "coin"}
 
 	// An unset currency falls back to coins, matching the CyberiaAction schema.
 	itemID, qty := s.shopPrice(&ActionShopItem{ItemID: "tim-knife", PriceQty: 10})
@@ -117,10 +117,10 @@ func TestBotHasShopGatesTheCapabilityBit(t *testing.T) {
 		t.Fatal("nil bot is not a vendor")
 	}
 
-	if flags := s.botInteractionFlags(false, false, true); flags&InteractionFlagAction == 0 {
+	if flags := s.BotInteractionFlags(false, false, true); flags&InteractionFlagAction == 0 {
 		t.Fatalf("a vendor must light the action bit, got 0x%x", flags)
 	}
-	if flags := s.botInteractionFlags(false, false, false); flags != 0 {
+	if flags := s.BotInteractionFlags(false, false, false); flags != 0 {
 		t.Fatalf("a plain bot must light nothing, got 0x%x", flags)
 	}
 }

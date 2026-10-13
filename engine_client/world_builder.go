@@ -8,9 +8,11 @@ package engine_client
 
 import (
 	"context"
-	"cyberia-server/logx"
 	"fmt"
 	"sync"
+
+	"cyberia-server/game/content"
+	"cyberia-server/logx"
 
 	game "cyberia-server/game"
 	pb "cyberia-server/gen/proto"
@@ -78,7 +80,7 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 
 	// Build object layer cache exclusively from the instance response.
 	// getFullInstance already includes OLs for all map entity items.
-	cache := make(map[string]*game.ObjectLayer, len(resp.GetObjectLayers()))
+	cache := make(map[string]*content.ObjectLayer, len(resp.GetObjectLayers()))
 	for _, olMsg := range resp.GetObjectLayers() {
 		ol := protoToObjectLayer(olMsg)
 		if ol.Data.Item.ID != "" {
@@ -158,7 +160,7 @@ func (wb *WorldBuilder) HotReload(ctx context.Context) error {
 	if len(toFetch) > 0 || len(toDelete) > 0 {
 		logx.Infof("[WorldBuilder] Hot-reload: %d changed/new, %d deleted.", len(toFetch), len(toDelete))
 
-		updates := make(map[string]*game.ObjectLayer, len(toFetch))
+		updates := make(map[string]*content.ObjectLayer, len(toFetch))
 		fetchErrors := 0
 		for _, itemID := range toFetch {
 			ol, err := wb.client.FetchObjectLayer(ctx, itemID)
@@ -229,7 +231,7 @@ func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
 		}
 	}
 
-	updates := make(map[string]*game.ObjectLayer, len(resp.GetObjectLayers()))
+	updates := make(map[string]*content.ObjectLayer, len(resp.GetObjectLayers()))
 	for _, msg := range resp.GetObjectLayers() {
 		ol := protoToObjectLayer(msg)
 		if ol.Data.Item.ID != "" {
@@ -253,7 +255,7 @@ func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
 }
 
 func validateWorldProgression(response *pb.GetFullInstanceResponse) error {
-	if err := game.ValidateWorldProgression(response.GetConfig(), response.GetMaps()); err != nil {
+	if err := content.ValidateWorldProgression(response.GetConfig(), response.GetMaps()); err != nil {
 		return err
 	}
 	for _, message := range response.GetObjectLayers() {

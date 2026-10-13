@@ -1,4 +1,4 @@
-package game
+package content
 
 import (
 	"cyberia-server/logx"
@@ -48,9 +48,9 @@ func (s *Content) ReplaceObjectLayerCache(cache map[string]*ObjectLayer) error {
 	if err := validateObjectLayers(cache); err != nil {
 		return err
 	}
-	s.olMu.Lock()
-	defer s.olMu.Unlock()
-	s.objectLayerDataCache = cache
+	s.OlMu.Lock()
+	defer s.OlMu.Unlock()
+	s.ObjectLayerDataCache = cache
 
 	typeCounts := make(map[string]int)
 	for _, layer := range cache {
@@ -73,24 +73,24 @@ func (s *Content) PatchObjectLayerCache(updates map[string]*ObjectLayer, deletio
 	if err := validateObjectLayers(updates); err != nil {
 		return err
 	}
-	s.olMu.Lock()
-	defer s.olMu.Unlock()
-	if s.objectLayerDataCache == nil {
-		s.objectLayerDataCache = make(map[string]*ObjectLayer)
+	s.OlMu.Lock()
+	defer s.OlMu.Unlock()
+	if s.ObjectLayerDataCache == nil {
+		s.ObjectLayerDataCache = make(map[string]*ObjectLayer)
 	}
 	for itemID, ol := range updates {
-		s.objectLayerDataCache[itemID] = ol
+		s.ObjectLayerDataCache[itemID] = ol
 	}
 	for _, itemID := range deletions {
-		delete(s.objectLayerDataCache, itemID)
+		delete(s.ObjectLayerDataCache, itemID)
 	}
 	return nil
 }
 
 // GetObjectLayerData returns an ObjectLayer by item ID (read-locked).
 func (s *Content) GetObjectLayerData(itemID string) (*ObjectLayer, bool) {
-	s.olMu.RLock()
-	defer s.olMu.RUnlock()
-	ol, ok := s.objectLayerDataCache[itemID]
+	s.OlMu.RLock()
+	defer s.OlMu.RUnlock()
+	ol, ok := s.ObjectLayerDataCache[itemID]
 	return ol, ok
 }
