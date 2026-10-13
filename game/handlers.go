@@ -171,10 +171,8 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	}, Appearance{Layers: playerOLs})
 	startMapState.addVitals(playerID, Vitals{MaxLife: s.entityBaseMaxLife})
 	startMapState.addMotion(playerID, Motion{Direction: NONE, Mode: IDLE})
-	startMapState.addMortal(playerID, &Mortal{
-		Progression: NewEntityProgression(1, false, s.progressionConfig()),
-		LifeRegen:   lifeRegen,
-	})
+	startMapState.addMortal(playerID, &Mortal{LifeRegen: lifeRegen})
+	s.setProgression(playerID, NewEntityProgression(1, false, s.progressionConfig()))
 	startMapState.mask[startMapState.slot(playerID)] |= maskPlayer
 
 	// Economy: credit the player's starting wallet (Fountain: playerSpawnCoins).
@@ -249,7 +247,7 @@ func (s *GameServer) detachClient(client *Client) {
 	delete(s.sessions, client.playerID)
 	// Sweep every map: a portal can move a player after MapCode was read.
 	for _, mapState := range s.maps {
-		mapState.despawn(client.playerID)
+		s.despawn(mapState, client.playerID)
 	}
 	s.mu.Unlock()
 

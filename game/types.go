@@ -124,7 +124,6 @@ type Mortal struct {
 	NextSkillAt            time.Time
 	NextConsumeAt          time.Time // ends the cooldown a consumed held item starts (consumable.go)
 	BaseMaxLife            float64
-	Progression            EntityProgression
 	PreRespawnObjectLayers []ObjectLayerState
 	LifeRegen              float64
 	// RespawnDuration is the wait before the entity comes back; 0 takes respawnDurationDefaultMs.
@@ -443,6 +442,9 @@ type GameServer struct {
 	// only; the slot shape is the future persistence document.
 	storage   map[storageKey][]StorageSlot
 	questDefs map[string]*CyberiaQuest
+	// progression is the level and XP of each mortal entity. despawn deletes
+	// the row.
+	progression map[EntityID]*EntityProgression
 
 	// Equipment rules — governs activation constraints.
 	equipmentRules EquipmentRulesConfig

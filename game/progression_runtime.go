@@ -31,7 +31,10 @@ func (s *GameServer) progressionConfig() ProgressionRules {
 }
 
 func (s *GameServer) entityProgression(id EntityID, ms *MapState) *EntityProgression {
-	p := &ms.mt(id).Progression
+	p := s.progression[id]
+	if p == nil {
+		p = s.setProgression(id, EntityProgression{})
+	}
 	if p.Level == 0 {
 		player := ms.has(id, maskPlayer)
 		level := s.progressionConfig().DefaultBotLevel
@@ -49,6 +52,22 @@ func (s *GameServer) entityProgression(id EntityID, ms *MapState) *EntityProgres
 		p.Level = rules.LevelAtXP(p.XP)
 	}
 	return p
+}
+
+// setProgression stores the progression of id and returns it.
+func (s *GameServer) setProgression(id EntityID, p EntityProgression) *EntityProgression {
+	if s.progression == nil {
+		s.progression = make(map[EntityID]*EntityProgression)
+	}
+	s.progression[id] = &p
+	return &p
+}
+
+// despawn frees the slot of id and its content rows. A move between maps
+// uses MapState.take, which keeps them.
+func (s *GameServer) despawn(ms *MapState, id EntityID) {
+	ms.despawn(id)
+	delete(s.progression, id)
 }
 
 // awardProgression runs under the simulation lock after a gameplay result.
@@ -82,8 +101,11 @@ func (s *GameServer) awardDefeat(victim EntityID, kind string, ms *MapState) {
 			return
 		}
 	}
-	mortal := ms.mt(victim)
-	ledger := mortal.DamageLedger
+	ledger := ms.mt(victim).DamageLedger
+	level := 1
+	if p := s.progression[victim]; p != nil {
+		level = max(1, p.Level)
+	}
 	var total float64
 	for _, damage := range ledger {
 		if damage > 0 {
@@ -103,7 +125,7 @@ func (s *GameServer) awardDefeat(victim EntityID, kind string, ms *MapState) {
 		if kind == "resource" {
 			event = xpObjective
 		}
-		s.awardProgression(entity, event, key, max(1, mortal.Progression.Level), time.Now())
+		s.awardProgression(entity, event, key, level, time.Now())
 	}
 }
 

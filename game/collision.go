@@ -149,7 +149,7 @@ func (s *GameServer) handleSkillCollisions(mapState *MapState) {
 	}
 
 	for _, id := range projectilesToDelete {
-		mapState.despawn(id)
+		s.despawn(mapState, id)
 	}
 }
 

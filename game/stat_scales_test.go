@@ -47,7 +47,7 @@ func TestRegenAmountFollowsResistance(t *testing.T) {
 	s.lifeRegenChance, s.maxChance = 1, 1
 	ms.mt(p.ID).LifeRegen = 1
 	ms.vt(p.ID).Life, ms.vt(p.ID).MaxLife = 50, 100
-	ms.mt(p.ID).Progression = NewEntityProgression(1, false, s.progressionConfig())
+	s.setProgression(p.ID, NewEntityProgression(1, false, s.progressionConfig()))
 	base := s.progressionConfig().BaseAtLevel(1).Resistance
 	s.handleProbabilisticRegen(p.ID, ms)
 	if want := 50 + 1 + base*statRegenPerResistance; ms.vt(p.ID).Life != want {

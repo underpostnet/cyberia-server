@@ -46,7 +46,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 
 		// Check for expiration
 		if !bot.ExpiresAt.IsZero() && time.Now().After(bot.ExpiresAt) {
-			mapState.despawn(id)
+			s.despawn(mapState, id)
 			continue
 		}
 
@@ -76,7 +76,7 @@ func (s *GameServer) updateBots(mapState *MapState) {
 			// Remove projectile if it goes out of map bounds
 			if mapState.tf(id).Pos.X < 0 || mapState.tf(id).Pos.X > float64(mapState.gridW) ||
 				mapState.tf(id).Pos.Y < 0 || mapState.tf(id).Pos.Y > float64(mapState.gridH) {
-				mapState.despawn(id)
+				s.despawn(mapState, id)
 				continue // Skip further processing for this bot
 			}
 			s.handleBotSkills(id, mapState, Vec2{X: mapState.tf(id).Pos.X, Y: mapState.tf(id).Pos.Y})

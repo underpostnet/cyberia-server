@@ -375,7 +375,7 @@ func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
 		if drop.LootOrigin == LootOriginWorld && drop.LootOutcome == LootOutcomeConsume {
 			scheduleLootRespawn(mapState, dropID, now)
 		}
-		mapState.despawn(dropID)
+		s.despawn(mapState, dropID)
 	}
 }
 

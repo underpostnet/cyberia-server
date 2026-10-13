@@ -50,7 +50,7 @@ func shot(ms *MapState, caster *Session, at Vec2) EntityID {
 func fire(s *GameServer, ms *MapState, caster *Session, at Vec2) {
 	bullet := shot(ms, caster, at)
 	s.handleSkillCollisions(ms)
-	ms.despawn(bullet)
+	s.despawn(ms, bullet)
 }
 
 // addBot gives bot id a slot at tf with the brain, walking in the motion.
@@ -168,7 +168,7 @@ func TestDestructibleObstacleDepletesOnceAndRespawnsOverWhoStandsInIt(t *testing
 	if _, ok := ms.br(scattered[0]).LootContributors[player.ID]; !ok {
 		t.Fatal("the damage contributor may collect the drop")
 	}
-	if ms.mt(player.ID).Progression.XP != 0 {
+	if s.entityProgression(player.ID, ms).XP != 0 {
 		t.Fatal("an obstacle awards no XP")
 	}
 
@@ -357,7 +357,7 @@ func TestResourceDepletionKeepsItsObjectiveXP(t *testing.T) {
 			fire(s, ms, player, Vec2{X: 10, Y: 10})
 		}
 	}
-	if ms.mt(player.ID).Progression.XP == 0 {
+	if s.entityProgression(player.ID, ms).XP == 0 {
 		t.Fatal("a depleted resource awards objective XP")
 	}
 }

@@ -118,6 +118,13 @@ func (s *GameServer) RebuildWorld(
 		ms.mu.RUnlock()
 	}
 
+	// The rebuild drops every entity but the players, so drop their rows.
+	for id := range s.progression {
+		if s.sessions[id] == nil {
+			delete(s.progression, id)
+		}
+	}
+
 	// Rebuild via the same path as initial load.
 	s.buildMapsFromInstance(instance, mapMsgs)
 	s.playerSpawn = playerSpawnFromInstance(instance)
@@ -338,12 +345,8 @@ func (s *GameServer) buildBot(ms *MapState, ent *pb.EntityMessage) {
 	ms.addVitals(id, Vitals{MaxLife: maxLife, Life: maxLife * s.initialLifeFraction})
 	ms.addMotion(id, Motion{Direction: NONE, Mode: IDLE})
 	ms.addAgent(id, Agent{Behavior: s.resolveEntityBehavior("bot", objectLayers)})
-	ms.addMortal(id, &Mortal{
-		BaseMaxLife:     maxLife,
-		Progression:     NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig()),
-		LifeRegen:       lifeRegen,
-		RespawnDuration: placedRespawnDuration(ent),
-	})
+	ms.addMortal(id, &Mortal{BaseMaxLife: maxLife, LifeRegen: lifeRegen, RespawnDuration: placedRespawnDuration(ent)})
+	s.setProgression(id, NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig()))
 	s.ApplyResistanceStat(id, ms)
 	ms.vt(id).Life = ms.vt(id).MaxLife * s.initialLifeFraction
 
@@ -385,11 +388,8 @@ func (s *GameServer) buildResource(ms *MapState, ent *pb.EntityMessage) {
 	res := s.newEntityID()
 	ms.spawn(res, EntityData{Kind: EntityResource}, Transform{Pos: startPos, Size: dims}, Appearance{Layers: objectLayers})
 	ms.addVitals(res, Vitals{MaxLife: maxLife, Life: maxLife})
-	ms.addMortal(res, &Mortal{
-		BaseMaxLife:     maxLife,
-		Progression:     NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig()),
-		RespawnDuration: placedRespawnDuration(ent),
-	})
+	ms.addMortal(res, &Mortal{BaseMaxLife: maxLife, RespawnDuration: placedRespawnDuration(ent)})
+	s.setProgression(res, NewEntityProgression(int(ent.GetLevel()), true, s.progressionConfig()))
 
 	// Apply stats (resistance may increase MaxLife)
 	s.ApplyResistanceStat(res, ms)

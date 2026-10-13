@@ -49,7 +49,7 @@ func TestSignedAggregationAcrossEntities(t *testing.T) {
 		ms.addMortal(id, &Mortal{})
 	}
 	for _, id := range entities {
-		ms.mt(id).Progression = NewEntityProgression(4, true, s.progressionConfig())
+		s.setProgression(id, NewEntityProgression(4, true, s.progressionConfig()))
 		expected := s.progressionConfig().BaseAtLevel(4)
 		if got := s.CalculateStats(id, ms); got != expected {
 			t.Fatalf("%d: %v != %v", id, got, expected)
@@ -134,11 +134,11 @@ func TestProgressionRateAndRepeatLimits(t *testing.T) {
 func TestRawTapSpamDoesNotAwardXP(t *testing.T) {
 	s, ms, p := movementFixture(t)
 	m := ms.mt(p.ID)
-	m.Progression = NewEntityProgression(1, false, s.progressionConfig())
+	progression := s.setProgression(p.ID, NewEntityProgression(1, false, s.progressionConfig()))
 	for i := uint32(1); i <= 1000; i++ {
 		s.HandlePlayerTapAction(p, ms, Vec2{X: 2, Y: 2})
 	}
-	if m.Progression.XP != 0 || m.Progression.Level != 1 {
+	if progression.XP != 0 || progression.Level != 1 {
 		t.Fatal("raw taps award XP")
 	}
 	if m.NextSkillAt.IsZero() {
@@ -158,23 +158,23 @@ func TestDefeatAwardsOnlyEligibleContributors(t *testing.T) {
 	ms.spawn(victim, EntityData{Kind: EntityBot}, Transform{}, Appearance{})
 	ms.addVitals(victim, Vitals{})
 	ms.addAgent(victim, Agent{Behavior: "hostile"})
-	ms.addMortal(victim, &Mortal{Progression: NewEntityProgression(1, true, s.progressionConfig())})
-	m := ms.mt(p.ID)
+	ms.addMortal(victim, &Mortal{})
+	s.setProgression(victim, NewEntityProgression(1, true, s.progressionConfig()))
 	ms.mt(victim).DamageLedger = map[EntityID]float64{p.ID: 100}
 	s.awardDefeat(victim, "bot", ms)
-	if m.Progression.XP != 25 {
-		t.Fatalf("kill XP = %d", m.Progression.XP)
+	if xp := s.progression[p.ID].XP; xp != 25 {
+		t.Fatalf("kill XP = %d", xp)
 	}
-	m.Progression = NewEntityProgression(1, false, s.progressionConfig())
+	s.setProgression(p.ID, NewEntityProgression(1, false, s.progressionConfig()))
 	ms.ag(victim).CasterID = p.ID
 	s.awardDefeat(victim, "bot", ms)
-	if m.Progression.XP != 0 {
+	if s.progression[p.ID].XP != 0 {
 		t.Fatal("summon farming awards XP")
 	}
 	ms.ag(victim).CasterID = 0
 	ms.mt(victim).DamageLedger = map[EntityID]float64{p.ID: 1, 999: 100}
 	s.awardDefeat(victim, "bot", ms)
-	if m.Progression.XP != 0 {
+	if s.progression[p.ID].XP != 0 {
 		t.Fatal("low contribution awards XP")
 	}
 }
@@ -203,7 +203,7 @@ func TestSnapshotCarriesProgressionAndSignedBreakdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	ms.ap(p.ID).Layers = []ObjectLayerState{{ItemID: "nerf", Active: true, Quantity: 1}}
-	ms.mt(p.ID).Progression = NewEntityProgression(2, false, s.progressionConfig())
+	s.setProgression(p.ID, NewEntityProgression(2, false, s.progressionConfig()))
 	snap := s.buildSnapshotSelf(p, ms)
 	if snap.Level != 2 || snap.XP != 100 || snap.LevelXP != 100 || snap.NextLevelXP != 400 || snap.LayerStats[2] != -100 || snap.Stats[2] != -90 {
 		t.Fatalf("snapshot: %+v", snap)
@@ -222,7 +222,7 @@ func TestSnapshotCarriesProgressionAndSignedBreakdown(t *testing.T) {
 
 func TestSummonFloorsAfterAllContributions(t *testing.T) {
 	s, ms, p := movementFixture(t)
-	ms.mt(p.ID).Progression = NewEntityProgression(1, false, s.progressionConfig())
+	s.setProgression(p.ID, NewEntityProgression(1, false, s.progressionConfig()))
 	s.ReplaceObjectLayerCache(map[string]*ObjectLayer{
 		"nerf": {Data: ObjectLayerData{Stats: Stats{Effect: -100}}},
 		"buff": {Data: ObjectLayerData{Stats: Stats{Effect: 100}}},
@@ -245,7 +245,8 @@ func TestProgressionNormalizesAfterCurveChange(t *testing.T) {
 	s := &GameServer{progressionRules: defaultProgressionRules()}
 	ms := &MapState{}
 	ms.spawn(1, EntityData{Kind: EntityPlayer}, Transform{}, Appearance{})
-	ms.addMortal(1, &Mortal{Progression: NewEntityProgression(3, false, s.progressionConfig())})
+	ms.addMortal(1, &Mortal{})
+	s.setProgression(1, NewEntityProgression(3, false, s.progressionConfig()))
 	s.progressionRules.XpPerLevel = 200
 	if got := s.entityProgression(1, ms); got.Level != 2 || got.XP != 400 {
 		t.Fatalf("curve normalization: %+v", got)
@@ -257,17 +258,17 @@ func TestProgressionNormalizesAfterCurveChange(t *testing.T) {
 }
 
 func TestQuestCompletionAwardsAfterKillAndRejectsReplay(t *testing.T) {
-	s, ms, p := movementFixture(t)
-	m := ms.mt(p.ID)
+	s, _, p := movementFixture(t)
 	s.awardProgression(p, xpKill, "victim", 1, time.Now())
 	progress := &QuestProgress{QuestCode: "quest", Status: "active"}
 	affected := []QuestSnapshotEntry{}
 	s.completeQuest(p, progress, &affected)
-	if m.Progression.XP != 125 || m.Progression.Level != 2 {
-		t.Fatalf("quest result: %+v", m.Progression)
+	m := s.progression[p.ID]
+	if m.XP != 125 || m.Level != 2 {
+		t.Fatalf("quest result: %+v", m)
 	}
 	s.completeQuest(p, progress, &affected)
-	if m.Progression.XP != 125 || len(affected) != 1 {
+	if m.XP != 125 || len(affected) != 1 {
 		t.Fatal("quest completion replay")
 	}
 }
@@ -276,8 +277,8 @@ func TestAuthoredLevelsUseCommonBaseCurve(t *testing.T) {
 	s, ms, _ := movementFixture(t)
 	s.buildResource(ms, &pb.EntityMessage{Level: 7, MaxLife: 50, ColorA: 255})
 	for resource := range ms.ofKind(EntityResource) {
-		if !ms.mt(resource).Progression.Frozen || ms.mt(resource).Progression.Level != 7 || ms.vt(resource).MaxLife != 90 {
-			t.Fatalf("resource curve: %+v", ms.mt(resource))
+		if p := s.progression[resource]; !p.Frozen || p.Level != 7 || ms.vt(resource).MaxLife != 90 {
+			t.Fatalf("resource curve: %+v", p)
 		}
 	}
 	rules := s.progressionConfig()
