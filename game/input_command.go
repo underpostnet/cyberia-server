@@ -70,3 +70,11 @@ func EnqueueInputs(p *Session, cmds []InputCommand) bool {
 	p.InputQueue = append(p.InputQueue, cmds...)
 	return true
 }
+
+// itemOp is one replayed vault operation: Qty of ItemID into the vault when
+// ToVault, else out of it.
+type itemOp struct {
+	ItemID  string `json:"itemId"`
+	Qty     int    `json:"qty"`
+	ToVault bool   `json:"toVault"`
+}

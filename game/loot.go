@@ -341,44 +341,6 @@ func (s *GameServer) buildLoot(mapState *MapState, ent *pb.EntityMessage) {
 
 // ── Authoritative collection ─────────────────────────────────────────────
 
-// phaseLoot resolves token collisions for one tick. The first collector the
-// token's collection policy admits takes it, players before bots: its outcome
-// applies, the pickup animation event goes to every viewer and the token is
-// removed in the same step, so one token applies once. Caller holds s.mu.
-func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
-	_ = tick
-	now := time.Now()
-	s.respawnWorldLoot(mapState, now)
-
-	for dropID, drop := range mapState.brains {
-		if !behaviorIsInert(mapState.ag(dropID).Behavior) {
-			continue
-		}
-		// Mid-launch tokens register no collision until they settle on the cell.
-		if now.Before(drop.CollectableAt) {
-			continue
-		}
-
-		cx := mapState.tf(dropID).Pos.X + mapState.tf(dropID).Size.X*0.5
-		cy := mapState.tf(dropID).Pos.Y + mapState.tf(dropID).Size.Y*0.5
-
-		var collectorID EntityID
-		var granted bool
-		if player := s.resolveDropCollector(mapState, dropID); player != nil {
-			granted, collectorID = s.applyLootToPlayer(mapState, drop, player), player.ID
-		} else if bot := s.resolveBotDropCollector(mapState, dropID); bot != 0 {
-			granted, collectorID = s.applyLootToBot(mapState, drop, bot), bot
-		} else {
-			continue
-		}
-		s.broadcastDropCollect(mapState, dropID, collectorID, cx, cy, granted)
-		if drop.LootOrigin == LootOriginWorld && drop.LootOutcome == LootOutcomeConsume {
-			scheduleLootRespawn(mapState, dropID, now)
-		}
-		s.despawn(mapState, dropID)
-	}
-}
-
 // lootConsumes reports whether the collector consumes the token at once: a
 // consuming token heals a collector that misses life; one at full life keeps the item.
 func lootConsumes(drop *Brain, collector *Vitals) bool {
@@ -511,4 +473,14 @@ func (s *GameServer) broadcastDropCollect(mapState *MapState, dropID EntityID, c
 			sendMessage(player, "drop_collect", payload)
 		}
 	}
+}
+
+// grantItemToBot transfers `qty` of a non-coin item into a contributing bot's
+// inventory when it collects a scattered drop (appended inactive if new).
+func (s *GameServer) grantItemToBot(id EntityID, ms *MapState, itemID string, qty int) {
+	if itemID == "" || qty <= 0 {
+		return
+	}
+	ol := getOrCreateItemOL(&ms.ap(id).Layers, itemID)
+	ol.Quantity += qty
 }

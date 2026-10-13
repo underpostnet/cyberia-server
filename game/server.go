@@ -2,12 +2,13 @@ package game
 
 import (
 	"fmt"
-	"math"
-	"math/rand"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	pb "cyberia-server/gen/proto"
 	"cyberia-server/logx"
+	"cyberia-server/socket"
 )
 
 // NewGameServer creates an empty game server with no hardcoded defaults.
@@ -221,59 +222,6 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 	return nil
 }
 
-// ReplaceObjectLayerCache atomically replaces the entire cache.
-// Used by WorldBuilder for initial full load via gRPC.
-func (s *GameServer) ReplaceObjectLayerCache(cache map[string]*ObjectLayer) error {
-	if err := validateObjectLayers(cache); err != nil {
-		return err
-	}
-	s.olMu.Lock()
-	defer s.olMu.Unlock()
-	s.objectLayerDataCache = cache
-
-	typeCounts := make(map[string]int)
-	for _, layer := range cache {
-		itemType := layer.Data.Item.Type
-		if itemType == "" {
-			itemType = "(unknown)"
-		}
-		typeCounts[itemType]++
-	}
-	logx.Infof("Object layer cache replaced with %d items.", len(cache))
-	for itemType, count := range typeCounts {
-		logx.Debugf("  %-20s %d", itemType, count)
-	}
-	return nil
-}
-
-// PatchObjectLayerCache applies incremental updates and deletions.
-// Used by WorldBuilder for hot-reload via gRPC manifest diffing.
-func (s *GameServer) PatchObjectLayerCache(updates map[string]*ObjectLayer, deletions []string) error {
-	if err := validateObjectLayers(updates); err != nil {
-		return err
-	}
-	s.olMu.Lock()
-	defer s.olMu.Unlock()
-	if s.objectLayerDataCache == nil {
-		s.objectLayerDataCache = make(map[string]*ObjectLayer)
-	}
-	for itemID, ol := range updates {
-		s.objectLayerDataCache[itemID] = ol
-	}
-	for _, itemID := range deletions {
-		delete(s.objectLayerDataCache, itemID)
-	}
-	return nil
-}
-
-// GetObjectLayerData returns an ObjectLayer by item ID (read-locked).
-func (s *GameServer) GetObjectLayerData(itemID string) (*ObjectLayer, bool) {
-	s.olMu.RLock()
-	defer s.olMu.RUnlock()
-	ol, ok := s.objectLayerDataCache[itemID]
-	return ol, ok
-}
-
 // SetDataServerURL sets the Data Server origin used for server-to-server
 // content-authority calls, and the key those calls carry. Never forwarded to
 // clients.
@@ -379,161 +327,6 @@ func (s *GameServer) gameLoop() {
 
 // ---------- Movement and direction ----------
 
-// directionFromVector maps a movement vector onto one of the eight facings.
-func directionFromVector(dirX, dirY float64) Direction {
-	angle := math.Atan2(dirY, dirX)
-	if angle < 0 {
-		angle += 2 * math.Pi
-	}
-	return Direction((int(math.Round(angle/(math.Pi/4))) + 2) % 8)
-}
-
-// stepAlongPath advances pos toward the head of path by speed*dt cells.
-//
-// dt-based integration: speed is cells/second and dt is the authoritative
-// simulation step (1 / tickRate). A frame count instead of dt silently breaks
-// movement whenever the loop runs slow or the tickRate config changes.
-//
-// It returns the new position, the path left to walk, and the facing for this
-// step. The bool is false when the step produced no heading — an empty path
-// or a zero-length hop — so the caller decides what an arriving entity faces.
-func stepAlongPath(pos Vec2, path []Cell, speed, dt float64) (Vec2, []Cell, Direction, bool) {
-	if len(path) == 0 {
-		return pos, path, NONE, false
-	}
-
-	targetNode := path[0]
-	dx := float64(targetNode.X) - pos.X
-	dy := float64(targetNode.Y) - pos.Y
-	dist := math.Sqrt(dx*dx + dy*dy)
-	step := speed * dt // cells per simulation tick
-
-	if dist >= step {
-		dirX, dirY := dx/dist, dy/dist
-		pos.X += dirX * step
-		pos.Y += dirY * step
-		return pos, path, directionFromVector(dirX, dirY), true
-	}
-
-	// Node reached. Face the next leg, if there is one.
-	pos = Vec2{X: float64(targetNode.X), Y: float64(targetNode.Y)}
-	path = path[1:]
-	if len(path) == 0 {
-		return pos, path, NONE, false
-	}
-
-	next := path[0]
-	dirX := float64(next.X) - pos.X
-	dirY := float64(next.Y) - pos.Y
-	norm := math.Sqrt(dirX*dirX + dirY*dirY)
-	if norm == 0 {
-		return pos, path, NONE, false
-	}
-	return pos, path, directionFromVector(dirX/norm, dirY/norm), true
-}
-
-func (s *GameServer) updatePlayerPosition(player *Session, mapState *MapState) {
-	// Dead players can't move.
-	if mapState.vt(player.ID).ghost() {
-		return
-	}
-
-	playerStats := s.CalculateStats(player.ID, mapState)
-	speed := s.CalculatePlayerMovementSpeed(playerStats)
-
-	if mapState.mo(player.ID).Mode != WALKING {
-		return
-	}
-
-	tf := mapState.tf(player.ID)
-	pos, path, dir, facing := stepAlongPath(tf.Pos, player.Path, speed, s.tickDuration.Seconds())
-	tf.Pos, player.Path = pos, path
-	if facing {
-		mapState.mo(player.ID).Direction = dir
-	}
-	if len(player.Path) == 0 {
-		mapState.mo(player.ID).Mode = IDLE
-		mapState.mo(player.ID).Direction = NONE
-	}
-}
-
-// ---------- Portals ----------
-func (s *GameServer) checkPortal(player *Session, mapState *MapState) {
-	// Teleport is only possible while alive. A dead player standing on a portal
-	// neither accrues hold progress nor teleports; entering ghost state cancels
-	// any in-progress hold.
-	if mapState.vt(player.ID).ghost() {
-		player.OnPortal = false
-		return
-	}
-
-	onPortal := false
-	var activePortal EntityID
-	playerRect := mapState.tf(player.ID).rect()
-	for portal := range mapState.ofKind(EntityPortal) {
-		if rectsOverlap(playerRect, mapState.tf(portal).rect()) {
-			onPortal = true
-			activePortal = portal
-			break
-		}
-	}
-	if onPortal {
-		if !player.OnPortal {
-			player.OnPortal = true
-			player.TimeOnPortal = time.Now()
-		} else if time.Since(player.TimeOnPortal) > s.portalHoldTime {
-			s.teleportPlayer(player, mapState, activePortal)
-		}
-	} else {
-		player.OnPortal = false
-	}
-}
-
-func (s *GameServer) teleportPlayer(player *Session, mapState *MapState, portal EntityID) {
-	// s.mu is held by the caller (phasePortals). Do not release it: map
-	// mutations of the map slots must not race other readers.
-
-	target, linked := mapState.pt(portal)
-	if !linked {
-		logx.Warnf("Teleportation failed: portal %s has no target.", portal)
-		return
-	}
-	destMapCode := target.TargetMap
-	destMapState, ok := s.maps[destMapCode]
-	if !ok {
-		logx.Warnf("Teleportation failed: destination map %q not found.", destMapCode)
-		return
-	}
-
-	// A negative target cell is a random portal: spawn anywhere on the target
-	// map. Otherwise spawn near the target cell, inside the spawn radius.
-	var spawnX, spawnY float64
-	if target.TargetCell.X < 0 || target.TargetCell.Y < 0 {
-		spawnX = rand.Float64() * float64(destMapState.gridW)
-		spawnY = rand.Float64() * float64(destMapState.gridH)
-	} else {
-		spawnX = float64(target.TargetCell.X) + rand.Float64()*s.portalSpawnRadius*2 - s.portalSpawnRadius
-		spawnY = float64(target.TargetCell.Y) + rand.Float64()*s.portalSpawnRadius*2 - s.portalSpawnRadius
-	}
-
-	currentMapState := s.maps[player.MapCode]
-	size := currentMapState.tf(player.ID).Size
-	destPosI, err := destMapState.pathfinder.findClosestWalkablePoint(Cell{X: int(spawnX), Y: int(spawnY)}, size)
-	if err != nil {
-		logx.Warnf("Could not find a walkable spawn point: %v", err)
-		return
-	}
-	row := currentMapState.take(player.ID)
-	row.transform.Pos = Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}
-	player.MapCode = destMapCode
-	player.TargetPos = Cell{}
-	player.Path = []Cell{}
-	row.motion.Mode = TELEPORTING
-	player.OnPortal = false
-	destMapState.put(player.ID, row)
-	s.teleported = append(s.teleported, player)
-}
-
 // ---------- AOI snapshot send ----------
 //
 // sendAOI is the one-shot snapshot dispatcher. Two call sites use it:
@@ -561,4 +354,225 @@ func (s *GameServer) GetConnectedClientsCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.clients)
+}
+
+type Client struct {
+	sock        *socket.Socket
+	playerID    EntityID
+	playerState *Session
+
+	// ip is the address the guard counts this connection against.
+	ip string
+	// limiter is the inbound message budget. Only the read goroutine for this
+	// connection touches it.
+	limiter *inputLimiter
+	// released guards the guard slot so every disconnect path frees it once.
+	released sync.Once
+	// detached marks a torn-down client. register and unregister are separate
+	// channels, so a fast disconnect can be handled before the matching
+	// connect; the flag stops that from re-adding a dead client. Read and
+	// written under GameServer.mu.
+	detached bool
+}
+
+type GameServer struct {
+	progressionRules ProgressionRules
+	mu               sync.Mutex
+	maps             map[string]*MapState
+	instanceCode     string               // INSTANCE_CODE — selects which instance to load
+	playerSpawn      PlayerSpawnConfig    // authoritative initial spawn for new players
+	questsByCell     map[cellKey][]string // quest codes bound to each action cell
+	clients          map[EntityID]*Client
+	lastEntityID     EntityID // only goes up, so a freed id never comes back
+	sessions         map[EntityID]*Session
+	register         chan *Client
+	unregister       chan *Client
+	aoiRadius        float64
+	portalHoldTime   time.Duration
+
+	// ── Tick model (authoritative simulation cadence) ────────────────────────
+	// The server advances one logical Tick per tickDuration and sends one
+	// snapshot per player each tick.
+	tickRate     int           // simulation Hz (e.g. 30)
+	tickDuration time.Duration // 1 / tickRate
+	currentTick  uint32        // monotonic; advanced once per simulation tick
+	// teleported holds the players a portal moved this map step. gameLoop
+	// sends their snapshots after phasePortals and clears it.
+	teleported []*Session
+
+	// bot related defaults
+	botAggroRange float64
+
+	// Caches (protected by olMu)
+	olMu                 sync.RWMutex
+	objectLayerDataCache map[string]*ObjectLayer
+
+	// dataServerURL is the Data Server origin for server-to-server
+	// content-authority calls (quest persistence). Never forwarded to clients:
+	// each client learns its own Data Server URL from its command line.
+	dataServerURL string
+	// dataServerAPIKey is CYBERIA_SERVER_API_KEY, sent with every server-to-server
+	// write. An empty key disables them.
+	dataServerAPIKey string
+	// persistQueue holds engine POSTs for persistLoop, so no HTTP call runs
+	// under s.mu.
+	persistQueue chan persistJob
+
+	entityBaseSpeed float64
+	// playerBaseSpeed applies to the player entity only. 0 means unset, and
+	// CalculatePlayerMovementSpeed then falls back to entityBaseSpeed.
+	playerBaseSpeed             float64
+	entityBaseMaxLife           float64
+	entityBaseActionCooldown    time.Duration
+	entityBaseMinActionCooldown time.Duration
+
+	// Player defaults
+	defaultPlayerWidth     float64
+	defaultPlayerHeight    float64
+	playerBaseLifeRegenMin float64
+	playerBaseLifeRegenMax float64
+	maxActiveLayers        int
+	initialLifeFraction    float64
+
+	// Combat / death
+	respawnDuration   time.Duration
+	ghostItemID       string
+	collisionLifeLoss float64
+	// Every configured dead-item id — excluded from the player inventory wire
+	// and from item activation. Populated exclusively from gRPC
+	// entity_defaults.dead_item_ids (no hardcoded fallback).
+	deadItemIDs map[string]bool
+
+	// Economy — Fountain & Sink model
+	// Fountains (coin injection)
+	coinItemID       string
+	botSpawnCoins    int // coins every bot carries on spawn (infinite mint)
+	playerSpawnCoins int // coins given to player on first connect (guest wallet)
+	// Kill Transfer (redistribution)
+	coinKillPercentVsBot    float64 // fraction of victim coins transferred: PvE
+	coinKillPercentVsPlayer float64 // fraction of victim coins transferred: PvP (gentler)
+	coinKillMinAmount       int     // floor — every kill always pays this
+	// Sinks (coin removal; all default to 0 = disabled in alpha)
+	respawnCostPercent float64 // fraction burned on player death
+	portalFee          int     // flat fee per portal use
+	craftingFeePercent float64 // fraction of item value burned on crafting
+
+	// Regen
+	lifeRegenChance float64
+	maxChance       float64
+
+	// Skill config
+	projectileSpawnChance           float64
+	projectileLifetimeMs            int
+	projectileWidth                 float64
+	projectileHeight                float64
+	projectileSpeedMultiplier       float64
+	doppelgangerSpawnChance         float64
+	doppelgangerLifetimeMs          int
+	doppelgangerSpawnRadius         float64
+	doppelgangerInitialLifeFraction float64
+
+	// Floor defaults
+	defaultFloorItemID string
+
+	// Per-entity-type visual defaults.
+	// entityDefaults keeps the last build per type for unique lookups.
+	// entityDefaultBuilds preserves the full ordered config, including duplicates.
+	entityDefaults      map[string]EntityTypeDefaultConfig
+	entityDefaultBuilds []EntityTypeDefaultConfig
+
+	// Portal defaults
+	portalSpawnRadius float64
+
+	// Skill map (runtime): trigger item ID → []SkillDefinition
+	skillConfig map[string][]SkillDefinition
+
+	// Action / quest content fetched from engine-cyberia REST at instance
+	// init (actions and quests are not part of the gRPC world payload).
+	//   actionCache  — entityId → bound CyberiaAction (resolved by the server
+	//                  on every talk_done; the client never declares it).
+	//   questDefs    — questCode → CyberiaQuest definition (steps/rewards).
+	// Both are rebuilt on every world (re)build; access is under s.mu.
+	actionCache map[EntityID]*CyberiaAction
+	// storage — per (player, action code) vault contents. Session state
+	// only; the slot shape is the future persistence document.
+	storage   map[storageKey][]StorageSlot
+	questDefs map[string]*CyberiaQuest
+	// progression is the level and XP of each mortal entity. despawn deletes
+	// the row.
+	progression map[EntityID]*EntityProgression
+	// quests is the quest progress of each player, keyed by quest code.
+	// Authoritative for the session; best-effort mirrored to engine-cyberia
+	// quest-progress REST for persistence.
+	quests map[EntityID]map[string]*QuestProgress
+	// crafts is the assembly running for each player. A craft consumes its
+	// ingredients up front and pays out only when the timer elapses, so the
+	// row is also the refund receipt a cancel needs. One at a time:
+	// assembling is a modal operation.
+	crafts map[EntityID]*ActiveCraft
+
+	// Equipment rules — governs activation constraints.
+	equipmentRules EquipmentRulesConfig
+
+	// Lock-free observability counters. See metrics_counters.go.
+	counters runtimeCounters
+
+	// guard holds the connection admission limits. See connection_guard.go.
+	guard  *connectionGuard
+	limits ConnectionLimits
+
+	// draining refuses new sessions while connected players stay. See drain.go.
+	draining atomic.Bool
+}
+
+// SkillMapEntry describes one skill associated with a trigger item,
+// for the init_data JSON payload sent to C clients.
+type SkillMapEntry struct {
+	LogicEventID         string `json:"logicEventId"`
+	Name                 string `json:"name"`
+	Description          string `json:"description"`
+	SummonedEntityItemID string `json:"summonedEntityItemId"`
+	// Held marks a skill the simulation runs by itself on the units an entity holds; a tap never fires it.
+	Held bool `json:"held"`
+}
+
+// InitPayload — bootstrap message sent once on WebSocket connect.
+// Strictly simulation and protocol; no presentation fields.
+//
+// Presentation values (cell-pixel size, camera tunings, palette,
+// interpolation window, status-icon visuals) are NOT sent here. The C
+// client resolves all of those through /api/v1/cyberia-client-hints using
+// its own CYBERIA_CLIENT_HINTS_CODE.
+type InitPayload struct {
+	// EngineID is the own player id for the client's engine REST calls.
+	EngineID       string                     `json:"engineId"`
+	GridW          int                        `json:"gridW"`
+	GridH          int                        `json:"gridH"`
+	AoiRadius      float64                    `json:"aoiRadius"`
+	ObjectLayers   []ObjectLayerState         `json:"objectLayers"`
+	SkillMap       map[string][]SkillMapEntry `json:"skillMap"`
+	EntityDefaults []EntityTypeDefaultConfig  `json:"entityDefaults"`
+	// Resolved dead-state (Fragmentation) ids — the client labels these in
+	// the inventory and disables their equip UI.
+	DeadItemIds []string `json:"deadItemIds"`
+	// Quests is the player's active/completed quest snapshot on connect.
+	// Empty for a fresh guest. The C client seeds its local quest_store from
+	// this and keeps it live via dialog_ack events (see Quest Journal).
+	Quests []QuestSnapshotEntry `json:"quests"`
+}
+
+// phaseReplication runs last in each tick. Iterates connected players for
+// this map, computes their AOI, encodes a snapshot, and sends it. This path
+// is the only one that produces server→client AOI frames at steady state
+// (the bootstrap full snapshot on connect is sent from handlers.go).
+func (s *GameServer) phaseReplication(mapState *MapState) {
+	for player := range s.playersOn(mapState) {
+		player.AOI = Rectangle{
+			MinX: mapState.tf(player.ID).Pos.X - s.aoiRadius,
+			MinY: mapState.tf(player.ID).Pos.Y - s.aoiRadius,
+			MaxX: mapState.tf(player.ID).Pos.X + mapState.tf(player.ID).Size.X + s.aoiRadius,
+			MaxY: mapState.tf(player.ID).Pos.Y + mapState.tf(player.ID).Size.Y + s.aoiRadius,
+		}
+		s.sendAOI(player)
+	}
 }

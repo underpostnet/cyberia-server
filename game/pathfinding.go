@@ -250,3 +250,31 @@ func reconstructPath(n *Node) []Cell {
 func rectsOverlap(r1, r2 Rectangle) bool {
 	return r1.MinX < r2.MaxX && r1.MaxX > r2.MinX && r1.MinY < r2.MaxY && r1.MaxY > r2.MinY
 }
+
+// checkAABBCollision checks for collision between two axis-aligned bounding boxes.
+func checkAABBCollision(pos1 Vec2, dims1 Vec2, pos2 Vec2, dims2 Vec2) bool {
+	// Check for overlap on X axis
+	if pos1.X < pos2.X+dims2.X && pos1.X+dims1.X > pos2.X {
+		// Check for overlap on Y axis
+		if pos1.Y < pos2.Y+dims2.Y && pos1.Y+dims1.Y > pos2.Y {
+			return true
+		}
+	}
+	return false
+}
+
+// clampCellToGrid puts a cell inside the map. The handler applies it so a tap
+// near an edge still moves the player instead of failing the path search.
+func clampCellToGrid(p Cell, gridW, gridH int) Cell {
+	if p.X < 0 {
+		p.X = 0
+	} else if p.X > gridW-1 {
+		p.X = gridW - 1
+	}
+	if p.Y < 0 {
+		p.Y = 0
+	} else if p.Y > gridH-1 {
+		p.Y = gridH - 1
+	}
+	return p
+}

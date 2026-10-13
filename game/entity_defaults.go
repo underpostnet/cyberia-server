@@ -207,3 +207,47 @@ func activeObjectLayerItemIDs(objectLayers []ObjectLayerState) []string {
 	}
 	return itemIDs
 }
+
+// EntityTypeDefaultConfig — gameplay defaults for one entity type.
+type EntityTypeDefaultConfig struct {
+	EntityType          string             `json:"entityType"`
+	LiveItemIDs         []string           `json:"liveItemIds"`
+	DeadItemIDs         []string           `json:"deadItemIds"`
+	DropItemIDs         []string           `json:"dropItemIds"`
+	DefaultObjectLayers []ObjectLayerState `json:"defaultObjectLayers,omitempty"`
+	// DropChances is itemID → probability in [0,1] that the id scatters on death. It lives on the
+	// build rather than on ObjectLayerState because it describes what an entity type drops, not
+	// what one entity is currently wearing — and ObjectLayerState rides every snapshot, where a
+	// per-layer probability would be dead weight on the wire. A missing id means 1.
+	DropChances map[string]float64 `json:"dropChances,omitempty"`
+	// Canonical entity behavior bound to matched entities (see behavior.go).
+	// Empty: a bot derives it from layers (armed → hostile, else passive); a foreground stays normal.
+	Behavior string `json:"behavior,omitempty"`
+}
+
+// EquipmentRulesConfig governs which item types can be simultaneously active
+// and enforces the one-active-per-type constraint.  Loaded from the proto
+// EquipmentRules message via ApplyInstanceConfig.
+type EquipmentRulesConfig struct {
+	ActiveItemTypes map[string]bool `json:"activeItemTypes"` // set of activable item types
+	OnePerType      bool            `json:"onePerType"`      // enforce one active per type
+	RequireSkin     bool            `json:"requireSkin"`     // require ≥ 1 active skin
+}
+
+// SkillDefinition defines the properties of a single skill logic event
+// associated with a trigger item.
+type SkillDefinition struct {
+	LogicEventID         string
+	Name                 string
+	Description          string
+	SummonedEntityItemID string
+}
+
+// itemType returns the ObjectLayer item type for an itemID, or "" if the
+// ObjectLayer cache has no entry. Pure helper — no state mutation.
+func (s *GameServer) itemType(itemID string) string {
+	if data, ok := s.GetObjectLayerData(itemID); ok {
+		return data.Data.Item.Type
+	}
+	return ""
+}

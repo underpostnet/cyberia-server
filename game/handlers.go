@@ -257,14 +257,6 @@ func (s *GameServer) detachClient(client *Client) {
 	client.released.Do(func() { s.guard.release(client.ip) })
 }
 
-// sendMessage packs a message and queues it for the player. The send never
-// blocks: a full queue drops the message.
-func sendMessage(player *Session, msgType string, payload any) {
-	if player != nil && player.Client != nil {
-		player.Client.Send(msgType, payload)
-	}
-}
-
 // Send packs one message and queues it on the socket.
 func (c *Client) Send(msgType string, payload any) {
 	if c.sock == nil {
@@ -278,14 +270,6 @@ func (c *Client) Send(msgType string, payload any) {
 	if !c.sock.Send(pack) {
 		logx.Debugf("Client %s queue full — dropped %q.", c.playerID, msgType)
 	}
-}
-
-// sendAck answers a request with the {ok, reason} pair every ack carries, plus
-// the caller's own fields. An empty reason means success.
-func sendAck(player *Session, msgType, reason string, fields map[string]interface{}) {
-	fields["ok"] = reason == ""
-	fields["reason"] = reason
-	sendMessage(player, msgType, fields)
 }
 
 // readPump runs the client read loop until the connection fails.

@@ -30,6 +30,10 @@
 
 package game
 
+import (
+	"time"
+)
+
 // phaseInput drains queued InputCommand entries for each player in this
 // map and dispatches each command to its typed handler. This is the
 // authoritative ingestion point — no other code path is allowed to apply
@@ -65,14 +69,6 @@ func (s *GameServer) phaseInput(tick uint32, mapState *MapState) {
 		}
 		s.flushPendingMove(player, mapState)
 	}
-}
-
-// frameAt is the client step that tick stands for. 0 before the first consumed event.
-func (p *Session) frameAt(tick uint32) uint32 {
-	if p.InputConsumedThrough == 0 {
-		return 0
-	}
-	return uint32(int64(tick) + p.FrameOffset)
 }
 
 // applyInputCommand is the typed dispatcher. Kept on *GameServer so it
@@ -173,18 +169,40 @@ func (s *GameServer) phasePortals(tick uint32, mapState *MapState) {
 	}
 }
 
-// phaseReplication runs last in each tick. Iterates connected players for
-// this map, computes their AOI, encodes a snapshot, and sends it. This path
-// is the only one that produces server→client AOI frames at steady state
-// (the bootstrap full snapshot on connect is sent from handlers.go).
-func (s *GameServer) phaseReplication(mapState *MapState) {
-	for player := range s.playersOn(mapState) {
-		player.AOI = Rectangle{
-			MinX: mapState.tf(player.ID).Pos.X - s.aoiRadius,
-			MinY: mapState.tf(player.ID).Pos.Y - s.aoiRadius,
-			MaxX: mapState.tf(player.ID).Pos.X + mapState.tf(player.ID).Size.X + s.aoiRadius,
-			MaxY: mapState.tf(player.ID).Pos.Y + mapState.tf(player.ID).Size.Y + s.aoiRadius,
+// phaseLoot resolves token collisions for one tick. The first collector the
+// token's collection policy admits takes it, players before bots: its outcome
+// applies, the pickup animation event goes to every viewer and the token is
+// removed in the same step, so one token applies once. Caller holds s.mu.
+func (s *GameServer) phaseLoot(tick uint32, mapState *MapState) {
+	_ = tick
+	now := time.Now()
+	s.respawnWorldLoot(mapState, now)
+
+	for dropID, drop := range mapState.brains {
+		if !behaviorIsInert(mapState.ag(dropID).Behavior) {
+			continue
 		}
-		s.sendAOI(player)
+		// Mid-launch tokens register no collision until they settle on the cell.
+		if now.Before(drop.CollectableAt) {
+			continue
+		}
+
+		cx := mapState.tf(dropID).Pos.X + mapState.tf(dropID).Size.X*0.5
+		cy := mapState.tf(dropID).Pos.Y + mapState.tf(dropID).Size.Y*0.5
+
+		var collectorID EntityID
+		var granted bool
+		if player := s.resolveDropCollector(mapState, dropID); player != nil {
+			granted, collectorID = s.applyLootToPlayer(mapState, drop, player), player.ID
+		} else if bot := s.resolveBotDropCollector(mapState, dropID); bot != 0 {
+			granted, collectorID = s.applyLootToBot(mapState, drop, bot), bot
+		} else {
+			continue
+		}
+		s.broadcastDropCollect(mapState, dropID, collectorID, cx, cy, granted)
+		if drop.LootOrigin == LootOriginWorld && drop.LootOutcome == LootOutcomeConsume {
+			scheduleLootRespawn(mapState, dropID, now)
+		}
+		s.despawn(mapState, dropID)
 	}
 }

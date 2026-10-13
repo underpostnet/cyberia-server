@@ -7,22 +7,6 @@ import (
 	"time"
 )
 
-// Entity kinds on the wire.
-const (
-	EntityPlayer   = "player"
-	EntityBot      = "bot"
-	EntityPortal   = "portal"
-	EntityResource = "resource"
-	EntityScenery  = "scenery"
-)
-
-// Floating combat text kinds.
-const (
-	FCTDamage = "damage" // life loss — red "-N"
-	FCTRegen  = "regen"  // life gain — green "+N"
-	FCTXp     = "xp"     // XP award — gold "+N XP", sent to the earner only
-)
-
 // SnapshotEntity is one entity inside a player's area of interest.
 type SnapshotEntity struct {
 	ID        EntityID    `json:"id"`
@@ -129,57 +113,6 @@ type Snapshot struct {
 	InputConsumedThrough uint32           `json:"inputConsumedThrough"`
 	Entities             []SnapshotEntity `json:"entities"`
 	Self                 SnapshotSelf     `json:"self"`
-}
-
-// Audio logic ids the server raises. The client binds them to assets per map,
-// so an id here must exist in engine-cyberia's AUDIO_LOGIC_IDS.
-const (
-	AudioEventDeath   = "death"
-	AudioEventLevelUp = "level-up"
-)
-
-// AudioEvent is the `audio_event` message payload: a world event every viewer
-// in reach hears the same way.
-type AudioEvent struct {
-	LogicEventID string  `json:"logicEventId"`
-	WorldX       float64 `json:"worldX"`
-	WorldY       float64 `json:"worldY"`
-}
-
-// CombatText is the `combat_text` message payload.
-type CombatText struct {
-	Kind   string  `json:"kind"`
-	WorldX float64 `json:"worldX"`
-	WorldY float64 `json:"worldY"`
-	Value  int     `json:"value"` // always positive; the kind implies the sign
-}
-
-// DropSpawn is the `drop_spawn` message payload — a loot token leaves a corpse.
-type DropSpawn struct {
-	DropID   EntityID `json:"dropId"`
-	OriginX  float64  `json:"originX"`
-	OriginY  float64  `json:"originY"`
-	LandingX float64  `json:"landingX"`
-	LandingY float64  `json:"landingY"`
-	LaunchMs int      `json:"launchMs"` // settle window; client animation length
-	ItemID   string   `json:"itemId"`
-}
-
-// DropCollect is the `drop_collect` message payload — a token was collected.
-type DropCollect struct {
-	DropID      EntityID `json:"dropId"`
-	CollectorID EntityID `json:"collectorId"`
-	WorldX      float64  `json:"worldX"`
-	WorldY      float64  `json:"worldY"`
-	ItemID      string   `json:"itemId"`
-	Granted     bool     `json:"granted"` // the collector received the item; false for an effect such as a heal
-}
-
-// ItemConsume tells viewers an entity consumed an item; Behavior is the loot behavior of the item.
-type ItemConsume struct {
-	EntityID EntityID `json:"entityId"`
-	ItemID   string   `json:"itemId"`
-	Behavior string   `json:"behavior"`
 }
 
 // activeLayers returns the active object layers — what the client draws.

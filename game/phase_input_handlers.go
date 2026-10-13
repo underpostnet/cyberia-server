@@ -265,15 +265,6 @@ func (s *GameServer) queuePreRespawnActivation(player *Session, itemID string) {
 	}
 }
 
-// itemType returns the ObjectLayer item type for an itemID, or "" if the
-// ObjectLayer cache has no entry. Pure helper — no state mutation.
-func (s *GameServer) itemType(itemID string) string {
-	if data, ok := s.GetObjectLayerData(itemID); ok {
-		return data.Data.Item.Type
-	}
-	return ""
-}
-
 // handleChatInput is a pure relay — no game-state mutation. Forwards a
 // chat message to the target player on the same map.
 func (s *GameServer) handleChatInput(sender *Session, mapState *MapState, cmd *InputCommand) {

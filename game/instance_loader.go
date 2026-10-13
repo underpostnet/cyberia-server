@@ -584,3 +584,13 @@ func printInstanceGraph(instance *pb.InstanceMessage, maps map[string]*MapState)
 	log.Printf("[InstanceGraph] ╚%s╝", hLine)
 	log.Printf("[InstanceGraph]")
 }
+
+// PlayerSpawnConfig — authoritative initial spawn for new players. When Random
+// is false and MapCode names a loaded map, players spawn at (CellX, CellY) on it;
+// otherwise spawn is a random walkable cell on a random map.
+type PlayerSpawnConfig struct {
+	MapCode string
+	CellX   int
+	CellY   int
+	Random  bool
+}

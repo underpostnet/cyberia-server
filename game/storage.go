@@ -32,14 +32,6 @@ type StorageSlot struct {
 	Qty    int    `json:"qty"`
 }
 
-// itemOp is one replayed vault operation: Qty of ItemID into the vault when
-// ToVault, else out of it.
-type itemOp struct {
-	ItemID  string `json:"itemId"`
-	Qty     int    `json:"qty"`
-	ToVault bool   `json:"toVault"`
-}
-
 // storageKey scopes a vault to one player at one action cell — storage is
 // personal, so two players at the same terminal never see each other's stock.
 type storageKey struct {

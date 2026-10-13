@@ -5,18 +5,6 @@ import (
 	"time"
 )
 
-// checkAABBCollision checks for collision between two axis-aligned bounding boxes.
-func checkAABBCollision(pos1 Vec2, dims1 Vec2, pos2 Vec2, dims2 Vec2) bool {
-	// Check for overlap on X axis
-	if pos1.X < pos2.X+dims2.X && pos1.X+dims1.X > pos2.X {
-		// Check for overlap on Y axis
-		if pos1.Y < pos2.Y+dims2.Y && pos1.Y+dims1.Y > pos2.Y {
-			return true
-		}
-	}
-	return false
-}
-
 // handleSkillCollisions manages collisions for 'skill' behavior bots (projectiles).
 // It checks for intersections with players and other bots, applies damage,
 // and handles death, removing the projectile upon impact.
@@ -200,16 +188,6 @@ func applyDeadItems(layers []ObjectLayerState, deadItemIDs []string) []ObjectLay
 		}
 	}
 	return layers
-}
-
-// grantItemToBot transfers `qty` of a non-coin item into a contributing bot's
-// inventory when it collects a scattered drop (appended inactive if new).
-func (s *GameServer) grantItemToBot(id EntityID, ms *MapState, itemID string, qty int) {
-	if itemID == "" || qty <= 0 {
-		return
-	}
-	ol := getOrCreateItemOL(&ms.ap(id).Layers, itemID)
-	ol.Quantity += qty
 }
 
 // handlePlayerDeath sets a player to a dead/ghost state using the dead items of

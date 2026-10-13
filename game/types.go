@@ -2,10 +2,7 @@ package game
 
 import (
 	"sync"
-	"sync/atomic"
 	"time"
-
-	"cyberia-server/socket"
 )
 
 // 1. Data Structures & Interfaces
@@ -299,242 +296,93 @@ type Conn interface {
 	Send(msgType string, payload any)
 }
 
-type Client struct {
-	sock        *socket.Socket
-	playerID    EntityID
-	playerState *Session
+// Entity kinds on the wire.
+const (
+	EntityPlayer   = "player"
+	EntityBot      = "bot"
+	EntityPortal   = "portal"
+	EntityResource = "resource"
+	EntityScenery  = "scenery"
+)
 
-	// ip is the address the guard counts this connection against.
-	ip string
-	// limiter is the inbound message budget. Only the read goroutine for this
-	// connection touches it.
-	limiter *inputLimiter
-	// released guards the guard slot so every disconnect path frees it once.
-	released sync.Once
-	// detached marks a torn-down client. register and unregister are separate
-	// channels, so a fast disconnect can be handled before the matching
-	// connect; the flag stops that from re-adding a dead client. Read and
-	// written under GameServer.mu.
-	detached bool
+// Floating combat text kinds.
+const (
+	FCTDamage = "damage" // life loss — red "-N"
+	FCTRegen  = "regen"  // life gain — green "+N"
+	FCTXp     = "xp"     // XP award — gold "+N XP", sent to the earner only
+)
+
+// Audio logic ids the server raises. The client binds them to assets per map,
+// so an id here must exist in engine-cyberia's AUDIO_LOGIC_IDS.
+const (
+	AudioEventDeath   = "death"
+	AudioEventLevelUp = "level-up"
+)
+
+// AudioEvent is the `audio_event` message payload: a world event every viewer
+// in reach hears the same way.
+type AudioEvent struct {
+	LogicEventID string  `json:"logicEventId"`
+	WorldX       float64 `json:"worldX"`
+	WorldY       float64 `json:"worldY"`
 }
 
-type GameServer struct {
-	progressionRules ProgressionRules
-	mu               sync.Mutex
-	maps             map[string]*MapState
-	instanceCode     string               // INSTANCE_CODE — selects which instance to load
-	playerSpawn      PlayerSpawnConfig    // authoritative initial spawn for new players
-	questsByCell     map[cellKey][]string // quest codes bound to each action cell
-	clients          map[EntityID]*Client
-	lastEntityID     EntityID // only goes up, so a freed id never comes back
-	sessions         map[EntityID]*Session
-	register         chan *Client
-	unregister       chan *Client
-	aoiRadius        float64
-	portalHoldTime   time.Duration
-
-	// ── Tick model (authoritative simulation cadence) ────────────────────────
-	// The server advances one logical Tick per tickDuration and sends one
-	// snapshot per player each tick.
-	tickRate     int           // simulation Hz (e.g. 30)
-	tickDuration time.Duration // 1 / tickRate
-	currentTick  uint32        // monotonic; advanced once per simulation tick
-	// teleported holds the players a portal moved this map step. gameLoop
-	// sends their snapshots after phasePortals and clears it.
-	teleported []*Session
-
-	// bot related defaults
-	botAggroRange float64
-
-	// Caches (protected by olMu)
-	olMu                 sync.RWMutex
-	objectLayerDataCache map[string]*ObjectLayer
-
-	// dataServerURL is the Data Server origin for server-to-server
-	// content-authority calls (quest persistence). Never forwarded to clients:
-	// each client learns its own Data Server URL from its command line.
-	dataServerURL string
-	// dataServerAPIKey is CYBERIA_SERVER_API_KEY, sent with every server-to-server
-	// write. An empty key disables them.
-	dataServerAPIKey string
-	// persistQueue holds engine POSTs for persistLoop, so no HTTP call runs
-	// under s.mu.
-	persistQueue chan persistJob
-
-	entityBaseSpeed float64
-	// playerBaseSpeed applies to the player entity only. 0 means unset, and
-	// CalculatePlayerMovementSpeed then falls back to entityBaseSpeed.
-	playerBaseSpeed             float64
-	entityBaseMaxLife           float64
-	entityBaseActionCooldown    time.Duration
-	entityBaseMinActionCooldown time.Duration
-
-	// Player defaults
-	defaultPlayerWidth     float64
-	defaultPlayerHeight    float64
-	playerBaseLifeRegenMin float64
-	playerBaseLifeRegenMax float64
-	maxActiveLayers        int
-	initialLifeFraction    float64
-
-	// Combat / death
-	ghostItemID       string
-	collisionLifeLoss float64
-	// Every configured dead-item id — excluded from the player inventory wire
-	// and from item activation. Populated exclusively from gRPC
-	// entity_defaults.dead_item_ids (no hardcoded fallback).
-	deadItemIDs map[string]bool
-
-	// Economy — Fountain & Sink model
-	// Fountains (coin injection)
-	coinItemID       string
-	botSpawnCoins    int // coins every bot carries on spawn (infinite mint)
-	playerSpawnCoins int // coins given to player on first connect (guest wallet)
-	// Kill Transfer (redistribution)
-	coinKillPercentVsBot    float64 // fraction of victim coins transferred: PvE
-	coinKillPercentVsPlayer float64 // fraction of victim coins transferred: PvP (gentler)
-	coinKillMinAmount       int     // floor — every kill always pays this
-	// Sinks (coin removal; all default to 0 = disabled in alpha)
-	respawnCostPercent float64 // fraction burned on player death
-	portalFee          int     // flat fee per portal use
-	craftingFeePercent float64 // fraction of item value burned on crafting
-
-	// Regen
-	lifeRegenChance float64
-	maxChance       float64
-
-	// Skill config
-	projectileSpawnChance           float64
-	projectileLifetimeMs            int
-	projectileWidth                 float64
-	projectileHeight                float64
-	projectileSpeedMultiplier       float64
-	doppelgangerSpawnChance         float64
-	doppelgangerLifetimeMs          int
-	doppelgangerSpawnRadius         float64
-	doppelgangerInitialLifeFraction float64
-
-	// Floor defaults
-	defaultFloorItemID string
-
-	// Per-entity-type visual defaults.
-	// entityDefaults keeps the last build per type for unique lookups.
-	// entityDefaultBuilds preserves the full ordered config, including duplicates.
-	entityDefaults      map[string]EntityTypeDefaultConfig
-	entityDefaultBuilds []EntityTypeDefaultConfig
-
-	// Portal defaults
-	portalSpawnRadius float64
-
-	// Skill map (runtime): trigger item ID → []SkillDefinition
-	skillConfig map[string][]SkillDefinition
-
-	// Action / quest content fetched from engine-cyberia REST at instance
-	// init (actions and quests are not part of the gRPC world payload).
-	//   actionCache  — entityId → bound CyberiaAction (resolved by the server
-	//                  on every talk_done; the client never declares it).
-	//   questDefs    — questCode → CyberiaQuest definition (steps/rewards).
-	// Both are rebuilt on every world (re)build; access is under s.mu.
-	actionCache map[EntityID]*CyberiaAction
-	// storage — per (player, action code) vault contents. Session state
-	// only; the slot shape is the future persistence document.
-	storage   map[storageKey][]StorageSlot
-	questDefs map[string]*CyberiaQuest
-	// progression is the level and XP of each mortal entity. despawn deletes
-	// the row.
-	progression map[EntityID]*EntityProgression
-	// quests is the quest progress of each player, keyed by quest code.
-	// Authoritative for the session; best-effort mirrored to engine-cyberia
-	// quest-progress REST for persistence.
-	quests map[EntityID]map[string]*QuestProgress
-	// crafts is the assembly running for each player. A craft consumes its
-	// ingredients up front and pays out only when the timer elapses, so the
-	// row is also the refund receipt a cancel needs. One at a time:
-	// assembling is a modal operation.
-	crafts map[EntityID]*ActiveCraft
-
-	// Equipment rules — governs activation constraints.
-	equipmentRules EquipmentRulesConfig
-
-	// Lock-free observability counters. See metrics_counters.go.
-	counters runtimeCounters
-
-	// guard holds the connection admission limits. See connection_guard.go.
-	guard  *connectionGuard
-	limits ConnectionLimits
-
-	// draining refuses new sessions while connected players stay. See drain.go.
-	draining atomic.Bool
+// CombatText is the `combat_text` message payload.
+type CombatText struct {
+	Kind   string  `json:"kind"`
+	WorldX float64 `json:"worldX"`
+	WorldY float64 `json:"worldY"`
+	Value  int     `json:"value"` // always positive; the kind implies the sign
 }
 
-// PlayerSpawnConfig — authoritative initial spawn for new players. When Random
-// is false and MapCode names a loaded map, players spawn at (CellX, CellY) on it;
-// otherwise spawn is a random walkable cell on a random map.
-type PlayerSpawnConfig struct {
-	MapCode string
-	CellX   int
-	CellY   int
-	Random  bool
+// DropSpawn is the `drop_spawn` message payload — a loot token leaves a corpse.
+type DropSpawn struct {
+	DropID   EntityID `json:"dropId"`
+	OriginX  float64  `json:"originX"`
+	OriginY  float64  `json:"originY"`
+	LandingX float64  `json:"landingX"`
+	LandingY float64  `json:"landingY"`
+	LaunchMs int      `json:"launchMs"` // settle window; client animation length
+	ItemID   string   `json:"itemId"`
 }
 
-// EntityTypeDefaultConfig — gameplay defaults for one entity type.
-type EntityTypeDefaultConfig struct {
-	EntityType          string             `json:"entityType"`
-	LiveItemIDs         []string           `json:"liveItemIds"`
-	DeadItemIDs         []string           `json:"deadItemIds"`
-	DropItemIDs         []string           `json:"dropItemIds"`
-	DefaultObjectLayers []ObjectLayerState `json:"defaultObjectLayers,omitempty"`
-	// DropChances is itemID → probability in [0,1] that the id scatters on death. It lives on the
-	// build rather than on ObjectLayerState because it describes what an entity type drops, not
-	// what one entity is currently wearing — and ObjectLayerState rides every snapshot, where a
-	// per-layer probability would be dead weight on the wire. A missing id means 1.
-	DropChances map[string]float64 `json:"dropChances,omitempty"`
-	// Canonical entity behavior bound to matched entities (see behavior.go).
-	// Empty: a bot derives it from layers (armed → hostile, else passive); a foreground stays normal.
-	Behavior string `json:"behavior,omitempty"`
+// DropCollect is the `drop_collect` message payload — a token was collected.
+type DropCollect struct {
+	DropID      EntityID `json:"dropId"`
+	CollectorID EntityID `json:"collectorId"`
+	WorldX      float64  `json:"worldX"`
+	WorldY      float64  `json:"worldY"`
+	ItemID      string   `json:"itemId"`
+	Granted     bool     `json:"granted"` // the collector received the item; false for an effect such as a heal
 }
 
-// EquipmentRulesConfig governs which item types can be simultaneously active
-// and enforces the one-active-per-type constraint.  Loaded from the proto
-// EquipmentRules message via ApplyInstanceConfig.
-type EquipmentRulesConfig struct {
-	ActiveItemTypes map[string]bool `json:"activeItemTypes"` // set of activable item types
-	OnePerType      bool            `json:"onePerType"`      // enforce one active per type
-	RequireSkin     bool            `json:"requireSkin"`     // require ≥ 1 active skin
+// ItemConsume tells viewers an entity consumed an item; Behavior is the loot behavior of the item.
+type ItemConsume struct {
+	EntityID EntityID `json:"entityId"`
+	ItemID   string   `json:"itemId"`
+	Behavior string   `json:"behavior"`
 }
 
-// SkillMapEntry describes one skill associated with a trigger item,
-// for the init_data JSON payload sent to C clients.
-type SkillMapEntry struct {
-	LogicEventID         string `json:"logicEventId"`
-	Name                 string `json:"name"`
-	Description          string `json:"description"`
-	SummonedEntityItemID string `json:"summonedEntityItemId"`
-	// Held marks a skill the simulation runs by itself on the units an entity holds; a tap never fires it.
-	Held bool `json:"held"`
+// sendMessage packs a message and queues it for the player. The send never
+// blocks: a full queue drops the message.
+func sendMessage(player *Session, msgType string, payload any) {
+	if player != nil && player.Client != nil {
+		player.Client.Send(msgType, payload)
+	}
 }
 
-// InitPayload — bootstrap message sent once on WebSocket connect.
-// Strictly simulation and protocol; no presentation fields.
-//
-// Presentation values (cell-pixel size, camera tunings, palette,
-// interpolation window, status-icon visuals) are NOT sent here. The C
-// client resolves all of those through /api/v1/cyberia-client-hints using
-// its own CYBERIA_CLIENT_HINTS_CODE.
-type InitPayload struct {
-	// EngineID is the own player id for the client's engine REST calls.
-	EngineID       string                     `json:"engineId"`
-	GridW          int                        `json:"gridW"`
-	GridH          int                        `json:"gridH"`
-	AoiRadius      float64                    `json:"aoiRadius"`
-	ObjectLayers   []ObjectLayerState         `json:"objectLayers"`
-	SkillMap       map[string][]SkillMapEntry `json:"skillMap"`
-	EntityDefaults []EntityTypeDefaultConfig  `json:"entityDefaults"`
-	// Resolved dead-state (Fragmentation) ids — the client labels these in
-	// the inventory and disables their equip UI.
-	DeadItemIds []string `json:"deadItemIds"`
-	// Quests is the player's active/completed quest snapshot on connect.
-	// Empty for a fresh guest. The C client seeds its local quest_store from
-	// this and keeps it live via dialog_ack events (see Quest Journal).
-	Quests []QuestSnapshotEntry `json:"quests"`
+// sendAck answers a request with the {ok, reason} pair every ack carries, plus
+// the caller's own fields. An empty reason means success.
+func sendAck(player *Session, msgType, reason string, fields map[string]interface{}) {
+	fields["ok"] = reason == ""
+	fields["reason"] = reason
+	sendMessage(player, msgType, fields)
+}
+
+// frameAt is the client step that tick stands for. 0 before the first consumed event.
+func (p *Session) frameAt(tick uint32) uint32 {
+	if p.InputConsumedThrough == 0 {
+		return 0
+	}
+	return uint32(int64(tick) + p.FrameOffset)
 }

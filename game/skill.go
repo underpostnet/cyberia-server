@@ -2,15 +2,6 @@ package game
 
 import "time"
 
-// SkillDefinition defines the properties of a single skill logic event
-// associated with a trigger item.
-type SkillDefinition struct {
-	LogicEventID         string
-	Name                 string
-	Description          string
-	SummonedEntityItemID string
-}
-
 // HandlePlayerTapAction gates skills and regeneration with the authoritative cooldown.
 func (s *GameServer) HandlePlayerTapAction(player *Session, mapState *MapState, target Vec2) {
 	if mapState.vt(player.ID).ghost() || player.Frozen {

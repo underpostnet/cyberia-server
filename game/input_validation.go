@@ -36,22 +36,6 @@ func validTapTarget(x, y float64) bool {
 	return math.Abs(x) <= maxTapCoordinate && math.Abs(y) <= maxTapCoordinate
 }
 
-// clampCellToGrid puts a cell inside the map. The handler applies it so a tap
-// near an edge still moves the player instead of failing the path search.
-func clampCellToGrid(p Cell, gridW, gridH int) Cell {
-	if p.X < 0 {
-		p.X = 0
-	} else if p.X > gridW-1 {
-		p.X = gridW - 1
-	}
-	if p.Y < 0 {
-		p.Y = 0
-	} else if p.Y > gridH-1 {
-		p.Y = gridH - 1
-	}
-	return p
-}
-
 // validIdentifier reports whether a client-supplied id is a plausible slug.
 func validIdentifier(id string) bool { return len(id) <= maxItemIDLen }
 

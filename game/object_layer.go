@@ -1,5 +1,9 @@
 package game
 
+import (
+	"cyberia-server/logx"
+)
+
 // Item describes a generic item.
 type Item struct {
 	ID          string `json:"id"`
@@ -36,4 +40,57 @@ type ObjectLayerData struct {
 type ObjectLayer struct {
 	Data ObjectLayerData `json:"data"`
 	Cid  string          `json:"cid"`
+}
+
+// ReplaceObjectLayerCache atomically replaces the entire cache.
+// Used by WorldBuilder for initial full load via gRPC.
+func (s *GameServer) ReplaceObjectLayerCache(cache map[string]*ObjectLayer) error {
+	if err := validateObjectLayers(cache); err != nil {
+		return err
+	}
+	s.olMu.Lock()
+	defer s.olMu.Unlock()
+	s.objectLayerDataCache = cache
+
+	typeCounts := make(map[string]int)
+	for _, layer := range cache {
+		itemType := layer.Data.Item.Type
+		if itemType == "" {
+			itemType = "(unknown)"
+		}
+		typeCounts[itemType]++
+	}
+	logx.Infof("Object layer cache replaced with %d items.", len(cache))
+	for itemType, count := range typeCounts {
+		logx.Debugf("  %-20s %d", itemType, count)
+	}
+	return nil
+}
+
+// PatchObjectLayerCache applies incremental updates and deletions.
+// Used by WorldBuilder for hot-reload via gRPC manifest diffing.
+func (s *GameServer) PatchObjectLayerCache(updates map[string]*ObjectLayer, deletions []string) error {
+	if err := validateObjectLayers(updates); err != nil {
+		return err
+	}
+	s.olMu.Lock()
+	defer s.olMu.Unlock()
+	if s.objectLayerDataCache == nil {
+		s.objectLayerDataCache = make(map[string]*ObjectLayer)
+	}
+	for itemID, ol := range updates {
+		s.objectLayerDataCache[itemID] = ol
+	}
+	for _, itemID := range deletions {
+		delete(s.objectLayerDataCache, itemID)
+	}
+	return nil
+}
+
+// GetObjectLayerData returns an ObjectLayer by item ID (read-locked).
+func (s *GameServer) GetObjectLayerData(itemID string) (*ObjectLayer, bool) {
+	s.olMu.RLock()
+	defer s.olMu.RUnlock()
+	ol, ok := s.objectLayerDataCache[itemID]
+	return ol, ok
 }
