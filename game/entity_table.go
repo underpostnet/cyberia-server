@@ -2,6 +2,7 @@ package game
 
 import (
 	"iter"
+	"maps"
 	"strconv"
 )
 
@@ -13,6 +14,23 @@ func (s *World) newEntityID() EntityID {
 	s.lastEntityID++
 	return s.lastEntityID
 }
+
+// NewMapState returns an empty map of w×h cells.
+func NewMapState(code string, w, h int) *MapState {
+	return &MapState{code: code, gridW: w, gridH: h, pathfinder: NewPathfinder(w, h)}
+}
+
+// Code returns the map code.
+func (ms *MapState) Code() string { return ms.code }
+
+// GridW returns the grid width in cells.
+func (ms *MapState) GridW() int { return ms.gridW }
+
+// GridH returns the grid height in cells.
+func (ms *MapState) GridH() int { return ms.gridH }
+
+// Pathfinder returns the pathfinder over the grid.
+func (ms *MapState) Pathfinder() *Pathfinder { return ms.pathfinder }
 
 // spawn gives id a slot with its universal components and returns the slot.
 // Only the owner of the entity lifetime calls it: the loader, the spawner and
@@ -134,6 +152,15 @@ func (ms *MapState) pt(id EntityID) (*Portal, bool) {
 	return &ms.portal[slot], ms.mask[slot]&maskPortal != 0
 }
 
+// AddPlayer marks id as an entity a client controls.
+func (ms *MapState) AddPlayer(id EntityID) { ms.mask[ms.slot(id)] |= maskPlayer }
+
+// IsKind reports whether id is on the map with kind k.
+func (ms *MapState) IsKind(id EntityID, k string) bool {
+	slot, ok := ms.index[id]
+	return ok && ms.data[slot].Kind == k
+}
+
 // has reports whether id has every component in m.
 func (ms *MapState) has(id EntityID, m ComponentMask) bool {
 	return ms.mask[ms.slot(id)]&m == m
@@ -156,6 +183,12 @@ func (ms *MapState) mt(id EntityID) *Mortal {
 	return m
 }
 
+// HasMortal reports whether id has a mortal row.
+func (ms *MapState) HasMortal(id EntityID) bool { return ms.mortals[id] != nil }
+
+// Mortals yields the id of every entity with a mortal row.
+func (ms *MapState) Mortals() iter.Seq[EntityID] { return maps.Keys(ms.mortals) }
+
 // addBrain gives bot id its brain.
 func (ms *MapState) addBrain(id EntityID, b *Brain) {
 	if ms.brains == nil {
@@ -171,6 +204,17 @@ func (ms *MapState) br(id EntityID) *Brain {
 		panic("entity " + id.String() + " has no brain")
 	}
 	return b
+}
+
+// IDs yields the id of every entity, in slot order.
+func (ms *MapState) IDs() iter.Seq[EntityID] {
+	return func(yield func(EntityID) bool) {
+		for _, id := range ms.ids {
+			if id != 0 && !yield(id) {
+				return
+			}
+		}
+	}
 }
 
 // ofKind yields the id of every entity of kind k, in slot order.
@@ -255,41 +299,49 @@ func (t *Transform) rect() Rectangle {
 	return Rectangle{MinX: t.Pos.X, MinY: t.Pos.Y, MaxX: t.Pos.X + t.Size.X, MaxY: t.Pos.Y + t.Size.Y}
 }
 
-// entityRow is every component of one slot, for a move between maps.
-type entityRow struct {
-	mask       ComponentMask
-	data       EntityData
-	transform  Transform
-	appearance Appearance
-	vitals     Vitals
-	motion     Motion
-	agent      Agent
-	portal     Portal
-	mortal     *Mortal
-	brain      *Brain
+// EntityRow is every component of one slot. Row leaves the side-table rows
+// nil; take fills them for a move between maps.
+type EntityRow struct {
+	Mask       ComponentMask
+	Data       EntityData
+	Transform  Transform
+	Appearance Appearance
+	Vitals     Vitals
+	Motion     Motion
+	Agent      Agent
+	Portal     Portal
+	Mortal     *Mortal
+	Brain      *Brain
+}
+
+// Row copies the components of id.
+func (ms *MapState) Row(id EntityID) EntityRow {
+	i := ms.slot(id)
+	return EntityRow{Mask: ms.mask[i], Data: ms.data[i], Transform: ms.transform[i], Appearance: ms.appearance[i],
+		Vitals: ms.vitals[i], Motion: ms.motion[i], Agent: ms.agent[i], Portal: ms.portal[i]}
 }
 
 // take copies the row of id and frees its slot.
-func (ms *MapState) take(id EntityID) entityRow {
-	i := ms.slot(id)
-	row := entityRow{ms.mask[i], ms.data[i], ms.transform[i], ms.appearance[i], ms.vitals[i], ms.motion[i], ms.agent[i], ms.portal[i], ms.mortals[id], ms.brains[id]}
+func (ms *MapState) take(id EntityID) EntityRow {
+	row := ms.Row(id)
+	row.Mortal, row.Brain = ms.mortals[id], ms.brains[id]
 	ms.despawn(id)
 	return row
 }
 
 // put gives id a slot that holds row.
-func (ms *MapState) put(id EntityID, row entityRow) {
-	i := ms.spawn(id, row.data, row.transform, row.appearance)
-	ms.vitals[i] = row.vitals
-	ms.motion[i] = row.motion
-	ms.agent[i] = row.agent
-	ms.portal[i] = row.portal
-	ms.mask[i] = row.mask
-	if row.mortal != nil {
-		ms.addMortal(id, row.mortal)
+func (ms *MapState) put(id EntityID, row EntityRow) {
+	i := ms.spawn(id, row.Data, row.Transform, row.Appearance)
+	ms.vitals[i] = row.Vitals
+	ms.motion[i] = row.Motion
+	ms.agent[i] = row.Agent
+	ms.portal[i] = row.Portal
+	ms.mask[i] = row.Mask
+	if row.Mortal != nil {
+		ms.addMortal(id, row.Mortal)
 	}
-	if row.brain != nil {
-		ms.addBrain(id, row.brain)
+	if row.Brain != nil {
+		ms.addBrain(id, row.Brain)
 	}
 }
 

@@ -5,8 +5,8 @@ import (
 )
 
 func lifecycleServer() (*GameServer, *MapState, *MapState) {
-	home := &MapState{code: "home", gridW: 20, gridH: 20}
-	away := &MapState{code: "away", gridW: 20, gridH: 20}
+	home := NewMapState("home", 20, 20)
+	away := NewMapState("away", 20, 20)
 	s := NewGameServer()
 	s.maps = map[string]*MapState{"home": home, "away": away}
 	return s, home, away
@@ -35,7 +35,7 @@ func TestDetachClientClearsEveryReference(t *testing.T) {
 
 	s.detachClient(client)
 
-	if _, still := home.index[1]; still {
+	if home.IsKind(1, EntityPlayer) {
 		t.Fatal("the player must leave the map")
 	}
 	if _, still := s.clients[1]; still {
@@ -57,7 +57,7 @@ func TestDetachClientFindsPlayerAfterAMapChange(t *testing.T) {
 
 	s.detachClient(client)
 
-	if _, still := away.index[1]; still {
+	if away.IsKind(1, EntityPlayer) {
 		t.Fatal("the player must be removed from the map it actually occupies")
 	}
 }
@@ -122,7 +122,7 @@ func TestUnregisterFallbackTearsDownWhenQueueIsFull(t *testing.T) {
 		s.detachClient(client)
 	}
 
-	if _, still := home.index[1]; still {
+	if home.IsKind(1, EntityPlayer) {
 		t.Fatal("the fallback path must remove the player")
 	}
 	if total, _ := s.guard.counts(); total != 0 {

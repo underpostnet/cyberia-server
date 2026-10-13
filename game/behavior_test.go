@@ -20,9 +20,10 @@ func TestForegroundCarriesOnlyTheBehaviorItsDefaultBinds(t *testing.T) {
 	s.buildForeground(ms, &pb.EntityMessage{ObjectLayerItemIds: []string{"canopy"}, DimX: 2, DimY: 2})
 
 	want := map[string]bool{"roof": true, "canopy": false}
-	for i := range ms.ids {
-		item := ms.appearance[i].Layers[0].ItemID
-		if got := ms.data[i].Flags&FlagOverheadOcclusion != 0; got != want[item] {
+	for id := range ms.IDs() {
+		row := ms.Row(id)
+		item := row.Appearance.Layers[0].ItemID
+		if got := row.Data.Flags&FlagOverheadOcclusion != 0; got != want[item] {
 			t.Fatalf("foreground %q: want occlusion %v, got %v", item, want[item], got)
 		}
 	}

@@ -100,8 +100,8 @@ func (s *Content) syncCoinOL(layers *[]ObjectLayerState, amount uint32) {
 
 // wallet returns the flat coin balance of player or bot id on ms.
 func (s *Content) wallet(id EntityID, ms *MapState) *uint32 {
-	if b, ok := ms.brains[id]; ok {
-		return &b.Coins
+	if ms.IsKind(id, EntityBot) {
+		return &ms.br(id).Coins
 	}
 	return &s.sessions[id].Coins
 }

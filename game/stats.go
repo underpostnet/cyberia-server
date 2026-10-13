@@ -36,7 +36,7 @@ func (s *Content) statBreakdown(id EntityID, mapState *MapState, visited map[Ent
 	out.Layers = statsFromValues(layers)
 	if mapState.has(id, maskAgent) {
 		// A summon inherits the stats of a caster still on its map.
-		if caster := mapState.ag(id).CasterID; mapState.mortals[caster] != nil {
+		if caster := mapState.ag(id).CasterID; mapState.HasMortal(caster) {
 			inherited := s.statBreakdown(caster, mapState, visited)
 			out.Base = inherited.Base
 			inheritedLayers, inheritedTemporary := inherited.Layers.Values(), inherited.Temporary.Values()

@@ -103,6 +103,13 @@ func (pf *Pathfinder) occupy(pos, size Vec2, delta int) {
 	}
 }
 
+// Block marks cell (x, y) not walkable. A cell off the grid is ignored.
+func (pf *Pathfinder) Block(x, y int) {
+	if x >= 0 && x < pf.gridW && y >= 0 && y < pf.gridH {
+		pf.grid[y][x] = 1
+	}
+}
+
 // isCellWalkable checks if a single grid cell is walkable.
 func (pf *Pathfinder) isCellWalkable(x, y int) bool {
 	return x >= 0 && x < pf.gridW && y >= 0 && y < pf.gridH && pf.grid[y][x] == 0

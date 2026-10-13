@@ -112,7 +112,7 @@ func (s *Sim) applyInputCommand(player *Session, mapState *MapState, cmd *InputC
 // FCT events (those will move to phaseEconomy in a follow-up).
 func (s *Sim) phaseLifecycle(tick uint32, mapState *MapState) {
 	_ = tick
-	for id := range mapState.mortals {
+	for id := range mapState.Mortals() {
 		s.ApplyResistanceStat(id, mapState)
 	}
 	s.handleRespawns(mapState)
@@ -178,7 +178,8 @@ func (s *Sim) phaseLoot(tick uint32, mapState *MapState) {
 	now := time.Now()
 	s.respawnWorldLoot(mapState, now)
 
-	for dropID, drop := range mapState.brains {
+	for dropID := range mapState.ofKind(EntityBot) {
+		drop := mapState.br(dropID)
 		if !behaviorIsInert(mapState.ag(dropID).Behavior) {
 			continue
 		}
@@ -201,7 +202,7 @@ func (s *Sim) phaseLoot(tick uint32, mapState *MapState) {
 		}
 		s.broadcastDropCollect(mapState, dropID, collectorID, cx, cy, granted)
 		if drop.LootOrigin == LootOriginWorld && drop.LootOutcome == LootOutcomeConsume {
-			scheduleLootRespawn(mapState, dropID, now)
+			s.scheduleLootRespawn(mapState, dropID, now)
 		}
 		s.despawn(mapState, dropID)
 	}

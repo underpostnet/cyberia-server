@@ -114,7 +114,7 @@ type QuestSnapshotEntry struct {
 // even when it carries no action.
 func botSpawnCell(ms *MapState, id EntityID) cellKey {
 	c := ms.br(id).SpawnCenter
-	return cellKey{ms.code, int(c.X), int(c.Y)}
+	return cellKey{ms.Code(), int(c.X), int(c.Y)}
 }
 
 func protoToQuest(q *pb.CyberiaQuestMessage) *CyberiaQuest {
@@ -231,7 +231,7 @@ func (s *Content) logQuestProviders() {
 func (s *Content) providerSkinsAtCell(cell cellKey) []string {
 	var out []string
 	for _, ms := range s.maps {
-		for id := range ms.brains {
+		for id := range ms.ofKind(EntityBot) {
 			if botSpawnCell(ms, id) == cell {
 				skin := s.botActiveSkinOf(id, ms)
 				if skin == "" {

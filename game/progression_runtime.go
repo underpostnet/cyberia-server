@@ -72,6 +72,16 @@ func (s *Content) despawn(ms *MapState, id EntityID) {
 	delete(s.crafts, id)
 }
 
+// forgetNonPlayers drops the content rows of every entity without a session.
+// A world rebuild drops every entity but the players.
+func (s *Content) forgetNonPlayers() {
+	for id := range s.progression {
+		if s.sessions[id] == nil {
+			delete(s.progression, id)
+		}
+	}
+}
+
 // awardProgression runs under the simulation lock after a gameplay result.
 // XP is private, so its floating text goes to the earner alone; a level gained
 // is public, so its sound reaches every viewer in the earner's area.

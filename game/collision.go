@@ -11,7 +11,7 @@ import (
 func (s *Sim) handleSkillCollisions(mapState *MapState) {
 	projectilesToDelete := []EntityID{}
 
-	for projectileID := range mapState.brains {
+	for projectileID := range mapState.ofKind(EntityBot) {
 		if mapState.ag(projectileID).Behavior != BehaviorSkill {
 			continue
 		}
@@ -65,7 +65,7 @@ func (s *Sim) handleSkillCollisions(mapState *MapState) {
 		}
 
 		// Check collision with other bots
-		for otherBotID := range mapState.brains {
+		for otherBotID := range mapState.ofKind(EntityBot) {
 			if projectileID == otherBotID || mapState.ag(otherBotID).Behavior == BehaviorSkill || mapState.vt(otherBotID).ghost() {
 				continue // Don't collide with self, other projectiles, or dead bots.
 			}
@@ -286,7 +286,7 @@ func (s *Sim) handleResourceDeath(res EntityID, mapState *MapState) {
 func (s *Sim) handleDestructibleDeath(obs EntityID, mapState *MapState) {
 	s.killEntity(obs, "obstacle", 0, mapState)
 	tf := mapState.tf(obs)
-	mapState.pathfinder.occupy(tf.Pos, tf.Size, -1)
+	mapState.Pathfinder().occupy(tf.Pos, tf.Size, -1)
 }
 
 // handleRespawns checks and respawns dead players and bots.
@@ -308,7 +308,7 @@ func (s *Sim) handleRespawns(mapState *MapState) {
 	}
 
 	// Respawn bots
-	for id := range mapState.brains {
+	for id := range mapState.ofKind(EntityBot) {
 		if !mapState.vt(id).RespawnAt.IsZero() && time.Now().After(mapState.vt(id).RespawnAt) {
 			mapState.ap(id).Layers = mapState.mt(id).PreRespawnObjectLayers
 			mapState.mt(id).PreRespawnObjectLayers = nil
@@ -344,7 +344,7 @@ func (s *Sim) handleRespawns(mapState *MapState) {
 		v.Life = v.MaxLife
 		v.RespawnAt = time.Time{}
 		tf := *mapState.tf(obs)
-		mapState.pathfinder.occupy(tf.Pos, tf.Size, 1)
+		mapState.Pathfinder().occupy(tf.Pos, tf.Size, 1)
 		s.clearObstacleCells(mapState, tf)
 	}
 }
@@ -367,7 +367,8 @@ func (s *Sim) clearObstacleCells(ms *MapState, obs Transform) {
 			player.Path, player.TargetPos, ms.mo(player.ID).Mode = nil, cell, IDLE
 		}
 	}
-	for id, bot := range ms.brains {
+	for id := range ms.ofKind(EntityBot) {
+		bot := ms.br(id)
 		if ms.ag(id).Behavior == BehaviorSkill {
 			continue
 		}
@@ -419,8 +420,8 @@ func obstaclePushCell(ms *MapState, obs, entity Transform, direction Direction) 
 	} else if dy < 0 {
 		cell.Y = int(math.Floor(y))
 	}
-	cell = clampCellToGrid(cell, ms.gridW, ms.gridH)
-	return ms.pathfinder.findClosestWalkablePoint(cell, entity.Size)
+	cell = clampCellToGrid(cell, ms.GridW(), ms.GridH())
+	return ms.Pathfinder().findClosestWalkablePoint(cell, entity.Size)
 }
 
 func pathCrossesObstacle(path []Cell, size Vec2, obs Transform) bool {

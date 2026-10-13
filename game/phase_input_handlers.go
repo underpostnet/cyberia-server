@@ -63,8 +63,8 @@ func (s *Sim) flushPendingMove(player *Session, mapState *MapState) {
 	// the full reachable area and then fail, spending the tick budget.
 	startPosI := clampCellToGrid(
 		Cell{X: int(math.Round(mapState.tf(player.ID).Pos.X)), Y: int(math.Round(mapState.tf(player.ID).Pos.Y))},
-		mapState.gridW, mapState.gridH)
-	targetPosI := clampCellToGrid(target, mapState.gridW, mapState.gridH)
+		mapState.GridW(), mapState.GridH())
+	targetPosI := clampCellToGrid(target, mapState.GridW(), mapState.GridH())
 
 	// A repeat of the destination already being walked needs no search. This is
 	// the shape a spam-tapping client takes, and it is also the shape of a held
@@ -74,16 +74,16 @@ func (s *Sim) flushPendingMove(player *Session, mapState *MapState) {
 		return
 	}
 
-	newPath, err := mapState.pathfinder.Astar(startPosI, targetPosI, mapState.tf(player.ID).Size)
+	newPath, err := mapState.Pathfinder().Astar(startPosI, targetPosI, mapState.tf(player.ID).Size)
 	usedTarget := targetPosI
 	if err != nil {
-		closest, cerr := mapState.pathfinder.findClosestWalkablePoint(targetPosI, mapState.tf(player.ID).Size)
+		closest, cerr := mapState.Pathfinder().findClosestWalkablePoint(targetPosI, mapState.tf(player.ID).Size)
 		if cerr != nil {
 			s.faceTargetWithoutPath(player, mapState, float64(targetPosI.X), float64(targetPosI.Y))
 			player.TargetPos = targetPosI
 			return
 		}
-		newPath, err = mapState.pathfinder.Astar(startPosI, closest, mapState.tf(player.ID).Size)
+		newPath, err = mapState.Pathfinder().Astar(startPosI, closest, mapState.tf(player.ID).Size)
 		if err != nil {
 			s.faceTargetWithoutPath(player, mapState, float64(closest.X), float64(closest.Y))
 			player.TargetPos = closest

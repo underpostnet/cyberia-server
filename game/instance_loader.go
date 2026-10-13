@@ -68,7 +68,7 @@ func (s *Sim) BuildWorldFromInstance(
 	// Log entity counts per map
 	for code, ms := range s.maps {
 		logx.Debugf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots",
-			code, ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), ms.sceneryCount("foreground"), ms.count(EntityPortal), len(ms.brains))
+			code, ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), ms.sceneryCount("foreground"), ms.count(EntityPortal), ms.count(EntityBot))
 	}
 
 	// Print ASCII graph of portal topology
@@ -107,23 +107,15 @@ func (s *Sim) RebuildWorld(
 	// Snapshot existing players per map so they survive the rebuild.
 	type savedPlayer struct {
 		id  EntityID
-		row entityRow
+		row EntityRow
 	}
 	savedPlayers := make(map[string][]savedPlayer)
 	for code, ms := range s.maps {
-		ms.mu.RLock()
 		for id := range ms.ofKind(EntityPlayer) {
 			savedPlayers[code] = append(savedPlayers[code], savedPlayer{id, ms.take(id)})
 		}
-		ms.mu.RUnlock()
 	}
-
-	// The rebuild drops every entity but the players, so drop their rows.
-	for id := range s.progression {
-		if s.sessions[id] == nil {
-			delete(s.progression, id)
-		}
-	}
+	s.forgetNonPlayers()
 
 	// Rebuild via the same path as initial load.
 	s.buildMapsFromInstance(instance, mapMsgs)
@@ -140,17 +132,15 @@ func (s *Sim) RebuildWorld(
 			logx.Warnf("[InstanceLoader] map %q was removed during rebuild; %d players orphaned", code, len(players))
 			continue
 		}
-		ms.mu.Lock()
 		for _, p := range players {
 			ms.put(p.id, p.row)
 		}
-		ms.mu.Unlock()
 	}
 
 	logx.Infof("[InstanceLoader] RebuildWorld complete: %d maps.", len(s.maps))
 	for code, ms := range s.maps {
 		logx.Debugf("[InstanceLoader]   Map %q: %d floors, %d obstacles, %d foregrounds, %d portals, %d bots, %d resources, %d statics, %d players",
-			code, ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), ms.sceneryCount("foreground"), ms.count(EntityPortal), len(ms.brains), ms.count(EntityResource), ms.sceneryCount("static"), ms.count(EntityPlayer))
+			code, ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), ms.sceneryCount("foreground"), ms.count(EntityPortal), ms.count(EntityBot), ms.count(EntityResource), ms.sceneryCount("static"), ms.count(EntityPlayer))
 	}
 	printInstanceGraph(instance, s.maps)
 }
@@ -167,6 +157,7 @@ func (s *Sim) buildMapsFromInstance(
 	}
 
 	s.maps = make(map[string]*MapState)
+	s.lootRespawns = nil
 	allPortals := make(map[string][]portalEntry)
 
 	for _, mapCode := range instance.GetMapCodes() {
@@ -185,12 +176,7 @@ func (s *Sim) buildMapsFromInstance(
 			gridH = 100
 		}
 
-		ms := &MapState{
-			code:       mapCode,
-			gridW:      gridW,
-			gridH:      gridH,
-			pathfinder: NewPathfinder(gridW, gridH),
-		}
+		ms := NewMapState(mapCode, gridW, gridH)
 		// Register the map first: a builder reads its components through s.maps.
 		s.maps[mapCode] = ms
 
@@ -358,7 +344,7 @@ func (s *Sim) buildBot(ms *MapState, ent *pb.EntityMessage) {
 	if !behaviorIsProvider(ms.ag(id).Behavior) {
 		target := s.randomPointWithinRadius(ms, bot.SpawnCenter, bot.SpawnRadius, dims)
 		if target.X >= 0 {
-			if pth, err := ms.pathfinder.Astar(
+			if pth, err := ms.Pathfinder().Astar(
 				Cell{X: int(math.Round(startPos.X)), Y: int(math.Round(startPos.Y))},
 				target, dims,
 			); err == nil && len(pth) > 0 {
@@ -418,7 +404,7 @@ func (s *Sim) buildObstacle(ms *MapState, ent *pb.EntityMessage) {
 	pos := Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
 	objectLayers := s.spawnObjectLayers("obstacle", ent.GetObjectLayerItemIds(), ent.GetColorA() == 0)
 	id := s.newEntityID()
-	ms.pathfinder.occupy(pos, dims, 1)
+	ms.Pathfinder().occupy(pos, dims, 1)
 	ms.spawn(id, EntityData{Kind: EntityScenery, Flags: FlagBlocks},
 		Transform{Pos: pos, Size: dims}, Appearance{Layers: objectLayers})
 
@@ -518,7 +504,7 @@ func printInstanceGraph(instance *pb.InstanceMessage, maps map[string]*MapState)
 		line := fmt.Sprintf("    [%s]", code)
 		if ms, ok := maps[code]; ok {
 			line += fmt.Sprintf("  [F:%d O:%d B:%d P:%d]",
-				ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), len(ms.brains), ms.count(EntityPortal))
+				ms.sceneryCount("floor"), ms.sceneryCount("obstacle"), ms.count(EntityBot), ms.count(EntityPortal))
 		}
 		content = append(content, line)
 	}

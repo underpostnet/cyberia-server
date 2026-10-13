@@ -109,7 +109,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	if !s.playerSpawn.Random && s.playerSpawn.MapCode != "" {
 		if ms, ok := s.maps[s.playerSpawn.MapCode]; ok {
 			cell := Cell{X: s.playerSpawn.CellX, Y: s.playerSpawn.CellY}
-			if ms.pathfinder.isWalkable(cell.X, cell.Y, playerDims) {
+			if ms.Pathfinder().isWalkable(cell.X, cell.Y, playerDims) {
 				startMapCode = s.playerSpawn.MapCode
 				fixedPos = cell
 				hasFixedPos = true
@@ -127,7 +127,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 
 	startPosI := fixedPos
 	if !hasFixedPos {
-		p, err := startMapState.pathfinder.findRandomWalkablePoint(playerDims)
+		p, err := startMapState.Pathfinder().findRandomWalkablePoint(playerDims)
 		if err != nil {
 			logx.Warnf("Could not place new player: %v", err)
 			conn.Close()
@@ -173,7 +173,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	startMapState.addMotion(playerID, Motion{Direction: NONE, Mode: IDLE})
 	startMapState.addMortal(playerID, &Mortal{LifeRegen: lifeRegen})
 	s.setProgression(playerID, NewEntityProgression(1, false, s.progressionConfig()))
-	startMapState.mask[startMapState.slot(playerID)] |= maskPlayer
+	startMapState.AddPlayer(playerID)
 
 	// Economy: credit the player's starting wallet (Fountain: playerSpawnCoins).
 	s.FountainInitPlayer(playerState)
@@ -195,8 +195,8 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// CYBERIA_CLIENT_HINTS_CODE.
 	initPayload := InitPayload{
 		EngineID:       playerState.EngineID,
-		GridW:          startMapState.gridW,
-		GridH:          startMapState.gridH,
+		GridW:          startMapState.GridW(),
+		GridH:          startMapState.GridH(),
 		AoiRadius:      s.aoiRadius,
 		ObjectLayers:   s.visibleInventory(startMapState.ap(playerID).Layers),
 		SkillMap:       s.buildSkillMap(),

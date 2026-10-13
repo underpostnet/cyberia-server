@@ -138,8 +138,8 @@ func (s *Sim) teleportPlayer(player *Session, mapState *MapState, portal EntityI
 	// map. Otherwise spawn near the target cell, inside the spawn radius.
 	var spawnX, spawnY float64
 	if target.TargetCell.X < 0 || target.TargetCell.Y < 0 {
-		spawnX = rand.Float64() * float64(destMapState.gridW)
-		spawnY = rand.Float64() * float64(destMapState.gridH)
+		spawnX = rand.Float64() * float64(destMapState.GridW())
+		spawnY = rand.Float64() * float64(destMapState.GridH())
 	} else {
 		spawnX = float64(target.TargetCell.X) + rand.Float64()*s.portalSpawnRadius*2 - s.portalSpawnRadius
 		spawnY = float64(target.TargetCell.Y) + rand.Float64()*s.portalSpawnRadius*2 - s.portalSpawnRadius
@@ -147,17 +147,17 @@ func (s *Sim) teleportPlayer(player *Session, mapState *MapState, portal EntityI
 
 	currentMapState := s.maps[player.MapCode]
 	size := currentMapState.tf(player.ID).Size
-	destPosI, err := destMapState.pathfinder.findClosestWalkablePoint(Cell{X: int(spawnX), Y: int(spawnY)}, size)
+	destPosI, err := destMapState.Pathfinder().findClosestWalkablePoint(Cell{X: int(spawnX), Y: int(spawnY)}, size)
 	if err != nil {
 		logx.Warnf("Could not find a walkable spawn point: %v", err)
 		return
 	}
 	row := currentMapState.take(player.ID)
-	row.transform.Pos = Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}
+	row.Transform.Pos = Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}
 	player.MapCode = destMapCode
 	player.TargetPos = Cell{}
 	player.Path = []Cell{}
-	row.motion.Mode = TELEPORTING
+	row.Motion.Mode = TELEPORTING
 	player.OnPortal = false
 	destMapState.put(player.ID, row)
 	s.teleported = append(s.teleported, player)

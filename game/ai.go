@@ -20,13 +20,13 @@ func (s *Sim) randomPointWithinRadius(ms *MapState, center Vec2, radius float64,
 		r := rand.Float64() * radius
 		x := int(math.Round(center.X + math.Cos(ang)*r))
 		y := int(math.Round(center.Y + math.Sin(ang)*r))
-		if x < 0 || x >= ms.gridW || y < 0 || y >= ms.gridH {
+		if x < 0 || x >= ms.GridW() || y < 0 || y >= ms.GridH() {
 			continue
 		}
-		if ms.pathfinder.isWalkable(x, y, dims) {
+		if ms.Pathfinder().isWalkable(x, y, dims) {
 			return Cell{X: x, Y: y}
 		}
-		if c, err := ms.pathfinder.findClosestWalkablePoint(Cell{X: x, Y: y}, dims); err == nil {
+		if c, err := ms.Pathfinder().findClosestWalkablePoint(Cell{X: x, Y: y}, dims); err == nil {
 			return c
 		}
 	}
@@ -35,7 +35,8 @@ func (s *Sim) randomPointWithinRadius(ms *MapState, center Vec2, radius float64,
 
 // update bots per map
 func (s *Sim) updateBots(mapState *MapState) {
-	for id, bot := range mapState.brains {
+	for id := range mapState.ofKind(EntityBot) {
+		bot := mapState.br(id)
 		// If bot is dead, skip all AI logic.
 		if mapState.vt(id).ghost() {
 			continue
@@ -74,8 +75,8 @@ func (s *Sim) updateBots(mapState *MapState) {
 			mapState.tf(id).Pos.Y += dirY * projectileStep
 
 			// Remove projectile if it goes out of map bounds
-			if mapState.tf(id).Pos.X < 0 || mapState.tf(id).Pos.X > float64(mapState.gridW) ||
-				mapState.tf(id).Pos.Y < 0 || mapState.tf(id).Pos.Y > float64(mapState.gridH) {
+			if mapState.tf(id).Pos.X < 0 || mapState.tf(id).Pos.X > float64(mapState.GridW()) ||
+				mapState.tf(id).Pos.Y < 0 || mapState.tf(id).Pos.Y > float64(mapState.GridH()) {
 				s.despawn(mapState, id)
 				continue // Skip further processing for this bot
 			}
@@ -94,7 +95,7 @@ func (s *Sim) updateBots(mapState *MapState) {
 				if (mapState.mo(id).Mode != WALKING || len(bot.Path) == 0) && rand.Float64() < providerWanderChancePerTick {
 					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, providerWanderRadius, mapState.tf(id).Size)
 					if target.X >= 0 {
-						if pth, err := mapState.pathfinder.Astar(Cell{X: int(math.Round(mapState.tf(id).Pos.X)), Y: int(math.Round(mapState.tf(id).Pos.Y))}, target, mapState.tf(id).Size); err == nil && len(pth) > 0 {
+						if pth, err := mapState.Pathfinder().Astar(Cell{X: int(math.Round(mapState.tf(id).Pos.X)), Y: int(math.Round(mapState.tf(id).Pos.Y))}, target, mapState.tf(id).Size); err == nil && len(pth) > 0 {
 							bot.Path = pth
 							bot.TargetPos = target
 							mapState.mo(id).Mode = WALKING
@@ -152,9 +153,9 @@ func (s *Sim) updateBots(mapState *MapState) {
 				needRepath := bot.CurrentTargetPlayer != nearestID || bot.lastPursuitTargetPos != playerCell
 				if needRepath {
 					start := Cell{X: int(math.Round(mapState.tf(id).Pos.X)), Y: int(math.Round(mapState.tf(id).Pos.Y))}
-					target, err := mapState.pathfinder.findClosestWalkablePoint(playerCell, mapState.tf(id).Size)
+					target, err := mapState.Pathfinder().findClosestWalkablePoint(playerCell, mapState.tf(id).Size)
 					if err == nil {
-						if p, err2 := mapState.pathfinder.Astar(start, target, mapState.tf(id).Size); err2 == nil && len(p) > 0 {
+						if p, err2 := mapState.Pathfinder().Astar(start, target, mapState.tf(id).Size); err2 == nil && len(p) > 0 {
 							bot.Path = p
 							bot.TargetPos = target
 							mapState.mo(id).Mode = WALKING
@@ -188,7 +189,7 @@ func (s *Sim) updateBots(mapState *MapState) {
 				if mapState.mo(id).Mode != WALKING || len(bot.Path) == 0 {
 					target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, mapState.tf(id).Size)
 					if target.X >= 0 {
-						if pth, err := mapState.pathfinder.Astar(Cell{X: int(math.Round(mapState.tf(id).Pos.X)), Y: int(math.Round(mapState.tf(id).Pos.Y))}, target, mapState.tf(id).Size); err == nil && len(pth) > 0 {
+						if pth, err := mapState.Pathfinder().Astar(Cell{X: int(math.Round(mapState.tf(id).Pos.X)), Y: int(math.Round(mapState.tf(id).Pos.Y))}, target, mapState.tf(id).Size); err == nil && len(pth) > 0 {
 							bot.Path = pth
 							bot.TargetPos = target
 							mapState.mo(id).Mode = WALKING
@@ -218,7 +219,7 @@ func (s *Sim) updateBots(mapState *MapState) {
 			if len(bot.Path) == 0 || mapState.mo(id).Mode != WALKING {
 				target := s.randomPointWithinRadius(mapState, bot.SpawnCenter, bot.SpawnRadius, mapState.tf(id).Size)
 				if target.X >= 0 {
-					if pth, err := mapState.pathfinder.Astar(Cell{X: int(math.Round(mapState.tf(id).Pos.X)), Y: int(math.Round(mapState.tf(id).Pos.Y))}, target, mapState.tf(id).Size); err == nil && len(pth) > 0 {
+					if pth, err := mapState.Pathfinder().Astar(Cell{X: int(math.Round(mapState.tf(id).Pos.X)), Y: int(math.Round(mapState.tf(id).Pos.Y))}, target, mapState.tf(id).Size); err == nil && len(pth) > 0 {
 						bot.Path = pth
 						bot.TargetPos = target
 						mapState.mo(id).Mode = WALKING

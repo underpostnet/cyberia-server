@@ -10,12 +10,7 @@ import (
 func movementFixture(t *testing.T) (*Sim, *MapState, *Session) {
 	t.Helper()
 
-	mapState := &MapState{
-		gridW:      20,
-		gridH:      20,
-		pathfinder: NewPathfinder(20, 20),
-		code:       "test",
-	}
+	mapState := NewMapState("test", 20, 20)
 
 	s := &Sim{Content: &Content{
 		World: &World{
@@ -36,7 +31,7 @@ func movementFixture(t *testing.T) (*Sim, *MapState, *Session) {
 	mapState.addVitals(player.ID, Vitals{Life: 100, MaxLife: 100})
 	mapState.addMotion(player.ID, Motion{Direction: NONE, Mode: IDLE})
 	mapState.addMortal(player.ID, &Mortal{})
-	mapState.mask[mapState.slot(player.ID)] |= maskPlayer
+	mapState.AddPlayer(player.ID)
 
 	return s, mapState, player
 }
@@ -52,7 +47,7 @@ func testMap(s *World) *MapState {
 		s.maps = map[string]*MapState{}
 	}
 	if s.maps["test"] == nil {
-		s.maps["test"] = &MapState{code: "test"}
+		s.maps["test"] = NewMapState("test", 0, 0)
 	}
 	return s.maps["test"]
 }
@@ -68,7 +63,7 @@ func placePlayer(s *World, id EntityID, layers []ObjectLayerState) *Session {
 	ms.spawn(id, EntityData{Kind: EntityPlayer}, Transform{}, Appearance{Layers: layers})
 	ms.addVitals(id, Vitals{})
 	ms.addMortal(id, &Mortal{})
-	ms.mask[ms.slot(id)] |= maskPlayer
+	ms.AddPlayer(id)
 	return p
 }
 

@@ -119,10 +119,7 @@ func recordDamage(ledger *map[EntityID]float64, mapState *MapState, casterID Ent
 	if ledger == nil || casterID == 0 || amount <= 0 {
 		return
 	}
-	slot, onMap := mapState.index[casterID]
-	isPlayer := onMap && mapState.data[slot].Kind == EntityPlayer
-	_, isBot := mapState.brains[casterID]
-	if !isPlayer && !isBot {
+	if !mapState.IsKind(casterID, EntityPlayer) && !mapState.IsKind(casterID, EntityBot) {
 		return // unknown caster — no claim
 	}
 	if *ledger == nil {
@@ -182,7 +179,7 @@ func (s *Content) spawnDrops(mapState *MapState, center Vec2, build EntityTypeDe
 	}
 
 	logx.Debugf("[LOOT] scattered %d/%d item drop(s) + %d coins at (%.1f,%.1f) on %s (contributors=%d)",
-		scattered, len(build.DropItemIDs), coinAmount, center.X, center.Y, mapState.code, len(contributors))
+		scattered, len(build.DropItemIDs), coinAmount, center.X, center.Y, mapState.Code(), len(contributors))
 }
 
 // spawnLootToken spawns one BehaviorDrop token showing itemID × quantity at
@@ -253,19 +250,19 @@ func (s *Content) spawnDropToken(mapState *MapState, center Vec2, itemID string,
 func (s *Content) clampDropCell(mapState *MapState, cell Cell, dims Vec2) Cell {
 	if cell.X < 0 {
 		cell.X = 0
-	} else if cell.X >= mapState.gridW {
-		cell.X = mapState.gridW - 1
+	} else if cell.X >= mapState.GridW() {
+		cell.X = mapState.GridW() - 1
 	}
 	if cell.Y < 0 {
 		cell.Y = 0
-	} else if cell.Y >= mapState.gridH {
-		cell.Y = mapState.gridH - 1
+	} else if cell.Y >= mapState.GridH() {
+		cell.Y = mapState.GridH() - 1
 	}
-	if mapState.pathfinder != nil {
-		if mapState.pathfinder.isWalkable(cell.X, cell.Y, dims) {
+	if mapState.Pathfinder() != nil {
+		if mapState.Pathfinder().isWalkable(cell.X, cell.Y, dims) {
 			return cell
 		}
-		if c, err := mapState.pathfinder.findClosestWalkablePoint(cell, dims); err == nil {
+		if c, err := mapState.Pathfinder().findClosestWalkablePoint(cell, dims); err == nil {
 			return c
 		}
 	}
@@ -304,9 +301,13 @@ func (s *Content) placeWorldLoot(mapState *MapState, pos Vec2, itemID string, re
 
 // scheduleLootRespawn brings a consumed world token back on its cell after its
 // respawn time. Call it while the token still has its slot. Caller holds s.mu.
-func scheduleLootRespawn(mapState *MapState, dropID EntityID, now time.Time) {
+func (s *Content) scheduleLootRespawn(mapState *MapState, dropID EntityID, now time.Time) {
 	mortal := mapState.mt(dropID)
-	mapState.lootRespawns = append(mapState.lootRespawns, lootRespawn{
+	if s.lootRespawns == nil {
+		s.lootRespawns = make(map[string][]lootRespawn)
+	}
+	code := mapState.Code()
+	s.lootRespawns[code] = append(s.lootRespawns[code], lootRespawn{
 		itemID:  mapState.br(dropID).DropItemID,
 		pos:     mapState.tf(dropID).Pos,
 		respawn: mortal.RespawnDuration,
@@ -316,15 +317,20 @@ func scheduleLootRespawn(mapState *MapState, dropID EntityID, now time.Time) {
 
 // respawnWorldLoot places every consumed world token whose wait ran out.
 func (s *Content) respawnWorldLoot(mapState *MapState, now time.Time) {
-	waiting := mapState.lootRespawns[:0]
-	for _, respawn := range mapState.lootRespawns {
+	code := mapState.Code()
+	waiting := s.lootRespawns[code][:0]
+	for _, respawn := range s.lootRespawns[code] {
 		if now.Before(respawn.at) {
 			waiting = append(waiting, respawn)
 			continue
 		}
 		s.placeWorldLoot(mapState, respawn.pos, respawn.itemID, respawn.respawn)
 	}
-	mapState.lootRespawns = waiting
+	if len(waiting) > 0 {
+		s.lootRespawns[code] = waiting
+	} else {
+		delete(s.lootRespawns, code)
+	}
 }
 
 // buildLoot places a map-authored `loot` entity on its cell. It shows one item.
@@ -332,7 +338,7 @@ func (s *Content) buildLoot(mapState *MapState, ent *pb.EntityMessage) {
 	itemIDs := ent.GetObjectLayerItemIds()
 	if len(itemIDs) != 1 {
 		logx.Warnf("[LOOT] skip loot at (%d,%d) on %q: it shows %d items, not one",
-			ent.GetInitCellX(), ent.GetInitCellY(), mapState.code, len(itemIDs))
+			ent.GetInitCellX(), ent.GetInitCellY(), mapState.Code(), len(itemIDs))
 		return
 	}
 	pos := Vec2{X: float64(ent.GetInitCellX()), Y: float64(ent.GetInitCellY())}
@@ -413,7 +419,7 @@ func (s *Content) resolveDropCollector(mapState *MapState, dropID EntityID) *Ses
 // the token that its policy admits, or 0.
 func (s *Content) resolveBotDropCollector(mapState *MapState, dropID EntityID) EntityID {
 	drop := mapState.br(dropID)
-	for id := range mapState.brains {
+	for id := range mapState.ofKind(EntityBot) {
 		if id == dropID || mapState.vt(id).ghost() || !behaviorCollectsLoot(mapState.ag(id).Behavior) {
 			continue
 		}

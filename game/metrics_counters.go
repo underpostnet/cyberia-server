@@ -186,17 +186,15 @@ func (s *GameServer) EntityCensus() map[string]EntityTypeCensus {
 	}
 
 	for _, m := range s.maps {
-		for i, id := range m.ids {
-			if id == 0 {
-				continue
-			}
-			class := m.data[i].Kind
+		for id := range m.IDs() {
+			row := m.Row(id)
+			class := row.Data.Kind
 			if class == EntityScenery {
-				if class = sceneryClass(m.data[i]); class == "static" {
+				if class = sceneryClass(row.Data); class == "static" {
 					continue
 				}
 			}
-			addObj(class, m.appearance[i].Layers)
+			addObj(class, row.Appearance.Layers)
 		}
 	}
 	return out
@@ -212,10 +210,10 @@ func (s *GameServer) MapBreakdowns() []MapBreakdown {
 	for code, m := range s.maps {
 		b := MapBreakdown{
 			MapCode:     code,
-			GridW:       m.gridW,
-			GridH:       m.gridH,
+			GridW:       m.GridW(),
+			GridH:       m.GridH(),
 			Players:     m.count(EntityPlayer),
-			Bots:        len(m.brains),
+			Bots:        m.count(EntityBot),
 			Floors:      m.sceneryCount("floor"),
 			Obstacles:   m.sceneryCount("obstacle"),
 			Foregrounds: m.sceneryCount("foreground"),
@@ -240,10 +238,10 @@ func (s *GameServer) MapBreakdownByCode(code string) (MapBreakdown, bool) {
 	}
 	b := MapBreakdown{
 		MapCode:     code,
-		GridW:       m.gridW,
-		GridH:       m.gridH,
+		GridW:       m.GridW(),
+		GridH:       m.GridH(),
 		Players:     m.count(EntityPlayer),
-		Bots:        len(m.brains),
+		Bots:        m.count(EntityBot),
 		Floors:      m.sceneryCount("floor"),
 		Obstacles:   m.sceneryCount("obstacle"),
 		Foregrounds: m.sceneryCount("foreground"),

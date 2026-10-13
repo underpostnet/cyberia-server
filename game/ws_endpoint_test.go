@@ -26,12 +26,7 @@ type wsTestServer struct {
 func newWSTestServer(t *testing.T, limits ConnectionLimits) *wsTestServer {
 	t.Helper()
 
-	mapState := &MapState{
-		gridW:      40,
-		gridH:      40,
-		pathfinder: NewPathfinder(40, 40),
-		code:       "test",
-	}
+	mapState := NewMapState("test", 40, 40)
 
 	s := NewGameServer()
 	s.SetConnectionLimits(limits)

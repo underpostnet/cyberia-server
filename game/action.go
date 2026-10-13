@@ -138,7 +138,7 @@ func (s *Content) bindActions(mapCodes []string, actions []*pb.CyberiaActionMess
 
 	bound := 0
 	for _, ms := range s.maps {
-		for id := range ms.brains {
+		for id := range ms.ofKind(EntityBot) {
 			action, ok := byCell[botSpawnCell(ms, id)]
 			if !ok {
 				continue
@@ -162,7 +162,7 @@ func (s *Content) logActionProviders() {
 	}
 	logx.Debugf("[ActionProviders] %d action-provider entities:", len(s.actionCache))
 	for _, ms := range s.maps {
-		for id := range ms.brains {
+		for id := range ms.ofKind(EntityBot) {
 			if ms.ag(id).ActionCode == "" {
 				continue
 			}
@@ -174,7 +174,7 @@ func (s *Content) logActionProviders() {
 				quests = s.questsByCell[actionCell(a)]
 			}
 			logx.Debugf("[ActionProviders]   map=%s action=%s label=%q quests=%v entity=%d initPos=(%d,%d)",
-				ms.code, ms.ag(id).ActionCode, label, quests, id,
+				ms.Code(), ms.ag(id).ActionCode, label, quests, id,
 				int(ms.tf(id).Pos.X), int(ms.tf(id).Pos.Y))
 		}
 	}
@@ -185,7 +185,7 @@ func (s *Content) logActionProviders() {
 // Caller MUST hold s.mu.
 func (s *Content) findBot(id EntityID) *MapState {
 	for _, ms := range s.maps {
-		if ms.brains[id] != nil {
+		if ms.IsKind(id, EntityBot) {
 			return ms
 		}
 	}
@@ -296,7 +296,7 @@ func (s *Content) botHasUsableAction(id EntityID, ms *MapState) bool {
 //
 // Caller MUST hold s.mu.
 func (s *Content) botInPlayerRange(player *Session, id EntityID, ms *MapState) bool {
-	if ms.code != player.MapCode {
+	if ms.Code() != player.MapCode {
 		return false
 	}
 	tf := ms.tf(id)

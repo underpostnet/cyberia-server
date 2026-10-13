@@ -106,6 +106,9 @@ type Content struct {
 	// row is also the refund receipt a cancel needs. One at a time:
 	// assembling is a modal operation.
 	crafts map[EntityID]*ActiveCraft
+	// lootRespawns are the consumed world tokens waiting to come back, by map
+	// code (loot.go). A world build starts it empty.
+	lootRespawns map[string][]lootRespawn
 
 	// Equipment rules — governs activation constraints.
 	equipmentRules EquipmentRulesConfig

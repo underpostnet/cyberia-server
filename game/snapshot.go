@@ -150,21 +150,20 @@ func msUntil(t time.Time) int {
 // baseEntity fills the fields every entity carries: its data, transform,
 // motion and active layers. An entity with no motion faces NONE and idles.
 func baseEntity(ms *MapState, id EntityID) SnapshotEntity {
-	slot := ms.slot(id)
-	data := ms.data[slot]
+	row := ms.Row(id)
 	motion := Motion{Direction: NONE, Mode: IDLE}
-	if ms.mask[slot]&maskMotion != 0 {
-		motion = ms.motion[slot]
+	if row.Mask&maskMotion != 0 {
+		motion = row.Motion
 	}
 	return SnapshotEntity{
 		ID:        id,
-		Kind:      data.Kind,
-		DrawOrder: data.DrawOrder,
-		Flags:     data.Flags,
-		Transform: ms.transform[slot],
+		Kind:      row.Data.Kind,
+		DrawOrder: row.Data.DrawOrder,
+		Flags:     row.Data.Flags,
+		Transform: row.Transform,
 		Direction: int(motion.Direction),
 		Mode:      int(motion.Mode),
-		Layers:    activeLayers(ms.appearance[slot].Layers),
+		Layers:    activeLayers(row.Appearance.Layers),
 	}
 }
 
@@ -243,40 +242,42 @@ func (s *GameServer) buildSnapshot(player *Session, mapState *MapState) Snapshot
 	// Scenery. The client draws floors in wire order, so floors are sorted:
 	// layered floors first (background), then solid-colour floors on top, then
 	// Y→X→ID for stability.
-	var floors []int
-	for i, id := range mapState.ids {
-		if id == 0 || mapState.data[i].Kind != EntityScenery || !inAOI(id) {
-			continue
-		}
-		if mapState.data[i].DrawOrder == DrawFloor {
-			floors = append(floors, i)
+	type floor struct {
+		e       SnapshotEntity
+		layered bool // holds a layer, active or not
+	}
+	var floors []floor
+	for id := range mapState.ofKind(EntityScenery) {
+		if !inAOI(id) {
 			continue
 		}
 		e := baseEntity(mapState, id)
+		if e.DrawOrder == DrawFloor {
+			floors = append(floors, floor{e, len(mapState.ap(id).Layers) > 0})
+			continue
+		}
 		// A destructible obstacle adds its vitals; an ordinary obstacle sends maxLife 0.
-		if mapState.mask[i]&maskVitals != 0 {
-			e.setVitals(&mapState.vitals[i])
+		if mapState.has(id, maskVitals) {
+			e.setVitals(mapState.vt(id))
 		}
 		snap.Entities = append(snap.Entities, e)
 	}
 	sort.Slice(floors, func(a, b int) bool {
-		i, j := floors[a], floors[b]
-		iOL := len(mapState.appearance[i].Layers) > 0
-		jOL := len(mapState.appearance[j].Layers) > 0
-		if iOL != jOL {
-			return iOL // layered floors drawn first (underneath)
+		i, j := &floors[a], &floors[b]
+		if i.layered != j.layered {
+			return i.layered // layered floors drawn first (underneath)
 		}
-		pi, pj := mapState.transform[i].Pos, mapState.transform[j].Pos
+		pi, pj := i.e.Pos, j.e.Pos
 		if pi.Y != pj.Y {
 			return pi.Y < pj.Y
 		}
 		if pi.X != pj.X {
 			return pi.X < pj.X
 		}
-		return mapState.ids[i] < mapState.ids[j]
+		return i.e.ID < j.e.ID
 	})
-	for _, i := range floors {
-		snap.Entities = append(snap.Entities, baseEntity(mapState, mapState.ids[i]))
+	for _, f := range floors {
+		snap.Entities = append(snap.Entities, f.e)
 	}
 
 	// Portals
@@ -312,10 +313,11 @@ func (s *GameServer) buildSnapshot(player *Session, mapState *MapState) Snapshot
 
 	// Bots
 	var interaction []SnapshotInteraction
-	for b, brain := range mapState.brains {
+	for b := range mapState.ofKind(EntityBot) {
 		if !inAOI(b) {
 			continue
 		}
+		brain := mapState.br(b)
 		e := baseEntity(mapState, b)
 		e.setVitals(mapState.vt(b))
 		s.snapshotStats(&e, mapState)

@@ -268,11 +268,8 @@ type Brain struct {
 }
 
 type MapState struct {
-	mu         sync.RWMutex
-	code       string // the map code; the key of this map in GameServer.maps
-	pathfinder *Pathfinder
-	// lootRespawns are the consumed world tokens waiting to come back (loot.go).
-	lootRespawns []lootRespawn
+	code         string // the map code; the key of this map in World.maps
+	pathfinder   *Pathfinder
 	gridW, gridH int
 
 	ids        []EntityID // entity id at slot i. 0 = free slot

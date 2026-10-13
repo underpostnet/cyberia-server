@@ -240,11 +240,11 @@ func TestACollectorAtFullLifeKeepsAPickupAndTheTokenComesBack(t *testing.T) {
 	if _, ok := ms.brains[token]; ok || ms.vt(player.ID).Life != 100 || s.playerItemQuantity(player, "gel") != 1 {
 		t.Fatalf("a full-life player must keep the gel: life=%v gel=%d", ms.vt(player.ID).Life, s.playerItemQuantity(player, "gel"))
 	}
-	if len(ms.lootRespawns) != 1 {
-		t.Fatalf("respawns = %+v, want the kept token back like a consumed one", ms.lootRespawns)
+	if len(s.lootRespawns["m"]) != 1 {
+		t.Fatalf("respawns = %+v, want the kept token back like a consumed one", s.lootRespawns["m"])
 	}
 
-	ms.lootRespawns[0].at = time.Now()
+	s.lootRespawns["m"][0].at = time.Now()
 	ms.tf(player.ID).Pos = Vec2{X: -10, Y: -10}
 	ms.tf(bot).Pos = at.Pos
 	s.phaseLoot(0, ms)
@@ -268,20 +268,20 @@ func TestAPickupHealsByItsResistanceAndComesBackAfterItsRespawnTime(t *testing.T
 	if ms.vt(player.ID).Life != 60 || len(worldTokens(ms)) != 0 {
 		t.Fatalf("life=%v tokens=%d, want a heal of 10 that consumes the token", ms.vt(player.ID).Life, len(worldTokens(ms)))
 	}
-	if len(ms.lootRespawns) != 1 || ms.lootRespawns[0].at.Sub(now) < 5*time.Second {
-		t.Fatalf("respawns = %+v, want the gel back after 5 s", ms.lootRespawns)
+	if len(s.lootRespawns["m"]) != 1 || s.lootRespawns["m"][0].at.Sub(now) < 5*time.Second {
+		t.Fatalf("respawns = %+v, want the gel back after 5 s", s.lootRespawns["m"])
 	}
 
 	s.phaseLoot(0, ms)
 	if len(worldTokens(ms)) != 0 {
 		t.Fatal("the token came back before its respawn time")
 	}
-	ms.lootRespawns[0].at = now
+	s.lootRespawns["m"][0].at = now
 	ms.tf(player.ID).Pos = Vec2{X: -10, Y: -10}
 	s.phaseLoot(0, ms)
 	back := onlyToken(t, ms)
 	if ms.tf(back).Pos != cell || ms.br(back).LootOutcome != LootOutcomeConsume || ms.mt(back).RespawnDuration != 5*time.Second ||
-		len(ms.lootRespawns) != 0 {
+		len(s.lootRespawns["m"]) != 0 {
 		t.Fatalf("the token must come back on its cell with its respawn time: %+v", back)
 	}
 }
@@ -298,9 +298,9 @@ func TestAPickupWithoutARespawnTimeTakesTheDefault(t *testing.T) {
 	s.phaseLoot(0, ms)
 
 	// The granted salve never comes back; the consumed gel does, after the default respawn time.
-	if len(ms.lootRespawns) != 1 || ms.lootRespawns[0].itemID != "gel" ||
-		ms.lootRespawns[0].at.Sub(now) < respawnDurationDefaultMs*time.Millisecond {
-		t.Fatalf("respawns = %+v, want only the gel after the default respawn time", ms.lootRespawns)
+	if len(s.lootRespawns["m"]) != 1 || s.lootRespawns["m"][0].itemID != "gel" ||
+		s.lootRespawns["m"][0].at.Sub(now) < respawnDurationDefaultMs*time.Millisecond {
+		t.Fatalf("respawns = %+v, want only the gel after the default respawn time", s.lootRespawns["m"])
 	}
 }
 
