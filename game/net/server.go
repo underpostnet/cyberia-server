@@ -216,7 +216,7 @@ type Client struct {
 	// detached marks a torn-down client. register and unregister are separate
 	// channels, so a fast disconnect can be handled before the matching
 	// connect; the flag stops that from re-adding a dead client. Read and
-	// written under GameServer.mu.
+	// written under World.Mu.
 	detached bool
 }
 

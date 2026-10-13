@@ -1,6 +1,6 @@
 // Package sim — simulation_phases.go
 //
-// Named simulation phases. The game loop in server.go calls these in a fixed
+// Named simulation phases. The game loop in net/server.go calls these in a fixed
 // order once per Tick. Each phase has a single responsibility and operates on
 // one MapState. Phase functions are the ONLY allowed mutators of authoritative
 // world state.

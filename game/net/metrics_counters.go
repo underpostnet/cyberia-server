@@ -11,7 +11,7 @@ import (
 // runtimeCounters holds lock-free, monotonically increasing counters
 // used by the metrics API. They are mutated on the websocket read/write
 // hot paths and the gameLoop, so every field is accessed through the
-// sync/atomic package — taking GameServer.mu on each frame would push
+// sync/atomic package — taking World.Mu on each frame would push
 // contention into the simulation loop.
 //
 // Counters reset to zero on process restart; rate calculations are the

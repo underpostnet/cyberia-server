@@ -119,7 +119,7 @@ type ComponentMask uint64
 // bot, resource). Life itself is in MapState.vitals.
 type Mortal struct {
 	NextSkillAt            time.Time
-	NextConsumeAt          time.Time // ends the cooldown a consumed held item starts (consumable.go)
+	NextConsumeAt          time.Time // ends the cooldown a consumed held item starts (sim/skill_heal.go)
 	BaseMaxLife            float64
 	PreRespawnObjectLayers []ObjectLayerState
 	LifeRegen              float64
@@ -243,7 +243,7 @@ type LootOutcome uint8
 const (
 	LootOutcomeItem    LootOutcome = iota // the item enters the collector's inventory
 	LootOutcomeCoin                       // the quantity credits the collector's wallet
-	LootOutcomeConsume                    // a collector that misses life consumes the item at once (see the game package)
+	LootOutcomeConsume                    // a collector that misses life consumes the item at once (content/consumable.go)
 )
 
 // Brain is the server-only side table row of a bot: its AI, its lifetime and,
