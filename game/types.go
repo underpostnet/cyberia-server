@@ -208,10 +208,6 @@ type Session struct {
 	// timer elapses, so this record is also the refund receipt a cancel needs.
 	// One at a time: assembling is a modal operation.
 	ActiveCraft *ActiveCraft `json:"-"`
-	// Quests is the player's per-session quest progress, keyed by quest code.
-	// Authoritative for the session; best-effort mirrored to engine-cyberia
-	// quest-progress REST for persistence.
-	Quests map[string]*QuestProgress `json:"-"`
 
 	// ── Tick / replication metadata ─────────────────────────────────────────
 	// InputConsumedThrough is the highest InputCommand.Sequence phaseInput has
@@ -445,6 +441,10 @@ type GameServer struct {
 	// progression is the level and XP of each mortal entity. despawn deletes
 	// the row.
 	progression map[EntityID]*EntityProgression
+	// quests is the quest progress of each player, keyed by quest code.
+	// Authoritative for the session; best-effort mirrored to engine-cyberia
+	// quest-progress REST for persistence.
+	quests map[EntityID]map[string]*QuestProgress
 
 	// Equipment rules — governs activation constraints.
 	equipmentRules EquipmentRulesConfig

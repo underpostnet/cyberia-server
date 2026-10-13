@@ -347,17 +347,17 @@ func questSnapshotContains(entries []QuestSnapshotEntry, code string) bool {
 // ── Quest helpers ───────────────────────────────────────────────────────────
 
 func (s *GameServer) ensurePlayerQuests(player *Session) {
-	if player.Quests == nil {
-		player.Quests = make(map[string]*QuestProgress)
+	if s.quests == nil {
+		s.quests = make(map[EntityID]map[string]*QuestProgress)
+	}
+	if s.quests[player.ID] == nil {
+		s.quests[player.ID] = make(map[string]*QuestProgress)
 	}
 }
 
 // playerQuest returns the player's progress for a quest code, if any.
 func (s *GameServer) playerQuest(player *Session, code string) (*QuestProgress, bool) {
-	if player.Quests == nil {
-		return nil, false
-	}
-	qp, ok := player.Quests[code]
+	qp, ok := s.quests[player.ID][code]
 	return qp, ok
 }
 
@@ -394,7 +394,7 @@ func (s *GameServer) botQuestCodes(player *Session, id EntityID, ms *MapState) [
 	}
 	skin := s.botActiveSkinOf(id, ms)
 	if skin != "" {
-		for _, qp := range player.Quests {
+		for _, qp := range s.quests[player.ID] {
 			if qp.Status != "active" {
 				continue
 			}
@@ -427,7 +427,7 @@ func (s *GameServer) botHasActionableQuest(player *Session, id EntityID, ms *Map
 	if skin == "" {
 		return false
 	}
-	for _, qp := range player.Quests {
+	for _, qp := range s.quests[player.ID] {
 		if qp.Status != "active" {
 			continue
 		}
@@ -511,7 +511,7 @@ func (s *GameServer) grantQuest(player *Session, code string) *QuestProgress {
 		}
 		qp.Steps = append(qp.Steps, sp)
 	}
-	player.Quests[code] = qp
+	s.quests[player.ID][code] = qp
 	s.persistQuestProgress(player, qp)
 	logx.Debugf("[Quest] player %s granted quest %q", player.ID, code)
 	return qp
@@ -570,7 +570,7 @@ func (s *GameServer) advanceTalkObjectives(
 		return false
 	}
 	advanced := false
-	for _, qp := range player.Quests {
+	for _, qp := range s.quests[player.ID] {
 		if qp.Status != "active" {
 			continue
 		}
@@ -681,7 +681,7 @@ func (s *GameServer) advanceKillObjectives(player *Session, killedSkin string, a
 		return false
 	}
 	advanced := false
-	for _, qp := range player.Quests {
+	for _, qp := range s.quests[player.ID] {
 		if qp.Status != "active" {
 			continue
 		}
@@ -717,7 +717,7 @@ func (s *GameServer) advanceCollectObjectives(player *Session, affected *[]Quest
 		return false
 	}
 	advanced := false
-	for _, qp := range player.Quests {
+	for _, qp := range s.quests[player.ID] {
 		// Reconcile the active step; if completing it reveals a new step whose
 		// collect objectives the player already satisfies, keep going so the
 		// next step counts its held items too (each completed step's items are
@@ -836,8 +836,8 @@ func (s *GameServer) questSnapshot(qp *QuestProgress) QuestSnapshotEntry {
 // buildQuestSnapshot projects all of a player's quests for the init_data
 // payload. Returns an empty (non-nil) slice for a fresh guest.
 func (s *GameServer) buildQuestSnapshot(player *Session) []QuestSnapshotEntry {
-	out := make([]QuestSnapshotEntry, 0, len(player.Quests))
-	for _, qp := range player.Quests {
+	out := make([]QuestSnapshotEntry, 0, len(s.quests[player.ID]))
+	for _, qp := range s.quests[player.ID] {
 		out = append(out, s.questSnapshot(qp))
 	}
 	return out
