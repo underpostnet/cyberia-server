@@ -155,7 +155,6 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 	for _, etd := range cfg.GetEntityDefaults() {
 		var dols []ObjectLayerState
 		dropChances := make(map[string]float64)
-		buffFactors := make(map[string]float64)
 		for _, dol := range etd.GetDefaultObjectLayers() {
 			dols = append(dols, ObjectLayerState{
 				ItemID:   dol.GetItemId(),
@@ -168,9 +167,6 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 			if dol.DropChance != nil {
 				dropChances[dol.GetItemId()] = dol.GetDropChance()
 			}
-			if dol.BuffFactor != nil {
-				buffFactors[dol.GetItemId()] = dol.GetBuffFactor()
-			}
 		}
 		defaultBuild := EntityTypeDefaultConfig{
 			EntityType:          etd.GetEntityType(),
@@ -179,7 +175,6 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 			DropItemIDs:         etd.GetDropItemIds(),
 			DefaultObjectLayers: dols,
 			DropChances:         dropChances,
-			BuffFactors:         buffFactors,
 			Behavior:            etd.GetBehavior(),
 		}
 		s.entityDefaultBuilds = append(s.entityDefaultBuilds, defaultBuild)

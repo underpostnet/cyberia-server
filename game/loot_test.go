@@ -12,16 +12,8 @@ func consumeLoot(itemIDs ...string) *pb.EntityTypeDefault {
 	return &pb.EntityTypeDefault{EntityType: "loot", LiveItemIds: itemIDs, Behavior: BehaviorConsumeOnPickupHeal}
 }
 
-// withBuff states the buff factor of a default's live item.
-func withBuff(def *pb.EntityTypeDefault, buff float64) *pb.EntityTypeDefault {
-	def.DefaultObjectLayers = append(def.DefaultObjectLayers, &pb.DefaultObjectLayerState{
-		ItemId: def.LiveItemIds[0], Active: true, Quantity: 1, BuffFactor: &buff,
-	})
-	return def
-}
-
 // lootServer is a server with the given defaults and an object-layer cache that
-// binds the gel and salve consumables and the crate resource.
+// binds the gel and salve consumables, each healing 10, and the crate resource.
 func lootServer(t *testing.T, defaults ...*pb.EntityTypeDefault) *GameServer {
 	t.Helper()
 	s := NewGameServer()
@@ -29,8 +21,8 @@ func lootServer(t *testing.T, defaults ...*pb.EntityTypeDefault) *GameServer {
 		t.Fatal(err)
 	}
 	if err := s.ReplaceObjectLayerCache(map[string]*ObjectLayer{
-		"gel":   {Data: ObjectLayerData{Item: Item{ID: "gel", Type: "consumable"}}},
-		"salve": {Data: ObjectLayerData{Item: Item{ID: "salve", Type: "consumable"}}},
+		"gel":   {Data: ObjectLayerData{Item: Item{ID: "gel", Type: "consumable"}, Stats: Stats{Resistance: 10}}},
+		"salve": {Data: ObjectLayerData{Item: Item{ID: "salve", Type: "consumable"}, Stats: Stats{Resistance: 10}}},
 		"crate": {Data: ObjectLayerData{Item: Item{ID: "crate", Type: "resource"}}},
 	}); err != nil {
 		t.Fatal(err)
@@ -184,7 +176,7 @@ func TestConsumingAPickupHealsByTheItemOnceAndGrantsNothing(t *testing.T) {
 		t.Fatal("the consumed token stays on the map")
 	}
 	if healed := first.Life + second.Life - 100; healed != 10 {
-		t.Fatalf("one gel restored %v life, want the default buff of 10%% of max life", healed)
+		t.Fatalf("one gel restored %v life, want its resistance 10", healed)
 	}
 	if len(first.ObjectLayers)+len(second.ObjectLayers) != 0 {
 		t.Fatal("a consumed pickup entered an inventory")
@@ -203,11 +195,10 @@ func TestConsumingAPickupNeverPassesMaxLife(t *testing.T) {
 	}
 }
 
-func TestAPickupWaitsForSomeoneItBenefits(t *testing.T) {
+func TestAPickupGoesToTheFirstEligibleCollector(t *testing.T) {
 	s := lootServer(t, consumeLoot("gel"))
 	ms, token := gelMap(t, s)
 
-	full := woundedPlayer(ms, "full", token, 100)
 	ghost := woundedPlayer(ms, "ghost", token, 10)
 	ghost.RespawnTime = time.Now().Add(time.Minute)
 	frozen := woundedPlayer(ms, "frozen", token, 10)
@@ -221,21 +212,46 @@ func TestAPickupWaitsForSomeoneItBenefits(t *testing.T) {
 	s.phaseLoot(0, ms)
 
 	if _, ok := ms.bots[token.ID]; !ok {
-		t.Fatal("an ineligible entity consumed the token")
+		t.Fatal("an ineligible entity took the token")
 	}
-	if full.Life != 100 || ghost.Life != 10 || frozen.Life != 10 {
-		t.Fatalf("ineligible players healed: full=%v ghost=%v frozen=%v", full.Life, ghost.Life, frozen.Life)
+	if ghost.Life != 10 || frozen.Life != 10 {
+		t.Fatalf("ineligible players healed: ghost=%v frozen=%v", ghost.Life, frozen.Life)
 	}
 
-	full.Life = 60
+	wounded := woundedPlayer(ms, "wounded", token, 60)
 	s.phaseLoot(0, ms)
-	if _, ok := ms.bots[token.ID]; ok || full.Life != 70 {
-		t.Fatalf("a wounded player must consume the token: life=%v", full.Life)
+	if _, ok := ms.bots[token.ID]; ok || wounded.Life != 70 {
+		t.Fatalf("a wounded player must consume the token: life=%v", wounded.Life)
 	}
 }
 
-func TestAPickupHealsByItsBuffFactorAndComesBackAfterItsRespawnTime(t *testing.T) {
-	s := lootServer(t, withBuff(consumeLoot("gel"), 0.25))
+func TestACollectorAtFullLifeKeepsAPickupAndTheTokenComesBack(t *testing.T) {
+	s := lootServer(t, consumeLoot("gel"))
+	ms, token := gelMap(t, s)
+	player := woundedPlayer(ms, "full", token, 100)
+	bot := &BotState{EntityBase: EntityBase{ID: "raider", Pos: Point{X: 15, Y: 15}, Dims: token.Dims},
+		Mortal: Mortal{Life: 100, MaxLife: 100}, Behavior: BehaviorHostile}
+	ms.bots[bot.ID] = bot
+
+	s.phaseLoot(0, ms)
+	if _, ok := ms.bots[token.ID]; ok || player.Life != 100 || s.playerItemQuantity(player, "gel") != 1 {
+		t.Fatalf("a full-life player must keep the gel: life=%v gel=%d", player.Life, s.playerItemQuantity(player, "gel"))
+	}
+	if len(ms.lootRespawns) != 1 {
+		t.Fatalf("respawns = %+v, want the kept token back like a consumed one", ms.lootRespawns)
+	}
+
+	ms.lootRespawns[0].at = time.Now()
+	player.Pos = Point{X: -10, Y: -10}
+	bot.Pos = token.Pos
+	s.phaseLoot(0, ms)
+	if layerQuantity(bot.ObjectLayers, "gel") != 1 || bot.Life != 100 {
+		t.Fatalf("a full-life bot must keep the gel: life=%v layers=%+v", bot.Life, bot.ObjectLayers)
+	}
+}
+
+func TestAPickupHealsByItsResistanceAndComesBackAfterItsRespawnTime(t *testing.T) {
+	s := lootServer(t, consumeLoot("gel"))
 	placed := lootEntity(4, 4, "gel")
 	placed.RespawnDurationMs = 5000
 	buildWorld(s, []string{"m"}, placed)
@@ -245,8 +261,8 @@ func TestAPickupHealsByItsBuffFactorAndComesBackAfterItsRespawnTime(t *testing.T
 
 	now := time.Now()
 	s.phaseLoot(0, ms)
-	if player.Life != 75 || len(worldTokens(ms)) != 0 {
-		t.Fatalf("life=%v tokens=%d, want a 25%% heal that consumes the token", player.Life, len(worldTokens(ms)))
+	if player.Life != 60 || len(worldTokens(ms)) != 0 {
+		t.Fatalf("life=%v tokens=%d, want a heal of 10 that consumes the token", player.Life, len(worldTokens(ms)))
 	}
 	if len(ms.lootRespawns) != 1 || ms.lootRespawns[0].at.Sub(now) < 5*time.Second {
 		t.Fatalf("respawns = %+v, want the gel back after 5 s", ms.lootRespawns)
@@ -366,7 +382,9 @@ func TestOnlyAWorldTokenAdmitsEveryViewer(t *testing.T) {
 	if !lootAdmits(world, "anyone") || !lootAdmits(death, "a") || lootAdmits(death, "b") {
 		t.Fatal("collection policy admits the wrong viewers")
 	}
-	if !lootBenefits(death, &Mortal{Life: 100, MaxLife: 100}) {
-		t.Fatal("an item or a coin benefits a collector at full life")
+	consuming := &BotState{LootOutcome: LootOutcomeConsume}
+	if lootConsumes(death, &Mortal{Life: 10, MaxLife: 100}) || !lootConsumes(consuming, &Mortal{Life: 99, MaxLife: 100}) ||
+		lootConsumes(consuming, &Mortal{Life: 100, MaxLife: 100}) {
+		t.Fatal("only a consuming token heals, and only a collector that misses life")
 	}
 }

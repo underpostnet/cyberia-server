@@ -154,6 +154,35 @@ func getOrCreateItemOL(layers *[]ObjectLayerState, itemID string) *ObjectLayerSt
 	return &(*layers)[len(*layers)-1]
 }
 
+// layerQuantity is how many units of itemID the stacks of layers hold.
+func layerQuantity(layers []ObjectLayerState, itemID string) int {
+	total := 0
+	for _, ol := range layers {
+		if ol.ItemID == itemID {
+			total += ol.Quantity
+		}
+	}
+	return total
+}
+
+// removeLayerItem drains qty of itemID from the stacks of layers. An emptied stack leaves them, so
+// it leaves the inventory bar.
+func removeLayerItem(layers *[]ObjectLayerState, itemID string, qty int) {
+	kept := (*layers)[:0]
+	for _, ol := range *layers {
+		if ol.ItemID == itemID && qty > 0 {
+			take := min(ol.Quantity, qty)
+			ol.Quantity -= take
+			qty -= take
+			if ol.Quantity <= 0 {
+				continue
+			}
+		}
+		kept = append(kept, ol)
+	}
+	*layers = kept
+}
+
 // addPlayerItem credits qty of itemID to the player's inventory — the single
 // grant path for quest rewards, shop purchases, and any future item fountain.
 // Coins route through the flat balance so the display slot stays in sync;

@@ -159,8 +159,7 @@
               "itemId": "sword",
               "active": true,
               "quantity": 1,
-              "dropChance": 1,
-              "buffFactor": 0.1
+              "dropChance": 1
             }
           ]
         }

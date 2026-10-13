@@ -82,6 +82,7 @@ func (e EntityBase) Base() EntityBase { return e }
 // Mortal — life/respawn block for entities that can die (Player, Bot, Resource).
 type Mortal struct {
 	NextSkillAt        time.Time
+	NextConsumeAt      time.Time // ends the cooldown a consumed held item starts (consumable.go)
 	BaseMaxLife        float64
 	Progression        EntityProgression   `json:"progression"`
 	TemporaryModifiers []TemporaryModifier `json:"-"`
@@ -149,8 +150,6 @@ type PlayerState struct {
 	// timer elapses, so this record is also the refund receipt a cancel needs.
 	// One at a time: assembling is a modal operation.
 	ActiveCraft *ActiveCraft `json:"-"`
-	// NextItemUseAt ends the cooldown a used consumable starts (consumable.go).
-	NextItemUseAt time.Time `json:"-"`
 	// Quests is the player's per-session quest progress, keyed by quest code.
 	// Authoritative for the session; best-effort mirrored to engine-cyberia
 	// quest-progress REST for persistence.
@@ -500,8 +499,6 @@ type EntityTypeDefaultConfig struct {
 	// what one entity is currently wearing — and ObjectLayerState rides every snapshot, where a
 	// per-layer probability would be dead weight on the wire. A missing id means 1.
 	DropChances map[string]float64 `json:"dropChances,omitempty"`
-	// BuffFactors is itemID → fraction of max life the id restores when it is consumed.
-	BuffFactors map[string]float64 `json:"-"`
 	// Canonical entity behavior bound to matched entities (see behavior.go).
 	// Empty: a bot derives it from layers (armed → hostile, else passive); a foreground stays normal.
 	Behavior string `json:"behavior,omitempty"`
@@ -523,6 +520,8 @@ type SkillMapEntry struct {
 	Name                 string `json:"name"`
 	Description          string `json:"description"`
 	SummonedEntityItemID string `json:"summonedEntityItemId"`
+	// Held marks a skill the simulation runs by itself on the units an entity holds; a tap never fires it.
+	Held bool `json:"held"`
 }
 
 // InitPayload — bootstrap message sent once on WebSocket connect.

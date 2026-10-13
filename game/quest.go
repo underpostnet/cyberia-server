@@ -658,24 +658,7 @@ func (s *GameServer) removePlayerItem(player *PlayerState, itemID string, qty in
 		s.addCoins(player, -qty)
 		return
 	}
-	remaining := qty
-	kept := player.ObjectLayers[:0]
-	for i := range player.ObjectLayers {
-		ol := player.ObjectLayers[i]
-		if ol.ItemID == itemID && remaining > 0 {
-			take := ol.Quantity
-			if take > remaining {
-				take = remaining
-			}
-			ol.Quantity -= take
-			remaining -= take
-			if ol.Quantity <= 0 {
-				continue // drop the emptied stack so it leaves the inventory bar
-			}
-		}
-		kept = append(kept, ol)
-	}
-	player.ObjectLayers = kept
+	removeLayerItem(&player.ObjectLayers, itemID, qty)
 }
 
 // playerItemQuantity returns how many of itemID the player holds. Coins route
@@ -684,13 +667,7 @@ func (s *GameServer) playerItemQuantity(player *PlayerState, itemID string) int 
 	if itemID == s.coinItemID {
 		return int(player.Coins)
 	}
-	total := 0
-	for i := range player.ObjectLayers {
-		if player.ObjectLayers[i].ItemID == itemID {
-			total += player.ObjectLayers[i].Quantity
-		}
-	}
-	return total
+	return layerQuantity(player.ObjectLayers, itemID)
 }
 
 // advanceKillObjectives advances any active-step `kill` objective whose target

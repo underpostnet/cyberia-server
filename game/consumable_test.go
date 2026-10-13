@@ -3,110 +3,126 @@ package game
 import (
 	"testing"
 	"time"
+
+	pb "cyberia-server/gen/proto"
 )
 
-// usingPlayer is the movement fixture player holding the given stacks, with
-// the gel consumable and the crate resource bound. No loot default names a buff
-// factor, so a use restores 10% of max life.
-func usingPlayer(t *testing.T, life float64, stacks ...ObjectLayerState) (*GameServer, *MapState, *PlayerState) {
+// gelHeal is the resistance of the gel consumable: the life one unit restores.
+const gelHeal = 20
+
+// healingServer is the movement fixture with the gel consumable bound to the
+// zero-waste heal skill, the unbound crate resource, and the player holding the
+// given stacks at the given life.
+func healingServer(t *testing.T, life float64, stacks ...ObjectLayerState) (*GameServer, *MapState, *PlayerState) {
 	t.Helper()
 	s, ms, player := movementFixture(t)
 	if err := s.ReplaceObjectLayerCache(map[string]*ObjectLayer{
-		"gel":   {Data: ObjectLayerData{Item: Item{ID: "gel", Type: "consumable"}}},
+		"gel":   {Data: ObjectLayerData{Item: Item{ID: "gel", Type: "consumable"}, Stats: Stats{Resistance: gelHeal}}},
 		"crate": {Data: ObjectLayerData{Item: Item{ID: "crate", Type: "resource"}}},
 	}); err != nil {
 		t.Fatal(err)
 	}
+	s.skillConfig = map[string][]SkillDefinition{
+		"gel": {{LogicEventID: "zero-waste-auto-consume-heal", SummonedEntityItemID: "gel"}},
+	}
+	s.InitSkills()
 	player.Life = life
 	player.ObjectLayers = stacks
 	return s, ms, player
 }
 
-func use(seq uint32, itemID string) InputCommand {
-	return InputCommand{Kind: InputKindItemUse, Sequence: seq, ItemID: itemID}
+func gel(quantity int) ObjectLayerState {
+	return ObjectLayerState{ItemID: "gel", Quantity: quantity}
 }
 
-func TestUsingAConsumableHealsAndSpendsOneUnit(t *testing.T) {
-	s, ms, player := usingPlayer(t, 50, ObjectLayerState{ItemID: "gel", Quantity: 2})
+func TestAHeldConsumableWaitsUntilTheMissingLifeTakesItsWholeHeal(t *testing.T) {
+	s, ms, player := healingServer(t, 100-gelHeal+1, gel(2))
 
-	tapTick(s, ms, player, use(1, "gel"))
-
-	if player.Life != 60 || s.playerItemQuantity(player, "gel") != 1 {
-		t.Fatalf("life=%v gel=%d, want 60 and 1", player.Life, s.playerItemQuantity(player, "gel"))
+	s.phaseSkills(0, ms)
+	if player.Life != 100-gelHeal+1 || s.playerItemQuantity(player, "gel") != 2 {
+		t.Fatalf("life=%v gel=%d, want no heal while it would waste life", player.Life, s.playerItemQuantity(player, "gel"))
 	}
-	if !player.NextItemUseAt.After(time.Now()) {
-		t.Fatal("a use must start the item-use cooldown")
+
+	player.Life = 100 - gelHeal
+	s.phaseSkills(0, ms)
+	if player.Life != 100 || s.playerItemQuantity(player, "gel") != 1 {
+		t.Fatalf("life=%v gel=%d, want one inactive unit consumed to full life", player.Life, s.playerItemQuantity(player, "gel"))
+	}
+	if !player.NextConsumeAt.After(time.Now()) {
+		t.Fatal("a consumed unit must start the consume cooldown")
 	}
 }
 
-func TestAUseHealsByTheBuffFactorOfTheItemsLootDefault(t *testing.T) {
-	s, ms, player := usingPlayer(t, 50, ObjectLayerState{ItemID: "gel", Quantity: 1})
-	player.MaxLife = 200
-	s.entityDefaultBuilds = []EntityTypeDefaultConfig{
-		{EntityType: "loot", LiveItemIDs: []string{"gel"}, BuffFactors: map[string]float64{"gel": 0.3}},
+func TestTheConsumeCooldownSpacesTwoHeals(t *testing.T) {
+	s, ms, player := healingServer(t, 10, gel(3))
+
+	s.phaseSkills(0, ms)
+	s.phaseSkills(0, ms)
+	if player.Life != 10+gelHeal || s.playerItemQuantity(player, "gel") != 2 {
+		t.Fatalf("life=%v gel=%d, want one heal inside the cooldown", player.Life, s.playerItemQuantity(player, "gel"))
 	}
 
-	tapTick(s, ms, player, use(1, "gel"))
-
-	if player.Life != 110 {
-		t.Fatalf("life = %v, want 30%% of max life 200 restored", player.Life)
+	player.NextConsumeAt = time.Now()
+	s.phaseSkills(0, ms)
+	if player.Life != 10+2*gelHeal || s.playerItemQuantity(player, "gel") != 1 {
+		t.Fatalf("life=%v gel=%d, want a second heal once the cooldown ends", player.Life, s.playerItemQuantity(player, "gel"))
 	}
 }
 
 func TestTheLastUnitLeavesTheInventory(t *testing.T) {
-	s, ms, player := usingPlayer(t, 50, ObjectLayerState{ItemID: "gel", Quantity: 1})
+	s, ms, player := healingServer(t, 10, gel(1))
 
-	tapTick(s, ms, player, use(1, "gel"))
+	s.phaseSkills(0, ms)
 
 	if len(player.ObjectLayers) != 0 {
 		t.Fatalf("an emptied stack stays: %+v", player.ObjectLayers)
 	}
 }
 
-func TestARejectedUseSpendsNothing(t *testing.T) {
-	cases := map[string]struct {
-		itemID string
-		setup  func(*PlayerState)
-	}{
-		itemUseRejectDead:          {"gel", func(p *PlayerState) { p.RespawnTime = time.Now().Add(time.Minute) }},
-		itemUseRejectNotOwned:      {"salve", func(*PlayerState) {}},
-		itemUseRejectNotConsumable: {"crate", func(*PlayerState) {}},
-		itemUseRejectCooldown:      {"gel", func(p *PlayerState) { p.NextItemUseAt = time.Now().Add(time.Second) }},
-		itemUseRejectFullLife:      {"gel", func(p *PlayerState) { p.Life = p.MaxLife }},
+func TestNothingHealsAGhostOrFromAnItemWithoutTheSkill(t *testing.T) {
+	s, ms, ghost := healingServer(t, 10, gel(1))
+	ghost.RespawnTime = time.Now().Add(time.Minute)
+	s.phaseSkills(0, ms)
+	if ghost.Life != 10 || s.playerItemQuantity(ghost, "gel") != 1 {
+		t.Fatalf("a ghost healed: life=%v gel=%d", ghost.Life, s.playerItemQuantity(ghost, "gel"))
 	}
-	for want, tc := range cases {
-		s, ms, player := usingPlayer(t, 50,
-			ObjectLayerState{ItemID: "gel", Quantity: 1}, ObjectLayerState{ItemID: "crate", Quantity: 1})
-		tc.setup(player)
-		life := player.Life
 
-		if got := s.itemUseRejection(player, tc.itemID, time.Now()); got != want {
-			t.Errorf("%s: rejection = %q", want, got)
-		}
-		tapTick(s, ms, player, use(1, tc.itemID))
-		if player.Life != life || s.playerItemQuantity(player, "gel") != 1 || s.playerItemQuantity(player, "crate") != 1 {
-			t.Errorf("%s: a rejected use changed life %v→%v or the stacks %+v", want, life, player.Life, player.ObjectLayers)
+	s, ms, player := healingServer(t, 10, ObjectLayerState{ItemID: "crate", Quantity: 1})
+	s.phaseSkills(0, ms)
+	if player.Life != 10 || s.playerItemQuantity(player, "crate") != 1 {
+		t.Fatalf("an item without the skill healed: life=%v crate=%d", player.Life, s.playerItemQuantity(player, "crate"))
+	}
+}
+
+func TestOnlyALootCollectingBotHealsFromItsHeldUnits(t *testing.T) {
+	s, ms, _ := healingServer(t, 100)
+	for _, behavior := range []string{BehaviorHostile, BehaviorDrop, BehaviorProvider} {
+		ms.bots[behavior] = &BotState{EntityBase: EntityBase{ID: behavior, ObjectLayers: []ObjectLayerState{gel(1)}},
+			Mortal: Mortal{Life: 10, MaxLife: 100}, Behavior: behavior}
+	}
+
+	s.phaseSkills(0, ms)
+
+	if raider := ms.bots[BehaviorHostile]; raider.Life != 10+gelHeal || len(raider.ObjectLayers) != 0 {
+		t.Fatalf("the hostile bot must heal from its gel: life=%v layers=%+v", raider.Life, raider.ObjectLayers)
+	}
+	for _, behavior := range []string{BehaviorDrop, BehaviorProvider} {
+		if bot := ms.bots[behavior]; bot.Life != 10 || len(bot.ObjectLayers) != 1 {
+			t.Fatalf("a %s bot consumed its gel", behavior)
 		}
 	}
 }
 
-func TestARepeatedUseInsideTheCooldownAppliesOnce(t *testing.T) {
-	s, ms, player := usingPlayer(t, 20, ObjectLayerState{ItemID: "gel", Quantity: 3})
-
-	tapTick(s, ms, player, use(1, "gel"), use(2, "gel"))
-	tapTick(s, ms, player, use(3, "gel"))
-
-	if player.Life != 30 || s.playerItemQuantity(player, "gel") != 2 {
-		t.Fatalf("life=%v gel=%d, want one use: 30 and 2", player.Life, s.playerItemQuantity(player, "gel"))
+func TestTheSkillMapMarksOnlyAHeldSkill(t *testing.T) {
+	s := NewGameServer()
+	if err := s.ApplyInstanceConfig(&pb.InstanceConfig{SkillConfig: []*pb.SkillConfigEntry{
+		{TriggerItemId: "gel", Skills: []*pb.SkillDetail{{LogicEventId: "zero-waste-auto-consume-heal", SummonedEntityItemId: "gel"}}},
+		{TriggerItemId: "pistol", Skills: []*pb.SkillDetail{{LogicEventId: "projectile", SummonedEntityItemId: "bullet"}}},
+	}}); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestItemUseNamesOneItem(t *testing.T) {
-	if _, ok := parseInput("item_use", &inputPayload{}); ok {
-		t.Fatal("an item_use without an item id must fail validation")
-	}
-	cmd, ok := parseInput("item_use", &inputPayload{ItemID: "gel"})
-	if !ok || cmd.Kind != InputKindItemUse || cmd.ItemID != "gel" {
-		t.Fatalf("item_use parsed to %+v", cmd)
+	skills := s.buildSkillMap()
+	if !skills["gel"][0].Held || skills["pistol"][0].Held {
+		t.Fatalf("skill map = %+v, want only the zero-waste heal held", skills)
 	}
 }

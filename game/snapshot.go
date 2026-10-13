@@ -46,6 +46,10 @@ type SnapshotEntity struct {
 	StatsSum       int                 `json:"statsSum"`
 	StatusIcon     uint8               `json:"statusIcon"`
 
+	// Player fields: the teleport charge, 0..1, while the player stands on a portal.
+	OnPortal           bool    `json:"onPortal,omitempty"`
+	PortalHoldProgress float64 `json:"portalHoldProgress,omitempty"`
+
 	// Behavior is set on bots and foregrounds.
 	Behavior string `json:"behavior"`
 
@@ -82,7 +86,6 @@ type SnapshotSelf struct {
 	AoiMaxX float64 `json:"aoiMaxX"`
 	AoiMaxY float64 `json:"aoiMaxY"`
 
-	OnPortal bool `json:"onPortal"`
 	// XP is total. LevelXP and NextLevelXP are the thresholds that bound the
 	// current level, so the client can draw in-level progress without the curve.
 	XP             uint64             `json:"xp"`
@@ -110,10 +113,8 @@ type SnapshotSelf struct {
 	ActionCooldownMs int `json:"actionCooldownMs"`
 	// ActionReadyInMs is the time left on that cooldown, 0 when the next tap fires skills.
 	ActionReadyInMs int `json:"actionReadyInMs"`
-	// ItemReadyInMs is the time left on the item-use cooldown, 0 when a consumable may be used.
-	ItemReadyInMs int `json:"itemReadyInMs"`
-	// PortalHoldProgress is the authoritative teleport charge, 0..1.
-	PortalHoldProgress float64 `json:"portalHoldProgress"`
+	// ConsumeReadyInMs is the time left on the consume cooldown, 0 when a held item may be consumed.
+	ConsumeReadyInMs int `json:"consumeReadyInMs"`
 }
 
 // Snapshot is the `snapshot` message payload.
@@ -271,6 +272,15 @@ func (s *GameServer) snapshotStats(snapshot *SnapshotEntity, entity statSource, 
 	snapshot.StatsSum = sumStats(stats)
 }
 
+// snapshotPortalHold sets the teleport charge of a player on a portal: the fraction of
+// portalHoldTime elapsed. checkPortal clears OnPortal for a ghost.
+func (s *GameServer) snapshotPortalHold(e *SnapshotEntity, player *PlayerState) {
+	e.OnPortal = player.OnPortal
+	if player.OnPortal && s.portalHoldTime > 0 {
+		e.PortalHoldProgress = min(max(time.Since(player.TimeOnPortal).Seconds()/s.portalHoldTime.Seconds(), 0), 1)
+	}
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Snapshot builder
 // ═══════════════════════════════════════════════════════════════════
@@ -301,6 +311,7 @@ func (s *GameServer) buildSnapshot(player *PlayerState, mapState *MapState) Snap
 		e.MaxLife = op.MaxLife
 		e.RespawnIn = respawnSeconds(op.IsGhost(), op.RespawnTime)
 		s.snapshotStats(&e, op, mapState)
+		s.snapshotPortalHold(&e, op)
 		e.StatusIcon = PlayerStatusIcon(op)
 		snap.Entities = append(snap.Entities, e)
 	}
@@ -441,19 +452,6 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 	breakdown := s.statBreakdown(player, mapState, time.Now(), make(map[string]bool))
 	progression := s.entityProgression(player)
 
-	// Portal hold progress — the fraction of portalHoldTime elapsed while the
-	// player stands on a portal. checkPortal clears OnPortal for a ghost, so
-	// this is non-zero only for a live player charging a teleport.
-	portalHold := 0.0
-	if player.OnPortal && s.portalHoldTime > 0 {
-		portalHold = time.Since(player.TimeOnPortal).Seconds() / s.portalHoldTime.Seconds()
-		if portalHold > 1.0 {
-			portalHold = 1.0
-		} else if portalHold < 0.0 {
-			portalHold = 0.0
-		}
-	}
-
 	self := SnapshotSelf{
 		SnapshotEntity: baseEntity(EntityPlayer, player.ID, player.Pos, player.Dims,
 			player.Direction, player.Mode, player.ObjectLayers),
@@ -461,7 +459,6 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 		AoiMinY:        player.AOI.MinY,
 		AoiMaxX:        player.AOI.MaxX,
 		AoiMaxY:        player.AOI.MaxY,
-		OnPortal:       player.OnPortal,
 		XP:             progression.XP,
 		LevelXP:        s.progressionConfig().Threshold(progression.Level),
 		NextLevelXP:    s.progressionConfig().Threshold(progression.Level + 1),
@@ -475,19 +472,19 @@ func (s *GameServer) buildSnapshotSelf(player *PlayerState, mapState *MapState) 
 		TargetPosY:     player.TargetPos.Y,
 		ActivePortalID: player.ActivePortalID,
 		// player.Coins is the canonical flat balance — read it directly.
-		CoinBalance:        player.Coins,
-		Inventory:          s.visibleInventory(player.ObjectLayers),
-		Frozen:             player.Frozen,
-		MoveSpeed:          s.CalculatePlayerMovementSpeed(stats),
-		ActionCooldownMs:   int(s.CalculateActionCooldown(stats) / time.Millisecond),
-		ActionReadyInMs:    msUntil(player.NextSkillAt),
-		ItemReadyInMs:      msUntil(player.NextItemUseAt),
-		PortalHoldProgress: portalHold,
+		CoinBalance:      player.Coins,
+		Inventory:        s.visibleInventory(player.ObjectLayers),
+		Frozen:           player.Frozen,
+		MoveSpeed:        s.CalculatePlayerMovementSpeed(stats),
+		ActionCooldownMs: int(s.CalculateActionCooldown(stats) / time.Millisecond),
+		ActionReadyInMs:  msUntil(player.NextSkillAt),
+		ConsumeReadyInMs: msUntil(player.NextConsumeAt),
 	}
 	self.Life = player.Life
 	self.MaxLife = player.MaxLife
 	self.RespawnIn = respawnSeconds(player.IsGhost(), player.RespawnTime)
 	s.snapshotStats(&self.SnapshotEntity, player, mapState)
+	s.snapshotPortalHold(&self.SnapshotEntity, player)
 	self.StatusIcon = PlayerStatusIcon(player)
 	return self
 }

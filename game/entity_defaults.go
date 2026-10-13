@@ -100,16 +100,6 @@ func dropChance(build EntityTypeDefaultConfig, itemID string) float64 {
 	return chance
 }
 
-// buffFactor is the fraction of max life itemID restores when it is consumed, in [0,1]. An id the
-// build says nothing about takes buffFactorDefault.
-func buffFactor(build EntityTypeDefaultConfig, itemID string) float64 {
-	factor, ok := build.BuffFactors[itemID]
-	if !ok {
-		return buffFactorDefault
-	}
-	return min(max(factor, 0), 1)
-}
-
 // buildLayer is a placed id as the build states it: its row when the build carries one, and a
 // plainly worn single item when it does not.
 func buildLayer(build EntityTypeDefaultConfig, itemID string) ObjectLayerState {

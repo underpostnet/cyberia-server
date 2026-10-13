@@ -1,36 +1,28 @@
 // Package game — consumable.go
 //
-// A consumed item restores the buff factor of its loot default as a part of
-// max life. Two paths consume one: item_use spends a unit of a consumable from
-// the inventory, and a consume-on-pickup-heal world token is consumed by its
-// collector (loot.go). Both apply the effect through consumeItem.
+// A consumable heals its resistance as life. Two paths consume one: a collector
+// that misses life consumes a consume-on-pickup-heal world token at once
+// (loot.go), and the zero-waste-auto-consume-heal skill consumes a held unit by
+// itself once the missing life takes the whole heal. Both apply the effect
+// through consumeItem.
 //
 // Cross-process contract:
 //
-//	item_use     (client→server) — the item id of an owned consumable
-//	item_use_ack (server→client) — accepted or the rejection reason; the
-//	                               inventory and life arrive in the snapshot
 //	item_consume (server→viewers) — who consumed which item, and its loot
 //	                               behavior; the client plays its effect
 //
-// Caller MUST hold s.mu for every handler here (they run inside phaseInput).
+// Caller MUST hold s.mu for every function here (they run inside the tick).
 package game
 
 import "time"
 
-// Rejection reasons echoed back on item_use_ack. Nothing is consumed on a rejection.
-const (
-	itemUseRejectDead          = "dead"
-	itemUseRejectNotOwned      = "not_owned"
-	itemUseRejectNotConsumable = "not_consumable"
-	itemUseRejectCooldown      = "cooldown"
-	itemUseRejectFullLife      = "full_life"
-)
-
-// isConsumable reports whether itemID is an item of the consumable type: the
-// items item_use spends.
-func (s *GameServer) isConsumable(itemID string) bool {
-	return s.itemType(itemID) == "consumable"
+// consumableHeal is the life one unit of itemID restores: its resistance, at the stat scale.
+func (s *GameServer) consumableHeal(itemID string) float64 {
+	data, ok := s.GetObjectLayerData(itemID)
+	if !ok {
+		return 0
+	}
+	return float64(data.Data.Stats.Resistance) * statScales.Resistance
 }
 
 // canConsume reports whether a consumable changes anything for the consumer: a
@@ -40,41 +32,31 @@ func canConsume(consumer *Mortal) bool {
 }
 
 // consumeItem applies the effect of one unit of itemID to the consumer: it
-// restores the buff factor of the item's loot default as a part of max life.
+// restores the item's heal, never past max life, and tells every viewer.
 func (s *GameServer) consumeItem(mapState *MapState, base *EntityBase, consumer *Mortal, itemID string) {
+	restoreLife(mapState, consumer, base.Pos, s.consumableHeal(itemID))
 	build, _ := s.lootBuild(itemID)
-	restoreLife(mapState, consumer, base.Pos, buffFactor(build, itemID)*consumer.MaxLife)
 	event := ItemConsume{EntityID: base.ID, ItemID: itemID, Behavior: build.Behavior}
 	broadcastAt(mapState, "item_consume", event, base.Pos.X, base.Pos.Y)
 }
 
-// itemUseRejection is why the player cannot use itemID now, or "".
-func (s *GameServer) itemUseRejection(player *PlayerState, itemID string, now time.Time) string {
-	switch {
-	case player.IsGhost():
-		return itemUseRejectDead
-	case s.playerItemQuantity(player, itemID) < 1:
-		return itemUseRejectNotOwned
-	case !s.isConsumable(itemID):
-		return itemUseRejectNotConsumable
-	case now.Before(player.NextItemUseAt):
-		return itemUseRejectCooldown
-	case !canConsume(&player.Mortal):
-		return itemUseRejectFullLife
+// executeZeroWasteHeal consumes one held unit of the trigger item once the
+// caster's missing life takes its whole heal and the consume cooldown is over.
+// The action cooldown rule times the next one.
+func (s *GameServer) executeZeroWasteHeal(ctx SkillContext) {
+	base, mortal := casterBody(ctx.Caster)
+	if base == nil {
+		return
 	}
-	return ""
-}
-
-// handleItemUse consumes one unit of an owned consumable. The unit leaves the
-// inventory only once its effect applied, and the action cooldown rule starts
-// the next use, so a repeated request inside it is rejected.
-func (s *GameServer) handleItemUse(player *PlayerState, mapState *MapState, cmd *InputCommand) {
 	now := time.Now()
-	reason := s.itemUseRejection(player, cmd.ItemID, now)
-	if reason == "" {
-		s.consumeItem(mapState, &player.EntityBase, &player.Mortal, cmd.ItemID)
-		s.removePlayerItem(player, cmd.ItemID, 1)
-		player.NextItemUseAt = now.Add(s.CalculateActionCooldown(s.CalculateStats(player, mapState)))
+	heal := s.consumableHeal(ctx.TriggerItemID)
+	if mortal.IsGhost() || now.Before(mortal.NextConsumeAt) || heal <= 0 || mortal.MaxLife-mortal.Life < heal {
+		return
 	}
-	sendAck(player, "item_use_ack", reason, map[string]interface{}{"itemId": cmd.ItemID})
+	if layerQuantity(base.ObjectLayers, ctx.TriggerItemID) < 1 {
+		return
+	}
+	s.consumeItem(ctx.MapState, base, mortal, ctx.TriggerItemID)
+	removeLayerItem(&base.ObjectLayers, ctx.TriggerItemID, 1)
+	mortal.NextConsumeAt = now.Add(s.CalculateActionCooldown(s.CalculateStats(ctx.Caster, ctx.MapState)))
 }

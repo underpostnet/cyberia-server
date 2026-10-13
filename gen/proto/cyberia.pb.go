@@ -1641,10 +1641,7 @@ type DefaultObjectLayerState struct {
 	// build carries in drop_item_ids. Explicitly optional so absent stays distinguishable from a
 	// deliberate 0: a payload from before this field existed must read as "always drops", while an
 	// operator who authors 0 means "never". See OverrideItemStateSchema.dropChance.
-	DropChance *float64 `protobuf:"fixed64,4,opt,name=drop_chance,json=dropChance,proto3,oneof" json:"drop_chance,omitempty"`
-	// Fraction of its target's max life this id restores when it is consumed. See
-	// OverrideItemStateSchema.buffFactor.
-	BuffFactor    *float64 `protobuf:"fixed64,5,opt,name=buff_factor,json=buffFactor,proto3,oneof" json:"buff_factor,omitempty"`
+	DropChance    *float64 `protobuf:"fixed64,4,opt,name=drop_chance,json=dropChance,proto3,oneof" json:"drop_chance,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1703,13 +1700,6 @@ func (x *DefaultObjectLayerState) GetQuantity() int32 {
 func (x *DefaultObjectLayerState) GetDropChance() float64 {
 	if x != nil && x.DropChance != nil {
 		return *x.DropChance
-	}
-	return 0
-}
-
-func (x *DefaultObjectLayerState) GetBuffFactor() float64 {
-	if x != nil && x.BuffFactor != nil {
-		return *x.BuffFactor
 	}
 	return 0
 }
@@ -3374,17 +3364,14 @@ const file_cyberia_proto_rawDesc = "" +
 	"\x06config\x18\x04 \x01(\v2\x17.cyberia.InstanceConfigR\x06config\x12\x18\n" +
 	"\aversion\x18\x05 \x01(\tR\aversion\x127\n" +
 	"\aactions\x18\x06 \x03(\v2\x1d.cyberia.CyberiaActionMessageR\aactions\x124\n" +
-	"\x06quests\x18\a \x03(\v2\x1c.cyberia.CyberiaQuestMessageR\x06quests\"\xeb\x01\n" +
+	"\x06quests\x18\a \x03(\v2\x1c.cyberia.CyberiaQuestMessageR\x06quests\"\xc8\x01\n" +
 	"\x17DefaultObjectLayerState\x12\x17\n" +
 	"\aitem_id\x18\x01 \x01(\tR\x06itemId\x12\x16\n" +
 	"\x06active\x18\x02 \x01(\bR\x06active\x12\x1a\n" +
 	"\bquantity\x18\x03 \x01(\x05R\bquantity\x12$\n" +
 	"\vdrop_chance\x18\x04 \x01(\x01H\x00R\n" +
-	"dropChance\x88\x01\x01\x12$\n" +
-	"\vbuff_factor\x18\x05 \x01(\x01H\x01R\n" +
-	"buffFactor\x88\x01\x01B\x0e\n" +
-	"\f_drop_chanceB\x0e\n" +
-	"\f_buff_factorJ\x04\b\x06\x10\aR\x11spawn_interval_ms\"\xa0\x01\n" +
+	"dropChance\x88\x01\x01B\x0e\n" +
+	"\f_drop_chanceJ\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\vbuff_factorR\x11spawn_interval_ms\"\xa0\x01\n" +
 	"\vSkillDetail\x12$\n" +
 	"\x0elogic_event_id\x18\x01 \x01(\tR\flogicEventId\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x125\n" +

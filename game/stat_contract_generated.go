@@ -17,9 +17,6 @@ var statScales = ComputedStats{Effect: 1, Resistance: 1, Agility: 0.01, Range: 5
 
 const statRegenPerResistance = 0.1
 
-// buffFactorDefault is the fraction of max life a consumed item restores when its build names none.
-const buffFactorDefault = 0.1
-
 // respawnDurationDefaultMs is the respawn time of a player, and of a map entity that names none.
 const respawnDurationDefaultMs = 3000
 

@@ -36,7 +36,6 @@ const (
 	InputKindCraftCancel  // abort the running assembly and refund it
 	InputKindStorageOpen  // bind a storage vault and read its contents
 	InputKindItemOps      // replay one session's deposits and withdrawals
-	InputKindItemUse      // consume one unit of an owned consumable
 )
 
 // InputCommand is the unit of client→server input.

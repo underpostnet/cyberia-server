@@ -102,8 +102,6 @@ func (s *GameServer) applyInputCommand(player *PlayerState, mapState *MapState, 
 		s.handleStorageOpen(player, cmd)
 	case InputKindItemOps:
 		s.handleItemOps(player, cmd)
-	case InputKindItemUse:
-		s.handleItemUse(player, mapState, cmd)
 	case InputKindUnknown:
 		// failed validation: consumed, never applied
 	}
@@ -128,10 +126,18 @@ func (s *GameServer) phaseLifecycle(tick uint32, mapState *MapState) {
 	s.completeCrafts(mapState)
 }
 
-// phaseSkills resolves skill projectile collisions for this tick.
+// phaseSkills resolves skill projectile collisions and runs the skills of held items for this tick.
 func (s *GameServer) phaseSkills(tick uint32, mapState *MapState) {
 	_ = tick
 	s.handleSkillCollisions(mapState)
+	for _, player := range mapState.players {
+		s.dispatchHeldSkills(player, mapState)
+	}
+	for _, bot := range mapState.bots {
+		if behaviorCollectsLoot(bot.Behavior) {
+			s.dispatchHeldSkills(bot, mapState)
+		}
+	}
 }
 
 // phaseAI runs bot behaviour. The current implementation also performs the
