@@ -72,7 +72,7 @@ func (s *Sim) executeDoppelgangerSkill(ctx SkillContext) {
 	ctx.MapState.Spawn(doppelgangerBot, world.EntityData{Kind: world.EntityBot}, world.Transform{Pos: casterPos, Size: casterDims}, world.Appearance{Layers: doppelgangerLayers})
 	ctx.MapState.AddVitals(doppelgangerBot, world.Vitals{MaxLife: s.EntityBaseMaxLife, Life: s.EntityBaseMaxLife * s.doppelgangerInitialLifeFraction})
 	ctx.MapState.AddMotion(doppelgangerBot, world.Motion{})
-	ctx.MapState.AddAgent(doppelgangerBot, world.Agent{Behavior: content.BehaviorPassive, CasterID: casterID})
+	ctx.MapState.AddAgent(doppelgangerBot, s.summonAgent(ctx.MapState, content.BehaviorPassive, casterID))
 	ctx.MapState.AddMortal(doppelgangerBot, &world.Mortal{})
 	s.ApplyResistanceStat(doppelgangerBot, ctx.MapState)
 	ctx.MapState.Vt(doppelgangerBot).Life = ctx.MapState.Vt(doppelgangerBot).MaxLife

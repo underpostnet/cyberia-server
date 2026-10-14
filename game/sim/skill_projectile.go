@@ -82,7 +82,7 @@ func (s *Sim) executeProjectileSkill(ctx SkillContext) {
 	ctx.MapState.Spawn(projectileBot, world.EntityData{Kind: world.EntityBot}, world.Transform{Pos: world.Vec2{X: spawnX, Y: spawnY}, Size: projectileDims}, world.Appearance{Layers: projectileOLs})
 	ctx.MapState.AddVitals(projectileBot, world.Vitals{MaxLife: projectileBaseLife, Life: projectileBaseLife})
 	ctx.MapState.AddMotion(projectileBot, world.Motion{Direction: projectileDirection})
-	ctx.MapState.AddAgent(projectileBot, world.Agent{Behavior: content.BehaviorSkill, CasterID: casterID})
+	ctx.MapState.AddAgent(projectileBot, s.summonAgent(ctx.MapState, content.BehaviorSkill, casterID))
 	ctx.MapState.AddMortal(projectileBot, &world.Mortal{})
 	s.ApplyResistanceStat(projectileBot, ctx.MapState)
 	ctx.MapState.Vt(projectileBot).Life = ctx.MapState.Vt(projectileBot).MaxLife

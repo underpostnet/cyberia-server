@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"cyberia-server/game/content"
+	"cyberia-server/game/social"
 	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 )
@@ -11,6 +12,8 @@ import (
 // Sim is the simulation step and its config.
 type Sim struct {
 	*content.Content
+	// Social is the chat and the parties of the players on this server.
+	Social         *social.Social
 	InstanceCode   string            // INSTANCE_CODE — selects which instance to load
 	PlayerSpawn    PlayerSpawnConfig // authoritative initial spawn for new players
 	PortalHoldTime time.Duration

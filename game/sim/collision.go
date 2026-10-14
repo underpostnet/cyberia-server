@@ -36,7 +36,7 @@ func (s *Sim) handleSkillCollisions(mapState *world.MapState) {
 				continue
 			}
 			// Projectiles should not damage their caster.
-			if player.ID == mapState.Ag(projectileID).CasterID {
+			if player.ID == mapState.Ag(projectileID).CasterID || s.friendlyHit(mapState, projectileID, player.ID) {
 				continue
 			}
 			if world.CheckAABBCollision(mapState.Tf(projectileID).Pos, mapState.Tf(projectileID).Size, mapState.Tf(player.ID).Pos, mapState.Tf(player.ID).Size) {
@@ -81,7 +81,7 @@ func (s *Sim) handleSkillCollisions(mapState *world.MapState) {
 				continue
 			}
 			// Projectiles should not damage their caster.
-			if otherBotID == mapState.Ag(projectileID).CasterID {
+			if otherBotID == mapState.Ag(projectileID).CasterID || s.friendlyHit(mapState, projectileID, otherBotID) {
 				continue
 			}
 			if world.CheckAABBCollision(mapState.Tf(projectileID).Pos, mapState.Tf(projectileID).Size, mapState.Tf(otherBotID).Pos, mapState.Tf(otherBotID).Size) {
@@ -202,7 +202,7 @@ func applyDeadItems(layers []world.ObjectLayerState, deadItemIDs []string) []wor
 // nobody contributed to drops nothing.
 func (s *Sim) handlePlayerDeath(player *world.Session, mapState *world.MapState) {
 	mortal := mapState.Mt(player.ID)
-	s.AwardDefeat(player.ID, "player", mapState)
+	s.AwardDefeat(player.ID, "player", mapState, s.Social.PartyMembers)
 	// Economy: apply respawn-cost sink before saving layers (disabled by default, rate = 0).
 	s.SinkRespawnCost(player)
 
@@ -235,7 +235,9 @@ func (s *Sim) handlePlayerDeath(player *world.Session, mapState *world.MapState)
 		deadLoadout = s.ResolveDeadItemIDs(build)
 	}
 	deadLoadout = s.NormalizeDeadLoadout(deadLoadout)
+	carried := len(mapState.Ap(player.ID).Layers)
 	mapState.Ap(player.ID).Layers = applyDeadItems(mapState.Ap(player.ID).Layers, deadLoadout)
+	s.SeatStacks(mapState.Ap(player.ID).Layers, carried)
 	player.DeadLoadoutItemIDs = content.ActiveObjectLayerItemIDs(mapState.Ap(player.ID).Layers)
 
 	mapState.Vt(player.ID).RespawnAt = time.Now().Add(content.RespawnWait(mapState.Mt(player.ID)))
@@ -254,7 +256,7 @@ func (s *Sim) handlePlayerDeath(player *world.Session, mapState *world.MapState)
 // skin can carry different dead/drop sets depending on its full active set.
 func (s *Sim) killEntity(id world.EntityID, kind string, coins int, mapState *world.MapState) {
 	mortal := mapState.Mt(id)
-	s.AwardDefeat(id, kind, mapState)
+	s.AwardDefeat(id, kind, mapState, s.Social.PartyMembers)
 	layersToSave := make([]world.ObjectLayerState, len(mapState.Ap(id).Layers))
 	copy(layersToSave, mapState.Ap(id).Layers)
 	mortal.PreRespawnObjectLayers = layersToSave
