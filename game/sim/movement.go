@@ -24,42 +24,30 @@ func directionFromVector(dirX, dirY float64) world.Direction {
 // simulation step (1 / tickRate). A frame count instead of dt silently breaks
 // movement whenever the loop runs slow or the tickRate config changes.
 //
+// The rest of the step after a node walks the next leg, so the speed is the
+// same on every leg. The client self_motion_step mirrors this function.
+//
 // It returns the new position, the path left to walk, and the facing for this
-// step. The bool is false when the step produced no heading — an empty path
-// or a zero-length hop — so the caller decides what an arriving entity faces.
+// step. The bool is false when the walk ends, so the caller decides what an
+// arriving entity faces.
 func stepAlongPath(pos world.Vec2, path []world.Cell, speed, dt float64) (world.Vec2, []world.Cell, world.Direction, bool) {
-	if len(path) == 0 {
-		return pos, path, world.NONE, false
-	}
-
-	targetNode := path[0]
-	dx := float64(targetNode.X) - pos.X
-	dy := float64(targetNode.Y) - pos.Y
-	dist := math.Sqrt(dx*dx + dy*dy)
 	step := speed * dt // cells per simulation tick
-
-	if dist >= step {
-		dirX, dirY := dx/dist, dy/dist
-		pos.X += dirX * step
-		pos.Y += dirY * step
-		return pos, path, directionFromVector(dirX, dirY), true
+	for len(path) > 0 {
+		node := path[0]
+		dx := float64(node.X) - pos.X
+		dy := float64(node.Y) - pos.Y
+		dist := math.Sqrt(dx*dx + dy*dy)
+		if dist > step {
+			dirX, dirY := dx/dist, dy/dist
+			pos.X += dirX * step
+			pos.Y += dirY * step
+			return pos, path, directionFromVector(dirX, dirY), true
+		}
+		pos = world.Vec2{X: float64(node.X), Y: float64(node.Y)}
+		path = path[1:]
+		step -= dist
 	}
-
-	// Node reached. Face the next leg, if there is one.
-	pos = world.Vec2{X: float64(targetNode.X), Y: float64(targetNode.Y)}
-	path = path[1:]
-	if len(path) == 0 {
-		return pos, path, world.NONE, false
-	}
-
-	next := path[0]
-	dirX := float64(next.X) - pos.X
-	dirY := float64(next.Y) - pos.Y
-	norm := math.Sqrt(dirX*dirX + dirY*dirY)
-	if norm == 0 {
-		return pos, path, world.NONE, false
-	}
-	return pos, path, directionFromVector(dirX/norm, dirY/norm), true
+	return pos, path, world.NONE, false
 }
 
 func (s *Sim) updatePlayerPosition(player *world.Session, mapState *world.MapState) {

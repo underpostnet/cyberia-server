@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -141,6 +142,19 @@ func TestRepeatOfTheCurrentTargetSkipsThePathfinder(t *testing.T) {
 	if len(player.Path) != 1 || player.Path[0] != sentinel[0] {
 		t.Fatalf("path = %v, want the sentinel untouched — an unchanged target must not re-path",
 			player.Path)
+	}
+}
+
+// A step that reaches a node walks the rest of its length on the next leg.
+func TestStepCarriesPastANode(t *testing.T) {
+	path := []world.Cell{{X: 1, Y: 0}, {X: 1, Y: 1}}
+	pos, path, dir, facing := stepAlongPath(world.Vec2{X: 0.9, Y: 0}, path, 3, 0.1)
+
+	if len(path) != 1 || math.Abs(pos.X-1) > 1e-9 || math.Abs(pos.Y-0.2) > 1e-9 {
+		t.Fatalf("pos = %v, path = %v, want (1, 0.2) on the last leg", pos, path)
+	}
+	if !facing || dir != world.DOWN {
+		t.Fatalf("facing = %v %v, want DOWN — the facing of the leg the step ends on", dir, facing)
 	}
 }
 
