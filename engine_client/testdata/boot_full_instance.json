@@ -86,7 +86,6 @@
     ],
     "config": {
       "tickRate": 60,
-      "snapshotRate": 20,
       "aoiRadius": 10,
       "portalHoldTimeMs": 3000,
       "portalSpawnRadius": 3,
