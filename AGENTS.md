@@ -48,23 +48,61 @@ it here. This repo is a passive consumer.
 
 # System Map
 
-Three processes:
+Three processes. Each one has one job.
 
-| process | role | talks to |
-|---|---|---|
-| **cyberia-client** | game client, game canvas | game server (WebSocket), engine (REST) |
-| **cyberia-server** | authoritative simulation | client (WebSocket), engine (gRPC + REST) |
-| **engine-cyberia** | external content authority (assets, config data, asset data) | serves both |
+**engine-cyberia — content.** It holds what exists and how it works: object
+layers, atlases, maps, instances, quests, actions, dialogue and stat rules. It
+holds no simulation state. When content changes, it tells the server to
+hot-reload (gRPC control, REST fallback).
 
-Two links carry client traffic:
+**cyberia-server — authority.** It owns the state of the world and of every
+entity, and it has the final word. It loads content from the engine at boot
+and on hot-reload. One fixed tick runs the phases in order: input, lifecycle,
+skills, AI, movement, loot, portals, then replication.
 
-1. **Game link** — one WebSocket, `/ws`, JSON envelope.
-   `cyberia-client/src/network/socket.c` ↔ `cyberia-server/cmd/cyberia-server/main.go`.
-2. **Content link** — HTTPS REST to the engine origin.
-   `cyberia-client/src/network/engine_client.c` (`emscripten_fetch`)
+**cyberia-client — view and prediction.** It holds a full copy of the state
+and writes only the entity it owns: the own player. It draws, plays audio and
+runs the UI. The UI is local: it reads local state and never waits for the
+socket.
 
-The game server never serves game content, and the engine never sees simulation
-state.
+Client and server mirror their folders on subject: `net/`, `sim/`, `world/`
+and `content/` exist on both sides. A folder with no counterpart is not
+mirrored.
+
+## Communication
+
+**Content — engine to both.** The client reads content over HTTPS REST
+(`cyberia-client/src/data/engine_client.c`). The server reads it over gRPC,
+with REST as fallback (`cyberia-server/engine_client/`). The game server never
+serves content, and the engine never sees simulation state.
+
+**Game link — one WebSocket, `/ws`, JSON envelope.**
+`cyberia-client/src/net/socket.c` ↔ `cyberia-server/game/net/`.
+
+- **Client pushes events.** The client sends what the player did, never what
+  it has. Every module pushes through `client_event_push`, which stamps frame,
+  sequence and time. Raw input stays in the client.
+  - Deferred events send when a UI action completes: `item_ops` (the
+    add/remove list of a vault session) and `talk_done`. Slot order is not
+    state and never syncs.
+  - Immediate events send when a fact changes. Today only `player_stasis`
+    (modal open/close), because it drives immunity this tick.
+- **Server pushes state.** `PhaseInput` applies each player's events in
+  sequence order. It replays item ops against its own items and clamps them.
+  Each snapshot is a whole state with its `frame` and
+  `inputConsumedThrough`: the highest sequence the server consumed. Consumed
+  is not honored. The snapshot is the answer.
+
+**Replay and reconciliation.** The client applies its own events at once.
+At the start of each tick, `prediction_reconcile` replaces the own state with
+the newest snapshot, then `client_event_trim` drops events at or below
+`inputConsumedThrough`. The client re-applies the events that remain, in order,
+with the same motion function the server uses. There is no other correction.
+Other entities take the server state; the view interpolates them.
+
+A reconnect is a new session. Sequence, frame and cursor restart at 0. The
+client drops its pending events, takes `init_data` as truth and resends one
+`player_stasis`.
 
 ## Transport Layer
 Goal: Transport only: the socket moves bytes. It never reads or builds a message. Client and Server must mirror 1:1.
