@@ -31,6 +31,20 @@ func TestStatValidationRejectsCacheMutation(t *testing.T) {
 	}
 }
 
+// An instance config with an invalid economy rule is refused whole: no part of
+// it replaces the rules in force.
+func TestInvalidEconomyRulesRefuseTheWholeConfig(t *testing.T) {
+	s := NewGameServer()
+	if err := s.ApplyInstanceConfig(&pb.InstanceConfig{AoiRadius: 10, EntityBaseMaxLife: 100}); err != nil {
+		t.Fatal(err)
+	}
+	err := s.ApplyInstanceConfig(&pb.InstanceConfig{AoiRadius: 3, EntityBaseMaxLife: 1,
+		EconomyRules: &pb.EconomyRules{CoinKillPercentVsBot: 2}})
+	if err == nil || s.aoiRadius != 10 || s.EntityBaseMaxLife != 100 {
+		t.Fatalf("err = %v, aoi = %v, life = %v: an invalid config must change nothing", err, s.aoiRadius, s.EntityBaseMaxLife)
+	}
+}
+
 func TestSnapshotCarriesProgressionAndSignedBreakdown(t *testing.T) {
 	s := NewGameServer()
 	s.EntityBaseSpeed = 5

@@ -26,6 +26,7 @@ const (
 	shopRejectNotForSale   = "not_for_sale"
 	shopRejectOutOfRange   = "out_of_range"
 	shopRejectInsufficient = "insufficient_funds"
+	shopRejectFull         = "inventory_full"
 )
 
 // shopBuyMaxQty caps a single purchase. Authoritative: the client offers the
@@ -99,7 +100,7 @@ func (s *Content) HandleShopBuy(player *world.Session, cmd *world.InputCommand) 
 		s.sendShopAck(player, cmd.EntityID, cmd.ItemID, 0, shopRejectNoVendor)
 		return
 	}
-	if !s.botInPlayerRange(player, id, ms) {
+	if !s.inPlayerView(player, id, ms) {
 		s.sendShopAck(player, cmd.EntityID, cmd.ItemID, 0, shopRejectOutOfRange)
 		return
 	}
@@ -116,9 +117,10 @@ func (s *Content) HandleShopBuy(player *world.Session, cmd *world.InputCommand) 
 		s.sendShopAck(player, cmd.EntityID, cmd.ItemID, 0, shopRejectInsufficient)
 		return
 	}
-
-	s.removePlayerItem(player, priceItemID, total)
-	s.AddPlayerItem(player, item.ItemID, qty)
+	if !s.ExchangeItems(player, []Stack{{ItemID: priceItemID, Qty: total}}, []Stack{{ItemID: item.ItemID, Qty: qty}}) {
+		s.sendShopAck(player, cmd.EntityID, cmd.ItemID, 0, shopRejectFull)
+		return
+	}
 	// A purchase is an inventory gain like any other — reconcile collect
 	// objectives so a quest step satisfied by buying advances immediately.
 	s.AdvancePlayerQuestsOnGain(player)

@@ -20,6 +20,9 @@ type Transform struct {
 	Size Vec2 `json:"size"`
 }
 
+// Center is the centre of the transform's box.
+func (t Transform) Center() Vec2 { return Vec2{X: t.Pos.X + t.Size.X*0.5, Y: t.Pos.Y + t.Size.Y*0.5} }
+
 // Appearance is the appearance component: every layer the entity holds. The
 // encoder sends the active ones.
 type Appearance struct {
@@ -102,15 +105,22 @@ const (
 	TELEPORTING
 )
 
+// ObjectLayerState is one stack an entity holds. A player's stack that takes a
+// bag slot keeps that slot until a move changes it.
 type ObjectLayerState struct {
 	ItemID   string `json:"itemId"`
 	Active   bool   `json:"active"`
 	Quantity int    `json:"quantity"`
+	Slot     int    `json:"-"`
 }
 
 // EntityID is the id of an entity on the server, on the wire and on the
 // client. 0 is no entity.
 type EntityID uint32
+
+// PlayerID is the domain identity of a player. It owns what the player banks
+// and its party seat. A connection makes one, and it ends with the connection.
+type PlayerID string
 
 // ComponentMask holds one bit per component an entity has.
 type ComponentMask uint64
@@ -150,6 +160,7 @@ type Motion struct {
 type Agent struct {
 	Behavior   string   // canonical bot behavior (see behavior.go)
 	CasterID   EntityID // the player or bot that made this bot; 0 for none
+	OwnerID    EntityID // the player behind every caster of this bot; 0 for none
 	ActionCode string   // the bound CyberiaAction (see actionCache); "" for none
 }
 
@@ -167,8 +178,10 @@ func (v *Vitals) Ghost() bool { return !v.RespawnAt.IsZero() }
 // its map, its economy, its quests and its input stream.
 type Session struct {
 	ID EntityID
-	// EngineID is the player id the engine knows. It never goes in a snapshot.
-	EngineID     string    `json:"-"`
+	// PlayerID is also the player id the engine knows. It never goes in a snapshot.
+	PlayerID PlayerID `json:"-"`
+	// DisplayName is the name every viewer sees.
+	DisplayName  string    `json:"-"`
 	MapCode      string    `json:"MapCode"`
 	Path         []Cell    `json:"path"`
 	TargetPos    Cell      `json:"targetPos"`

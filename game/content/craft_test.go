@@ -43,8 +43,8 @@ func TestProtoToActionDecodesCraftRecipes(t *testing.T) {
 // resolve to nothing rather than the wrong schematic.
 func TestCraftRecipeAtBoundsTheIndex(t *testing.T) {
 	action := &CyberiaAction{CraftRecipes: []ActionCraftRecipe{
-		{OutputItems: []ActionCraftItem{{ItemID: "hatchet", Qty: 1}}},
-		{OutputItems: []ActionCraftItem{{ItemID: "tim-knife", Qty: 1}}},
+		{OutputItems: []Stack{{ItemID: "hatchet", Qty: 1}}},
+		{OutputItems: []Stack{{ItemID: "tim-knife", Qty: 1}}},
 	}}
 
 	if r := craftRecipeAt(action, 1); r == nil || r.OutputItems[0].ItemID != "tim-knife" {
@@ -64,7 +64,7 @@ func TestPlayerCanCraftChecksEveryIngredient(t *testing.T) {
 	s := &Content{World: &world.World{}, CoinItemID: "coin"}
 	player := worldtest.PlacePlayer(s.World, 1, []world.ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
 	player.Coins = 5
-	recipe := &ActionCraftRecipe{Ingredients: []ActionCraftItem{
+	recipe := &ActionCraftRecipe{Ingredients: []Stack{
 		{ItemID: "wood-drop-1", Qty: 2},
 		{ItemID: "coin", Qty: 5},
 	}}
@@ -84,7 +84,7 @@ func TestPlayerCanCraftChecksEveryIngredient(t *testing.T) {
 	}
 	// A free line is always satisfied, so a recipe of them always runs.
 	if !s.playerCanCraft(player, &ActionCraftRecipe{
-		Ingredients: []ActionCraftItem{{ItemID: "wood-drop-9", Qty: 0}},
+		Ingredients: []Stack{{ItemID: "wood-drop-9", Qty: 0}},
 	}) {
 		t.Fatal("a zero-quantity line costs nothing")
 	}
@@ -94,7 +94,7 @@ func TestPlayerCanCraftChecksEveryIngredient(t *testing.T) {
 // overhead exactly like a vendor does.
 func TestBotHasCraftGatesTheCapabilityBit(t *testing.T) {
 	book := &CyberiaAction{CraftRecipes: []ActionCraftRecipe{
-		{OutputItems: []ActionCraftItem{{ItemID: "hatchet", Qty: 1}}},
+		{OutputItems: []Stack{{ItemID: "hatchet", Qty: 1}}},
 	}}
 	s := &Content{World: &world.World{}, actionCache: map[world.EntityID]*CyberiaAction{
 		1: book,
@@ -147,8 +147,8 @@ func TestCraftCancelRefundsAndCompletionPaysOut(t *testing.T) {
 		return p
 	}
 	recipe := &ActionCraftRecipe{
-		OutputItems: []ActionCraftItem{{ItemID: "hatchet", Qty: 1}},
-		Ingredients: []ActionCraftItem{
+		OutputItems: []Stack{{ItemID: "hatchet", Qty: 1}},
+		Ingredients: []Stack{
 			{ItemID: "wood-drop-1", Qty: 2},
 			{ItemID: "coin", Qty: 5},
 		},

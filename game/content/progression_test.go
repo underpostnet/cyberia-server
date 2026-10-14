@@ -69,25 +69,25 @@ func TestProgressionThresholdsAndFrozenEntities(t *testing.T) {
 	}
 	player := NewEntityProgression(1, false, rules)
 	now := time.Unix(1000, 0)
-	if amount := player.award(rules, xpQuest, "quest", 1, now); amount != 100 || player.Level != 2 || player.XP != 100 {
+	if amount := player.award(rules, xpQuest, rules.reward(xpQuest), "quest", 1, now); amount != 100 || player.Level != 2 || player.XP != 100 {
 		t.Fatalf("level up: %+v", player)
 	}
-	if player.award(rules, xpQuest, "quest", 1, now.Add(time.Minute)) != 0 {
+	if player.award(rules, xpQuest, rules.reward(xpQuest), "quest", 1, now.Add(time.Minute)) != 0 {
 		t.Fatal("quest replay awards XP")
 	}
 	rules.QuestXp = 10000
-	if player.award(rules, xpQuest, "large-quest", 1, now.Add(2*time.Minute)) != 10000 || player.Level != 11 {
+	if player.award(rules, xpQuest, rules.reward(xpQuest), "large-quest", 1, now.Add(2*time.Minute)) != 10000 || player.Level != 11 {
 		t.Fatal("multiple level transition failed")
 	}
 	for _, kind := range []string{"bot", "npc", "resource"} {
 		entity := NewEntityProgression(7, true, rules)
 		before := entity.XP
-		if entity.award(rules, XpKill, kind, 7, now) != 0 || entity.Level != 7 || entity.XP != before {
+		if entity.award(rules, XpKill, rules.reward(XpKill), kind, 7, now) != 0 || entity.Level != 7 || entity.XP != before {
 			t.Fatal("frozen progression changed")
 		}
 	}
 	player = NewEntityProgression(rules.MaxLevel, false, rules)
-	if player.award(rules, xpQuest, "cap", 1, now) != 0 {
+	if player.award(rules, xpQuest, rules.reward(xpQuest), "cap", 1, now) != 0 {
 		t.Fatal("maximum level changed")
 	}
 }
@@ -96,35 +96,35 @@ func TestProgressionRateAndRepeatLimits(t *testing.T) {
 	rules := defaultProgressionRules()
 	p := NewEntityProgression(1, false, rules)
 	now := time.Unix(1000, 0)
-	if p.award(rules, 0, "tap", 1, now) != 0 {
+	if p.award(rules, 0, rules.reward(0), "tap", 1, now) != 0 {
 		t.Fatal("input event awards XP")
 	}
-	first := p.award(rules, XpKill, "target", 1, now)
+	first := p.award(rules, XpKill, rules.reward(XpKill), "target", 1, now)
 	if first != 25 {
 		t.Fatalf("first reward %d", first)
 	}
-	if p.award(rules, XpKill, "other", 1, now) != 0 {
+	if p.award(rules, XpKill, rules.reward(XpKill), "other", 1, now) != 0 {
 		t.Fatal("cooldown bypass")
 	}
-	second := p.award(rules, XpKill, "target", 1, now.Add(time.Second))
+	second := p.award(rules, XpKill, rules.reward(XpKill), "target", 1, now.Add(time.Second))
 	if second != 12 {
 		t.Fatalf("repeated reward %d", second)
 	}
 	for i := 2; i < rules.MaxRepeatAwards; i++ {
-		p.award(rules, XpKill, "target", 1, now.Add(time.Duration(i)*time.Second))
+		p.award(rules, XpKill, rules.reward(XpKill), "target", 1, now.Add(time.Duration(i)*time.Second))
 	}
-	if p.award(rules, XpKill, "target", 1, now.Add(10*time.Second)) != 0 {
+	if p.award(rules, XpKill, rules.reward(XpKill), "target", 1, now.Add(10*time.Second)) != 0 {
 		t.Fatal("repeat limit bypass")
 	}
 	p = NewEntityProgression(1, false, rules)
 	rules.MaxAwardsPerWindow = 2
 	for i, key := range []string{"a", "b", "c"} {
-		got := p.award(rules, XpKill, key, 1, now.Add(time.Duration(i)*time.Second))
+		got := p.award(rules, XpKill, rules.reward(XpKill), key, 1, now.Add(time.Duration(i)*time.Second))
 		if (i < 2) != (got > 0) {
 			t.Fatalf("window reward %d: %d", i, got)
 		}
 	}
-	if p.award(rules, XpKill, "d", 1, now.Add(time.Minute)) == 0 {
+	if p.award(rules, XpKill, rules.reward(XpKill), "d", 1, now.Add(time.Minute)) == 0 {
 		t.Fatal("window did not reset")
 	}
 }

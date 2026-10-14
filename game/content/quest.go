@@ -108,6 +108,9 @@ type QuestSnapshotEntry struct {
 	Status         string `json:"status"`         // "active" | "completed"
 	ActiveStep     string `json:"activeStep"`     // first incomplete step description
 	ObjectivesText string `json:"objectivesText"` // "2/3 kill scp-2040, 1/1 talk wason"
+	// RewardsHeld marks an active quest with every step done whose rewards
+	// wait for room in the inventory.
+	RewardsHeld bool `json:"rewardsHeld,omitempty"`
 }
 
 // botSpawnCell returns the cell key for a bot's spawn centre (its binding cell,
@@ -650,30 +653,6 @@ func (s *Content) settleCompletedSteps(player *world.Session, qp *QuestProgress)
 	}
 }
 
-// removePlayerItem deducts qty of itemID from the player's inventory. Coins
-// route through the flat balance; other items drain matching ObjectLayer rows.
-func (s *Content) removePlayerItem(player *world.Session, itemID string, qty int) {
-	if qty <= 0 {
-		return
-	}
-	if itemID == s.CoinItemID {
-		// Through the economy helper so the display-only coin ObjectLayer slot
-		// stays equal to the flat balance (economy.go invariant).
-		s.AddCoins(player.ID, s.Maps[player.MapCode], -qty)
-		return
-	}
-	RemoveLayerItem(&s.Ap(player.ID, player.MapCode).Layers, itemID, qty)
-}
-
-// playerItemQuantity returns how many of itemID the player holds. Coins route
-// through the flat balance; everything else sums matching ObjectLayer rows.
-func (s *Content) playerItemQuantity(player *world.Session, itemID string) int {
-	if itemID == s.CoinItemID {
-		return int(player.Coins)
-	}
-	return LayerQuantity(s.Ap(player.ID, player.MapCode).Layers, itemID)
-}
-
 // advanceKillObjectives advances any active-step `kill` objective whose target
 // skin matches the just-killed entity's skin. Returns true if any advanced.
 //
@@ -784,14 +763,19 @@ func (s *Content) AdvancePlayerQuestsOnKill(player *world.Session, killedSkin st
 }
 
 // CompleteQuest marks a quest completed, delivers its rewards, unlocks
-// successors, and records the affected snapshot entries.
+// successors, and records the affected snapshot entries. A quest whose rewards
+// do not fit the inventory stays active with every step done, and
+// CompleteHeldQuests completes it once there is room.
 func (s *Content) CompleteQuest(player *world.Session, qp *QuestProgress, affected *[]QuestSnapshotEntry) {
 	if qp.Status == "completed" {
 		return
 	}
-	s.AwardProgression(player, xpQuest, qp.QuestCode, 0, time.Now())
+	if !s.ExchangeItems(player, nil, s.questRewards(qp.QuestCode)) {
+		*affected = append(*affected, s.questSnapshot(qp))
+		return
+	}
+	s.AwardProgression(player, xpQuest, s.ProgressionConfig().reward(xpQuest), qp.QuestCode, 0, time.Now())
 	qp.Status = "completed"
-	s.deliverQuestRewards(player, qp.QuestCode)
 	s.persistQuestProgress(player, qp)
 	*affected = append(*affected, s.questSnapshot(qp))
 	logx.Debugf("[Quest] player %s completed quest %q", player.ID, qp.QuestCode)
@@ -800,17 +784,32 @@ func (s *Content) CompleteQuest(player *world.Session, qp *QuestProgress, affect
 	// one from its grantor NPC. Quests are never assigned automatically.
 }
 
-// deliverQuestRewards grants each reward item to the player's inventory. Coins
-// route through the flat coin balance. No gain FCT — reward feedback surfaces in
-// the reward notification modal and the loot grid.
-func (s *Content) deliverQuestRewards(player *world.Session, code string) {
+// questRewards is the reward stacks of a quest. No gain FCT — reward feedback
+// surfaces in the reward notification modal and the loot grid.
+func (s *Content) questRewards(code string) []Stack {
 	def, ok := s.questDefs[code]
 	if !ok {
-		return
+		return nil
 	}
+	rewards := make([]Stack, 0, len(def.Rewards))
 	for _, r := range def.Rewards {
-		s.AddPlayerItem(player, r.ItemID, r.Quantity)
+		rewards = append(rewards, Stack{ItemID: r.ItemID, Qty: r.Quantity})
 	}
+	return rewards
+}
+
+// CompleteHeldQuests completes every quest whose rewards waited for room and
+// now fit, and pushes one live update for them. Runs once per tick.
+//
+// Caller MUST hold s.mu.
+func (s *Content) CompleteHeldQuests(player *world.Session) {
+	var affected []QuestSnapshotEntry
+	for _, qp := range s.quests[player.ID] {
+		if qp.Status == "active" && questComplete(qp) && s.InventoryFits(player, nil, s.questRewards(qp.QuestCode)) {
+			s.CompleteQuest(player, qp, &affected)
+		}
+	}
+	s.sendQuestUpdate(player, affected)
 }
 
 // questSnapshot projects a progress record into the client-facing entry.
@@ -818,7 +817,8 @@ func (s *Content) deliverQuestRewards(player *world.Session, code string) {
 // counters.  All metadata (title, description, steps, rewards) is fetched
 // by the C client from the engine REST endpoint /api/v1/cyberia-quest/:code.
 func (s *Content) questSnapshot(qp *QuestProgress) QuestSnapshotEntry {
-	entry := QuestSnapshotEntry{Code: qp.QuestCode, Status: qp.Status}
+	entry := QuestSnapshotEntry{Code: qp.QuestCode, Status: qp.Status,
+		RewardsHeld: qp.Status == "active" && questComplete(qp)}
 	def, ok := s.questDefs[qp.QuestCode]
 	if stepIdx := firstIncompleteStepIndex(qp); stepIdx >= 0 {
 		sp := &qp.Steps[stepIdx]
@@ -884,7 +884,7 @@ func (s *Content) persistQuestProgress(player *world.Session, qp *QuestProgress)
 		return
 	}
 	buf, err := json.Marshal(map[string]interface{}{
-		"playerId":  player.EngineID,
+		"playerId":  player.PlayerID,
 		"questCode": qp.QuestCode,
 		"status":    qp.Status,
 	})
@@ -899,7 +899,7 @@ func (s *Content) persistQuestProgress(player *world.Session, qp *QuestProgress)
 	select {
 	case s.persistQueue <- job:
 	default:
-		logx.Errorf("[Quest] persist queue full, dropped %s/%s", player.EngineID, qp.QuestCode)
+		logx.Errorf("[Quest] persist queue full, dropped %s/%s", player.PlayerID, qp.QuestCode)
 	}
 }
 

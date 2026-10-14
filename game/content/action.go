@@ -39,18 +39,12 @@ type ActionShopItem struct {
 	PriceQty    int    `json:"priceQty"`
 }
 
-// ActionCraftItem is one side of a recipe line: an item and how many of it.
-type ActionCraftItem struct {
-	ItemID string `json:"itemId"`
-	Qty    int    `json:"qty"`
-}
-
 // ActionCraftRecipe is one assembler recipe: ingredients consumed, outputs
 // produced. Recipes are addressed by their index in the action's list.
 type ActionCraftRecipe struct {
-	OutputItems []ActionCraftItem `json:"outputItems"`
-	Ingredients []ActionCraftItem `json:"ingredients"`
-	CraftTimeMs int               `json:"craftTimeMs"`
+	OutputItems []Stack `json:"outputItems"`
+	Ingredients []Stack `json:"ingredients"`
+	CraftTimeMs int     `json:"craftTimeMs"`
 }
 
 type CyberiaAction struct {
@@ -103,10 +97,10 @@ func protoToAction(a *pb.CyberiaActionMessage) *CyberiaAction {
 	return ca
 }
 
-func protoToCraftItems(items []*pb.ActionCraftItem) []ActionCraftItem {
-	out := make([]ActionCraftItem, 0, len(items))
+func protoToCraftItems(items []*pb.ActionCraftItem) []Stack {
+	out := make([]Stack, 0, len(items))
 	for _, i := range items {
-		out = append(out, ActionCraftItem{ItemID: i.GetItemId(), Qty: int(i.GetQty())})
+		out = append(out, Stack{ItemID: i.GetItemId(), Qty: int(i.GetQty())})
 	}
 	return out
 }
@@ -119,9 +113,6 @@ func protoToCraftItems(items []*pb.ActionCraftItem) []ActionCraftItem {
 // Caller MUST hold s.mu.
 func (s *Content) BindActions(mapCodes []string, actions []*pb.CyberiaActionMessage) {
 	s.actionCache = make(map[world.EntityID]*CyberiaAction)
-	if s.Storage == nil {
-		s.Storage = make(map[StorageKey][]StorageSlot)
-	}
 
 	mapSet := make(map[string]bool, len(mapCodes))
 	for _, c := range mapCodes {
@@ -291,21 +282,33 @@ func (s *Content) BotHasUsableAction(id world.EntityID, ms *world.MapState) bool
 	return s.botHasShop(id, ms) || s.botHasCraft(id, ms) || s.botHasStorage(id, ms)
 }
 
-// botInPlayerRange reports whether a provider can be interacted with: same map,
+// inPlayerView reports whether an entity can be interacted with: same map,
 // and inside the player's own AOI — the visibility window that put the entity on
 // screen in the first place.
 //
 // Caller MUST hold s.mu.
-func (s *Content) botInPlayerRange(player *world.Session, id world.EntityID, ms *world.MapState) bool {
+func (s *Content) inPlayerView(player *world.Session, id world.EntityID, ms *world.MapState) bool {
 	if ms.Code() != player.MapCode {
 		return false
 	}
 	tf := ms.Tf(id)
-	botRect := world.Rectangle{
+	rect := world.Rectangle{
 		MinX: tf.Pos.X, MinY: tf.Pos.Y,
 		MaxX: tf.Pos.X + tf.Size.X, MaxY: tf.Pos.Y + tf.Size.Y,
 	}
-	return world.RectsOverlap(player.AOI, botRect)
+	return world.RectsOverlap(player.AOI, rect)
+}
+
+// VisiblePlayer is the player id inside the viewer's view, or nil.
+//
+// Caller MUST hold s.mu.
+func (s *Content) VisiblePlayer(viewer *world.Session, id world.EntityID) *world.Session {
+	ms := s.Maps[viewer.MapCode]
+	target := s.PlayerOn(ms, id)
+	if target == nil || !s.inPlayerView(viewer, id, ms) {
+		return nil
+	}
+	return target
 }
 
 // ── Dialogue (phaseInput) ───────────────────────────────────────────────────

@@ -39,7 +39,6 @@ func newWSTestServer(t *testing.T, limits ConnectionLimits) *wsTestServer {
 	s.EntityBaseSpeed = 5
 	s.EntityBaseActionCooldown = 100 * time.Millisecond
 	s.EntityBaseMinActionCooldown = 50 * time.Millisecond
-	s.Storage = map[content.StorageKey][]content.StorageSlot{}
 	s.EntityDefaults = map[string]content.EntityTypeDefaultConfig{}
 	s.PlayerSpawn = sim.PlayerSpawnConfig{Random: true}
 

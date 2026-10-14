@@ -67,6 +67,10 @@ const (
 	// may collect (its collection policy admits the viewer). Personal per viewer; no overhead icon —
 	// the client colors the drop's particles by it (gold vs gray).
 	InteractionFlagLootEligible uint8 = 1 << 2
+	// InteractionFlagPartyInvite marks another player the viewer may invite to its party now.
+	InteractionFlagPartyInvite uint8 = 1 << 3
+	// InteractionFlagPartyInvited marks another player the viewer's invite waits on.
+	InteractionFlagPartyInvited uint8 = 1 << 4
 )
 
 // PlayerStatusIcon computes the overhead status icon for a player.

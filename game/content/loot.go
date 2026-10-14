@@ -353,10 +353,21 @@ func (s *Content) ApplyLootToPlayer(mapState *world.MapState, drop *world.Brain,
 		s.ConsumeItem(mapState, player.ID, drop.DropItemID)
 		return false
 	default:
-		s.AddPlayerItem(player, drop.DropItemID, drop.DropQuantity)
+		if !s.ExchangeItems(player, nil, []Stack{{ItemID: drop.DropItemID, Qty: drop.DropQuantity}}) {
+			return false
+		}
 		s.AdvancePlayerQuestsOnGain(player)
 	}
 	return true
+}
+
+// LootFits reports whether the player has room for what the token gives it:
+// coins and a consumption take no slot, an item needs one.
+func (s *Content) LootFits(mapState *world.MapState, drop *world.Brain, player *world.Session) bool {
+	if drop.LootOutcome == world.LootOutcomeCoin || LootConsumes(drop, mapState.Vt(player.ID)) {
+		return true
+	}
+	return s.InventoryFits(player, nil, []Stack{{ItemID: drop.DropItemID, Qty: drop.DropQuantity}})
 }
 
 // ApplyLootToBot applies the token's outcome to the collecting bot and reports
@@ -385,8 +396,8 @@ func LootAdmits(drop *world.Brain, collectorID world.EntityID) bool {
 }
 
 // ResolveDropCollector returns the first live, non-frozen player overlapping the
-// token that its policy admits, or nil. Go's random map
-// iteration order fairly breaks ties between simultaneous colliders.
+// token that its policy admits and that has room for it, or nil. Go's random
+// map iteration order fairly breaks ties between simultaneous colliders.
 func (s *Content) ResolveDropCollector(mapState *world.MapState, dropID world.EntityID) *world.Session {
 	drop := mapState.Br(dropID)
 	for player := range s.PlayersOn(mapState) {
@@ -396,7 +407,7 @@ func (s *Content) ResolveDropCollector(mapState *world.MapState, dropID world.En
 		if !world.CheckAABBCollision(mapState.Tf(dropID).Pos, mapState.Tf(dropID).Size, mapState.Tf(player.ID).Pos, mapState.Tf(player.ID).Size) {
 			continue
 		}
-		if LootAdmits(drop, player.ID) {
+		if LootAdmits(drop, player.ID) && s.LootFits(mapState, drop, player) {
 			return player
 		}
 	}

@@ -8,6 +8,7 @@ import (
 
 	"cyberia-server/game/content"
 	"cyberia-server/game/sim"
+	"cyberia-server/game/social"
 	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 	"cyberia-server/logx"
@@ -21,7 +22,7 @@ func NewGameServer() *GameServer {
 		Sessions: make(map[world.EntityID]*world.Session),
 	}
 	gs := &GameServer{
-		Sim:     &sim.Sim{Content: content.NewContent(w)},
+		Sim:     &sim.Sim{Content: content.NewContent(w), Social: social.New()},
 		clients: make(map[world.EntityID]*Client),
 		// Buffer register/unregister so HandleConnections never blocks the
 		// HTTP handler goroutine waiting for listenForClients to win the
@@ -50,6 +51,9 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 
 	rules := content.ProgressionRulesFromProto(cfg.GetProgressionRules())
 	if err := rules.Validate(); err != nil {
+		return err
+	}
+	if err := content.EconomyRulesFromProto(cfg.GetEconomyRules()).Validate(); err != nil {
 		return err
 	}
 	s.Mu.Lock()
@@ -264,12 +268,15 @@ type SkillMapEntry struct {
 // client resolves all of those through /api/v1/cyberia-client-hints using
 // its own CYBERIA_CLIENT_HINTS_CODE.
 type InitPayload struct {
-	// EngineID is the own player id for the client's engine REST calls.
-	EngineID       string                            `json:"engineId"`
+	// PlayerID is the own player id for the client's engine REST calls.
+	PlayerID world.PlayerID `json:"playerId"`
+	// MaxLevel is the highest level of this instance; a container slot that
+	// opens past it never opens.
+	MaxLevel       int                               `json:"maxLevel"`
 	GridW          int                               `json:"gridW"`
 	GridH          int                               `json:"gridH"`
 	AoiRadius      float64                           `json:"aoiRadius"`
-	ObjectLayers   []world.ObjectLayerState          `json:"objectLayers"`
+	ObjectLayers   []content.InventoryStack          `json:"objectLayers"`
 	SkillMap       map[string][]SkillMapEntry        `json:"skillMap"`
 	EntityDefaults []content.EntityTypeDefaultConfig `json:"entityDefaults"`
 	// Resolved dead-state (Fragmentation) ids — the client labels these in

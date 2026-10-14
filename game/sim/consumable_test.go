@@ -114,3 +114,18 @@ func TestOnlyALootCollectingBotHealsFromItsHeldUnits(t *testing.T) {
 		}
 	}
 }
+
+// A held skill runs once per item, however many stacks hold it.
+func TestAHeldSkillRunsOncePerItemAcrossItsStacks(t *testing.T) {
+	s, ms, player := healingServer(t, 100, world.ObjectLayerState{ItemID: "gel", Quantity: 1, Slot: 0},
+		world.ObjectLayerState{ItemID: "gel", Quantity: 2, Slot: 4})
+	runs := 0
+	registerHeldSkill("count-runs", func(*Sim, SkillContext) { runs++ })
+	t.Cleanup(func() { delete(heldSkillRegistry, "count-runs") })
+	s.SkillConfig["gel"] = []content.SkillDefinition{{LogicEventID: "count-runs"}}
+
+	s.dispatchHeldSkills(player.ID, ms)
+	if runs != 1 {
+		t.Fatalf("runs = %d, want one per item", runs)
+	}
+}

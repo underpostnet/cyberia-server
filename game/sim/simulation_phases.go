@@ -60,12 +60,14 @@ func (s *Sim) PhaseInput(tick uint32, mapState *world.MapState) {
 		queue := player.InputQueue
 		player.InputQueue = nil // drained; further EnqueueInputs appends a fresh slice
 		for i := range queue {
+			// A seq at or below the cursor was applied before: a replay changes nothing.
+			if queue[i].Sequence <= player.InputConsumedThrough {
+				continue
+			}
 			s.applyInputCommand(player, mapState, &queue[i])
 			// The cursor means consumed. A snapshot built between this
 			// tick and the next must not claim a command no tick has run.
-			if queue[i].Sequence > player.InputConsumedThrough {
-				player.InputConsumedThrough = queue[i].Sequence
-			}
+			player.InputConsumedThrough = queue[i].Sequence
 			// An event pushed in client frame F takes effect in step F + 1,
 			// so this tick stands for that step.
 			player.FrameOffset = int64(queue[i].Frame) + 1 - int64(tick)
@@ -103,16 +105,18 @@ func (s *Sim) applyInputCommand(player *world.Session, mapState *world.MapState,
 		s.HandleCraftItem(player, cmd)
 	case world.InputKindCraftCancel:
 		s.HandleCraftCancel(player)
-	case world.InputKindItemOps:
-		s.HandleItemOps(player, cmd)
+	case world.InputKindItemMove:
+		s.HandleItemMove(player, cmd)
+	case world.InputKindPartyInvite, world.InputKindPartyReply, world.InputKindPartyLeave,
+		world.InputKindPartyKick, world.InputKindPartyDisband:
+		s.handlePartyInput(player, cmd)
 	case world.InputKindUnknown:
 		// failed validation: consumed, never applied
 	}
 }
 
-// PhaseLifecycle handles respawn timers and similar lifecycle transitions.
-// Currently delegates to the existing helper which also subsumes coin-drop
-// FCT events (those will move to phaseEconomy in a follow-up).
+// PhaseLifecycle handles respawn timers and similar lifecycle transitions:
+// respawns, finished assemblies, and quests whose rewards found room.
 func (s *Sim) PhaseLifecycle(tick uint32, mapState *world.MapState) {
 	_ = tick
 	for id := range mapState.Mortals() {
@@ -120,6 +124,9 @@ func (s *Sim) PhaseLifecycle(tick uint32, mapState *world.MapState) {
 	}
 	s.handleRespawns(mapState)
 	s.CompleteCrafts(mapState)
+	for player := range s.PlayersOn(mapState) {
+		s.CompleteHeldQuests(player)
+	}
 }
 
 // PhaseSkills resolves skill projectile collisions and runs the skills of held items for this tick.

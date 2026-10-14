@@ -7,8 +7,7 @@
 // What lives here
 //   - Movement / skill dispatch for PLAYER_ACTION taps.
 //   - Inventory mutation for ITEM_ACTIVATION (with equipment-rule validation).
-//     ITEM_USE lives in consumable.go.
-//   - Chat relay.
+//   - Chat and party requests, applied through the social registry.
 //
 // What does NOT live here
 //   - JSON parsing of any kind. Inputs arrive pre-decoded as typed
@@ -23,6 +22,7 @@ package sim
 
 import (
 	"math"
+	"time"
 
 	"cyberia-server/game/content"
 	"cyberia-server/game/world"
@@ -138,6 +138,10 @@ func (s *Sim) faceTargetWithoutPath(player *world.Session, mapState *world.MapSt
 func (s *Sim) handleItemActivationInput(player *world.Session, cmd *world.InputCommand) {
 	itemID := cmd.ItemID
 	active := cmd.Active
+	// The coin stack only shows the wallet.
+	if itemID == s.CoinItemID {
+		return
+	}
 
 	v := s.Vt(player.ID, player.MapCode)
 	isDead := v.Ghost() || v.Life <= 0
@@ -153,18 +157,12 @@ func (s *Sim) handleItemActivationInput(player *world.Session, cmd *world.InputC
 	// Live-item activations while dead queue onto PreRespawnObjectLayers.
 	if isDead && !isDeadItem {
 		if active {
-			s.queuePreRespawnActivation(player, itemID)
+			s.queuePreRespawnActivation(player, itemID, cmd.Slot)
 		}
 		return
 	}
 
-	targetItemIndex := -1
-	for i := range s.Ap(player.ID, player.MapCode).Layers {
-		if s.Ap(player.ID, player.MapCode).Layers[i].ItemID == itemID {
-			targetItemIndex = i
-			break
-		}
-	}
+	targetItemIndex := s.StackIndex(s.Ap(player.ID, player.MapCode).Layers, itemID, cmd.Slot)
 	if targetItemIndex == -1 {
 		logx.Debugf("Player %s tried to activate non-existent item '%s'.", player.ID, itemID)
 		return
@@ -182,6 +180,11 @@ func (s *Sim) handleItemActivationInput(player *world.Session, cmd *world.InputC
 			s.Ap(player.ID, player.MapCode).Layers[targetItemIndex].Active = originalState
 			return
 		}
+	}
+
+	// One stack of an item is worn at most.
+	if active {
+		wearOneStack(s.Ap(player.ID, player.MapCode).Layers, targetItemIndex)
 	}
 
 	// Rules operate within the current state's item set: dead items during
@@ -244,55 +247,75 @@ func (s *Sim) handleItemActivationInput(player *world.Session, cmd *world.InputC
 	s.ApplyResistanceStat(player.ID, s.Maps[player.MapCode])
 }
 
-// queuePreRespawnActivation marks a pending activation that takes effect
-// when the dead player respawns. Extracted to keep handleItemActivationInput
-// readable.
-func (s *Sim) queuePreRespawnActivation(player *world.Session, itemID string) {
-	layers := s.Maps[player.MapCode].Mt(player.ID).PreRespawnObjectLayers
-	if layers == nil {
-		return
-	}
+// wearOneStack leaves the stack at index the only worn stack of its item.
+func wearOneStack(layers []world.ObjectLayerState, index int) {
 	for i := range layers {
-		if layers[i].ItemID != itemID {
-			continue
+		if i != index && layers[i].ItemID == layers[index].ItemID {
+			layers[i].Active = false
 		}
-		layers[i].Active = true
-		logx.Debugf("Player %s is dead — queued activation of '%s' on revive.", player.ID, itemID)
-		if s.EquipmentRules.OnePerType {
-			reqType := s.ItemType(itemID)
-			if reqType != "" {
-				for j := range layers {
-					if j == i {
-						continue
-					}
-					if layers[j].Active &&
-						s.ItemType(layers[j].ItemID) == reqType {
-						layers[j].Active = false
-					}
-				}
-			}
-		}
-		return
 	}
 }
 
-// handleChatInput is a pure relay — no game-state mutation. Forwards a
-// chat message to the target player on the same map.
+// queuePreRespawnActivation marks a pending activation of the stack in slot
+// that takes effect when the dead player respawns. Extracted to keep
+// handleItemActivationInput readable.
+func (s *Sim) queuePreRespawnActivation(player *world.Session, itemID string, slot int) {
+	layers := s.Maps[player.MapCode].Mt(player.ID).PreRespawnObjectLayers
+	i := s.StackIndex(layers, itemID, slot)
+	if i < 0 {
+		return
+	}
+	layers[i].Active = true
+	wearOneStack(layers, i)
+	logx.Debugf("Player %s is dead — queued activation of '%s' on revive.", player.ID, itemID)
+	if reqType := s.ItemType(itemID); s.EquipmentRules.OnePerType && reqType != "" {
+		for j := range layers {
+			if j != i && layers[j].Active && s.ItemType(layers[j].ItemID) == reqType {
+				layers[j].Active = false
+			}
+		}
+	}
+}
+
+// handleChatInput sends one chat line. A direct line needs its target on the
+// sender's map. A refusal answers with chat_ack.
 func (s *Sim) handleChatInput(sender *world.Session, mapState *world.MapState, cmd *world.InputCommand) {
-	toID := cmd.EntityID
-	text := cmd.ChatText
-	if toID == 0 || text == "" {
-		return
+	var target *world.Session
+	if cmd.ChatChannel == world.ChatDirect {
+		target = s.PlayerOn(mapState, cmd.EntityID)
 	}
-	if len(text) > 256 {
-		text = text[:256]
+	if reason := s.Social.Chat(sender, cmd.ChatChannel, target, cmd.ChatText, time.Now()); reason != "" {
+		world.SendAck(sender, "chat_ack", reason, map[string]interface{}{"channel": cmd.ChatChannel.String(), "toId": cmd.EntityID})
 	}
-	target := s.PlayerOn(mapState, toID)
-	if target == nil {
-		return
+}
+
+// partyActions names each party input kind on party_ack.
+var partyActions = map[world.InputKind]string{
+	world.InputKindPartyInvite:  "invite",
+	world.InputKindPartyReply:   "reply",
+	world.InputKindPartyLeave:   "leave",
+	world.InputKindPartyKick:    "kick",
+	world.InputKindPartyDisband: "disband",
+}
+
+// handlePartyInput applies one party request. An invite needs its target in
+// the inviter's view. A refusal answers with party_ack.
+func (s *Sim) handlePartyInput(player *world.Session, cmd *world.InputCommand) {
+	now := time.Now()
+	var reason string
+	switch cmd.Kind {
+	case world.InputKindPartyInvite:
+		reason = s.Social.Invite(player, s.VisiblePlayer(player, cmd.EntityID), now)
+	case world.InputKindPartyReply:
+		reason = s.Social.Reply(player, s.Sessions[cmd.EntityID], cmd.Active, now)
+	case world.InputKindPartyLeave:
+		reason = s.Social.LeaveParty(player)
+	case world.InputKindPartyKick:
+		reason = s.Social.Kick(player, s.Sessions[cmd.EntityID])
+	case world.InputKindPartyDisband:
+		reason = s.Social.Disband(player)
 	}
-	world.SendMessage(target, "chat", map[string]interface{}{
-		"from": sender.ID,
-		"text": text,
-	})
+	if reason != "" {
+		world.SendAck(player, "party_ack", reason, map[string]interface{}{"action": partyActions[cmd.Kind]})
+	}
 }

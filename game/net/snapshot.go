@@ -24,6 +24,9 @@ type SnapshotEntity struct {
 	MaxLife   int `json:"maxLife"`
 	RespawnIn int `json:"respawnIn"` // whole seconds, 0 when alive
 
+	// Name is the display name of a player.
+	Name string `json:"name,omitempty"`
+
 	Level      int                     `json:"level,omitempty"`
 	Stats      *[content.StatCount]int `json:"stats,omitempty"`
 	StatsSum   int                     `json:"statsSum"`
@@ -50,7 +53,8 @@ type SnapshotEntity struct {
 	Layers []world.ObjectLayerState `json:"layers"`
 }
 
-// SnapshotInteraction is what one bot in the AOI offers the viewing player.
+// SnapshotInteraction is what one bot or other player in the AOI offers the
+// viewing player.
 type SnapshotInteraction struct {
 	ID world.EntityID `json:"id"`
 	// Flags enable the overlay icons and the interact-modal tabs.
@@ -85,10 +89,16 @@ type SnapshotSelf struct {
 	Path    []world.Cell `json:"path"`
 
 	CoinBalance uint32 `json:"coinBalance"`
-	// Inventory carries every visible layer, active and inactive.
-	Inventory []world.ObjectLayerState `json:"inventory"`
-	// Vaults carries every vault of the player.
+	// Inventory carries every visible stack, active and inactive, with its slot.
+	Inventory []content.InventoryStack `json:"inventory"`
+	// Vaults carries every NPC vault of the player.
 	Vaults []content.SnapshotVault `json:"vaults"`
+	// Storage is the personal storage of the player.
+	Storage []content.Stack `json:"storage"`
+	// Party is the party of the player, absent when it is in none.
+	Party *SnapshotParty `json:"party,omitempty"`
+	// PartyInvites are the invites that wait for the player's answer.
+	PartyInvites []SnapshotInvite `json:"partyInvites,omitempty"`
 	// Craft is the running assembly, absent when none runs.
 	Craft *content.SnapshotCraft `json:"craft,omitempty"`
 	// Interaction has one row per bot in the AOI that offers something.
@@ -104,6 +114,29 @@ type SnapshotSelf struct {
 	ActionReadyInMs int `json:"actionReadyInMs"`
 	// ConsumeReadyInMs is the time left on the consume cooldown, 0 when a held item may be consumed.
 	ConsumeReadyInMs int `json:"consumeReadyInMs"`
+}
+
+// SnapshotParty is the party of the viewing player. Members keeps join order.
+type SnapshotParty struct {
+	LeaderID world.EntityID        `json:"leaderId"`
+	Members  []SnapshotPartyMember `json:"members"`
+}
+
+// SnapshotPartyMember is one member wherever it is on this server.
+type SnapshotPartyMember struct {
+	ID      world.EntityID `json:"id"`
+	Name    string         `json:"name"`
+	Level   int            `json:"level"`
+	Life    int            `json:"life"`
+	MaxLife int            `json:"maxLife"`
+	MapCode string         `json:"mapCode"`
+}
+
+// SnapshotInvite is one invite that waits for the viewing player's answer.
+type SnapshotInvite struct {
+	FromID      world.EntityID `json:"fromId"`
+	FromName    string         `json:"fromName"`
+	ExpiresInMs int            `json:"expiresInMs"`
 }
 
 // Snapshot is the `snapshot` message payload.
@@ -229,6 +262,9 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 		})
 	}
 
+	now := time.Now()
+	var interaction []SnapshotInteraction
+
 	// Players
 	for op := range s.PlayersOn(mapState) {
 		if op.ID == player.ID || !inAOI(op.ID) {
@@ -239,7 +275,11 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 		s.snapshotStats(&e, mapState)
 		s.snapshotPortalHold(&e, op)
 		e.StatusIcon = content.PlayerStatusIcon(op, mapState.Vt(op.ID))
+		e.Name = op.DisplayName
 		snap.Entities = append(snap.Entities, e)
+		if flags := s.playerInteractionFlags(player, op, now); flags != 0 {
+			interaction = append(interaction, SnapshotInteraction{ID: op.ID, Flags: flags})
+		}
 	}
 
 	// Scenery. The client draws floors in wire order, so floors are sorted:
@@ -315,7 +355,6 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 	}
 
 	// Bots
-	var interaction []SnapshotInteraction
 	for b := range mapState.OfKind(world.EntityBot) {
 		if !inAOI(b) {
 			continue
@@ -345,9 +384,11 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 		}
 		row.Flags = s.BotInteractionFlags(s.BotHasActionableQuest(player, b, mapState),
 			hasPendingTalk, s.BotHasUsableAction(b, mapState))
-		// Loot eligibility is personal: the token's collection policy decides who
-		// may collect it, and the client colours the particles by this bit.
-		if mapState.Ag(b).Behavior == content.BehaviorDrop && content.LootAdmits(brain, player.ID) {
+		// Loot eligibility is personal: the token's collection policy and the
+		// player's room decide who may collect it, and the client colours the
+		// particles by this bit.
+		if mapState.Ag(b).Behavior == content.BehaviorDrop && content.LootAdmits(brain, player.ID) &&
+			s.LootFits(mapState, brain, player) {
 			row.Flags |= content.InteractionFlagLootEligible
 		}
 		if row.Flags != 0 || len(row.QuestCodes) > 0 {
@@ -359,6 +400,56 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 	snap.Self = s.buildSnapshotSelf(player, mapState)
 	snap.Self.Interaction = interaction
 	return snap
+}
+
+// playerInteractionFlags is what another player offers the viewer: an invite
+// it may send now, or one that waits for an answer.
+func (s *GameServer) playerInteractionFlags(viewer, other *world.Session, now time.Time) uint8 {
+	if s.Social.Invited(viewer.PlayerID, other.PlayerID, now) {
+		return content.InteractionFlagPartyInvited
+	}
+	if s.Social.CanInvite(viewer, other) {
+		return content.InteractionFlagPartyInvite
+	}
+	return 0
+}
+
+// snapshotParty is the party of the player, or nil.
+func (s *GameServer) snapshotParty(player *world.Session) *SnapshotParty {
+	party := s.Social.PartyOf(player.PlayerID)
+	if party == nil {
+		return nil
+	}
+	out := &SnapshotParty{
+		LeaderID: s.Social.Player(party.Leader()).ID,
+		Members:  make([]SnapshotPartyMember, 0, len(party.Members)),
+	}
+	for _, id := range party.Members {
+		member := s.Social.Player(id)
+		ms := s.Maps[member.MapCode]
+		var vitals SnapshotEntity
+		vitals.setVitals(ms.Vt(member.ID))
+		out.Members = append(out.Members, SnapshotPartyMember{
+			ID:      member.ID,
+			Name:    member.DisplayName,
+			Level:   s.EntityProgression(member.ID, ms).Level,
+			Life:    vitals.Life,
+			MaxLife: vitals.MaxLife,
+			MapCode: member.MapCode,
+		})
+	}
+	return out
+}
+
+// snapshotInvites lists the invites that wait for the player's answer.
+func (s *GameServer) snapshotInvites(player *world.Session, now time.Time) []SnapshotInvite {
+	pending := s.Social.InvitesTo(player.PlayerID, now)
+	out := make([]SnapshotInvite, 0, len(pending))
+	for _, invite := range pending {
+		from := s.Social.Player(invite.From)
+		out = append(out, SnapshotInvite{FromID: from.ID, FromName: from.DisplayName, ExpiresInMs: msUntil(invite.ExpiresAt)})
+	}
+	return out
 }
 
 // buildSnapshotSelf fills the viewing player's own block.
@@ -385,8 +476,11 @@ func (s *GameServer) buildSnapshotSelf(player *world.Session, mapState *world.Ma
 		// player.Coins is the canonical flat balance — read it directly.
 		CoinBalance:      player.Coins,
 		Vaults:           s.PlayerVaults(player),
+		Storage:          s.PlayerStorage(player),
+		Party:            s.snapshotParty(player),
+		PartyInvites:     s.snapshotInvites(player, time.Now()),
 		Craft:            s.SnapshotCraft(player),
-		Inventory:        s.VisibleInventory(mapState.Ap(player.ID).Layers),
+		Inventory:        s.InventoryView(mapState.Ap(player.ID).Layers),
 		Frozen:           player.Frozen,
 		MoveSpeed:        s.CalculatePlayerMovementSpeed(stats),
 		ActionCooldownMs: int(s.CalculateActionCooldown(stats) / time.Millisecond),
@@ -397,5 +491,6 @@ func (s *GameServer) buildSnapshotSelf(player *world.Session, mapState *world.Ma
 	s.snapshotStats(&self.SnapshotEntity, mapState)
 	s.snapshotPortalHold(&self.SnapshotEntity, player)
 	self.StatusIcon = content.PlayerStatusIcon(player, mapState.Vt(player.ID))
+	self.Name = player.DisplayName
 	return self
 }

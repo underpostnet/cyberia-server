@@ -13,10 +13,6 @@ package sim
 import "math"
 
 const (
-	// MaxChatRunes bounds one chat line. The socket read limit already bounds
-	// the frame; this bounds what the simulation stores and re-broadcasts.
-	MaxChatRunes = 512
-
 	// maxItemIDLen bounds any client-supplied identifier. Authored item and
 	// quest codes are short slugs.
 	maxItemIDLen = 128
@@ -38,18 +34,6 @@ func ValidTapTarget(x, y float64) bool {
 
 // ValidIdentifier reports whether a client-supplied id is a plausible slug.
 func ValidIdentifier(id string) bool { return len(id) <= maxItemIDLen }
-
-// TruncateRunes cuts a string to at most n runes without splitting one.
-func TruncateRunes(s string, n int) string {
-	count := 0
-	for i := range s {
-		if count == n {
-			return s[:i]
-		}
-		count++
-	}
-	return s
-}
 
 // ClampQuantity bounds a client-supplied count. Handlers clamp again against
 // what the player actually holds; this stops an absurd value earlier.

@@ -7,7 +7,8 @@
 // an InputKind. Every payload carries seq, frame and timestamp. Every seq is
 // consumed: an event that fails validation is enqueued as InputKindUnknown, so
 // phaseInput moves the cursor past it and InputConsumedThrough lands on the
-// last seq of each batch.
+// last seq of each batch. phaseInput applies a seq once: one at or below the
+// cursor is dropped.
 //
 // Ownership:
 //   - Built and enqueued by handlers.go (per-WS-goroutine).
@@ -34,8 +35,37 @@ const (
 	InputKindShopBuy      // buy one catalog item from a vendor action
 	InputKindCraftItem    // assemble one recipe at an assembler action
 	InputKindCraftCancel  // abort the running assembly and refund it
-	InputKindItemOps      // replay one session's deposits and withdrawals
+	InputKindItemMove     // move units of one stack to a slot of the bag or of a container
+	InputKindPartyInvite  // invite a visible player to the party
+	InputKindPartyReply   // accept or decline a pending invite
+	InputKindPartyLeave   // leave the party
+	InputKindPartyKick    // the leader removes a member
+	InputKindPartyDisband // the leader ends the party
 )
+
+// ChatChannel is who one chat line reaches.
+type ChatChannel uint8
+
+const (
+	ChatWorld  ChatChannel = iota // every player on this server
+	ChatParty                     // the members of the sender's party
+	ChatDirect                    // one player on the sender's map
+)
+
+var chatChannelWords = [...]string{ChatWorld: "world", ChatParty: "party", ChatDirect: "direct"}
+
+// String is the wire word of the channel.
+func (c ChatChannel) String() string { return chatChannelWords[c] }
+
+// ParseChatChannel maps a wire word to its channel.
+func ParseChatChannel(word string) (ChatChannel, bool) {
+	for c, w := range chatChannelWords {
+		if w == word {
+			return ChatChannel(c), true
+		}
+	}
+	return 0, false
+}
 
 // InputCommand is the unit of client→server input.
 type InputCommand struct {
@@ -44,16 +74,18 @@ type InputCommand struct {
 	Frame     uint32  // client fixed-step count at push. Not a server tick.
 	Timestamp float64 // client GetTime() at push. No reader.
 	// Payload fields — only the ones relevant to Kind are populated.
-	TargetX     float64  // PlayerAction
-	TargetY     float64  // PlayerAction
-	ItemID      string   // ItemActivation, ItemUse, ShopBuy
-	Active      bool     // ItemActivation; PlayerStasis — the stasis bool
-	ChatText    string   // Chat
-	EntityID    EntityID // Chat target; TalkDone, ShopBuy, CraftItem, ItemOps — the NPC entity
-	DialogCode  string   // TalkDone — the dialogue group the player just read
-	Quantity    int      // ShopBuy — units (clamped server-side)
-	RecipeIndex int      // CraftItem — index into the action's craftRecipes
-	Ops         []ItemOp // ItemOps — applied front to back
+	TargetX     float64     // PlayerAction
+	TargetY     float64     // PlayerAction
+	ItemID      string      // ItemActivation, ShopBuy
+	Slot        int         // ItemActivation — the bag slot of the stack, or -1 for the first stack of ItemID
+	Active      bool        // ItemActivation; PlayerStasis — the stasis bool; PartyReply — accept
+	ChatChannel ChatChannel // Chat
+	ChatText    string      // Chat
+	EntityID    EntityID    // Chat direct target; party target; TalkDone, ShopBuy, CraftItem, ItemMove to a vault — the NPC entity
+	DialogCode  string      // TalkDone — the dialogue group the player just read
+	Quantity    int         // ShopBuy — units (clamped server-side)
+	RecipeIndex int         // CraftItem — index into the action's craftRecipes
+	Move        ItemMove    // ItemMove
 }
 
 // MaxInputQueue bounds one player's queue between two ticks. It equals the
@@ -71,10 +103,33 @@ func EnqueueInputs(p *Session, cmds []InputCommand) bool {
 	return true
 }
 
-// ItemOp is one replayed vault operation: Qty of ItemID into the vault when
-// ToVault, else out of it.
-type ItemOp struct {
-	ItemID  string `json:"itemId"`
-	Qty     int    `json:"qty"`
-	ToVault bool   `json:"toVault"`
+// Box is the container a slot of an item move belongs to.
+type Box uint8
+
+const (
+	BoxBag     Box = iota // the carried inventory
+	BoxStorage            // the personal storage
+	BoxVault              // the NPC vault at the terminal of the move
+)
+
+var boxWords = [...]string{BoxBag: "bag", BoxStorage: "storage", BoxVault: "vault"}
+
+// ParseBox maps a wire word to its box.
+func ParseBox(word string) (Box, bool) {
+	for b, w := range boxWords {
+		if w == word {
+			return Box(b), true
+		}
+	}
+	return 0, false
+}
+
+// WalletSlot is the bag slot of the coin: the wallet takes no cell.
+const WalletSlot = -1
+
+// ItemMove moves Qty units of the stack in FromSlot of From to ToSlot of To.
+type ItemMove struct {
+	From, To         Box
+	FromSlot, ToSlot int
+	Qty              int
 }

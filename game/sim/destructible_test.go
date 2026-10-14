@@ -52,7 +52,7 @@ func shot(ms *world.MapState, caster *world.Session, at world.Vec2) world.Entity
 		world.Appearance{Layers: []world.ObjectLayerState{{ItemID: "bullet", Active: true, Quantity: 1}}})
 	ms.AddVitals(bullet, world.Vitals{MaxLife: 100, Life: 100})
 	ms.AddMotion(bullet, world.Motion{})
-	ms.AddAgent(bullet, world.Agent{Behavior: content.BehaviorSkill, CasterID: caster.ID})
+	ms.AddAgent(bullet, world.Agent{Behavior: content.BehaviorSkill, CasterID: caster.ID, OwnerID: caster.ID})
 	ms.AddMortal(bullet, &world.Mortal{})
 	return bullet
 }

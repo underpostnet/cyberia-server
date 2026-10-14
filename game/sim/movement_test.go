@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cyberia-server/game/content"
+	"cyberia-server/game/social"
 	"cyberia-server/game/world"
 )
 
@@ -24,7 +25,7 @@ func movementFixture(t *testing.T) (*Sim, *world.MapState, *world.Session) {
 		EntityBaseSpeed:             5,
 		EntityBaseActionCooldown:    500 * time.Millisecond,
 		EntityBaseMinActionCooldown: 100 * time.Millisecond,
-	}}
+	}, Social: social.New()}
 
 	player := &world.Session{}
 	player.ID = 1
@@ -198,5 +199,59 @@ func TestSnapshotActionCooldownAppliesUtility(t *testing.T) {
 	gate := s.CalculateActionCooldown(content.ComputedStats{Utility: 20})
 	if wire := int(gate / time.Millisecond); wire != 400 {
 		t.Fatalf("actionCooldownMs = %d, want 400 (500 ms less 20%% Utility)", wire)
+	}
+}
+
+// The input phase applies a seq once. A resent or forged storage event moves
+// nothing more, so a replay neither drains nor duplicates a stack.
+func TestPhaseInputAppliesASequenceOnce(t *testing.T) {
+	s, mapState, player := movementFixture(t)
+	player.PlayerID = "p1"
+	mapState.Ap(player.ID).Layers = []world.ObjectLayerState{{ItemID: "gem", Quantity: 3}}
+	deposit := func(seq uint32) world.InputCommand {
+		return world.InputCommand{Kind: world.InputKindItemMove, Sequence: seq,
+			Move: world.ItemMove{From: world.BoxBag, To: world.BoxStorage, Qty: 1}}
+	}
+
+	tapTick(s, mapState, player, deposit(4))
+	tapTick(s, mapState, player, deposit(4), deposit(3))
+
+	stored := s.PersonalStorage[player.PlayerID]
+	if len(stored) != 1 || stored[0].Qty != 1 || mapState.Ap(player.ID).Layers[0].Quantity != 2 {
+		t.Fatalf("storage = %+v, bag = %+v, want one gem moved once", stored, mapState.Ap(player.ID).Layers)
+	}
+	if player.InputConsumedThrough != 4 {
+		t.Fatalf("cursor = %d, want 4", player.InputConsumedThrough)
+	}
+}
+
+// The coin stack only shows the wallet: an activation never turns it on, even
+// when its Object Layer type is unknown.
+func TestTheCoinStackNeverActivates(t *testing.T) {
+	s, mapState, player := movementFixture(t)
+	s.CoinItemID = "coin"
+	s.MaxActiveLayers = 4
+	s.EquipmentRules.ActiveItemTypes = map[string]bool{"skin": true, "weapon": true}
+	mapState.Ap(player.ID).Layers = []world.ObjectLayerState{{ItemID: "coin", Quantity: 5}}
+
+	tapTick(s, mapState, player, world.InputCommand{Kind: world.InputKindItemActivation, Sequence: 1, ItemID: "coin", Active: true})
+	if mapState.Ap(player.ID).Layers[0].Active {
+		t.Fatal("the coin stack turned active")
+	}
+}
+
+// Equipping names a stack by its slot. The stack in that slot becomes the one
+// worn stack of its item.
+func TestEquipWearsTheStackInTheSlot(t *testing.T) {
+	s, mapState, player := movementFixture(t)
+	s.MaxActiveLayers = 4
+	mapState.Ap(player.ID).Layers = []world.ObjectLayerState{
+		{ItemID: "sword", Quantity: 1, Slot: 0, Active: true},
+		{ItemID: "sword", Quantity: 2, Slot: 3},
+	}
+
+	tapTick(s, mapState, player, world.InputCommand{Kind: world.InputKindItemActivation, Sequence: 1, ItemID: "sword", Slot: 3, Active: true})
+	if layers := mapState.Ap(player.ID).Layers; layers[0].Active || !layers[1].Active {
+		t.Fatalf("layers = %+v, want only the stack in slot 3 worn", layers)
 	}
 }

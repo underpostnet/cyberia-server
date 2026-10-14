@@ -13,24 +13,6 @@ func (s *Content) ResolveDeadItemIDs(build EntityTypeDefaultConfig) []string {
 	return build.DeadItemIDs
 }
 
-// VisibleInventory filters only the single default ghost item out of an
-// inventory view.  Other configured dead-state ids stay visible as
-// Fragmentation items — equippable only while the player is dead
-// (handleItemActivationInput gates by state).  The default ghost item is
-// the first deadItemID declared for the "player" entity type in the gRPC
-// config; it is the auto-applied visual when no other dead items are
-// equipped and must not clutter the inventory.
-func (s *Content) VisibleInventory(layers []world.ObjectLayerState) []world.ObjectLayerState {
-	out := make([]world.ObjectLayerState, 0, len(layers))
-	for _, l := range layers {
-		if l.ItemID == s.GhostItemID {
-			continue
-		}
-		out = append(out, l)
-	}
-	return out
-}
-
 // NormalizeDeadLoadout applies the equipment rules to a dead loadout in id
 // order: one active per type (first wins, so the configured default leads)
 // and the maxActiveLayers cap. Unknown types pass through, matching the live

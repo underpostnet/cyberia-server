@@ -2,6 +2,9 @@ package content
 
 import (
 	"fmt"
+	"maps"
+	"math"
+	"slices"
 	"time"
 
 	"cyberia-server/game/world"
@@ -86,11 +89,11 @@ func (s *Content) ForgetNonPlayers() {
 // AwardProgression runs under the simulation lock after a gameplay result.
 // XP is private, so its floating text goes to the earner alone; a level gained
 // is public, so its sound reaches every viewer in the earner's area.
-func (s *Content) AwardProgression(player *world.Session, event progressionEvent, key string, targetLevel int, now time.Time) uint64 {
+func (s *Content) AwardProgression(player *world.Session, event progressionEvent, reward int, key string, targetLevel int, now time.Time) uint64 {
 	ms := s.Maps[player.MapCode]
 	p := s.EntityProgression(player.ID, ms)
 	before := p.Level
-	amount := p.award(s.ProgressionConfig(), event, key, targetLevel, now)
+	amount := p.award(s.ProgressionConfig(), event, reward, key, targetLevel, now)
 	if amount == 0 {
 		return 0
 	}
@@ -103,9 +106,12 @@ func (s *Content) AwardProgression(player *world.Session, event progressionEvent
 	return amount
 }
 
-// AwardDefeat uses damage shares and excludes summoned entities, self kills
-// and obstacles.
-func (s *Content) AwardDefeat(victim world.EntityID, kind string, ms *world.MapState) {
+// AwardDefeat pays the XP of a defeat once to each contributor of at least 10%
+// of the damage. A party earns a bot kill once: a qualifying member near the
+// bot splits it among the members near the bot. party names the online members
+// of a player's party, nil for none. Summons, providers, drops, self kills and
+// obstacles pay nothing.
+func (s *Content) AwardDefeat(victim world.EntityID, kind string, ms *world.MapState, party func(world.PlayerID) []*world.Session) {
 	if ms == nil || ms.Vt(victim).Ghost() || kind == "obstacle" {
 		return
 	}
@@ -125,21 +131,64 @@ func (s *Content) AwardDefeat(victim world.EntityID, kind string, ms *world.MapS
 			total += damage
 		}
 	}
-	for id, damage := range ledger {
-		if id == victim || damage <= 0 || damage < total*0.1 {
-			continue
-		}
-		entity := s.PlayerOn(ms, id)
-		if entity == nil || ms.Vt(entity.ID).Ghost() || entity.Frozen {
-			continue
-		}
-		key := fmt.Sprintf("%s:%d", kind, victim)
-		event := XpKill
-		if kind == "resource" {
-			event = xpObjective
-		}
-		s.AwardProgression(entity, event, key, level, time.Now())
+	event := XpKill
+	if kind == "resource" {
+		event = xpObjective
 	}
+	pool := s.ProgressionConfig().reward(event)
+	key := fmt.Sprintf("%s:%d", kind, victim)
+	now := time.Now()
+	paid := make(map[world.PlayerID]bool)
+	for _, id := range slices.Sorted(maps.Keys(ledger)) {
+		if damage := ledger[id]; id == victim || damage <= 0 || damage < total*0.1 {
+			continue
+		}
+		earner := s.PlayerOn(ms, id)
+		if !s.earnsXP(ms, earner) || paid[earner.PlayerID] {
+			continue
+		}
+		members := party(earner.PlayerID)
+		if kind != "bot" || members == nil {
+			s.AwardProgression(earner, event, pool, key, level, now)
+			continue
+		}
+		near := s.nearMembers(ms, victim, members)
+		if !slices.Contains(near, earner) {
+			continue
+		}
+		for _, member := range members {
+			paid[member.PlayerID] = true
+		}
+		// Integer shares in party order; the first members take the remainder.
+		for i, member := range near {
+			share := pool / len(near)
+			if i < pool%len(near) {
+				share++
+			}
+			s.AwardProgression(member, event, share, key, level, now)
+		}
+	}
+}
+
+// earnsXP reports whether a player on ms can earn XP now: alive and not in stasis.
+func (s *Content) earnsXP(ms *world.MapState, p *world.Session) bool {
+	return p != nil && !ms.Vt(p.ID).Ghost() && !p.Frozen
+}
+
+// nearMembers is the members on ms, able to earn XP, whose centre is within
+// PartyXpShareRadius cells of the centre of victim.
+func (s *Content) nearMembers(ms *world.MapState, victim world.EntityID, members []*world.Session) []*world.Session {
+	var near []*world.Session
+	at := ms.Tf(victim).Center()
+	for _, member := range members {
+		if s.PlayerOn(ms, member.ID) == nil || !s.earnsXP(ms, member) {
+			continue
+		}
+		if c := ms.Tf(member.ID).Center(); math.Hypot(c.X-at.X, c.Y-at.Y) <= PartyXpShareRadius {
+			near = append(near, member)
+		}
+	}
+	return near
 }
 
 func validateObjectLayers(cache map[string]*ObjectLayer) error {

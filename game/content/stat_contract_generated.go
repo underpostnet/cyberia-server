@@ -8,6 +8,9 @@ const StatModifierMax = 100
 func (r ProgressionRules) validScalarBounds() bool {
 	return r.MaxLevel >= 1 && r.MaxLevel <= 65535 && r.XpPerLevel >= 1 && r.XpPerLevel <= 1000000 && r.KillXp >= 0 && r.KillXp <= 1000000 && r.QuestXp >= 0 && r.QuestXp <= 1000000 && r.ObjectiveXp >= 0 && r.ObjectiveXp <= 1000000 && r.MinAwardIntervalMs >= 1 && r.MinAwardIntervalMs <= 60000 && r.RepeatWindowMs >= 1000 && r.RepeatWindowMs <= 3600000 && r.MaxRepeatAwards >= 1 && r.MaxRepeatAwards <= 100 && r.MaxAwardsPerWindow >= 1 && r.MaxAwardsPerWindow <= 1000 && r.DefaultBotLevel >= 1 && r.DefaultBotLevel <= 65535
 }
+func (r EconomyRules) validBounds() bool {
+	return r.BotSpawnCoins >= 0 && r.BotSpawnCoins <= 1000000 && r.PlayerSpawnCoins >= 0 && r.PlayerSpawnCoins <= 1000000 && r.CoinKillMinAmount >= 0 && r.CoinKillMinAmount <= 1000000 && r.CoinKillPercentVsBot >= 0 && r.CoinKillPercentVsBot <= 1 && r.CoinKillPercentVsPlayer >= 0 && r.CoinKillPercentVsPlayer <= 1 && r.RespawnCostPercent >= 0 && r.RespawnCostPercent <= 1
+}
 
 var statNames = [StatCount]string{"effect", "resistance", "agility", "range", "intelligence", "utility"}
 var statEffectiveFloors = [StatCount]float64{1, 0, -90, 0, 0, 0}
@@ -62,3 +65,21 @@ func defaultProgressionRules() ProgressionRules {
 		DefaultBotLevel:    1,
 	}
 }
+
+// CapacityRule is the open stack slots of a player container at each level.
+type CapacityRule struct{ Base, Step, Every, Max int }
+
+// Slots is the number of open slots at level.
+func (r CapacityRule) Slots(level int) int {
+	return min(r.Max, r.Base+r.Step*((max(level, 1)-1)/r.Every))
+}
+
+var InventoryCapacity = CapacityRule{Base: 8, Step: 1, Every: 3, Max: 24}
+var StorageCapacity = CapacityRule{Base: 16, Step: 2, Every: 5, Max: 40}
+
+const PartyMaxMembers = 5
+const PartyInvitesMax = 5
+
+// PartyXpShareRadius is the most cells between the centres of a party member and a bot it shares the kill of.
+const PartyXpShareRadius = 10
+const ChatTextMaxRunes = 160

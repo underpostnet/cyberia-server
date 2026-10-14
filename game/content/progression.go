@@ -85,23 +85,26 @@ const (
 	xpObjective
 )
 
-// award accepts resolved gameplay events from the simulation.
-func (p *EntityProgression) award(r ProgressionRules, event progressionEvent, key string, targetLevel int, now time.Time) uint64 {
+// reward is the base XP of an event.
+func (r ProgressionRules) reward(event progressionEvent) int {
+	switch event {
+	case XpKill:
+		return r.KillXp
+	case xpQuest:
+		return r.QuestXp
+	case xpObjective:
+		return r.ObjectiveXp
+	}
+	return 0
+}
+
+// award accepts resolved gameplay events from the simulation. reward is the
+// base XP before the anti-farming cuts of this earner.
+func (p *EntityProgression) award(r ProgressionRules, event progressionEvent, reward int, key string, targetLevel int, now time.Time) uint64 {
 	if p.Frozen || p.Level < 1 || p.Level >= r.MaxLevel || key == "" {
 		return 0
 	}
-	var reward int
-	switch event {
-	case XpKill:
-		reward = r.KillXp
-	case xpQuest:
-		reward = r.QuestXp
-	case xpObjective:
-		reward = r.ObjectiveXp
-	default:
-		return 0
-	}
-	if reward == 0 || now.Before(p.lastAward) || (event != xpQuest && now.Sub(p.lastAward) < time.Duration(r.MinAwardIntervalMs)*time.Millisecond) {
+	if reward <= 0 || now.Before(p.lastAward) || (event != xpQuest && now.Sub(p.lastAward) < time.Duration(r.MinAwardIntervalMs)*time.Millisecond) {
 		return 0
 	}
 	if now.Before(p.windowStart) {

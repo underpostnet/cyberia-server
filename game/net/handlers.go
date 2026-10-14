@@ -8,6 +8,7 @@ import (
 
 	"cyberia-server/game/content"
 	"cyberia-server/game/sim"
+	"cyberia-server/game/social"
 	"cyberia-server/game/world"
 	"cyberia-server/logx"
 
@@ -143,9 +144,10 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// A player is placed by nothing, so its whole stack comes from its default — read the one way
 	// every entity type reads it.
 	playerOLs := s.SpawnObjectLayers("player", nil, true)
+	s.SeatStacks(playerOLs, 0)
 	playerState := &world.Session{
 		ID:        playerID,
-		EngineID:  uuid.New().String(),
+		PlayerID:  world.PlayerID(uuid.New().String()),
 		MapCode:   startMapCode,
 		Path:      []world.Cell{},
 		TargetPos: world.Cell{X: -1, Y: -1},
@@ -166,6 +168,7 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	playerState.Client = client
 
 	s.Sessions[playerID] = playerState
+	s.Social.Join(playerState)
 	startMapState.Spawn(playerID, world.EntityData{Kind: world.EntityPlayer}, world.Transform{
 		Pos:  world.Vec2{X: float64(startPosI.X), Y: float64(startPosI.Y)},
 		Size: playerDims,
@@ -195,11 +198,12 @@ func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	// every visual value through /api/v1/cyberia-client-hints using its own
 	// CYBERIA_CLIENT_HINTS_CODE.
 	initPayload := InitPayload{
-		EngineID:       playerState.EngineID,
+		PlayerID:       playerState.PlayerID,
+		MaxLevel:       s.ProgressionConfig().MaxLevel,
 		GridW:          startMapState.GridW(),
 		GridH:          startMapState.GridH(),
 		AoiRadius:      s.aoiRadius,
-		ObjectLayers:   s.VisibleInventory(startMapState.Ap(playerID).Layers),
+		ObjectLayers:   s.InventoryView(startMapState.Ap(playerID).Layers),
 		SkillMap:       s.buildSkillMap(),
 		EntityDefaults: s.BuildEntityDefaultsSlice(),
 		DeadItemIds:    s.DeadItemIDList(),
@@ -246,6 +250,8 @@ func (s *GameServer) detachClient(client *Client) {
 	client.detached = true
 	delete(s.clients, client.playerID)
 	delete(s.Sessions, client.playerID)
+	s.Social.Leave(client.playerState)
+	s.ForgetPlayer(client.playerState.PlayerID)
 	// Sweep every map: a portal can move a player after MapCode was read.
 	for _, mapState := range s.Maps {
 		s.Despawn(mapState, client.playerID)
@@ -305,7 +311,12 @@ var inputKinds = map[string]world.InputKind{
 	"shop_buy":      world.InputKindShopBuy,
 	"craft_item":    world.InputKindCraftItem,
 	"craft_cancel":  world.InputKindCraftCancel,
-	"item_ops":      world.InputKindItemOps,
+	"item_move":     world.InputKindItemMove,
+	"party_invite":  world.InputKindPartyInvite,
+	"party_reply":   world.InputKindPartyReply,
+	"party_leave":   world.InputKindPartyLeave,
+	"party_kick":    world.InputKindPartyKick,
+	"party_disband": world.InputKindPartyDisband,
 }
 
 // inputPayload holds every client event payload field. Each event type fills
@@ -319,21 +330,30 @@ type inputPayload struct {
 	Y float64 `json:"y"`
 
 	ItemID string `json:"itemId"` // item_active, shop_buy
+	Slot   int    `json:"slot"`   // item_active
 	Active bool   `json:"active"` // item_active
 
 	Stasis bool `json:"stasis"` // player_stasis
 
-	ToID world.EntityID `json:"toId"` // chat
-	Text string         `json:"text"`
+	Channel string         `json:"channel"` // chat
+	ToID    world.EntityID `json:"toId"`    // chat direct, party_invite, party_kick
+	Text    string         `json:"text"`
 
-	EntityID   world.EntityID `json:"entityId"`   // talk_done, quest_accept, shop_buy, item_ops
+	FromID world.EntityID `json:"fromId"` // party_reply
+	Accept bool           `json:"accept"` // party_reply
+
+	EntityID   world.EntityID `json:"entityId"`   // talk_done, quest_accept, shop_buy, item_move to a vault
 	DialogCode string         `json:"dialogCode"` // talk_done
 	QuestCode  string         `json:"questCode"`  // quest_*
 
 	Quantity    int `json:"quantity"`    // shop_buy
 	RecipeIndex int `json:"recipeIndex"` // craft_item
 
-	Ops []world.ItemOp `json:"ops"` // item_ops
+	From     string `json:"from"` // item_move
+	To       string `json:"to"`
+	FromSlot int    `json:"fromSlot"`
+	ToSlot   int    `json:"toSlot"`
+	Qty      int    `json:"qty"`
 }
 
 // eventsPayload is the payload of "events", the one uplink input message.
@@ -413,19 +433,23 @@ func parseInput(msgType string, p *inputPayload) (world.InputCommand, bool) {
 		cmd.TargetX = p.X
 		cmd.TargetY = p.Y
 	case world.InputKindItemActivation:
-		if p.ItemID == "" || !sim.ValidIdentifier(p.ItemID) {
+		if p.ItemID == "" || !sim.ValidIdentifier(p.ItemID) || p.Slot < world.WalletSlot || p.Slot >= content.StorageMaxSlots {
 			return world.InputCommand{}, false
 		}
 		cmd.ItemID = p.ItemID
+		cmd.Slot = p.Slot
 		cmd.Active = p.Active
 	case world.InputKindPlayerStasis:
 		cmd.Active = p.Stasis
 	case world.InputKindChat:
-		if p.ToID == 0 || p.Text == "" {
+		channel, known := world.ParseChatChannel(p.Channel)
+		text := social.CleanText(p.Text)
+		if !known || text == "" || (channel == world.ChatDirect) != (p.ToID != 0) {
 			return world.InputCommand{}, false
 		}
+		cmd.ChatChannel = channel
 		cmd.EntityID = p.ToID
-		cmd.ChatText = sim.TruncateRunes(p.Text, sim.MaxChatRunes)
+		cmd.ChatText = text
 	case world.InputKindTalkDone:
 		if p.EntityID == 0 || !sim.ValidIdentifier(p.DialogCode) {
 			return world.InputCommand{}, false
@@ -456,20 +480,43 @@ func parseInput(msgType string, p *inputPayload) (world.InputCommand, bool) {
 		}
 		cmd.EntityID = p.EntityID
 		cmd.RecipeIndex = p.RecipeIndex
-	case world.InputKindItemOps:
-		// Trust boundary: the list replays under s.mu, so its length is capped.
-		if p.EntityID == 0 || len(p.Ops) == 0 || len(p.Ops) > content.StorageMaxSlots {
+	case world.InputKindItemMove:
+		move, ok := parseItemMove(p)
+		if !ok {
 			return world.InputCommand{}, false
 		}
-		for _, op := range p.Ops {
-			if op.ItemID == "" || !sim.ValidIdentifier(op.ItemID) || op.Qty <= 0 {
-				return world.InputCommand{}, false
-			}
-		}
 		cmd.EntityID = p.EntityID
-		cmd.Ops = p.Ops
+		cmd.Move = move
+	case world.InputKindPartyInvite, world.InputKindPartyKick:
+		if p.ToID == 0 {
+			return world.InputCommand{}, false
+		}
+		cmd.EntityID = p.ToID
+	case world.InputKindPartyReply:
+		if p.FromID == 0 {
+			return world.InputCommand{}, false
+		}
+		cmd.EntityID = p.FromID
+		cmd.Active = p.Accept
 	}
 	return cmd, true
+}
+
+// parseItemMove validates one move at the trust boundary: both places name a
+// known box and a slot in range, the wallet slot belongs to the bag, a vault
+// move names its terminal, and a move joins the bag and at most one container.
+func parseItemMove(p *inputPayload) (world.ItemMove, bool) {
+	from, knownFrom := world.ParseBox(p.From)
+	to, knownTo := world.ParseBox(p.To)
+	inRange := func(box world.Box, slot int) bool {
+		return (slot >= 0 && slot < content.StorageMaxSlots) || (box == world.BoxBag && slot == world.WalletSlot)
+	}
+	vault := from == world.BoxVault || to == world.BoxVault
+	if !knownFrom || !knownTo || !inRange(from, p.FromSlot) || !inRange(to, p.ToSlot) || p.Qty < 1 ||
+		vault != (p.EntityID != 0) || (from != world.BoxBag && to != world.BoxBag && from != to) {
+		return world.ItemMove{}, false
+	}
+	return world.ItemMove{From: from, To: to, FromSlot: p.FromSlot, ToSlot: p.ToSlot, Qty: sim.ClampQuantity(p.Qty)}, true
 }
 
 // evict closes an abusive connection. The read loop ends on the closed socket

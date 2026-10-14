@@ -13,7 +13,8 @@
 //	self.craft (snapshot)      — the running assembly, absent when none runs
 //
 // The client makes the same checks before it sends, so a refusal is a desync
-// and the server drops it without an answer.
+// and the server drops it without an answer. The assembly holds the slots of
+// its ingredients and outputs (capacity.go), so its payout and refund fit.
 //
 // Caller MUST hold s.mu for every handler here (they run inside phaseInput).
 package content
@@ -35,8 +36,8 @@ const craftMaxTimeMs = 60000
 type ActiveCraft struct {
 	EntityID    world.EntityID
 	RecipeIndex int
-	Refund      []ActionCraftItem
-	Outputs     []ActionCraftItem
+	Refund      []Stack
+	Outputs     []Stack
 	CompleteAt  time.Time
 }
 
@@ -83,10 +84,11 @@ func (s *Content) playerCanCraft(player *world.Session, recipe *ActionCraftRecip
 	return true
 }
 
-// HandleCraftItem starts an assembly: validate the assembler, the recipe and
-// every ingredient, then consume the inputs and arm the timer. Consuming up
-// front is what lets the client play the ingredient-loss animation the moment
-// the progress bar starts; a cancel before completion refunds them.
+// HandleCraftItem starts an assembly: validate the assembler, the recipe,
+// every ingredient and the room for the outputs, then consume the inputs and
+// arm the timer. Consuming up front is what lets the client play the
+// ingredient-loss animation the moment the progress bar starts; a cancel
+// before completion refunds them.
 //
 // Caller MUST hold s.mu.
 func (s *Content) HandleCraftItem(player *world.Session, cmd *world.InputCommand) {
@@ -98,7 +100,7 @@ func (s *Content) HandleCraftItem(player *world.Session, cmd *world.InputCommand
 	}
 	id := cmd.EntityID
 	ms := s.findBot(id)
-	if ms == nil || !s.botInPlayerRange(player, id, ms) {
+	if ms == nil || !s.inPlayerView(player, id, ms) {
 		return
 	}
 	recipe := craftRecipeAt(s.actionCache[id], cmd.RecipeIndex)
@@ -106,11 +108,13 @@ func (s *Content) HandleCraftItem(player *world.Session, cmd *world.InputCommand
 		return
 	}
 	// All-or-nothing: a partial consume would burn ingredients for nothing.
-	if !s.playerCanCraft(player, recipe) {
+	// The ingredients stay in their slots as the refund, so the outputs need
+	// room beside them.
+	if !s.playerCanCraft(player, recipe) || !s.InventoryFits(player, nil, recipe.OutputItems) {
 		return
 	}
 
-	refund := make([]ActionCraftItem, 0, len(recipe.Ingredients))
+	refund := make([]Stack, 0, len(recipe.Ingredients))
 	for _, in := range recipe.Ingredients {
 		if in.Qty <= 0 {
 			continue
@@ -127,7 +131,7 @@ func (s *Content) HandleCraftItem(player *world.Session, cmd *world.InputCommand
 		EntityID:    id,
 		RecipeIndex: cmd.RecipeIndex,
 		Refund:      refund,
-		Outputs:     append([]ActionCraftItem(nil), recipe.OutputItems...),
+		Outputs:     append([]Stack(nil), recipe.OutputItems...),
 		CompleteAt:  time.Now().Add(time.Duration(durationMs) * time.Millisecond),
 	}
 
@@ -141,13 +145,10 @@ func (s *Content) HandleCraftItem(player *world.Session, cmd *world.InputCommand
 // Caller MUST hold s.mu.
 func (s *Content) HandleCraftCancel(player *world.Session) {
 	active := s.crafts[player.ID]
-	if active == nil {
+	if active == nil || !s.ExchangeItems(player, nil, active.Refund) {
 		return
 	}
 	delete(s.crafts, player.ID)
-	for _, in := range active.Refund {
-		s.AddPlayerItem(player, in.ItemID, in.Qty)
-	}
 	logx.Debugf("[CRAFT] player %s cancelled recipe %d", player.ID, active.RecipeIndex)
 }
 
@@ -159,13 +160,10 @@ func (s *Content) CompleteCrafts(mapState *world.MapState) {
 	now := time.Now()
 	for player := range s.PlayersOn(mapState) {
 		active := s.crafts[player.ID]
-		if active == nil || now.Before(active.CompleteAt) {
+		if active == nil || now.Before(active.CompleteAt) || !s.ExchangeItems(player, nil, active.Outputs) {
 			continue
 		}
 		delete(s.crafts, player.ID)
-		for _, out := range active.Outputs {
-			s.AddPlayerItem(player, out.ItemID, out.Qty)
-		}
 		// An assembly is an inventory gain like any other — reconcile collect
 		// objectives so a quest step satisfied by assembling advances at once.
 		s.AdvancePlayerQuestsOnGain(player)

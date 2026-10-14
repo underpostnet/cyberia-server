@@ -54,19 +54,8 @@ type Content struct {
 	// entity_defaults.dead_item_ids (no hardcoded fallback).
 	DeadItemIDs map[string]bool
 
-	// Economy — Fountain & Sink model
-	// Fountains (coin injection)
-	CoinItemID       string
-	botSpawnCoins    int // coins every bot carries on spawn (infinite mint)
-	playerSpawnCoins int // coins given to player on first connect (guest wallet)
-	// Kill Transfer (redistribution)
-	coinKillPercentVsBot    float64 // fraction of victim coins transferred: PvE
-	coinKillPercentVsPlayer float64 // fraction of victim coins transferred: PvP (gentler)
-	coinKillMinAmount       int     // floor — every kill always pays this
-	// Sinks (coin removal; all default to 0 = disabled in alpha)
-	respawnCostPercent float64 // fraction burned on player death
-	portalFee          int     // flat fee per portal use
-	craftingFeePercent float64 // fraction of item value burned on crafting
+	CoinItemID string
+	economy    EconomyRules
 
 	// Regen
 	LifeRegenChance float64
@@ -91,10 +80,11 @@ type Content struct {
 	//   questDefs    — questCode → CyberiaQuest definition (steps/rewards).
 	// Both are rebuilt on every world (re)build; access is under s.mu.
 	actionCache map[world.EntityID]*CyberiaAction
-	// Storage — per (player, action code) vault contents. Session state
-	// only; the slot shape is the future persistence document.
-	Storage   map[StorageKey][]StorageSlot
-	questDefs map[string]*CyberiaQuest
+	// Vaults holds the NPC vaults of each player by action code, and
+	// PersonalStorage the personal storage of each player (storage.go).
+	Vaults          map[world.PlayerID]map[string][]Stack
+	PersonalStorage map[world.PlayerID][]Stack
+	questDefs       map[string]*CyberiaQuest
 	// Progression is the level and XP of each mortal entity. despawn deletes
 	// the row.
 	Progression map[world.EntityID]*EntityProgression
@@ -148,23 +138,7 @@ func (s *Content) ApplyConfig(cfg *pb.InstanceConfig, rules ProgressionRules) {
 	// Combat / death
 	s.CollisionLifeLoss = cfg.GetCollisionLifeLoss()
 
-	// Economy — Fountain & Sink model (nested EconomyRules proto message).
-	er := cfg.GetEconomyRules()
-	if er == nil {
-		er = &pb.EconomyRules{}
-	}
-	s.botSpawnCoins = int(er.GetBotSpawnCoins())
-	s.playerSpawnCoins = int(er.GetPlayerSpawnCoins())
-	s.coinKillPercentVsBot = er.GetCoinKillPercentVsBot()
-	s.coinKillPercentVsPlayer = er.GetCoinKillPercentVsPlayer()
-	if s.coinKillPercentVsPlayer == 0 {
-		// Default PvP to half the PvE rate if not explicitly set.
-		s.coinKillPercentVsPlayer = s.coinKillPercentVsBot * 0.5
-	}
-	s.coinKillMinAmount = int(er.GetCoinKillMinAmount())
-	s.respawnCostPercent = er.GetRespawnCostPercent()
-	s.portalFee = int(er.GetPortalFee())
-	s.craftingFeePercent = er.GetCraftingFeePercent()
+	s.economy = EconomyRulesFromProto(cfg.GetEconomyRules())
 	s.LifeRegenChance = cfg.GetLifeRegenChance()
 	s.MaxChance = cfg.GetMaxChance()
 

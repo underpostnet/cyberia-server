@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	"cyberia-server/logx"
 )
@@ -105,14 +106,17 @@ func (s *Sim) dispatchSkillsForEntity(casterID world.EntityID, mapState *world.M
 	}
 }
 
-// dispatchHeldSkills runs the held-item skills of every stack the caster holds, active or not.
-// A handler may spend units, so each stack is read from the live layers. Caller holds s.mu.
+// dispatchHeldSkills runs the held-item skills of every item the caster holds, active or not, once
+// per item however many stacks hold it. A handler may spend units, so each item is read from the
+// live layers. Caller holds s.mu.
 func (s *Sim) dispatchHeldSkills(casterID world.EntityID, mapState *world.MapState) {
+	ran := make(map[string]bool)
 	for i := 0; i < len(mapState.Ap(casterID).Layers); i++ {
 		layer := mapState.Ap(casterID).Layers[i]
-		if layer.Quantity < 1 {
+		if ran[layer.ItemID] || content.LayerQuantity(mapState.Ap(casterID).Layers, layer.ItemID) < 1 {
 			continue
 		}
+		ran[layer.ItemID] = true
 		for _, skillDef := range s.SkillConfig[layer.ItemID] {
 			if handler, ok := heldSkillRegistry[skillDef.LogicEventID]; ok {
 				handler(s, SkillContext{
