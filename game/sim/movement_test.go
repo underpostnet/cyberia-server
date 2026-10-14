@@ -158,6 +158,19 @@ func TestStepCarriesPastANode(t *testing.T) {
 	}
 }
 
+// A re-plan drops the start cell when the player has passed it, so a turn never
+// walks back.
+func TestReplanDropsThePassedStartCell(t *testing.T) {
+	s, mapState, player := movementFixture(t)
+	mapState.Tf(player.ID).Pos = world.Vec2{X: 1.4, Y: 1}
+
+	tapTick(s, mapState, player, tap(1, 5, 1))
+
+	if len(player.Path) == 0 || player.Path[0] != (world.Cell{X: 2, Y: 1}) {
+		t.Fatalf("path = %v, want it to start at (2,1)", player.Path)
+	}
+}
+
 // A frozen player is refused movement outright, and the refusal must not leave a
 // pending intent behind to fire on a later tick.
 func TestFrozenPlayerNeverPlansMovement(t *testing.T) {

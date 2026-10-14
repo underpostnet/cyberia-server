@@ -95,6 +95,15 @@ func (s *Sim) flushPendingMove(player *world.Session, mapState *world.MapState) 
 	}
 
 	if len(newPath) > 0 {
+		// The search starts at the rounded cell. Drop each node the player has passed.
+		pos := mapState.Tf(player.ID).Pos
+		for len(newPath) > 1 {
+			head, next := newPath[0], newPath[1]
+			if (float64(head.X)-pos.X)*float64(next.X-head.X)+(float64(head.Y)-pos.Y)*float64(next.Y-head.Y) >= 0 {
+				break
+			}
+			newPath = newPath[1:]
+		}
 		first := newPath[0]
 		player.Path = newPath
 		player.TargetPos = usedTarget
