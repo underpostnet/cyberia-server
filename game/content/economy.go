@@ -1,60 +1,67 @@
 package content
 
-// economy.go — Fountain & Sink Economy Module
+// economy.go — the coin model of an instance.
 //
-// ┌─────────────────────────────────────────────────────────────────────────┐
-// │  COIN BALANCE DESIGN (flat + display split)                             │
-// │                                                                         │
-// │  entity.Coins uint32   ← SINGLE SOURCE OF TRUTH for all economy logic  │
-// │                           O(1) read/write, no OL traversal.             │
-// │                                                                         │
-// │  coin ObjectLayer slot ← DISPLAY ONLY (inventory bar / modal)          │
-// │    .Active   = false     coins can never be "worn" or activated.        │
-// │    .Quantity = Coins     synced by syncCoinOL() on every mutation.      │
-// │                                                                         │
-// │  WHY SPLIT:                                                             │
-// │  • Economy math uses Coins directly (O(1)); avoids iterating OLs.      │
-// │  • Coin slot is always Active:false — inventory UI reflects this        │
-// │    with a lock indicator (non-activable) automatically.                 │
-// │  • No risk of coin OL being activated by the item_activation handler.  │
-// │  • ObjectLayer.activable:false is enforced server-side and visible      │
-// │    to the C client via the ObjectLayer metadata fetch.                  │
-// │                                                                         │
-// │  FOUNTAINS  (new coin supply enters the economy)                        │
-// │  • botSpawnCoins    — each bot spawns carrying N coins; reset on        │
-// │                       every respawn → infinite mint bounded by kill     │
-// │                       activity rate.                                    │
-// │  • playerSpawnCoins — starting wallet for every guest session.          │
-// │                       Currently in-memory only (no DB persistence).     │
-// │                                                                         │
-// │  KILL LOOT  (zero-sum redistribution via grid drops)                    │
-// │  Every kill scatters the victim's coin stake as a grid token that only  │
-// │  damage contributors — players and bots — may race to collect (loot.go).│
-// │  One model for every victim; a kill with no contributor drops nothing.  │
-// │  Victim │ rate field               │ amount source                      │
-// │  Bot    │ coinKillPercentVsBot     │ botCoinDropAmount                  │
-// │  Player │ coinKillPercentVsPlayer  │ pvpCoinDropAmount                  │
-// │  Floor: amount < coinKillMinAmount → use minimum instead.              │
-// │                                                                         │
-// │  SINKS  (coin removal; all 0 = disabled by default)                    │
-// │  • respawnCostPercent  — fraction burned on player death                │
-// │  • portalFee           — flat fee per portal use                        │
-// │  • craftingFeePercent  — fraction of item value burned on crafting      │
-// │                                                                         │
-// │  FCT AND AUDIO EVENTS                                                   │
-// │  Damage and regen broadcast to the AOI; XP goes to its earner only.     │
-// │  Coin changes emit no FCT — the inventory-bar quantity FX shows them.   │
-// │  Item gains emit no FCT — that feedback lives in the loot grid.         │
-// │  A defeat and a level gained broadcast their audio id to the AOI, so    │
-// │  every viewer hears the same event.                                     │
-// └─────────────────────────────────────────────────────────────────────────┘
+// Session.Coins of a player and Brain.Coins of a bot hold every balance. The
+// coin ObjectLayer stack only shows it: SyncCoinOL keeps it inactive and at the
+// balance.
+//
+// Where coins come from and go:
+//   - A new session starts with PlayerSpawnCoins. The wallet ends with the session.
+//   - A bot holds BotSpawnCoins at each spawn. Its death drop is new coins: the
+//     wallet stays with the bot until its respawn resets it.
+//   - A dead player loses its drop to a loot token. A death without damage
+//     contributors drops nothing.
+//   - A contributor, player or bot, that collects a coin token gains its coins.
+//     An uncollected token expires with them.
+//   - A price or a cost in coins leaves the economy. A reward in coins enters it.
+//     A vault moves coins between the wallet and the vault.
+//   - RespawnCostPercent burns a share of the coins of a dead player. 0 disables it.
+//
+// Damage and regen text reaches every viewer; XP text reaches its earner only.
+// A coin or item change shows no text: the inventory bar and the loot grid show it.
 
 import (
+	"fmt"
 	"math"
+	"slices"
 
 	"cyberia-server/game/world"
+	pb "cyberia-server/gen/proto"
 	"cyberia-server/logx"
 )
+
+// EconomyRules is the coin model of an instance. A rate is a fraction of 1 of
+// the coins of the victim, by the type of the victim.
+type EconomyRules struct {
+	BotSpawnCoins, PlayerSpawnCoins, CoinKillMinAmount                int
+	CoinKillPercentVsBot, CoinKillPercentVsPlayer, RespawnCostPercent float64
+}
+
+func EconomyRulesFromProto(p *pb.EconomyRules) EconomyRules {
+	return EconomyRules{
+		BotSpawnCoins: int(p.GetBotSpawnCoins()), PlayerSpawnCoins: int(p.GetPlayerSpawnCoins()),
+		CoinKillMinAmount: int(p.GetCoinKillMinAmount()), CoinKillPercentVsBot: p.GetCoinKillPercentVsBot(),
+		CoinKillPercentVsPlayer: p.GetCoinKillPercentVsPlayer(), RespawnCostPercent: p.GetRespawnCostPercent(),
+	}
+}
+
+// Validate refuses a rule outside the bounds of the engine contract.
+func (r EconomyRules) Validate() error {
+	if !r.validBounds() {
+		return fmt.Errorf("invalid economy rules")
+	}
+	return nil
+}
+
+// killDrop is what a death drops of balance at rate: at least the minimum, and
+// never more than the balance.
+func (r EconomyRules) killDrop(balance int, rate float64) int {
+	if balance <= 0 {
+		return 0
+	}
+	return min(balance, max(int(math.Floor(float64(balance)*rate)), r.CoinKillMinAmount))
+}
 
 // ── Wire message helpers ──────────────────────────────────────────────────
 
@@ -117,7 +124,7 @@ func (s *Content) setCoins(id world.EntityID, ms *world.MapState, amount uint32)
 // AddCoins adds delta to the balance of id (clamped to [0, MaxUint32]) and
 // syncs the display coin OL slot. Returns the new balance.
 func (s *Content) AddCoins(id world.EntityID, ms *world.MapState, delta int) uint32 {
-	next := uint32(max(int(*s.wallet(id, ms))+delta, 0))
+	next := uint32(min(max(int64(*s.wallet(id, ms))+int64(delta), 0), math.MaxUint32))
 	s.setCoins(id, ms, next)
 	return next
 }
@@ -150,39 +157,34 @@ func LayerQuantity(layers []world.ObjectLayerState, itemID string) int {
 	return total
 }
 
-// RemoveLayerItem drains qty of itemID from the stacks of layers. An emptied stack leaves them, so
-// it leaves the inventory bar.
+// RemoveLayerItem drains qty of itemID from the stacks of layers one stack at a
+// time: the stacks not worn first, each in slot order. An emptied stack leaves
+// them, and its slot frees.
 func RemoveLayerItem(layers *[]world.ObjectLayerState, itemID string, qty int) {
-	kept := (*layers)[:0]
-	for _, ol := range *layers {
-		if ol.ItemID == itemID && qty > 0 {
-			take := min(ol.Quantity, qty)
-			ol.Quantity -= take
-			qty -= take
-			if ol.Quantity <= 0 {
-				continue
-			}
+	var order []int
+	for i := range *layers {
+		if (*layers)[i].ItemID == itemID {
+			order = append(order, i)
 		}
-		kept = append(kept, ol)
 	}
-	*layers = kept
-}
-
-// AddPlayerItem credits qty of itemID to the player's inventory — the single
-// grant path for quest rewards, shop purchases, and any future item fountain.
-// Coins route through the flat balance so the display slot stays in sync;
-// everything else lands on its ObjectLayer stack, inactive. The counterpart of
-// removePlayerItem (quest.go).
-func (s *Content) AddPlayerItem(player *world.Session, itemID string, qty int) {
-	if itemID == "" || qty <= 0 {
-		return
+	slices.SortStableFunc(order, func(a, b int) int {
+		la, lb := (*layers)[a], (*layers)[b]
+		switch {
+		case la.Active == lb.Active:
+			return la.Slot - lb.Slot
+		case la.Active:
+			return 1
+		}
+		return -1
+	})
+	for _, i := range order {
+		take := min((*layers)[i].Quantity, qty)
+		(*layers)[i].Quantity -= take
+		qty -= take
 	}
-	if itemID == s.CoinItemID {
-		s.AddCoins(player.ID, s.Maps[player.MapCode], qty)
-	} else {
-		getOrCreateItemOL(&s.Ap(player.ID, player.MapCode).Layers, itemID).Quantity += qty
-	}
-	// Either branch can append a slot, so the cached stat block is stale.
+	*layers = slices.DeleteFunc(*layers, func(layer world.ObjectLayerState) bool {
+		return layer.ItemID == itemID && layer.Quantity <= 0
+	})
 }
 
 // ── Fountain helpers ──────────────────────────────────────────────────────
@@ -190,72 +192,41 @@ func (s *Content) AddPlayerItem(player *world.Session, itemID string, qty int) {
 // FountainInitPlayer credits the player's starting wallet on first connect.
 // It always runs, so the seeded coin slot mirrors the balance even at zero.
 func (s *Content) FountainInitPlayer(player *world.Session) {
-	s.setCoins(player.ID, s.Maps[player.MapCode], uint32(max(s.playerSpawnCoins, 0)))
+	s.setCoins(player.ID, s.Maps[player.MapCode], uint32(s.economy.PlayerSpawnCoins))
 }
 
-// FountainInitBot credits a bot's coin pool at spawn / respawn time.
-// Implements the botSpawnCoins fountain (infinite mint bounded by kill rate).
+// FountainInitBot sets the wallet of a bot at spawn and respawn.
 func (s *Content) FountainInitBot(id world.EntityID, ms *world.MapState) {
-	s.setCoins(id, ms, uint32(max(s.botSpawnCoins, 0)))
+	s.setCoins(id, ms, uint32(s.economy.BotSpawnCoins))
 }
 
 // ── Kill loot amounts ─────────────────────────────────────────────────────
 
-// PvpCoinDropAmount computes how many coins a dead player scatters as a grid
-// drop, mirroring botCoinDropAmount at the vs-player rate: the victim's
-// balance, floored, with the configured minimum, capped at the balance.
-// Players carry only what they hold (no mint). Caller holds s.mu.
+// PvpCoinDropAmount is what a dead player drops of its wallet. Caller holds s.mu.
 func (s *Content) PvpCoinDropAmount(player *world.Session) int {
-	effectiveBalance := int(player.Coins)
-	if effectiveBalance <= 0 {
-		return 0
-	}
-	amount := int(math.Floor(float64(effectiveBalance) * s.coinKillPercentVsPlayer))
-	if s.coinKillMinAmount > 0 && amount < s.coinKillMinAmount {
-		amount = s.coinKillMinAmount
-	}
-	if amount > effectiveBalance {
-		amount = effectiveBalance
-	}
-	return amount
+	return s.economy.killDrop(int(player.Coins), s.economy.CoinKillPercentVsPlayer)
 }
 
-// BotCoinDropAmount computes how many coins a dead bot scatters, mirroring the
-// PvE kill-transfer formula: the bot's balance (minted up to botSpawnCoins) at
-// the vs-bot rate, floored, with the configured minimum. Caller holds s.mu.
+// BotCoinDropAmount is what a dead bot drops, of at least BotSpawnCoins.
+// Caller holds s.mu.
 func (s *Content) BotCoinDropAmount(id world.EntityID, ms *world.MapState) int {
-	effectiveBalance := int(ms.Br(id).Coins)
-	if effectiveBalance < s.botSpawnCoins {
-		effectiveBalance = s.botSpawnCoins
-	}
-	if effectiveBalance <= 0 {
-		return 0
-	}
-	amount := int(math.Floor(float64(effectiveBalance) * s.coinKillPercentVsBot))
-	if s.coinKillMinAmount > 0 && amount < s.coinKillMinAmount {
-		amount = s.coinKillMinAmount
-	}
-	if amount > effectiveBalance {
-		amount = effectiveBalance
-	}
-	return amount
+	return s.economy.killDrop(max(int(ms.Br(id).Coins), s.economy.BotSpawnCoins), s.economy.CoinKillPercentVsBot)
 }
 
 // ── Sink helpers ──────────────────────────────────────────────────────────
 
-// SinkRespawnCost burns a percentage of the dead player's coins on respawn.
-// Alpha default: respawnCostPercent = 0.0 (disabled).
+// SinkRespawnCost burns RespawnCostPercent of the coins of a dead player.
 func (s *Content) SinkRespawnCost(player *world.Session) {
-	if s.respawnCostPercent <= 0 {
+	if s.economy.RespawnCostPercent <= 0 {
 		return
 	}
 	balance := int(player.Coins)
-	burn := int(math.Floor(float64(balance) * s.respawnCostPercent))
+	burn := int(math.Floor(float64(balance) * s.economy.RespawnCostPercent))
 	if burn <= 0 {
 		return
 	}
 	// No coin FCT — balance changes surface in the inventory-bar quantity FX.
 	s.AddCoins(player.ID, s.Maps[player.MapCode], -burn)
 	logx.Debugf("[ECONOMY] Respawn sink: %s burned %d coins (%.0f%%)",
-		player.ID, burn, s.respawnCostPercent*100)
+		player.ID, burn, s.economy.RespawnCostPercent*100)
 }

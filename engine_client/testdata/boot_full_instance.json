@@ -133,12 +133,10 @@
       "economyRules": {
         "botSpawnCoins": 50,
         "playerSpawnCoins": 50,
+        "coinKillMinAmount": 10,
         "coinKillPercentVsBot": 0.4,
         "coinKillPercentVsPlayer": 0.15,
-        "coinKillMinAmount": 10,
-        "respawnCostPercent": 0,
-        "portalFee": 0,
-        "craftingFeePercent": 0
+        "respawnCostPercent": 0
       },
       "lifeRegenChance": 0.15,
       "maxChance": 0.95,

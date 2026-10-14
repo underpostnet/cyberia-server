@@ -1824,48 +1824,21 @@ func (x *SkillConfigEntry) GetSkills() []*SkillDetail {
 	return nil
 }
 
-// EconomyRules groups all Fountain & Sink economy parameters for one instance.
-//
-// Design: Fountain & Sink (EVE Online / WoW model)
-//
-//	Fountains   — inject new coins into the economy on every bot/player spawn.
-//	Kill Transfer — zero-sum redistribution between participants on a kill event.
-//	Sinks       — permanently destroy coins (alpha: all 0 / disabled by default).
-//
-// Off-chain fall-back: when a player has no on-chain session the server operates
-// a purely in-memory wallet that resets on reconnect.  All balances map 1-to-1
-// with the CKY ERC-1155 token (token ID 0) once the on-chain bridge is live.
+// EconomyRules is the coin model of one instance. The wallet is session state:
+// it starts at player_spawn_coins and ends with the session. A death drops a
+// share of the victim's coins as a loot token for its damage contributors. The
+// rate follows the type of the victim, whoever made the kill. A drop is at
+// least coin_kill_min_amount and never more than the victim holds.
 type EconomyRules struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ── Fountains ──────────────────────────────────────────────────────────────
-	// Coins bots carry at spawn and on every respawn (infinite mint source).
-	// Guarantees PvE reward loops are never blocked by an empty bot wallet.
-	BotSpawnCoins int32 `protobuf:"varint,1,opt,name=bot_spawn_coins,json=botSpawnCoins,proto3" json:"bot_spawn_coins,omitempty"`
-	// Player starting wallet on connect (no persistence — resets on reconnect).
-	// In guest mode this is the only coin source; persists only with on-chain auth.
-	PlayerSpawnCoins int32 `protobuf:"varint,2,opt,name=player_spawn_coins,json=playerSpawnCoins,proto3" json:"player_spawn_coins,omitempty"`
-	// ── Kill Transfer (zero-sum redistribution) ────────────────────────────────
-	// Fraction [0,1] of the victim's coins transferred to the killer on a PvE kill
-	// (player kills bot, or bot kills bot).  Higher than PvP rate to reward grinding.
-	CoinKillPercentVsBot float64 `protobuf:"fixed64,3,opt,name=coin_kill_percent_vs_bot,json=coinKillPercentVsBot,proto3" json:"coin_kill_percent_vs_bot,omitempty"`
-	// Fraction [0,1] transferred on a PvP kill.  Intentionally lower to reduce
-	// griefing frustration while still making PvP economically meaningful.
-	CoinKillPercentVsPlayer float64 `protobuf:"fixed64,4,opt,name=coin_kill_percent_vs_player,json=coinKillPercentVsPlayer,proto3" json:"coin_kill_percent_vs_player,omitempty"`
-	// Hard floor per kill: guarantees every successful kill pays at least this many
-	// coins regardless of the victim's wallet size or the percent rate.
-	CoinKillMinAmount int32 `protobuf:"varint,5,opt,name=coin_kill_min_amount,json=coinKillMinAmount,proto3" json:"coin_kill_min_amount,omitempty"`
-	// ── Sinks (alpha stubs — set to 0 to disable) ─────────────────────────────
-	// Fraction [0,1] of the dying player's coins permanently burned on respawn.
-	// Incentivises caution; 0 = disabled (recommended for alpha).
-	RespawnCostPercent float64 `protobuf:"fixed64,6,opt,name=respawn_cost_percent,json=respawnCostPercent,proto3" json:"respawn_cost_percent,omitempty"`
-	// Flat coins burned each time a player uses a portal (travel tax).
-	// Drains coin hoarding; 0 = disabled.
-	PortalFee int32 `protobuf:"varint,7,opt,name=portal_fee,json=portalFee,proto3" json:"portal_fee,omitempty"`
-	// Fraction [0,1] of item value burned on any crafting action (production tax).
-	// 0 = disabled until the crafting system is implemented.
-	CraftingFeePercent float64 `protobuf:"fixed64,8,opt,name=crafting_fee_percent,json=craftingFeePercent,proto3" json:"crafting_fee_percent,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	BotSpawnCoins           int32                  `protobuf:"varint,1,opt,name=bot_spawn_coins,json=botSpawnCoins,proto3" json:"bot_spawn_coins,omitempty"`                                    // the wallet of a bot at each spawn; a bot drop is new coins
+	PlayerSpawnCoins        int32                  `protobuf:"varint,2,opt,name=player_spawn_coins,json=playerSpawnCoins,proto3" json:"player_spawn_coins,omitempty"`                           // the wallet of a new session
+	CoinKillPercentVsBot    float64                `protobuf:"fixed64,3,opt,name=coin_kill_percent_vs_bot,json=coinKillPercentVsBot,proto3" json:"coin_kill_percent_vs_bot,omitempty"`          // fraction [0,1] of its coins a dead bot drops
+	CoinKillPercentVsPlayer float64                `protobuf:"fixed64,4,opt,name=coin_kill_percent_vs_player,json=coinKillPercentVsPlayer,proto3" json:"coin_kill_percent_vs_player,omitempty"` // fraction [0,1] of its coins a dead player drops
+	CoinKillMinAmount       int32                  `protobuf:"varint,5,opt,name=coin_kill_min_amount,json=coinKillMinAmount,proto3" json:"coin_kill_min_amount,omitempty"`                      // least coins a death drops, capped at what the victim holds
+	RespawnCostPercent      float64                `protobuf:"fixed64,6,opt,name=respawn_cost_percent,json=respawnCostPercent,proto3" json:"respawn_cost_percent,omitempty"`                    // fraction [0,1] of its coins a dead player burns; 0 disables
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *EconomyRules) Reset() {
@@ -1936,20 +1909,6 @@ func (x *EconomyRules) GetCoinKillMinAmount() int32 {
 func (x *EconomyRules) GetRespawnCostPercent() float64 {
 	if x != nil {
 		return x.RespawnCostPercent
-	}
-	return 0
-}
-
-func (x *EconomyRules) GetPortalFee() int32 {
-	if x != nil {
-		return x.PortalFee
-	}
-	return 0
-}
-
-func (x *EconomyRules) GetCraftingFeePercent() float64 {
-	if x != nil {
-		return x.CraftingFeePercent
 	}
 	return 0
 }
@@ -3370,17 +3329,15 @@ const file_cyberia_proto_rawDesc = "" +
 	"\x04name\x18\x04 \x01(\tR\x04name\"\xdf\x01\n" +
 	"\x10SkillConfigEntry\x12&\n" +
 	"\x0ftrigger_item_id\x18\x01 \x01(\tR\rtriggerItemId\x12,\n" +
-	"\x06skills\x18\a \x03(\v2\x14.cyberia.SkillDetailR\x06skillsJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\x10spawned_item_idsR\x0elogic_event_idR\x0flogic_event_idsR\vdescriptionR\x17summoned_entity_item_id\"\x8e\x03\n" +
+	"\x06skills\x18\a \x03(\v2\x14.cyberia.SkillDetailR\x06skillsJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\x10spawned_item_idsR\x0elogic_event_idR\x0flogic_event_idsR\vdescriptionR\x17summoned_entity_item_id\"\xeb\x02\n" +
 	"\fEconomyRules\x12&\n" +
 	"\x0fbot_spawn_coins\x18\x01 \x01(\x05R\rbotSpawnCoins\x12,\n" +
 	"\x12player_spawn_coins\x18\x02 \x01(\x05R\x10playerSpawnCoins\x126\n" +
 	"\x18coin_kill_percent_vs_bot\x18\x03 \x01(\x01R\x14coinKillPercentVsBot\x12<\n" +
 	"\x1bcoin_kill_percent_vs_player\x18\x04 \x01(\x01R\x17coinKillPercentVsPlayer\x12/\n" +
 	"\x14coin_kill_min_amount\x18\x05 \x01(\x05R\x11coinKillMinAmount\x120\n" +
-	"\x14respawn_cost_percent\x18\x06 \x01(\x01R\x12respawnCostPercent\x12\x1d\n" +
-	"\n" +
-	"portal_fee\x18\a \x01(\x05R\tportalFee\x120\n" +
-	"\x14crafting_fee_percent\x18\b \x01(\x01R\x12craftingFeePercent\"\x91\x04\n" +
+	"\x14respawn_cost_percent\x18\x06 \x01(\x01R\x12respawnCostPercentJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\n" +
+	"portal_feeR\x14crafting_fee_percent\"\x91\x04\n" +
 	"\n" +
 	"SkillRules\x126\n" +
 	"\x17projectile_spawn_chance\x18\x01 \x01(\x01R\x15projectileSpawnChance\x124\n" +
