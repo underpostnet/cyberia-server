@@ -6,12 +6,13 @@
 //
 //	world  — every player on this server
 //	party  — the members of the sender's party
-//	direct — one player on the sender's map, and the sender
+//	direct — one player on the sender's map, or an accepted friend anywhere on
+//	         this server, and the sender
 //
 // Cross-process contract:
 //
 //	chat (client→server)     {channel, toId, text}
-//	chat (server→client)     {channel, fromId, fromName, toId, text}
+//	chat (server→client)     {channel, fromId, fromName, fromSkin, toId, text}
 //	chat_ack (server→client) {ok, reason, channel} — sent on a refusal only
 //
 // deliver is the one place a line reaches a recipient; a future mute or
@@ -58,6 +59,9 @@ type ChatLine struct {
 	Channel  string         `json:"channel"`
 	FromID   world.EntityID `json:"fromId"`
 	FromName string         `json:"fromName"`
+	// FromSkin is the active skin of the sender: the item that draws its
+	// identity beside the line.
+	FromSkin string         `json:"fromSkin,omitempty"`
 	ToID     world.EntityID `json:"toId,omitempty"`
 	Text     string         `json:"text"`
 }
@@ -87,12 +91,12 @@ func CleanText(text string) string {
 	return line
 }
 
-// Chat sends one clean line from sender on channel. A direct line goes to
-// target, which the caller found on the sender's map. It returns "" or the
-// reason it refused.
-func (s *Social) Chat(sender *world.Session, channel world.ChatChannel, target *world.Session, text string, now time.Time) string {
+// Chat sends one clean line from sender, whose active skin is skin, on
+// channel. A direct line goes to target: a player on the sender's map, or a
+// friend on any map. It returns "" or the reason it refused.
+func (s *Social) Chat(sender *world.Session, skin string, channel world.ChatChannel, target *world.Session, text string, now time.Time) string {
 	var recipients []*world.Session
-	line := ChatLine{Channel: channel.String(), FromID: sender.ID, FromName: sender.DisplayName, Text: text}
+	line := ChatLine{Channel: channel.String(), FromID: sender.ID, FromName: sender.DisplayName, FromSkin: skin, Text: text}
 	switch channel {
 	case world.ChatWorld:
 		for _, p := range s.online {
@@ -107,7 +111,8 @@ func (s *Social) Chat(sender *world.Session, channel world.ChatChannel, target *
 			recipients = append(recipients, s.online[id])
 		}
 	case world.ChatDirect:
-		if target == nil || target.PlayerID == sender.PlayerID {
+		if target == nil || target.PlayerID == sender.PlayerID ||
+			(target.MapCode != sender.MapCode && !s.Friends(sender, target)) {
 			return ReasonUnavailable
 		}
 		line.ToID = target.ID

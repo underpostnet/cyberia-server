@@ -1,10 +1,11 @@
-// Package social is the chat and the parties of the players on one game
-// server.
+// Package social is the chat, the parties and the friends of the players on
+// one game server.
 //
 // World chat reaches every player this server holds: one process runs one
 // instance. A party is a runtime group of up to content.PartyMaxMembers
-// players, led by its first member. Both end with the sessions; nothing
-// persists.
+// players, led by its first member. Chat and parties end with the sessions.
+// Friendships persist in the engine by account; this package keeps the
+// friends of each online account player to route direct lines and markers.
 //
 // Membership and invites key by world.PlayerID. The wire names a player by
 // its entity id, and the caller resolves the session first.
@@ -29,33 +30,45 @@ const (
 	ReasonNotLeader   = "not_leader"   // only the leader may do this
 	ReasonPartyFull   = "party_full"   // the party holds PartyMaxMembers
 	ReasonBusy        = "busy"         // the invited player holds too many invites
+	ReasonInvitesFull = "invites_full" // the inviter holds too many invites
 	ReasonExpired     = "expired"      // the invite was answered, withdrawn or timed out
 	ReasonNotMember   = "not_member"   // the player is not in the leader's party
+	ReasonGuest       = "guest"        // friends need an account on both sides
 )
 
-// Social holds the online players, the parties, the pending invites and the
-// chat budgets.
+// Social holds the online players, the parties, the pending invites, the
+// friends of the account players and the chat and friend budgets.
 type Social struct {
-	online  map[world.PlayerID]*world.Session
-	parties map[world.PlayerID]*Party
-	invites map[invite]time.Time // pending invite → expiry
-	budgets map[world.PlayerID]*chatBudget
+	online   map[world.PlayerID]*world.Session
+	accounts map[string]*world.Session // online account players by account id
+	parties  map[world.PlayerID]*Party
+	invites  map[invite]time.Time // pending invite → expiry
+	budgets  map[world.PlayerID]*chatBudget
+	friends  map[world.PlayerID]map[string]bool // accepted friend accounts
+	requests map[world.PlayerID]*chatBudget     // friend request budgets
 }
 
 // New returns an empty registry.
 func New() *Social {
 	return &Social{
-		online:  make(map[world.PlayerID]*world.Session),
-		parties: make(map[world.PlayerID]*Party),
-		invites: make(map[invite]time.Time),
-		budgets: make(map[world.PlayerID]*chatBudget),
+		online:   make(map[world.PlayerID]*world.Session),
+		accounts: make(map[string]*world.Session),
+		parties:  make(map[world.PlayerID]*Party),
+		invites:  make(map[invite]time.Time),
+		budgets:  make(map[world.PlayerID]*chatBudget),
+		friends:  make(map[world.PlayerID]map[string]bool),
+		requests: make(map[world.PlayerID]*chatBudget),
 	}
 }
 
-// Join registers a connected player and gives it a guest name that no other
-// online player holds.
+// Join registers a connected player. A guest gets a name that no other online
+// player holds; an account player keeps its account name.
 func (s *Social) Join(p *world.Session) {
-	p.DisplayName = s.guestName(p.PlayerID)
+	if p.AccountID != "" {
+		s.accounts[p.AccountID] = p
+	} else {
+		p.DisplayName = s.guestName(p.PlayerID)
+	}
 	s.online[p.PlayerID] = p
 }
 
@@ -65,8 +78,16 @@ func (s *Social) Leave(p *world.Session) {
 	s.leaveParty(p.PlayerID)
 	s.dropInvites(func(i invite) bool { return i.from == p.PlayerID || i.to == p.PlayerID })
 	delete(s.budgets, p.PlayerID)
+	delete(s.requests, p.PlayerID)
+	delete(s.friends, p.PlayerID)
+	if s.accounts[p.AccountID] == p {
+		delete(s.accounts, p.AccountID)
+	}
 	delete(s.online, p.PlayerID)
 }
+
+// Account is the online session of an account, or nil.
+func (s *Social) Account(accountID string) *world.Session { return s.accounts[accountID] }
 
 // Player is the online session of id, or nil.
 func (s *Social) Player(id world.PlayerID) *world.Session { return s.online[id] }

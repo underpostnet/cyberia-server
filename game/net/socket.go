@@ -5,7 +5,6 @@
 package net
 
 import (
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,16 +21,9 @@ const (
 	readTimeout  = 60 * time.Second
 	writeTimeout = 10 * time.Second
 	pingInterval = 30 * time.Second
+	// authReadLimit bounds the first frame: the auth message.
+	authReadLimit = 2 * 1024
 )
-
-// Upgrader accepts a WebSocket connection. Compression pays back the size of
-// the JSON frames — snapshot keys repeat and deflate well.
-var Upgrader = websocket.Upgrader{
-	ReadBufferSize:    1024,
-	WriteBufferSize:   1024,
-	EnableCompression: true,
-	CheckOrigin:       func(r *http.Request) bool { return true },
-}
 
 // Metrics counts bytes and errors. Every field is optional.
 type Metrics struct {
@@ -50,9 +42,13 @@ const maxConsecutiveDrops = 64
 type Socket struct {
 	conn    *websocket.Conn
 	send    chan []byte
+	end     chan []byte
 	metrics Metrics
 
 	closeOnce sync.Once
+	// ending marks a connection whose last message is queued; the write pump
+	// closes it.
+	ending atomic.Bool
 	// drops counts consecutive failed sends. A successful send resets it.
 	drops atomic.Uint32
 }
@@ -60,7 +56,7 @@ type Socket struct {
 // NewSocket starts the write pump for an accepted connection.
 func NewSocket(conn *websocket.Conn, metrics Metrics) *Socket {
 	conn.EnableWriteCompression(true)
-	s := &Socket{conn: conn, send: make(chan []byte, sendQueue), metrics: metrics}
+	s := &Socket{conn: conn, send: make(chan []byte, sendQueue), end: make(chan []byte, 1), metrics: metrics}
 	go s.writePump()
 	return s
 }
@@ -82,6 +78,29 @@ func (s *Socket) Send(pack []byte) bool {
 		}
 		return false
 	}
+}
+
+// ReadFirst reads the first frame of the connection: at most authReadLimit
+// bytes within timeout.
+func (s *Socket) ReadFirst(timeout time.Duration) ([]byte, error) {
+	s.conn.SetReadLimit(authReadLimit)
+	s.conn.SetReadDeadline(time.Now().Add(timeout))
+	_, pack, err := s.conn.ReadMessage()
+	if err == nil && s.metrics.Read != nil {
+		s.metrics.Read(len(pack))
+	}
+	return pack, err
+}
+
+// End writes pack as the last message, then closes the connection with a
+// normal close frame. A Close after End waits for it; writeTimeout bounds the
+// wait.
+func (s *Socket) End(pack []byte) {
+	if !s.ending.CompareAndSwap(false, true) {
+		return
+	}
+	s.end <- pack
+	time.AfterFunc(writeTimeout, s.shut)
 }
 
 // Receive runs the read loop until the connection fails. It calls onPack for
@@ -110,10 +129,17 @@ func (s *Socket) Receive(onPack func(pack []byte)) {
 	}
 }
 
-// Close closes the connection. Safe to call more than once, from any
-// goroutine. The write pump exits on its next write or ping.
-// The send queue stays open so a concurrent Send can never panic.
-func (s *Socket) Close() { s.closeOnce.Do(func() { s.conn.Close() }) }
+// Close closes the connection, unless End already queued its last message.
+// Safe to call more than once, from any goroutine. The write pump exits on its
+// next write or ping. The send queue stays open so a concurrent Send can never
+// panic.
+func (s *Socket) Close() {
+	if !s.ending.Load() {
+		s.shut()
+	}
+}
+
+func (s *Socket) shut() { s.closeOnce.Do(func() { s.conn.Close() }) }
 
 // writePump is the only goroutine that writes to the connection. It also
 // sends the keep-alive pings.
@@ -133,6 +159,13 @@ func (s *Socket) writePump() {
 			if s.metrics.Write != nil {
 				s.metrics.Write(len(pack))
 			}
+		case pack := <-s.end:
+			s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+			if s.conn.WriteMessage(websocket.BinaryMessage, pack) == nil {
+				s.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			}
+			s.shut()
+			return
 		case <-ticker.C:
 			s.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
 			if err := s.conn.WriteMessage(websocket.PingMessage, nil); err != nil {

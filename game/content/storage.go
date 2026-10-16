@@ -11,8 +11,9 @@
 //     Its capacity grows with the player's level (StorageCapacity). The
 //     wallet never goes in.
 //
-// Both are session state owned by the player's PlayerID; ForgetPlayer drops
-// them with the session. A stored item does nothing until it is withdrawn.
+// Both are owned by the player's PlayerID. An account player keeps them in its
+// profile (durable.go); a guest loses them with the session. A stored item
+// does nothing until it is withdrawn.
 //
 // Cross-process contract:
 //
@@ -84,21 +85,22 @@ type moveSet struct {
 	capacity int     // the open slots of the container
 }
 
-// item is the item and quantity in a place; "" for an empty one.
-func (w *moveSet) item(box world.Box, slot int) (string, int) {
+// item is the item, its definition and quantity in a place; "" for an empty
+// one.
+func (w *moveSet) item(box world.Box, slot int) (string, string, int) {
 	switch {
 	case box == world.BoxBag && slot == world.WalletSlot:
-		return w.s.CoinItemID, w.coins
+		return w.s.CoinItemID, "", w.coins
 	case box == world.BoxBag:
 		if at := w.s.bagStack(w.bag, slot); at >= 0 {
-			return w.bag[at].ItemID, w.bag[at].Quantity
+			return w.bag[at].ItemID, w.bag[at].CID, w.bag[at].Quantity
 		}
 	default:
 		if at := slotStack(w.stacks, slot); at >= 0 {
-			return w.stacks[at].ItemID, w.stacks[at].Qty
+			return w.stacks[at].ItemID, w.stacks[at].CID, w.stacks[at].Qty
 		}
 	}
-	return "", 0
+	return "", "", 0
 }
 
 // worn reports whether the bag stack in slot is active.
@@ -139,9 +141,9 @@ func (w *moveSet) take(box world.Box, slot, qty int) {
 	}
 }
 
-// put adds qty of itemID to a place: a new stack, or more of its stack. A worn
-// stack keeps its flag on the stack it joins.
-func (w *moveSet) put(box world.Box, slot int, itemID string, qty int, worn bool) {
+// put adds qty of itemID of definition cid to a place: a new stack, or more of
+// its stack. A worn stack keeps its flag on the stack it joins.
+func (w *moveSet) put(box world.Box, slot int, itemID, cid string, qty int, worn bool) {
 	switch {
 	case box == world.BoxBag && slot == world.WalletSlot:
 		w.coins += qty
@@ -150,13 +152,13 @@ func (w *moveSet) put(box world.Box, slot int, itemID string, qty int, worn bool
 			w.bag[at].Quantity += qty
 			w.bag[at].Active = w.bag[at].Active || worn
 		} else {
-			w.bag = append(w.bag, world.ObjectLayerState{ItemID: itemID, Quantity: qty, Slot: slot, Active: worn})
+			w.bag = append(w.bag, world.ObjectLayerState{ItemID: itemID, CID: cid, Quantity: qty, Slot: slot, Active: worn})
 		}
 	default:
 		if at := slotStack(w.stacks, slot); at >= 0 {
 			w.stacks[at].Qty += qty
 		} else {
-			w.stacks = append(w.stacks, Stack{ItemID: itemID, Qty: qty, Slot: slot})
+			w.stacks = append(w.stacks, Stack{ItemID: itemID, CID: cid, Qty: qty, Slot: slot})
 		}
 	}
 }
@@ -173,13 +175,13 @@ func (w *moveSet) swap(box world.Box, a, b int) {
 }
 
 // apply runs one move on the copy. Onto an empty slot it places the units, onto
-// a stack of the same item it stacks them, and onto another stack of the same
-// box it swaps the two whole stacks. False refuses the move.
+// a stack of the same item and definition it stacks them, and onto another
+// stack of the same box it swaps the two whole stacks. False refuses the move.
 func (w *moveSet) apply(m world.ItemMove) bool {
 	if m.From == m.To && m.FromSlot == m.ToSlot {
 		return false
 	}
-	itemID, held := w.item(m.From, m.FromSlot)
+	itemID, cid, held := w.item(m.From, m.FromSlot)
 	qty := min(m.Qty, held)
 	if itemID == "" || qty < 1 || !w.takes(m.To, m.ToSlot, itemID) {
 		return false
@@ -190,10 +192,10 @@ func (w *moveSet) apply(m world.ItemMove) bool {
 	if worn && whole && m.To != world.BoxBag && !w.s.bankableWhileWorn(w.player, itemID) {
 		return false
 	}
-	switch target, _ := w.item(m.To, m.ToSlot); {
-	case target == "" || target == itemID:
+	switch target, targetCID, _ := w.item(m.To, m.ToSlot); {
+	case target == "" || (target == itemID && targetCID == cid):
 		w.take(m.From, m.FromSlot, qty)
-		w.put(m.To, m.ToSlot, itemID, qty, worn && whole && m.To == world.BoxBag)
+		w.put(m.To, m.ToSlot, itemID, cid, qty, worn && whole && m.To == world.BoxBag)
 	case m.From == m.To && whole && w.takes(m.From, m.FromSlot, target):
 		w.swap(m.From, m.FromSlot, m.ToSlot)
 	default:
@@ -307,10 +309,13 @@ func (s *Content) PlayerStorage(player *world.Session) []Stack {
 	return []Stack{}
 }
 
-// ForgetPlayer drops the containers of a player whose session ended.
+// ForgetPlayer drops the containers of a player whose session ended. An
+// account player committed them before.
 //
 // Caller MUST hold s.mu.
 func (s *Content) ForgetPlayer(id world.PlayerID) {
 	delete(s.Vaults, id)
 	delete(s.PersonalStorage, id)
+	delete(s.Held, id)
+	delete(s.dormantQuests, id)
 }

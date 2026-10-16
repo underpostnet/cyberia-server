@@ -12,8 +12,12 @@ import (
 // Sim is the simulation step and its config.
 type Sim struct {
 	*content.Content
-	// Social is the chat and the parties of the players on this server.
-	Social         *social.Social
+	// Social is the chat, the parties and the friends of the players on this
+	// server.
+	Social *social.Social
+	// Friendships runs friend actions against the engine; nil in anonymous
+	// mode.
+	Friendships    FriendBroker
 	InstanceCode   string            // INSTANCE_CODE — selects which instance to load
 	PlayerSpawn    PlayerSpawnConfig // authoritative initial spawn for new players
 	PortalHoldTime time.Duration

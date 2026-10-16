@@ -52,7 +52,7 @@ func (s *Content) EntityProgression(id world.EntityID, ms *world.MapState) *Enti
 		p.Level = max(1, min(p.Level, rules.MaxLevel))
 		p.XP = rules.Threshold(p.Level)
 	} else {
-		p.XP = min(p.XP, rules.Threshold(rules.MaxLevel))
+		// XP above the top level stays: a lower maxLevel never takes saved XP.
 		p.Level = rules.LevelAtXP(p.XP)
 	}
 	return p

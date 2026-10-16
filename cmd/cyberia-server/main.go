@@ -22,6 +22,7 @@ import (
 	"cyberia-server/logx"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 )
 
@@ -54,6 +55,20 @@ func runUnderpostStatus(containerID, status string) {
 	if status == "running-deployment" {
 		underpostStateSet("start-container-status", value)
 	}
+}
+
+// sessionFlushBudget is the part of the drain the final commits of the ended
+// sessions may take.
+const sessionFlushBudget = 5 * time.Second
+
+// serverID names this process to the engine: the host name and a random
+// suffix, so a restart is a new server.
+func serverID() string {
+	host, err := os.Hostname()
+	if err != nil {
+		host = "cyberia-server"
+	}
+	return host + "-" + uuid.NewString()[:8]
 }
 
 // mountAtBasePath preserves the public variant path all the way to the runtime.
@@ -123,9 +138,8 @@ func main() {
 	})
 	s.SetConnectionLimits(limits)
 	logx.Infof("[GameServer] ws limits: %s", limits.Describe())
-
-	// Data Server origin for server-to-server content calls, and their key.
-	s.SetDataServerURL(cfg.DataServerURL, cfg.ServerAPIKey)
+	s.SetAllowedOrigins(cfg.CORSAllowedOrigins)
+	s.SetAuthTimeout(cfg.AuthTimeout)
 
 	// ── Data loading: engine_client dispatcher (gRPC primary, REST fallback) ──
 	// Every Data Server call tries gRPC first and retries over the REST boot
@@ -138,6 +152,20 @@ func main() {
 		os.Exit(1)
 	}
 	defer ds.Close()
+
+	// Account mode: launch tickets, leases and commits go to the engine player
+	// service over gRPC.
+	if mode, _ := gamenet.ParseSessionMode(cfg.SessionMode); mode == gamenet.SessionAccount {
+		players, err := engine_client.NewPlayerClient(cfg.DataServerGRPC, cfg.ServerAPIKey)
+		if err != nil {
+			runUnderpostStatus(cfg.ContainerDeployID, "error")
+			logx.Errorf("account mode needs the engine player service: %v", err)
+			os.Exit(1)
+		}
+		defer players.Close()
+		s.EnableAccounts(players, players, serverID())
+	}
+	logx.Infof("[GameServer] session mode: %s", s.Mode())
 
 	wb := engine_client.NewWorldBuilder(ds, s)
 	wb.InstanceCode = cfg.InstanceCode
@@ -240,10 +268,13 @@ func main() {
 				logx.Warnf("[Drain] registry report failed: %v", err)
 			}
 		}
-		drainCtx, cancel := context.WithTimeout(context.Background(), cfg.DrainTimeout)
+		drainCtx, cancel := context.WithTimeout(context.Background(), max(cfg.DrainTimeout-sessionFlushBudget, 0))
 		remaining := s.WaitDrained(drainCtx, time.Second)
 		cancel()
-		logx.Infof("[Drain] closing with %d player(s) connected", remaining)
+		flushCtx, cancelFlush := context.WithTimeout(context.Background(), sessionFlushBudget)
+		unsaved := s.EndAllSessions(flushCtx)
+		cancelFlush()
+		logx.Infof("[Drain] ended %d session(s); %d final state(s) not saved", remaining, unsaved)
 		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancelShutdown()
 		if err := srv.Shutdown(shutdownCtx); err != nil {

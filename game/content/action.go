@@ -192,16 +192,26 @@ func (s *Content) BotActiveSkin(id world.EntityID) string {
 	if ms == nil {
 		return ""
 	}
-	return s.botActiveSkinOf(id, ms)
+	return s.activeSkinOf(id, ms)
 }
 
-// botActiveSkinOf reads a bot's active skin directly (no lookup), so the AOI
-// path that already holds the bot avoids an O(N) per-entity map search.
-func (s *Content) botActiveSkinOf(id world.EntityID, ms *world.MapState) string {
-	// When the NPC is dead its active layers hold the ghost skin; the live skin
-	// is preserved in PreRespawnObjectLayers. Read from there so a talk objective
-	// still validates against a quest-giver that just died — the interaction
-	// context is independent of the entity's alive/AOI state.
+// PlayerSkin is the active skin of a player: the item that draws its identity
+// in social views. "" when it wears none.
+func (s *Content) PlayerSkin(p *world.Session) string {
+	ms := s.Maps[p.MapCode]
+	if ms == nil {
+		return ""
+	}
+	return s.activeSkinOf(p.ID, ms)
+}
+
+// activeSkinOf reads the active skin of an entity on a map directly (no
+// lookup), so the AOI path that already holds it avoids an O(N) map search.
+func (s *Content) activeSkinOf(id world.EntityID, ms *world.MapState) string {
+	// A dead entity's active layers hold the ghost skin; the live skin is
+	// preserved in PreRespawnObjectLayers. Read from there so a talk objective
+	// still validates against a quest-giver that just died, and a dead player
+	// keeps its identity.
 	layers := ms.Ap(id).Layers
 	if ms.Vt(id).Ghost() && len(ms.Mt(id).PreRespawnObjectLayers) > 0 {
 		layers = ms.Mt(id).PreRespawnObjectLayers
@@ -254,7 +264,7 @@ func (s *Content) PendingActionTalkDialogs(player *world.Session, id world.Entit
 	if action == nil || len(action.QuestDialogueCodes) == 0 {
 		return dialogs
 	}
-	skin := s.botActiveSkinOf(id, ms)
+	skin := s.activeSkinOf(id, ms)
 	if skin == "" {
 		return dialogs
 	}

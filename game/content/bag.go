@@ -58,11 +58,11 @@ func (s *Content) bagStack(layers []world.ObjectLayerState, slot int) int {
 	return -1
 }
 
-// firstStack is the index of the stack of itemID in the lowest slot, or -1.
-func firstStack(layers []world.ObjectLayerState, itemID string) int {
+// firstStack is the index of the matching stack in the lowest slot, or -1.
+func firstStack(layers []world.ObjectLayerState, match func(world.ObjectLayerState) bool) int {
 	at := -1
 	for i := range layers {
-		if layers[i].ItemID == itemID && (at < 0 || layers[i].Slot < layers[at].Slot) {
+		if match(layers[i]) && (at < 0 || layers[i].Slot < layers[at].Slot) {
 			at = i
 		}
 	}
@@ -73,7 +73,7 @@ func firstStack(layers []world.ObjectLayerState, itemID string) int {
 // for a slot below 0. -1 when there is none.
 func (s *Content) StackIndex(layers []world.ObjectLayerState, itemID string, slot int) int {
 	if slot < 0 {
-		return firstStack(layers, itemID)
+		return firstStack(layers, func(l world.ObjectLayerState) bool { return l.ItemID == itemID })
 	}
 	if at := s.bagStack(layers, slot); at >= 0 && layers[at].ItemID == itemID {
 		return at
@@ -81,14 +81,26 @@ func (s *Content) StackIndex(layers []world.ObjectLayerState, itemID string, slo
 	return -1
 }
 
-// stackInto adds qty of itemID to the bag: onto its first stack, else as a new
-// stack in the lowest free slot.
+// stackInto adds qty of itemID, of the definition the world binds now, to the
+// bag: onto its first stack of that definition, else as a new stack in the
+// lowest free slot.
 func (s *Content) stackInto(bag []world.ObjectLayerState, itemID string, qty int) []world.ObjectLayerState {
-	if at := firstStack(bag, itemID); at >= 0 {
+	cid := s.DefinitionCID(itemID)
+	if at := firstStack(bag, func(l world.ObjectLayerState) bool { return l.ItemID == itemID && l.CID == cid }); at >= 0 {
 		bag[at].Quantity += qty
 		return bag
 	}
-	return append(bag, world.ObjectLayerState{ItemID: itemID, Quantity: qty, Slot: s.freeSlot(bag)})
+	return append(bag, world.ObjectLayerState{ItemID: itemID, CID: cid, Quantity: qty, Slot: s.freeSlot(bag)})
+}
+
+// StampDefinitions gives every owned stack of layers without a definition the
+// one the world binds now.
+func (s *Content) StampDefinitions(layers []world.ObjectLayerState) {
+	for i := range layers {
+		if layers[i].CID == "" && s.takesSlot(layers[i].ItemID) {
+			layers[i].CID = s.DefinitionCID(layers[i].ItemID)
+		}
+	}
 }
 
 // occupiedSlots counts the stacks of layers that take a slot, and one slot for

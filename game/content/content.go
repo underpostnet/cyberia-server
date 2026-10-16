@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"cyberia-server/game/persist"
 	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 )
@@ -19,16 +20,9 @@ type Content struct {
 	OlMu                 sync.RWMutex
 	ObjectLayerDataCache map[string]*ObjectLayer
 
-	// DataServerURL is the Data Server origin for server-to-server
-	// content-authority calls (quest persistence). Never forwarded to clients:
-	// each client learns its own Data Server URL from its command line.
-	DataServerURL string
-	// DataServerAPIKey is CYBERIA_SERVER_API_KEY, sent with every server-to-server
-	// write. An empty key disables them.
-	DataServerAPIKey string
-	// persistQueue holds engine POSTs for persistLoop, so no HTTP call runs
-	// under s.mu.
-	persistQueue chan persistJob
+	// Durability commits the durable state of account players; nil in
+	// anonymous mode.
+	Durability Durability
 
 	EntityBaseSpeed float64
 	// playerBaseSpeed applies to the player entity only. 0 means unset, and
@@ -84,13 +78,17 @@ type Content struct {
 	// PersonalStorage the personal storage of each player (storage.go).
 	Vaults          map[world.PlayerID]map[string][]Stack
 	PersonalStorage map[world.PlayerID][]Stack
-	questDefs       map[string]*CyberiaQuest
+	// Held is the owned stacks of each player the world cannot load, and
+	// dormantQuests the saved progress of quests it no longer defines
+	// (durable.go). Both return unchanged in every commit.
+	Held          map[world.PlayerID][]persist.Held
+	dormantQuests map[world.PlayerID][]persist.Quest
+	questDefs     map[string]*CyberiaQuest
 	// Progression is the level and XP of each mortal entity. despawn deletes
 	// the row.
 	Progression map[world.EntityID]*EntityProgression
-	// quests is the quest progress of each player, keyed by quest code.
-	// Authoritative for the session; best-effort mirrored to engine-cyberia
-	// quest-progress REST for persistence.
+	// quests is the quest progress of each player, keyed by quest code. An
+	// account player commits it with its durable state (durable.go).
 	quests map[world.EntityID]map[string]*QuestProgress
 	// crafts is the assembly running for each player. A craft consumes its
 	// ingredients up front and pays out only when the timer elapses, so the
@@ -111,7 +109,6 @@ func NewContent(w *world.World) *Content {
 		World:                w,
 		ObjectLayerDataCache: make(map[string]*ObjectLayer),
 		SkillConfig:          make(map[string][]SkillDefinition),
-		persistQueue:         make(chan persistJob, 256),
 	}
 }
 

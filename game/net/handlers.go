@@ -2,17 +2,13 @@ package net
 
 import (
 	"encoding/json"
-	"math/rand"
-	"net/http"
-	"time"
+	"regexp"
 
 	"cyberia-server/game/content"
 	"cyberia-server/game/sim"
 	"cyberia-server/game/social"
 	"cyberia-server/game/world"
 	"cyberia-server/logx"
-
-	"github.com/google/uuid"
 )
 
 // OLMeta is the JSON shape sent to the client for each ObjectLayer: the cid of the definition
@@ -53,215 +49,6 @@ func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
 		out[itemID] = &OLMeta{Cid: ol.Cid, Data: ol.Data}
 	}
 	return out
-}
-
-// HandleConnections handles WebSocket connections.
-func (s *GameServer) HandleConnections(w http.ResponseWriter, r *http.Request) {
-	// Admission runs before the upgrade so a refused client costs one HTTP
-	// response, not a WebSocket session.
-	if s.IsDraining() {
-		s.recordWsRefused()
-		http.Error(w, "server is draining", http.StatusServiceUnavailable)
-		return
-	}
-	ip := clientIP(r)
-	if refusal := s.guard.admit(ip); refusal != admitted {
-		s.recordWsRefused()
-		logx.Debugf("[HandleConnections] refused ip=%s: %s", ip, refusal)
-		http.Error(w, string(refusal), http.StatusServiceUnavailable)
-		return
-	}
-	// Admitted from here. Until a Client owns the slot, this closure frees it;
-	// after that the Client's `released` Once does, on whichever path ends it.
-	slotOwned := true
-	releaseSlot := func() {
-		if slotOwned {
-			slotOwned = false
-			s.guard.release(ip)
-		}
-	}
-
-	conn, err := Upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		logx.Debugf("Upgrade failed: %v", err)
-		releaseSlot()
-		return
-	}
-
-	s.Mu.Lock()
-	logx.Debugf("[HandleConnections] s.mu acquired, building player")
-
-	if len(s.Maps) == 0 {
-		logx.Warnf("[HandleConnections] No maps loaded — rejecting connection. Ensure INSTANCE_CODE is set and Engine gRPC is reachable.")
-		conn.Close()
-		s.Mu.Unlock()
-		releaseSlot()
-		return
-	}
-
-	playerID := s.NewEntityID()
-	playerDims := world.Vec2{X: s.DefaultPlayerWidth, Y: s.DefaultPlayerHeight}
-
-	// Resolve the starting map + cell from the instance's PlayerSpawn config. A
-	// fixed spawn (Random=false) on a loaded map with a walkable cell is honoured
-	// verbatim; anything else falls back to a random walkable cell on a random map.
-	startMapCode := ""
-	fixedPos := world.Cell{}
-	hasFixedPos := false
-	if !s.PlayerSpawn.Random && s.PlayerSpawn.MapCode != "" {
-		if ms, ok := s.Maps[s.PlayerSpawn.MapCode]; ok {
-			cell := world.Cell{X: s.PlayerSpawn.CellX, Y: s.PlayerSpawn.CellY}
-			if ms.Pathfinder().IsWalkable(cell.X, cell.Y, playerDims) {
-				startMapCode = s.PlayerSpawn.MapCode
-				fixedPos = cell
-				hasFixedPos = true
-			}
-		}
-	}
-	if startMapCode == "" {
-		mapCodes := make([]string, 0, len(s.Maps))
-		for code := range s.Maps {
-			mapCodes = append(mapCodes, code)
-		}
-		startMapCode = mapCodes[rand.Intn(len(mapCodes))]
-	}
-	startMapState := s.Maps[startMapCode]
-
-	startPosI := fixedPos
-	if !hasFixedPos {
-		p, err := startMapState.Pathfinder().FindRandomWalkablePoint(playerDims)
-		if err != nil {
-			logx.Warnf("Could not place new player: %v", err)
-			conn.Close()
-			s.Mu.Unlock()
-			releaseSlot()
-			return
-		}
-		startPosI = p
-	}
-	lifeRegen := s.PlayerBaseLifeRegenMin + rand.Float64()*(s.PlayerBaseLifeRegenMax-s.PlayerBaseLifeRegenMin)
-
-	// A player is placed by nothing, so its whole stack comes from its default — read the one way
-	// every entity type reads it.
-	playerOLs := s.SpawnObjectLayers("player", nil, true)
-	s.SeatStacks(playerOLs, 0)
-	playerState := &world.Session{
-		ID:        playerID,
-		PlayerID:  world.PlayerID(uuid.New().String()),
-		MapCode:   startMapCode,
-		Path:      []world.Cell{},
-		TargetPos: world.Cell{X: -1, Y: -1},
-	}
-	client := &Client{
-		playerID: playerID,
-		sock: NewSocket(conn, Metrics{
-			Read:       s.recordWsRead,
-			Write:      s.recordWsWrite,
-			ReadError:  s.recordWsReadError,
-			WriteError: s.recordWsWriteError,
-		}),
-		playerState: playerState,
-		ip:          ip,
-		limiter:     newInputLimiter(s.limits),
-	}
-	slotOwned = false // the Client owns the guard slot from here
-	playerState.Client = client
-
-	s.Sessions[playerID] = playerState
-	s.Social.Join(playerState)
-	startMapState.Spawn(playerID, world.EntityData{Kind: world.EntityPlayer}, world.Transform{
-		Pos:  world.Vec2{X: float64(startPosI.X), Y: float64(startPosI.Y)},
-		Size: playerDims,
-	}, world.Appearance{Layers: playerOLs})
-	startMapState.AddVitals(playerID, world.Vitals{MaxLife: s.EntityBaseMaxLife})
-	startMapState.AddMotion(playerID, world.Motion{Direction: world.NONE, Mode: world.IDLE})
-	startMapState.AddMortal(playerID, &world.Mortal{LifeRegen: lifeRegen})
-	s.SetProgression(playerID, content.NewEntityProgression(1, false, s.ProgressionConfig()))
-	startMapState.AddPlayer(playerID)
-
-	// Economy: credit the player's starting wallet (Fountain: playerSpawnCoins).
-	s.FountainInitPlayer(playerState)
-
-	// Apply initial stats (like Resistance for MaxLife) after creation.
-	s.ApplyResistanceStat(playerState.ID, startMapState)
-	v := startMapState.Vt(playerID)
-	v.Life = v.MaxLife * s.InitialLifeFraction // Set life based on config fraction
-
-	// Every join spawns frozen. The client loading overlay is its first open
-	// modal; Tap-to-Start closes it and sends player_stasis false.
-	sim.FreezePlayer(playerState, startMapState)
-
-	// InitPayload is strictly simulation/protocol. Zero presentation: no
-	// palette, no camera, no devUi, no status-icon visuals, no screen
-	// factors, no interpolation window, no cell-pixel sizing, no default
-	// object dimensions. The C client owns its render policy and resolves
-	// every visual value through /api/v1/cyberia-client-hints using its own
-	// CYBERIA_CLIENT_HINTS_CODE.
-	initPayload := InitPayload{
-		PlayerID:       playerState.PlayerID,
-		MaxLevel:       s.ProgressionConfig().MaxLevel,
-		GridW:          startMapState.GridW(),
-		GridH:          startMapState.GridH(),
-		AoiRadius:      s.aoiRadius,
-		ObjectLayers:   s.InventoryView(startMapState.Ap(playerID).Layers),
-		SkillMap:       s.buildSkillMap(),
-		EntityDefaults: s.BuildEntityDefaultsSlice(),
-		DeadItemIds:    s.DeadItemIDList(),
-		Quests:         s.BuildQuestSnapshot(playerState),
-	}
-	metadataPayload := map[string]interface{}{
-		"instanceCode":   s.InstanceCode,
-		"equipmentRules": s.EquipmentRules,
-	}
-
-	s.Mu.Unlock()
-
-	// The ObjectLayer metadata map and both JSON marshals are the costly part
-	// of a join. They run outside the world lock so a burst of connections
-	// cannot delay the simulation tick.
-	metadataPayload["objectLayers"] = s.buildOLMetadataMap()
-	world.SendMessage(playerState, "init_data", initPayload)
-	world.SendMessage(playerState, "metadata", metadataPayload)
-
-	// Register the client with listenForClients.
-	// Use a timeout so we get a clear log if listenForClients is dead rather
-	// than hanging the HTTP handler goroutine silently.
-	select {
-	case s.register <- client:
-		s.recordWsConnect()
-	case <-time.After(5 * time.Second):
-		logx.Errorf("[HandleConnections] timeout waiting to register player=%s — listenForClients may be dead", playerID)
-		// The player is already in the world but no readPump will ever run to
-		// unregister it. Remove it here or phaseReplication keeps serving it.
-		s.detachClient(client)
-		return
-	}
-	go client.readPump(s)
-}
-
-// detachClient removes one client from the world and frees every resource it
-// holds: map presence, client registry, guard slot, socket. Safe to call from
-// any disconnect path and safe to call more than once.
-func (s *GameServer) detachClient(client *Client) {
-	if client == nil {
-		return
-	}
-	s.Mu.Lock()
-	client.detached = true
-	delete(s.clients, client.playerID)
-	delete(s.Sessions, client.playerID)
-	s.Social.Leave(client.playerState)
-	s.ForgetPlayer(client.playerState.PlayerID)
-	// Sweep every map: a portal can move a player after MapCode was read.
-	for _, mapState := range s.Maps {
-		s.Despawn(mapState, client.playerID)
-	}
-	s.Mu.Unlock()
-
-	if client.sock != nil {
-		client.sock.Close()
-	}
-	client.released.Do(func() { s.guard.release(client.ip) })
 }
 
 // Send packs one message and queues it on the socket.
@@ -317,6 +104,11 @@ var inputKinds = map[string]world.InputKind{
 	"party_leave":   world.InputKindPartyLeave,
 	"party_kick":    world.InputKindPartyKick,
 	"party_disband": world.InputKindPartyDisband,
+
+	"friends_list":   world.InputKindFriendList,
+	"friend_request": world.InputKindFriendRequest,
+	"friend_reply":   world.InputKindFriendReply,
+	"friend_remove":  world.InputKindFriendRemove,
 }
 
 // inputPayload holds every client event payload field. Each event type fills
@@ -336,11 +128,13 @@ type inputPayload struct {
 	Stasis bool `json:"stasis"` // player_stasis
 
 	Channel string         `json:"channel"` // chat
-	ToID    world.EntityID `json:"toId"`    // chat direct, party_invite, party_kick
+	ToID    world.EntityID `json:"toId"`    // chat direct, party_invite, party_kick, friend_request
 	Text    string         `json:"text"`
 
 	FromID world.EntityID `json:"fromId"` // party_reply
-	Accept bool           `json:"accept"` // party_reply
+	Accept bool           `json:"accept"` // party_reply, friend_reply
+
+	FriendshipID string `json:"friendshipId"` // friend_reply, friend_remove
 
 	EntityID   world.EntityID `json:"entityId"`   // talk_done, quest_accept, shop_buy, item_move to a vault
 	DialogCode string         `json:"dialogCode"` // talk_done
@@ -361,12 +155,13 @@ type eventsPayload struct {
 	Events []Message `json:"events"`
 }
 
-// receiveMessage is the single client → server dispatch point. A message is a
-// handshake or one batch of client events. The batch becomes one InputCommand
-// per event and is enqueued whole; phaseInput applies each command once.
+// receiveMessage is the single client → server dispatch point once a player is
+// placed: every message is one batch of client events. The batch becomes one
+// InputCommand per event and is enqueued whole; phaseInput applies each
+// command once.
 //
-// A protocol violation evicts: a message that is not a handshake or a batch,
-// a batch over maxInputQueue, or an event without a seq. An event that fails
+// A protocol violation evicts: a message that is not a batch, a batch over
+// maxInputQueue, or an event without a seq. An event that fails
 // validation costs a strike and is still enqueued as InputKindUnknown, so its
 // seq is consumed.
 func (c *Client) receiveMessage(pack []byte, server *GameServer) {
@@ -380,9 +175,6 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 	}
 
 	msg, err := Unpack(pack)
-	if err == nil && msg.Type == "handshake" {
-		return // already authenticated upstream; nothing to do
-	}
 	var batch eventsPayload
 	if err != nil || msg.Type != "events" || json.Unmarshal(msg.Payload, &batch) != nil {
 		c.evict(server, "bad message")
@@ -395,6 +187,12 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 
 	cmds := make([]world.InputCommand, 0, len(batch.Events))
 	for _, ev := range batch.Events {
+		// The player closes its session: no later event of the batch counts.
+		if ev.Type == "session_leave" {
+			c.dispatchInputs(server, cmds)
+			go server.leave(c)
+			return
+		}
 		var p inputPayload
 		if err := json.Unmarshal(ev.Payload, &p); err != nil || p.Seq == 0 {
 			c.evict(server, "event without seq")
@@ -498,9 +296,23 @@ func parseInput(msgType string, p *inputPayload) (world.InputCommand, bool) {
 		}
 		cmd.EntityID = p.FromID
 		cmd.Active = p.Accept
+	case world.InputKindFriendRequest:
+		if p.ToID == 0 {
+			return world.InputCommand{}, false
+		}
+		cmd.EntityID = p.ToID
+	case world.InputKindFriendReply, world.InputKindFriendRemove:
+		if !friendshipIDPattern.MatchString(p.FriendshipID) {
+			return world.InputCommand{}, false
+		}
+		cmd.FriendshipID = p.FriendshipID
+		cmd.Active = p.Accept
 	}
 	return cmd, true
 }
+
+// friendshipIDPattern is the shape of a friendship id: a MongoDB ObjectId.
+var friendshipIDPattern = regexp.MustCompile(`^[0-9a-f]{24}$`)
 
 // parseItemMove validates one move at the trust boundary: both places name a
 // known box and a slot in range, the wallet slot belongs to the bag, a vault

@@ -222,7 +222,7 @@ func (s *Sim) handlePlayerDeath(player *world.Session, mapState *world.MapState)
 		}
 	}
 	playerCenter := world.Vec2{X: mapState.Tf(player.ID).Pos.X + mapState.Tf(player.ID).Size.X*0.5, Y: mapState.Tf(player.ID).Pos.Y + mapState.Tf(player.ID).Size.Y*0.5}
-	s.SpawnDrops(mapState, playerCenter, build, coinDrop, mortal.DamageLedger)
+	s.SpawnDrops(mapState, playerCenter, build, coinDrop, mortal.DamageLedger, s.LossLock(player))
 	s.BroadcastAudioEvent(mapState, world.AudioEventDeath, playerCenter)
 	mortal.DamageLedger = nil
 
@@ -263,7 +263,7 @@ func (s *Sim) killEntity(id world.EntityID, kind string, coins int, mapState *wo
 	build, _ := s.ResolveEntityDefaultBuild(kind, content.ActiveObjectLayerItemIDs(layersToSave))
 
 	center := world.Vec2{X: mapState.Tf(id).Pos.X + mapState.Tf(id).Size.X*0.5, Y: mapState.Tf(id).Pos.Y + mapState.Tf(id).Size.Y*0.5}
-	s.SpawnDrops(mapState, center, build, coins, mortal.DamageLedger)
+	s.SpawnDrops(mapState, center, build, coins, mortal.DamageLedger, world.DropLock{})
 	mortal.DamageLedger = nil
 	s.BroadcastAudioEvent(mapState, world.AudioEventDeath, center)
 

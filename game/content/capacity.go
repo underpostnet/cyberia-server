@@ -24,6 +24,8 @@ type Stack struct {
 	ItemID string `json:"itemId"`
 	Qty    int    `json:"qty"`
 	Slot   int    `json:"slot"`
+	// CID is the definition a stored stack was granted with.
+	CID string `json:"-"`
 }
 
 // InventoryLayers is the carried inventory of a player. While it waits to

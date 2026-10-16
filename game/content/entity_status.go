@@ -69,8 +69,13 @@ const (
 	InteractionFlagLootEligible uint8 = 1 << 2
 	// InteractionFlagPartyInvite marks another player the viewer may invite to its party now.
 	InteractionFlagPartyInvite uint8 = 1 << 3
-	// InteractionFlagPartyInvited marks another player the viewer's invite waits on.
-	InteractionFlagPartyInvited uint8 = 1 << 4
+	// InteractionFlagPartyMember marks another member of the viewer's party.
+	InteractionFlagPartyMember uint8 = 1 << 5
+	// InteractionFlagGrouped marks a player in a party the viewer is not in. It
+	// names no party and no member.
+	InteractionFlagGrouped uint8 = 1 << 6
+	// InteractionFlagFriend marks an accepted friend of the viewer.
+	InteractionFlagFriend uint8 = 1 << 7
 )
 
 // PlayerStatusIcon computes the overhead status icon for a player.

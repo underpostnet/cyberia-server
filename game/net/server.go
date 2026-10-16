@@ -1,18 +1,26 @@
 package net
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"cyberia-server/game/content"
+	"cyberia-server/game/persist"
 	"cyberia-server/game/sim"
 	"cyberia-server/game/social"
 	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 	"cyberia-server/logx"
+
+	"github.com/gorilla/websocket"
 )
+
+// captureEvery is how many ticks pass between two captures of the durable
+// state of the account players.
+const captureEvery = 6
 
 // NewGameServer creates an empty game server with no hardcoded defaults.
 // All configuration must be applied via ApplyInstanceConfig from gRPC data.
@@ -28,11 +36,52 @@ func NewGameServer() *GameServer {
 		// HTTP handler goroutine waiting for listenForClients to win the
 		// world lock against gameLoop. 64 outstanding connect/disconnect
 		// events is well beyond any realistic burst.
-		register:   make(chan *Client, 64),
-		unregister: make(chan *Client, 64),
+		register:    make(chan *Client, 64),
+		unregister:  make(chan *Client, 64),
+		mode:        SessionAnonymous,
+		upgrader:    newUpgrader(nil),
+		authTimeout: 10 * time.Second,
 	}
 	gs.SetConnectionLimits(DefaultConnectionLimits())
 	return gs
+}
+
+// SetAllowedOrigins sets the browser origins that may open the game socket.
+// Call it before the server accepts connections.
+func (s *GameServer) SetAllowedOrigins(origins []string) {
+	s.upgrader = newUpgrader(origins)
+}
+
+// SetAuthTimeout bounds how long a new connection may take to send its auth
+// message. Call it before the server accepts connections.
+func (s *GameServer) SetAuthTimeout(timeout time.Duration) {
+	if timeout > 0 {
+		s.authTimeout = timeout
+	}
+}
+
+// EnableAccounts switches the server to account mode: a connection needs a
+// launch ticket, and store commits the durable state of every player. Call it
+// before Run.
+func (s *GameServer) EnableAccounts(accounts Accounts, store persist.Store, serverID string) {
+	s.mode = SessionAccount
+	s.accounts = accounts
+	s.serverID = serverID
+	s.durable = persist.New(store)
+	s.Durability = s.durable
+	s.Friendships = s
+}
+
+// Mode is the session mode of the server.
+func (s *GameServer) Mode() SessionMode { return s.mode }
+
+// Persistence reads the counters and the queue of the persist pipeline; false
+// in anonymous mode.
+func (s *GameServer) Persistence() (persist.Snapshot, bool) {
+	if s.durable == nil {
+		return persist.Snapshot{}, false
+	}
+	return s.durable.Snapshot(), true
 }
 
 // SetConnectionLimits replaces the admission and rate thresholds. Call it
@@ -76,21 +125,14 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 	return nil
 }
 
-// SetDataServerURL sets the Data Server origin used for server-to-server
-// content-authority calls, and the key those calls carry. Never forwarded to
-// clients.
-func (s *GameServer) SetDataServerURL(url, apiKey string) {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-	s.DataServerURL = url
-	s.DataServerAPIKey = apiKey
-	logx.Infof("Data Server URL set to: %s", url)
-}
-
 func (s *GameServer) Run() {
 	go s.listenForClients()
 	go s.gameLoop()
-	go s.PersistLoop()
+	if s.durable != nil {
+		go s.durable.Run(context.Background())
+		go s.durable.RunCheckpoints(context.Background())
+		go s.RunResumeTickets(context.Background())
+	}
 }
 
 func (s *GameServer) listenForClients() {
@@ -163,14 +205,34 @@ func (s *GameServer) gameLoop() {
 				s.PhasePortals(tick, mapState)
 				for _, player := range s.Teleported {
 					s.sendAOI(player)
+					s.CaptureNow(player, true)
 				}
 				s.Teleported = s.Teleported[:0]
 			}
 			for _, mapState := range s.Maps {
 				s.phaseReplication(mapState)
 			}
+			if s.durable != nil && tick%captureEvery == 0 {
+				s.captureDurable()
+			}
 			s.currentTick++
 		}()
+		if s.durable != nil {
+			s.endSessions(s.durable.TakeEnded())
+		}
+	}
+}
+
+// captureDurable records the durable state of every account player and marks
+// the players whose commits keep failing. Caller holds s.Mu.
+func (s *GameServer) captureDurable() {
+	for _, player := range s.Sessions {
+		if player.AccountID == "" {
+			continue
+		}
+		id := string(player.PlayerID)
+		s.durable.Capture(id, s.DurableState(player), false)
+		player.Unsaved = s.durable.Unsaved(id)
 	}
 }
 
@@ -222,6 +284,9 @@ type Client struct {
 	// connect; the flag stops that from re-adding a dead client. Read and
 	// written under World.Mu.
 	detached bool
+	// resumeExpiresAt is when the resume ticket the client holds expires; zero
+	// before the first. Read and written under World.Mu.
+	resumeExpiresAt time.Time
 }
 
 // GameServer is the network side: the client links, the tick loop and the
@@ -247,6 +312,14 @@ type GameServer struct {
 
 	// draining refuses new sessions while connected players stay. See drain.go.
 	draining atomic.Bool
+
+	// ── Sessions (accounts.go, sessions.go) ──────────────────────────────────
+	mode        SessionMode
+	serverID    string
+	accounts    Accounts
+	durable     *persist.Pipeline
+	upgrader    websocket.Upgrader
+	authTimeout time.Duration
 }
 
 // SkillMapEntry describes one skill associated with a trigger item,
@@ -268,8 +341,9 @@ type SkillMapEntry struct {
 // client resolves all of those through /api/v1/cyberia-client-hints using
 // its own CYBERIA_CLIENT_HINTS_CODE.
 type InitPayload struct {
-	// PlayerID is the own player id for the client's engine REST calls.
-	PlayerID world.PlayerID `json:"playerId"`
+	// Session is the principal of the session: "account", whose state
+	// persists, or "guest", whose state ends with it.
+	Session string `json:"session"`
 	// MaxLevel is the highest level of this instance; a container slot that
 	// opens past it never opens.
 	MaxLevel       int                               `json:"maxLevel"`

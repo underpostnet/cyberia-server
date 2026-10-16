@@ -1,6 +1,8 @@
 package net
 
 import (
+	"maps"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -29,6 +31,12 @@ type runtimeCounters struct {
 	wsRateLimitedTotal atomic.Uint64 // inbound messages dropped over budget
 	wsEvictedTotal     atomic.Uint64 // closed for repeated violations
 
+	// Authentication outcomes ("ok" or the refusal) and the reasons sessions
+	// ended. Both change once per connection, so a mutex is enough.
+	sessionsMu  sync.Mutex
+	auth        map[string]uint64
+	sessionEnds map[string]uint64
+
 	// Last observed tick + wall time. Snapshotted on every read so a
 	// caller can derive a tick/s rate without holding the world lock.
 	lastObservedTick atomic.Uint32
@@ -56,6 +64,10 @@ type RuntimeMetricsSnapshot struct {
 	WsEvictedTotal     uint64  `json:"ws_evicted_total"`
 	WsActiveConns      int     `json:"ws_active_connections"`
 	WsActiveAddresses  int     `json:"ws_active_addresses"`
+	// Auth counts connection authentications by outcome: "ok" or the refusal.
+	Auth map[string]uint64 `json:"auth_outcomes"`
+	// SessionEnds counts sessions the server ended, by reason.
+	SessionEnds map[string]uint64 `json:"session_ends"`
 }
 
 // recordWsRead is called from readPump whenever a frame is decoded
@@ -79,6 +91,29 @@ func (s *GameServer) recordWsRefused()     { s.counters.wsRefusedTotal.Add(1) }
 func (s *GameServer) recordWsRateLimited() { s.counters.wsRateLimitedTotal.Add(1) }
 func (s *GameServer) recordWsEvicted()     { s.counters.wsEvictedTotal.Add(1) }
 
+// recordAuth counts one authentication: refusal is empty when it passed.
+func (s *GameServer) recordAuth(refusal string) {
+	if refusal == "" {
+		refusal = "ok"
+	}
+	s.counters.sessionsMu.Lock()
+	defer s.counters.sessionsMu.Unlock()
+	if s.counters.auth == nil {
+		s.counters.auth = make(map[string]uint64)
+	}
+	s.counters.auth[refusal]++
+}
+
+// recordSessionEnd counts one session the server ended.
+func (s *GameServer) recordSessionEnd(reason string) {
+	s.counters.sessionsMu.Lock()
+	defer s.counters.sessionsMu.Unlock()
+	if s.counters.sessionEnds == nil {
+		s.counters.sessionEnds = make(map[string]uint64)
+	}
+	s.counters.sessionEnds[reason]++
+}
+
 // RuntimeMetrics returns a lock-free snapshot of the simulation cadence
 // counters and per-process throughput. Safe to call from the HTTP API
 // without contending with the simulation tick.
@@ -94,6 +129,9 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 	s.counters.lastObservedAt.Store(time.Now().UnixNano())
 
 	activeConns, activeAddrs := s.guard.counts()
+	s.counters.sessionsMu.Lock()
+	auth, ends := maps.Clone(s.counters.auth), maps.Clone(s.counters.sessionEnds)
+	s.counters.sessionsMu.Unlock()
 
 	return RuntimeMetricsSnapshot{
 		TickRate:           sim.DefaultTickRate,
@@ -113,6 +151,8 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 		WsEvictedTotal:     s.counters.wsEvictedTotal.Load(),
 		WsActiveConns:      activeConns,
 		WsActiveAddresses:  activeAddrs,
+		Auth:               auth,
+		SessionEnds:        ends,
 	}
 }
 

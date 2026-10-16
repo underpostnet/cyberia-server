@@ -137,3 +137,27 @@ func TestSummonsAndTheirAttacksSpareTheParty(t *testing.T) {
 		t.Fatalf("life = %v: a hostile bot must still hit a party member", lifeOf(ms, b.ID))
 	}
 }
+
+func TestAPartyInviteReachesAFriendOnAnotherMap(t *testing.T) {
+	s, _, a, b := partyFixture(t)
+	a.AccountID, b.AccountID = "acc-a", "acc-b"
+	s.Social.Join(a)
+	s.Social.Join(b)
+	b.MapCode = "elsewhere"
+	invite := func() {
+		s.handlePartyInput(a, &world.InputCommand{Kind: world.InputKindPartyInvite, EntityID: b.ID})
+	}
+
+	invite()
+	if s.Social.Invited(a.PlayerID, b.PlayerID, time.Now()) {
+		t.Fatal("a player out of view who is no friend is out of reach")
+	}
+	s.Social.SetFriendship("acc-a", "acc-b", true)
+	invite()
+	if !s.Social.Invited(a.PlayerID, b.PlayerID, time.Now()) {
+		t.Fatal("an invite reaches a friend on another map of this server")
+	}
+	if reason := s.Social.Reply(b, a, true, time.Now()); reason != "" {
+		t.Fatalf("the friend accepts from another map: %s", reason)
+	}
+}

@@ -36,9 +36,9 @@ type GrpcClient struct {
 	closed bool
 }
 
-// NewGrpcClient dials the Engine gRPC server at address (host:port) and returns
-// a connected GrpcClient. The address is required (resolved by package config).
-func NewGrpcClient(address string) (*GrpcClient, error) {
+// dialEngine opens a connection to the Engine gRPC server at address
+// (host:port).
+func dialEngine(address string) (*grpc.ClientConn, error) {
 	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(64 * 1024 * 1024), // 64 MB
@@ -58,7 +58,16 @@ func NewGrpcClient(address string) (*GrpcClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("engine_client: dial %s: %w", address, err)
 	}
+	return conn, nil
+}
 
+// NewGrpcClient dials the Engine gRPC server at address (host:port) and returns
+// a connected GrpcClient. The address is required (resolved by package config).
+func NewGrpcClient(address string) (*GrpcClient, error) {
+	conn, err := dialEngine(address)
+	if err != nil {
+		return nil, err
+	}
 	logx.Infof("gRPC client connected to Engine at %s", address)
 	return &GrpcClient{
 		conn: conn,

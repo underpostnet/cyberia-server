@@ -130,11 +130,11 @@ func ContributorSet(ledger map[world.EntityID]float64) map[world.EntityID]struct
 
 // SpawnDrops scatters each configured drop item (quantity 1) as a BehaviorDrop
 // token around `center`, and — when the dying entity carried coins — one coin
-// token whose quantity is the looted amount. Every player in `ledger` may race
-// to collect the tokens once they settle. Shared by every dying
-// content-authority entity (bots, resources, destructible obstacles). Caller
-// holds s.mu.
-func (s *Content) SpawnDrops(mapState *world.MapState, center world.Vec2, build EntityTypeDefaultConfig, coinAmount int, ledger map[world.EntityID]float64) {
+// token whose quantity is the looted amount, held by coinLock. Every player in
+// `ledger` may race to collect the tokens once they settle. Shared by every
+// dying content-authority entity (bots, resources, destructible obstacles).
+// Caller holds s.mu.
+func (s *Content) SpawnDrops(mapState *world.MapState, center world.Vec2, build EntityTypeDefaultConfig, coinAmount int, ledger map[world.EntityID]float64, coinLock world.DropLock) {
 	contributors := ContributorSet(ledger)
 	// At least one contributor (player or bot) must have dealt damage for loot to
 	// drop. A death nobody contributed to leaves nothing behind.
@@ -152,14 +152,14 @@ func (s *Content) SpawnDrops(mapState *world.MapState, center world.Vec2, build 
 		if chance := dropChance(build, itemID); chance < 1 && rand.Float64() >= chance {
 			continue
 		}
-		s.spawnDropToken(mapState, center, itemID, stackQuantity(build, itemID), contributors)
+		s.spawnDropToken(mapState, center, itemID, stackQuantity(build, itemID), contributors, world.DropLock{})
 		scattered++
 	}
 
 	// Coins scatter as a single quantity-bearing token rather than crediting the
 	// killer directly (see economy.go).
 	if coinAmount > 0 && s.CoinItemID != "" {
-		s.spawnDropToken(mapState, center, s.CoinItemID, coinAmount, contributors)
+		s.spawnDropToken(mapState, center, s.CoinItemID, coinAmount, contributors, coinLock)
 	}
 
 	logx.Debugf("[LOOT] scattered %d/%d item drop(s) + %d coins at (%.1f,%.1f) on %s (contributors=%d)",
@@ -184,7 +184,7 @@ func (s *Content) spawnLootToken(mapState *world.MapState, pos, size world.Vec2,
 // spawnDropToken creates one death-drop token carrying (itemID × quantity),
 // flings it to a walkable cell a random distance from `center` along a random
 // direction, and announces the launch. Caller holds s.mu.
-func (s *Content) spawnDropToken(mapState *world.MapState, center world.Vec2, itemID string, quantity int, contributors map[world.EntityID]struct{}) {
+func (s *Content) spawnDropToken(mapState *world.MapState, center world.Vec2, itemID string, quantity int, contributors map[world.EntityID]struct{}, lock world.DropLock) {
 	if itemID == "" || quantity <= 0 {
 		return
 	}
@@ -220,6 +220,7 @@ func (s *Content) spawnDropToken(mapState *world.MapState, center world.Vec2, it
 		LootContributors: contributors,
 		CollectableAt:    now.Add(lootLandingWindow),
 		ExpiresAt:        now.Add(lootLifetime),
+		Lock:             lock,
 	}, 0)
 
 	// Announce the launch so viewers play the corpse→cell parabola. The landing

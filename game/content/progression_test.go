@@ -140,7 +140,7 @@ func TestProgressionNormalizesAfterCurveChange(t *testing.T) {
 		t.Fatalf("curve normalization: %+v", got)
 	}
 	s.progressionRules.MaxLevel = 1
-	if got := s.EntityProgression(1, ms); got.Level != 1 || got.XP != 0 {
-		t.Fatalf("level cap normalization: %+v", got)
+	if got := s.EntityProgression(1, ms); got.Level != 1 || got.XP != 400 {
+		t.Fatalf("a lower level cap caps the level and keeps the XP: %+v", got)
 	}
 }

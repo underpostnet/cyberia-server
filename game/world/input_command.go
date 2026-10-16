@@ -29,18 +29,22 @@ const (
 	InputKindItemActivation
 	InputKindPlayerStasis // client modal count > 0 — freeze, else thaw
 	InputKindChat
-	InputKindTalkDone     // dialogue read to the end — advance talk objectives
-	InputKindQuestAbandon // drop an active quest — moves it to failed
-	InputKindQuestAccept  // explicitly accept the NPC's offered quest
-	InputKindShopBuy      // buy one catalog item from a vendor action
-	InputKindCraftItem    // assemble one recipe at an assembler action
-	InputKindCraftCancel  // abort the running assembly and refund it
-	InputKindItemMove     // move units of one stack to a slot of the bag or of a container
-	InputKindPartyInvite  // invite a visible player to the party
-	InputKindPartyReply   // accept or decline a pending invite
-	InputKindPartyLeave   // leave the party
-	InputKindPartyKick    // the leader removes a member
-	InputKindPartyDisband // the leader ends the party
+	InputKindTalkDone      // dialogue read to the end — advance talk objectives
+	InputKindQuestAbandon  // drop an active quest — moves it to failed
+	InputKindQuestAccept   // explicitly accept the NPC's offered quest
+	InputKindShopBuy       // buy one catalog item from a vendor action
+	InputKindCraftItem     // assemble one recipe at an assembler action
+	InputKindCraftCancel   // abort the running assembly and refund it
+	InputKindItemMove      // move units of one stack to a slot of the bag or of a container
+	InputKindPartyInvite   // invite a visible player to the party
+	InputKindPartyReply    // accept or decline a pending invite
+	InputKindPartyLeave    // leave the party
+	InputKindPartyKick     // the leader removes a member
+	InputKindPartyDisband  // the leader ends the party
+	InputKindFriendList    // ask for the friend list
+	InputKindFriendRequest // ask a visible account player for friendship
+	InputKindFriendReply   // accept or decline a friend request
+	InputKindFriendRemove  // end a friendship
 )
 
 // ChatChannel is who one chat line reaches.
@@ -86,6 +90,8 @@ type InputCommand struct {
 	Quantity    int         // ShopBuy — units (clamped server-side)
 	RecipeIndex int         // CraftItem — index into the action's craftRecipes
 	Move        ItemMove    // ItemMove
+	// FriendshipID names the friendship of a FriendReply or FriendRemove.
+	FriendshipID string
 }
 
 // MaxInputQueue bounds one player's queue between two ticks. It equals the

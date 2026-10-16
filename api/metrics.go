@@ -144,6 +144,57 @@ type MetricsResponse struct {
 	Workload          WorkloadMetrics        `json:"workload"`
 	Runtime           RuntimeMetrics         `json:"runtime"`
 	Maps              []net.MapBreakdown     `json:"maps"`
+	// SessionMode is "account" when players sign in and their state persists.
+	SessionMode net.SessionMode `json:"session_mode"`
+	// Persistence is the persist pipeline of an account server.
+	Persistence *PersistenceMetrics `json:"persistence,omitempty"`
+}
+
+// PersistenceMetrics is the persist pipeline: commits, retries, the queue and
+// the checkpoints.
+type PersistenceMetrics struct {
+	Sessions             int     `json:"sessions"`
+	PendingStates        int     `json:"pending_states"`
+	OldestPendingSec     float64 `json:"oldest_pending_sec"`
+	UnsavedPlayers       int     `json:"unsaved_players"`
+	CommitsTotal         uint64  `json:"commits_total"`
+	DuplicatesTotal      uint64  `json:"duplicates_total"`
+	RetriesTotal         uint64  `json:"retries_total"`
+	StaleTotal           uint64  `json:"stale_total"`
+	InvalidTotal         uint64  `json:"invalid_total"`
+	LostFinalTotal       uint64  `json:"lost_final_total"`
+	AvgCommitMs          float64 `json:"avg_commit_ms"`
+	CheckpointsTotal     uint64  `json:"checkpoints_total"`
+	CheckpointFailures   uint64  `json:"checkpoint_failures_total"`
+	PositionsTotal       uint64  `json:"positions_total"`
+	LastCheckpointAgeSec float64 `json:"last_checkpoint_age_sec"`
+}
+
+func (h *MetricsHandler) collectPersistence() *PersistenceMetrics {
+	snap, ok := h.gameServer.Persistence()
+	if !ok {
+		return nil
+	}
+	out := &PersistenceMetrics{
+		Sessions:           snap.Sessions,
+		PendingStates:      snap.Pending,
+		OldestPendingSec:   snap.OldestPending.Seconds(),
+		UnsavedPlayers:     snap.Unsaved,
+		CommitsTotal:       snap.Commits,
+		DuplicatesTotal:    snap.Duplicates,
+		RetriesTotal:       snap.Retries,
+		StaleTotal:         snap.Stale,
+		InvalidTotal:       snap.Invalid,
+		LostFinalTotal:     snap.LostFinal,
+		AvgCommitMs:        float64(snap.AvgCommitDuration.Microseconds()) / 1000,
+		CheckpointsTotal:   snap.Checkpoints,
+		CheckpointFailures: snap.CheckpointFailures,
+		PositionsTotal:     snap.Positions,
+	}
+	if !snap.LastCheckpoint.IsZero() {
+		out.LastCheckpointAgeSec = time.Since(snap.LastCheckpoint).Seconds()
+	}
+	return out
 }
 
 // MetricsHandler owns the metrics endpoints. It is safe for concurrent
@@ -281,6 +332,8 @@ func (h *MetricsHandler) collectMetrics() *MetricsResponse {
 		Workload:          workloadMetrics,
 		Runtime:           runtimeMetrics,
 		Maps:              maps,
+		SessionMode:       h.gameServer.Mode(),
+		Persistence:       h.collectPersistence(),
 	}
 }
 

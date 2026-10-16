@@ -50,9 +50,19 @@ type Config struct {
 	// default 25; keep it under the pod's termination grace period.
 	DrainTimeout time.Duration
 
-	// CORSAllowedOrigins is the CORS allow-list.
-	// CYBERIA_CORS_ALLOWED_ORIGINS (comma-separated), dev default when unset.
+	// CORSAllowedOrigins is the browser origins allowed to read the API and to
+	// open the game socket. CYBERIA_CORS_ALLOWED_ORIGINS (comma-separated),
+	// dev default when unset.
 	CORSAllowedOrigins []string
+
+	// SessionMode is how a connection becomes a player: "anonymous" (a guest
+	// of the connection) or "account" (a launch ticket, persistent state).
+	// CYBERIA_SESSION_MODE, default "anonymous".
+	SessionMode string
+
+	// AuthTimeout bounds how long a new connection may take to send its auth
+	// message. CYBERIA_AUTH_TIMEOUT_SEC, default 10.
+	AuthTimeout time.Duration
 
 	// ProblemBaseURI overrides the RFC 9457 problem.type base URI.
 	// CYBERIA_PROBLEM_BASE_URI, optional (empty = keep package default).
@@ -118,6 +128,7 @@ func Load(dataServerURL, dataServerGRPC, gameServerPublicURL string) (Config, er
 		ServerAPIKey:         os.Getenv("CYBERIA_SERVER_API_KEY"),
 		HotReloadGRPCAddress: getEnv("CYBERIA_HOT_RELOAD_GRPC_ADDRESS", ":50052"),
 		CORSAllowedOrigins:   parseCSV(os.Getenv("CYBERIA_CORS_ALLOWED_ORIGINS"), defaultCORSOrigins),
+		SessionMode:          getEnv("CYBERIA_SESSION_MODE", "anonymous"),
 	}
 	if err != nil {
 		return c, err
@@ -145,6 +156,18 @@ func Load(dataServerURL, dataServerGRPC, gameServerPublicURL string) (Config, er
 		return c, err
 	}
 	c.DrainTimeout = drain
+
+	if c.SessionMode != "anonymous" && c.SessionMode != "account" {
+		return c, fmt.Errorf("invalid CYBERIA_SESSION_MODE %q: expected anonymous or account", c.SessionMode)
+	}
+	if c.SessionMode == "account" && c.ServerAPIKey == "" {
+		return c, fmt.Errorf("CYBERIA_SESSION_MODE=account requires CYBERIA_SERVER_API_KEY")
+	}
+	auth, err := parseSeconds("CYBERIA_AUTH_TIMEOUT_SEC", getEnv("CYBERIA_AUTH_TIMEOUT_SEC", "10"))
+	if err != nil {
+		return c, err
+	}
+	c.AuthTimeout = auth
 
 	limits, err := loadWSLimits()
 	if err != nil {

@@ -1,7 +1,8 @@
 // Package content — quest.go
 //
 // Server-side cyberia-quest runtime: mission definitions, per-player progress,
-// objective advancement (talk / collect / kill), rewards, and persistence.
+// objective advancement (talk / collect / kill) and rewards. An account player
+// commits its progress with its durable state (durable.go).
 // Quests bind to entities by source cell, independently of any cyberia-action —
 // collect/kill objectives need no NPC interaction; a `talk` objective is the one
 // place a quest leans on the action/dialogue layer (see action.go).
@@ -15,15 +16,11 @@
 package content
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"sort"
 	"strings"
 	"time"
 
-	"cyberia-server/engineapi"
 	"cyberia-server/game/world"
 	"cyberia-server/logx"
 
@@ -65,21 +62,16 @@ type QuestReward struct {
 
 // ── Per-player progress (session authority) ─────────────────────────────────
 
-// engineHTTPClient is a shared, persistent HTTP client used for best-effort
-// REST persistence calls to engine-cyberia. Reused across all persist calls
-// to avoid creating a new client per goroutine (which leaks goroutines under
-// sustained quest advancement).
-var engineHTTPClient = &http.Client{
-	Timeout: 8 * time.Second,
-}
-
 // QuestProgress is the runtime, computed-completeness progress record.
 // Step/quest completion is always derived from Current >= Required, never
-// stored as a flag (mirrors CyberiaQuestProgress semantics).
+// stored as a flag (mirrors CyberiaQuestProgress semantics). An abandoned
+// quest is "failed" for the session and has no saved record.
 type QuestProgress struct {
-	QuestCode string              `json:"questCode"`
-	Status    string              `json:"status"` // active | completed
-	Steps     []QuestStepProgress `json:"steps"`
+	QuestCode   string              `json:"questCode"`
+	Status      string              `json:"status"` // active | completed | failed
+	Steps       []QuestStepProgress `json:"steps"`
+	StartedAt   time.Time           `json:"-"`
+	CompletedAt time.Time           `json:"-"`
 }
 
 type QuestStepProgress struct {
@@ -238,7 +230,7 @@ func (s *Content) providerSkinsAtCell(cell world.CellKey) []string {
 	for _, ms := range s.Maps {
 		for id := range ms.OfKind(world.EntityBot) {
 			if botSpawnCell(ms, id) == cell {
-				skin := s.botActiveSkinOf(id, ms)
+				skin := s.activeSkinOf(id, ms)
 				if skin == "" {
 					skin = fmt.Sprint(id)
 				}
@@ -279,8 +271,8 @@ func (s *Content) resolveAcceptableQuestAtCell(player *world.Session, cell world
 
 // HandleQuestAbandon drops an active quest, moving it to the failed section.
 // Only active quests can be abandoned; completed quests are immutable. The
-// failed record is kept (not deleted) so the journal can show it and so the
-// grantor NPC can re-offer the quest (prerequisites permitting).
+// failed record stays for the session, so the journal shows it and the grantor
+// NPC can offer the quest again (prerequisites permitting).
 //
 // Caller MUST hold s.mu.
 func (s *Content) HandleQuestAbandon(player *world.Session, cmd *world.InputCommand) {
@@ -289,7 +281,6 @@ func (s *Content) HandleQuestAbandon(player *world.Session, cmd *world.InputComm
 		return
 	}
 	qp.Status = "failed"
-	s.persistQuestProgress(player, qp)
 	s.sendQuestUpdate(player, []QuestSnapshotEntry{s.questSnapshot(qp)})
 	logx.Debugf("[Quest] player %s abandoned quest %q", player.ID, qp.QuestCode)
 }
@@ -397,7 +388,7 @@ func (s *Content) BotQuestCodes(player *world.Session, id world.EntityID, ms *wo
 			add(code)
 		}
 	}
-	skin := s.botActiveSkinOf(id, ms)
+	skin := s.activeSkinOf(id, ms)
 	if skin != "" {
 		for _, qp := range s.quests[player.ID] {
 			if qp.Status != "active" {
@@ -428,7 +419,7 @@ func (s *Content) BotHasActionableQuest(player *world.Session, id world.EntityID
 			return true
 		}
 	}
-	skin := s.botActiveSkinOf(id, ms)
+	skin := s.activeSkinOf(id, ms)
 	if skin == "" {
 		return false
 	}
@@ -482,8 +473,8 @@ func (s *Content) prerequisitesMet(player *world.Session, code string) bool {
 }
 
 // grantQuest creates an active progress record from the quest definition,
-// denormalizing required counts. Best-effort persists to engine REST. Returns
-// nil when the quest is unknown or its prerequisites are unmet.
+// denormalizing required counts. Returns nil when the quest is unknown or its
+// prerequisites are unmet.
 func (s *Content) grantQuest(player *world.Session, code string) *QuestProgress {
 	def, ok := s.questDefs[code]
 	if !ok {
@@ -499,6 +490,7 @@ func (s *Content) grantQuest(player *world.Session, code string) *QuestProgress 
 		QuestCode: code,
 		Status:    "active",
 		Steps:     make([]QuestStepProgress, 0, len(def.Steps)),
+		StartedAt: time.Now(),
 	}
 	for _, step := range def.Steps {
 		sp := QuestStepProgress{StepID: step.ID}
@@ -517,7 +509,6 @@ func (s *Content) grantQuest(player *world.Session, code string) *QuestProgress 
 		qp.Steps = append(qp.Steps, sp)
 	}
 	s.quests[player.ID][code] = qp
-	s.persistQuestProgress(player, qp)
 	logx.Debugf("[Quest] player %s granted quest %q", player.ID, code)
 	return qp
 }
@@ -622,14 +613,13 @@ func questTalkDialogCode(action *CyberiaAction, questCode string) string {
 
 // finalizeQuestProgress records an advanced quest: consuming the collect items
 // of any newly-completed step, then completing the quest (rewards + unlocks)
-// when all steps are done, otherwise persisting and snapshotting the new
-// progress. Always appends exactly one snapshot entry per advance.
+// when all steps are done, otherwise snapshotting the new progress. Always
+// appends exactly one snapshot entry per advance.
 func (s *Content) finalizeQuestProgress(player *world.Session, qp *QuestProgress, affected *[]QuestSnapshotEntry) {
 	s.settleCompletedSteps(player, qp)
 	if questComplete(qp) {
 		s.CompleteQuest(player, qp, affected)
 	} else {
-		s.persistQuestProgress(player, qp)
 		*affected = append(*affected, s.questSnapshot(qp))
 	}
 }
@@ -776,7 +766,7 @@ func (s *Content) CompleteQuest(player *world.Session, qp *QuestProgress, affect
 	}
 	s.AwardProgression(player, xpQuest, s.ProgressionConfig().reward(xpQuest), qp.QuestCode, 0, time.Now())
 	qp.Status = "completed"
-	s.persistQuestProgress(player, qp)
+	qp.CompletedAt = time.Now()
 	*affected = append(*affected, s.questSnapshot(qp))
 	logx.Debugf("[Quest] player %s completed quest %q", player.ID, qp.QuestCode)
 	// Successors are NOT auto-granted. Completing this quest only satisfies the
@@ -866,71 +856,6 @@ func (s *Content) sendQuestUpdate(player *world.Session, affected []QuestSnapsho
 		return
 	}
 	s.sendDlgAck(player, "", true, affected)
-}
-
-// persistJob is one engine POST, built under s.mu and sent by persistLoop.
-type persistJob struct {
-	url, apiKey string
-	body        []byte
-}
-
-// persistQuestProgress best-effort mirrors a progress record to engine REST.
-// In-memory state is the session authority. The caller holds s.mu, so this
-// only queues the POST; persistLoop sends it. A full queue drops the record.
-//
-// When the Data Server URL is unset the call is a no-op (e.g. for tests).
-func (s *Content) persistQuestProgress(player *world.Session, qp *QuestProgress) {
-	if s.DataServerURL == "" || s.DataServerAPIKey == "" {
-		return
-	}
-	buf, err := json.Marshal(map[string]interface{}{
-		"playerId":  player.PlayerID,
-		"questCode": qp.QuestCode,
-		"status":    qp.Status,
-	})
-	if err != nil {
-		return
-	}
-	job := persistJob{
-		url:    strings.TrimRight(s.DataServerURL, "/") + engineapi.Path("/cyberia-quest-progress"),
-		apiKey: s.DataServerAPIKey,
-		body:   buf,
-	}
-	select {
-	case s.persistQueue <- job:
-	default:
-		logx.Errorf("[Quest] persist queue full, dropped %s/%s", player.PlayerID, qp.QuestCode)
-	}
-}
-
-// PersistLoop sends the queued POSTs one at a time, in queue order, so the
-// engine keeps the newest record of each player.
-// ponytail: one worker for every player keeps per-player order, but a slow
-// engine delays all players' POSTs; per-player workers if that backlog shows.
-func (s *Content) PersistLoop() {
-	for job := range s.persistQueue {
-		enginePost(job)
-	}
-}
-
-// enginePost performs a best-effort POST using the shared HTTP client, with
-// the server key the engine requires of a game server; errors are logged only.
-func enginePost(job persistJob) {
-	req, err := http.NewRequest(http.MethodPost, job.url, bytes.NewReader(job.body))
-	if err != nil {
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Cyberia-Server-Api-Key", job.apiKey)
-	resp, err := engineHTTPClient.Do(req)
-	if err != nil {
-		logx.Errorf("[Quest] persist POST %s failed: %v", job.url, err)
-		return
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		logx.Errorf("[Quest] persist POST %s answered HTTP %d", job.url, resp.StatusCode)
-	}
 }
 
 func containsStr(list []string, v string) bool {

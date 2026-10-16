@@ -10,7 +10,7 @@
 //	party_reply  {fromId, accept}  — answer an invite
 //	party_leave, party_kick {toId}, party_disband
 //	party_ack    {ok, reason, action} — sent on a refusal only
-//	snapshot self.party / self.partyInvites — the whole state, every tick
+//	snapshot self.party / self.partyInvites / self.partyInvitesSent — the whole state, every tick
 package social
 
 import (
@@ -38,9 +38,9 @@ type invite struct {
 	from, to world.PlayerID
 }
 
-// Invite is one pending invite to a player.
+// Invite is one pending invite between two players.
 type Invite struct {
-	From      world.PlayerID
+	From, To  world.PlayerID
 	ExpiresAt time.Time
 }
 
@@ -104,8 +104,13 @@ func (s *Social) Invite(from, to *world.Session, now time.Time) string {
 	}
 	s.dropInvites(func(i invite) bool { return !now.Before(s.invites[i]) })
 	key := invite{from.PlayerID, to.PlayerID}
-	if _, renew := s.invites[key]; !renew && len(s.InvitesTo(to.PlayerID, now)) >= content.PartyInvitesMax {
-		return ReasonBusy
+	if _, renew := s.invites[key]; !renew {
+		if len(s.InvitesTo(to.PlayerID, now)) >= content.PartyInvitesMax {
+			return ReasonBusy
+		}
+		if len(s.InvitesFrom(from.PlayerID, now)) >= content.PartyInvitesMax {
+			return ReasonInvitesFull
+		}
 	}
 	s.invites[key] = now.Add(InviteTTL)
 	return ""
@@ -113,17 +118,29 @@ func (s *Social) Invite(from, to *world.Session, now time.Time) string {
 
 // InvitesTo lists the pending invites to id, the one that expires first first.
 func (s *Social) InvitesTo(id world.PlayerID, now time.Time) []Invite {
+	return s.pendingInvites(now, func(i invite) bool { return i.to == id })
+}
+
+// InvitesFrom lists the pending invites id sent, the one that expires first first.
+func (s *Social) InvitesFrom(id world.PlayerID, now time.Time) []Invite {
+	return s.pendingInvites(now, func(i invite) bool { return i.from == id })
+}
+
+func (s *Social) pendingInvites(now time.Time, match func(invite) bool) []Invite {
 	var out []Invite
 	for key, expiresAt := range s.invites {
-		if key.to == id && now.Before(expiresAt) {
-			out = append(out, Invite{From: key.from, ExpiresAt: expiresAt})
+		if match(key) && now.Before(expiresAt) {
+			out = append(out, Invite{From: key.from, To: key.to, ExpiresAt: expiresAt})
 		}
 	}
 	slices.SortFunc(out, func(a, b Invite) int {
 		if c := a.ExpiresAt.Compare(b.ExpiresAt); c != 0 {
 			return c
 		}
-		return strings.Compare(string(a.From), string(b.From))
+		if c := strings.Compare(string(a.From), string(b.From)); c != 0 {
+			return c
+		}
+		return strings.Compare(string(a.To), string(b.To))
 	})
 	return out
 }

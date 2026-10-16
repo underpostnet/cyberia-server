@@ -278,13 +278,13 @@ func (s *Sim) queuePreRespawnActivation(player *world.Session, itemID string, sl
 }
 
 // handleChatInput sends one chat line. A direct line needs its target on the
-// sender's map. A refusal answers with chat_ack.
-func (s *Sim) handleChatInput(sender *world.Session, mapState *world.MapState, cmd *world.InputCommand) {
+// sender's map, or a friend on this server. A refusal answers with chat_ack.
+func (s *Sim) handleChatInput(sender *world.Session, cmd *world.InputCommand) {
 	var target *world.Session
 	if cmd.ChatChannel == world.ChatDirect {
-		target = s.PlayerOn(mapState, cmd.EntityID)
+		target = s.Sessions[cmd.EntityID]
 	}
-	if reason := s.Social.Chat(sender, cmd.ChatChannel, target, cmd.ChatText, time.Now()); reason != "" {
+	if reason := s.Social.Chat(sender, s.PlayerSkin(sender), cmd.ChatChannel, target, cmd.ChatText, time.Now()); reason != "" {
 		world.SendAck(sender, "chat_ack", reason, map[string]interface{}{"channel": cmd.ChatChannel.String(), "toId": cmd.EntityID})
 	}
 }
@@ -298,14 +298,15 @@ var partyActions = map[world.InputKind]string{
 	world.InputKindPartyDisband: "disband",
 }
 
-// handlePartyInput applies one party request. An invite needs its target in
-// the inviter's view. A refusal answers with party_ack.
+// handlePartyInput applies one party request. An invite reaches a player in
+// the inviter's view, or an accepted friend on any map of this server. A
+// refusal answers with party_ack.
 func (s *Sim) handlePartyInput(player *world.Session, cmd *world.InputCommand) {
 	now := time.Now()
 	var reason string
 	switch cmd.Kind {
 	case world.InputKindPartyInvite:
-		reason = s.Social.Invite(player, s.VisiblePlayer(player, cmd.EntityID), now)
+		reason = s.Social.Invite(player, s.reachablePlayer(player, cmd.EntityID), now)
 	case world.InputKindPartyReply:
 		reason = s.Social.Reply(player, s.Sessions[cmd.EntityID], cmd.Active, now)
 	case world.InputKindPartyLeave:

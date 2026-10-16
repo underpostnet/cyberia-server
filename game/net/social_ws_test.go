@@ -41,10 +41,8 @@ func (w *wsTestServer) join(t *testing.T) *socialClient {
 	c := &socialClient{conn: conn, init: readInitData(t, conn)}
 	waitFor(t, "the client to register", func() bool { return w.clientCount() == want })
 	w.game.Mu.Lock()
-	for id, p := range w.game.Sessions {
-		if p.PlayerID == c.init.PlayerID {
-			c.id = id
-		}
+	for id := range w.game.Sessions {
+		c.id = max(c.id, id)
 	}
 	w.game.Mu.Unlock()
 	return c
@@ -108,13 +106,16 @@ func TestWSPlayersGetASessionIdentityAndAGuestName(t *testing.T) {
 	a := srv.join(t)
 	srv.tick()
 	self := a.self(t, func(SnapshotSelf) bool { return true })
-	if a.init.PlayerID == "" || a.init.MaxLevel < 1 {
-		t.Fatalf("init_data names the player and the level cap: %+v", a.init)
+	if a.init.Session != PrincipalGuest || a.init.MaxLevel < 1 {
+		t.Fatalf("init_data marks a guest and names the level cap: %+v", a.init)
 	}
 	if !strings.HasPrefix(self.Name, "Guest-") || self.Storage == nil {
 		t.Fatalf("the own block carries the name and the storage: name=%q storage=%v", self.Name, self.Storage)
 	}
-	if strings.Contains(string(mustJSON(t, self)), string(a.init.PlayerID)) {
+	srv.game.Mu.Lock()
+	playerID := srv.game.Sessions[a.id].PlayerID
+	srv.game.Mu.Unlock()
+	if playerID == "" || strings.Contains(string(mustJSON(t, self)), string(playerID)) {
 		t.Fatal("the player id never goes in a snapshot")
 	}
 }
@@ -163,6 +164,10 @@ func TestWSInviteAcceptLeadAndDisconnect(t *testing.T) {
 	invited := b.self(t, func(s SnapshotSelf) bool { return len(s.PartyInvites) == 1 })
 	if invited.PartyInvites[0].FromID != a.id || invited.PartyInvites[0].ExpiresInMs <= 0 {
 		t.Fatalf("invite: %+v", invited.PartyInvites)
+	}
+	sent := a.self(t, func(s SnapshotSelf) bool { return len(s.PartyInvitesSent) == 1 })
+	if sent.PartyInvitesSent[0].ToID != b.id || sent.PartyInvitesSent[0].ExpiresInMs <= 0 {
+		t.Fatalf("the inviter sees its invite wait: %+v", sent.PartyInvitesSent)
 	}
 
 	b.send(t, srv, "party_reply", map[string]any{"fromId": a.id, "accept": true})

@@ -80,9 +80,28 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
+// dial opens a socket and authenticates as a guest.
 func dial(t *testing.T, url string) (*websocket.Conn, *http.Response, error) {
 	t.Helper()
-	return websocket.DefaultDialer.Dial(url, nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		return conn, resp, err
+	}
+	return conn, resp, sendAuth(t, conn, "")
+}
+
+// sendAuth sends the auth message with a ticket, or none.
+func sendAuth(t *testing.T, conn *websocket.Conn, ticket string) error {
+	t.Helper()
+	payload := map[string]any{}
+	if ticket != "" {
+		payload["ticket"] = ticket
+	}
+	pack, err := Pack("auth", payload)
+	if err != nil {
+		t.Fatalf("pack auth: %v", err)
+	}
+	return conn.WriteMessage(websocket.BinaryMessage, pack)
 }
 
 // readInitData consumes frames until init_data arrives and returns its payload.
@@ -474,7 +493,7 @@ func TestWSNoResidueAfterAConcurrentConnectAndDisconnectCycle(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				conn, _, err := websocket.DefaultDialer.Dial(srv.url, nil)
+				conn, _, err := dial(t, srv.url)
 				if err != nil {
 					return
 				}
@@ -510,7 +529,7 @@ func TestWSUnlimitedProfileAcceptsAWideSameAddressRun(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			conn, _, err := websocket.DefaultDialer.Dial(srv.url, nil)
+			conn, _, err := dial(t, srv.url)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {

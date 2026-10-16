@@ -355,7 +355,7 @@ func TestDeathDropsKeepTheContributorRace(t *testing.T) {
 	outsider := woundedPlayer(s.World, ms, 107, world.Vec2{}, 50)
 	ledger := map[world.EntityID]float64{contributor.ID: 5}
 	s.SpawnDrops(ms, world.Vec2{X: 10, Y: 10},
-		content.EntityTypeDefaultConfig{DropItemIDs: []string{"shard"}}, 7, ledger)
+		content.EntityTypeDefaultConfig{DropItemIDs: []string{"shard"}}, 7, ledger, world.DropLock{})
 
 	tokens := drops(ms)
 	if len(tokens) != 2 {

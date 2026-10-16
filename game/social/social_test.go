@@ -184,22 +184,43 @@ func TestATargetHoldsABoundedNumberOfInvites(t *testing.T) {
 	}
 }
 
+func TestAnInviterHoldsABoundedNumberOfInvites(t *testing.T) {
+	s, p, _ := players(content.PartyInvitesMax + 2)
+	now := time.Now()
+	inviter := p[0]
+	for i := 1; i <= content.PartyInvitesMax; i++ {
+		if reason := s.Invite(inviter, p[i], now.Add(time.Duration(i)*time.Second)); reason != "" {
+			t.Fatalf("invite %d: %s", i, reason)
+		}
+	}
+	sent := s.InvitesFrom(inviter.PlayerID, now.Add(time.Minute))
+	if len(sent) != content.PartyInvitesMax || sent[0].To != p[1].PlayerID {
+		t.Fatalf("the sent invites, the one that expires first first: %+v", sent)
+	}
+	if reason := s.Invite(inviter, p[len(p)-1], now); reason != ReasonInvitesFull {
+		t.Fatalf("one invite too many, got %q", reason)
+	}
+	if reason := s.Invite(inviter, p[1], now); reason != "" {
+		t.Fatalf("a renewal is no new invite, got %q", reason)
+	}
+}
+
 func TestChatChannelsReachTheirMembersOnly(t *testing.T) {
 	s, p, in := players(3)
 	now := time.Now()
 	s.Invite(p[0], p[1], now)
 	s.Reply(p[1], p[0], true, now)
 
-	if reason := s.Chat(p[0], world.ChatWorld, nil, "hello", now); reason != "" {
+	if reason := s.Chat(p[0], "", world.ChatWorld, nil, "hello", now); reason != "" {
 		t.Fatalf("world: %s", reason)
 	}
-	if reason := s.Chat(p[0], world.ChatParty, nil, "team", now); reason != "" {
+	if reason := s.Chat(p[0], "", world.ChatParty, nil, "team", now); reason != "" {
 		t.Fatalf("party: %s", reason)
 	}
-	if reason := s.Chat(p[2], world.ChatParty, nil, "spy", now); reason != ReasonNoParty {
+	if reason := s.Chat(p[2], "", world.ChatParty, nil, "spy", now); reason != ReasonNoParty {
 		t.Fatalf("a player in no party has no party channel, got %q", reason)
 	}
-	if reason := s.Chat(p[2], world.ChatDirect, p[1], "psst", now); reason != "" {
+	if reason := s.Chat(p[2], "", world.ChatDirect, p[1], "psst", now); reason != "" {
 		t.Fatalf("direct: %s", reason)
 	}
 
@@ -231,14 +252,14 @@ func TestChatBudgetRefusesFloodsAndRefills(t *testing.T) {
 	s, p, in := players(1)
 	now := time.Now()
 	for i := 0; i < chatBurst; i++ {
-		if reason := s.Chat(p[0], world.ChatWorld, nil, "spam", now); reason != "" {
+		if reason := s.Chat(p[0], "", world.ChatWorld, nil, "spam", now); reason != "" {
 			t.Fatalf("line %d: %s", i, reason)
 		}
 	}
-	if reason := s.Chat(p[0], world.ChatWorld, nil, "spam", now); reason != ReasonRateLimited {
+	if reason := s.Chat(p[0], "", world.ChatWorld, nil, "spam", now); reason != ReasonRateLimited {
 		t.Fatalf("a spent budget refuses, got %q", reason)
 	}
-	if reason := s.Chat(p[0], world.ChatWorld, nil, "later", now.Add(chatRefill)); reason != "" {
+	if reason := s.Chat(p[0], "", world.ChatWorld, nil, "later", now.Add(chatRefill)); reason != "" {
 		t.Fatalf("the budget refills: %s", reason)
 	}
 	if len(in[0].lines) != chatBurst+1 {
@@ -265,5 +286,68 @@ func TestCleanTextKeepsPrintableTextWithinTheLimit(t *testing.T) {
 	long := strings.Repeat("🙂", content.ChatTextMaxRunes*2)
 	if got := []rune(CleanText(long)); len(got) != content.ChatTextMaxRunes {
 		t.Fatalf("a long line keeps %d whole runes, got %d", content.ChatTextMaxRunes, len(got))
+	}
+}
+
+// accounts joins two account players, one on map "a" and one on map "b".
+func accounts() (*Social, *world.Session, *world.Session, *inbox, *inbox) {
+	s := New()
+	ia, ib := &inbox{}, &inbox{}
+	a := &world.Session{ID: 1, PlayerID: "prof-a", AccountID: "acc-a", DisplayName: "ana", MapCode: "a", Client: ia}
+	b := &world.Session{ID: 2, PlayerID: "prof-b", AccountID: "acc-b", DisplayName: "bo", MapCode: "b", Client: ib}
+	s.Join(a)
+	s.Join(b)
+	return s, a, b, ia, ib
+}
+
+func TestAccountPlayersKeepTheirNamesAndAreFoundByAccount(t *testing.T) {
+	s, a, b, _, _ := accounts()
+	if a.DisplayName != "ana" || s.Account("acc-b") != b {
+		t.Fatalf("an account player keeps its name and is found by account: %q %v", a.DisplayName, s.Account("acc-b"))
+	}
+	s.Leave(b)
+	if s.Account("acc-b") != nil {
+		t.Fatal("a player that left is no longer online")
+	}
+}
+
+func TestADirectLineCrossesMapsOnlyBetweenFriends(t *testing.T) {
+	s, a, b, _, ib := accounts()
+	now := time.Now()
+	if reason := s.Chat(a, "", world.ChatDirect, b, "hi", now); reason != ReasonUnavailable {
+		t.Fatalf("a stranger on another map is out of reach, got %q", reason)
+	}
+	s.SetFriends(a.PlayerID, []string{"acc-b"})
+	s.SetFriendship("acc-a", "acc-b", true)
+	if reason := s.Chat(a, "skin-a", world.ChatDirect, b, "hi", now); reason != "" || len(ib.lines) != 1 {
+		t.Fatalf("a friend on another map gets the line: reason=%q lines=%d", reason, len(ib.lines))
+	}
+	if ib.lines[0].FromSkin != "skin-a" {
+		t.Fatalf("the line names the skin that draws its sender: %+v", ib.lines[0])
+	}
+	s.SetFriendship("acc-a", "acc-b", false)
+	if s.Friends(a, b) || s.Friends(b, a) {
+		t.Fatal("a removed friendship ends on both sides")
+	}
+}
+
+func TestFriendActionsNeedAnAccountAndABudget(t *testing.T) {
+	s, a, _, _, _ := accounts()
+	guest := &world.Session{ID: 3, PlayerID: "guest-1"}
+	s.Join(guest)
+	now := time.Now()
+	if reason := s.SpendFriendAction(guest, now); reason != ReasonGuest {
+		t.Fatalf("a guest has no friends, got %q", reason)
+	}
+	for i := range friendBurst {
+		if reason := s.SpendFriendAction(a, now); reason != "" {
+			t.Fatalf("action %d within the burst refused: %q", i, reason)
+		}
+	}
+	if reason := s.SpendFriendAction(a, now); reason != ReasonRateLimited {
+		t.Fatalf("an action past the burst waits, got %q", reason)
+	}
+	if reason := s.SpendFriendAction(a, now.Add(friendRefill)); reason != "" {
+		t.Fatalf("the budget refills, got %q", reason)
 	}
 }

@@ -76,10 +76,21 @@ func (s *Sim) PhaseInput(tick uint32, mapState *world.MapState) {
 	}
 }
 
+// tradeKinds are the explicit trades an unsaved player may not make: their
+// result could not be committed.
+var tradeKinds = map[world.InputKind]bool{
+	world.InputKindShopBuy:   true,
+	world.InputKindCraftItem: true,
+	world.InputKindItemMove:  true,
+}
+
 // applyInputCommand is the typed dispatcher. Kept on *GameServer so it
 // can call into existing simulation helpers without re-acquiring the
 // world lock. Each branch maps to one InputKind constant.
 func (s *Sim) applyInputCommand(player *world.Session, mapState *world.MapState, cmd *world.InputCommand) {
+	if player.Unsaved && tradeKinds[cmd.Kind] {
+		return
+	}
 	switch cmd.Kind {
 	case world.InputKindPlayerAction:
 		s.handlePlayerActionInput(player, mapState, cmd)
@@ -92,7 +103,7 @@ func (s *Sim) applyInputCommand(player *world.Session, mapState *world.MapState,
 			ThawPlayer(player)
 		}
 	case world.InputKindChat:
-		s.handleChatInput(player, mapState, cmd)
+		s.handleChatInput(player, cmd)
 	case world.InputKindTalkDone:
 		s.HandleTalkDone(player, cmd)
 	case world.InputKindQuestAbandon:
@@ -110,6 +121,9 @@ func (s *Sim) applyInputCommand(player *world.Session, mapState *world.MapState,
 	case world.InputKindPartyInvite, world.InputKindPartyReply, world.InputKindPartyLeave,
 		world.InputKindPartyKick, world.InputKindPartyDisband:
 		s.handlePartyInput(player, cmd)
+	case world.InputKindFriendList, world.InputKindFriendRequest, world.InputKindFriendReply,
+		world.InputKindFriendRemove:
+		s.handleFriendInput(player, cmd)
 	case world.InputKindUnknown:
 		// failed validation: consumed, never applied
 	}
@@ -193,8 +207,9 @@ func (s *Sim) PhaseLoot(tick uint32, mapState *world.MapState) {
 		if !content.BehaviorIsInert(mapState.Ag(dropID).Behavior) {
 			continue
 		}
-		// Mid-launch tokens register no collision until they settle on the cell.
-		if now.Before(drop.CollectableAt) {
+		// Mid-launch tokens register no collision until they settle on the cell;
+		// a locked token waits for the engine to apply the loss it came from.
+		if now.Before(drop.CollectableAt) || !s.DropReleased(drop) {
 			continue
 		}
 

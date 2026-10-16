@@ -134,3 +134,32 @@ func TestLoadRequiresDataServer(t *testing.T) {
 		})
 	}
 }
+
+// A server is anonymous unless it says otherwise; account mode needs the
+// server key the engine checks on every player call.
+func TestLoadSessionMode(t *testing.T) {
+	t.Setenv("INSTANCE_CODE", "test-instance")
+	tests := []struct {
+		name, mode, key string
+		want            string
+		wantErr         bool
+	}{
+		{name: "default", want: "anonymous"},
+		{name: "account with key", mode: "account", key: "secret", want: "account"},
+		{name: "account without key", mode: "account", wantErr: true},
+		{name: "unknown", mode: "persistent", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("CYBERIA_SESSION_MODE", tt.mode)
+			t.Setenv("CYBERIA_SERVER_API_KEY", tt.key)
+			got, err := Load("http://data", "data:50051", "")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && (got.SessionMode != tt.want || got.AuthTimeout <= 0) {
+				t.Fatalf("mode %q timeout %v, want %q and a timeout", got.SessionMode, got.AuthTimeout, tt.want)
+			}
+		})
+	}
+}

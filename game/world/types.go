@@ -3,6 +3,8 @@ package world
 import (
 	"sync"
 	"time"
+
+	"cyberia-server/game/persist"
 )
 
 // 1. Data Structures & Interfaces
@@ -112,6 +114,9 @@ type ObjectLayerState struct {
 	Active   bool   `json:"active"`
 	Quantity int    `json:"quantity"`
 	Slot     int    `json:"-"`
+	// CID is the definition a player stack was granted with. Stacks merge only
+	// when both the label and the CID match.
+	CID string `json:"-"`
 }
 
 // EntityID is the id of an entity on the server, on the wire and on the
@@ -119,7 +124,8 @@ type ObjectLayerState struct {
 type EntityID uint32
 
 // PlayerID is the domain identity of a player. It owns what the player banks
-// and its party seat. A connection makes one, and it ends with the connection.
+// and its party seat. In account mode it is the profile id; in anonymous mode
+// a connection makes one, and it ends with the connection.
 type PlayerID string
 
 // ComponentMask holds one bit per component an entity has.
@@ -178,8 +184,14 @@ func (v *Vitals) Ghost() bool { return !v.RespawnAt.IsZero() }
 // its map, its economy, its quests and its input stream.
 type Session struct {
 	ID EntityID
-	// PlayerID is also the player id the engine knows. It never goes in a snapshot.
+	// PlayerID never goes on the wire.
 	PlayerID PlayerID `json:"-"`
+	// AccountID is the account of an account-mode session; empty for a guest.
+	// It never goes on the wire.
+	AccountID string `json:"-"`
+	// Unsaved marks a player whose commits fail past the outage threshold. The
+	// server refuses its explicit trades until a commit succeeds.
+	Unsaved bool `json:"-"`
 	// DisplayName is the name every viewer sees.
 	DisplayName  string    `json:"-"`
 	MapCode      string    `json:"MapCode"`
@@ -304,6 +316,15 @@ type Brain struct {
 	LootOrigin     LootOrigin     `json:"-"`
 	LootCollection LootCollection `json:"-"`
 	LootOutcome    LootOutcome    `json:"-"`
+	// Lock holds back a token made of coins an account player lost.
+	Lock DropLock `json:"-"`
+}
+
+// DropLock holds a token back until the engine applied the loss it came from:
+// the marked state of PlayerID. A zero lock holds nothing.
+type DropLock struct {
+	PlayerID string
+	Mark     persist.Mark
 }
 
 type MapState struct {

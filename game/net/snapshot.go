@@ -99,8 +99,15 @@ type SnapshotSelf struct {
 	Party *SnapshotParty `json:"party,omitempty"`
 	// PartyInvites are the invites that wait for the player's answer.
 	PartyInvites []SnapshotInvite `json:"partyInvites,omitempty"`
+	// PartyInvitesSent are the invites of the player that wait for an answer.
+	PartyInvitesSent []SnapshotSentInvite `json:"partyInvitesSent,omitempty"`
 	// Craft is the running assembly, absent when none runs.
 	Craft *content.SnapshotCraft `json:"craft,omitempty"`
+	// Held counts the owned stacks the world cannot load now.
+	Held int `json:"held,omitempty"`
+	// Unsaved marks an account player whose state the engine has not taken
+	// for a while; its trades wait.
+	Unsaved bool `json:"unsaved,omitempty"`
 	// Interaction has one row per bot in the AOI that offers something.
 	Interaction []SnapshotInteraction `json:"interaction"`
 
@@ -136,6 +143,12 @@ type SnapshotPartyMember struct {
 type SnapshotInvite struct {
 	FromID      world.EntityID `json:"fromId"`
 	FromName    string         `json:"fromName"`
+	ExpiresInMs int            `json:"expiresInMs"`
+}
+
+// SnapshotSentInvite is one invite of the viewing player that waits for an answer.
+type SnapshotSentInvite struct {
+	ToID        world.EntityID `json:"toId"`
 	ExpiresInMs int            `json:"expiresInMs"`
 }
 
@@ -262,7 +275,6 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 		})
 	}
 
-	now := time.Now()
 	var interaction []SnapshotInteraction
 
 	// Players
@@ -277,7 +289,7 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 		e.StatusIcon = content.PlayerStatusIcon(op, mapState.Vt(op.ID))
 		e.Name = op.DisplayName
 		snap.Entities = append(snap.Entities, e)
-		if flags := s.playerInteractionFlags(player, op, now); flags != 0 {
+		if flags := s.playerInteractionFlags(player, op); flags != 0 {
 			interaction = append(interaction, SnapshotInteraction{ID: op.ID, Flags: flags})
 		}
 	}
@@ -402,16 +414,23 @@ func (s *GameServer) buildSnapshot(player *world.Session, mapState *world.MapSta
 	return snap
 }
 
-// playerInteractionFlags is what another player offers the viewer: an invite
-// it may send now, or one that waits for an answer.
-func (s *GameServer) playerInteractionFlags(viewer, other *world.Session, now time.Time) uint8 {
-	if s.Social.Invited(viewer.PlayerID, other.PlayerID, now) {
-		return content.InteractionFlagPartyInvited
+// playerInteractionFlags is what another player is to the viewer: a member of
+// its party, or of another party, and a friend; and whether it may invite it now.
+func (s *GameServer) playerInteractionFlags(viewer, other *world.Session) uint8 {
+	var flags uint8
+	switch {
+	case s.Social.SameParty(viewer.PlayerID, other.PlayerID):
+		flags |= content.InteractionFlagPartyMember
+	case s.Social.PartyOf(other.PlayerID) != nil:
+		flags |= content.InteractionFlagGrouped
+	}
+	if s.Social.Friends(viewer, other) {
+		flags |= content.InteractionFlagFriend
 	}
 	if s.Social.CanInvite(viewer, other) {
-		return content.InteractionFlagPartyInvite
+		flags |= content.InteractionFlagPartyInvite
 	}
-	return 0
+	return flags
 }
 
 // snapshotParty is the party of the player, or nil.
@@ -452,11 +471,22 @@ func (s *GameServer) snapshotInvites(player *world.Session, now time.Time) []Sna
 	return out
 }
 
+// snapshotSentInvites lists the invites of the player that wait for an answer.
+func (s *GameServer) snapshotSentInvites(player *world.Session, now time.Time) []SnapshotSentInvite {
+	pending := s.Social.InvitesFrom(player.PlayerID, now)
+	out := make([]SnapshotSentInvite, 0, len(pending))
+	for _, invite := range pending {
+		out = append(out, SnapshotSentInvite{ToID: s.Social.Player(invite.To).ID, ExpiresInMs: msUntil(invite.ExpiresAt)})
+	}
+	return out
+}
+
 // buildSnapshotSelf fills the viewing player's own block.
 func (s *GameServer) buildSnapshotSelf(player *world.Session, mapState *world.MapState) SnapshotSelf {
 	stats := s.CalculateStats(player.ID, mapState)
 	breakdown := s.StatBreakdown(player.ID, mapState, make(map[world.EntityID]bool))
 	progression := s.EntityProgression(player.ID, mapState)
+	now := time.Now()
 
 	self := SnapshotSelf{
 		SnapshotEntity: baseEntity(mapState, player.ID),
@@ -478,8 +508,11 @@ func (s *GameServer) buildSnapshotSelf(player *world.Session, mapState *world.Ma
 		Vaults:           s.PlayerVaults(player),
 		Storage:          s.PlayerStorage(player),
 		Party:            s.snapshotParty(player),
-		PartyInvites:     s.snapshotInvites(player, time.Now()),
+		PartyInvites:     s.snapshotInvites(player, now),
+		PartyInvitesSent: s.snapshotSentInvites(player, now),
 		Craft:            s.SnapshotCraft(player),
+		Held:             s.HeldCount(player),
+		Unsaved:          player.Unsaved,
 		Inventory:        s.InventoryView(mapState.Ap(player.ID).Layers),
 		Frozen:           player.Frozen,
 		MoveSpeed:        s.CalculatePlayerMovementSpeed(stats),
