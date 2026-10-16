@@ -1,27 +1,27 @@
 
   <!DOCTYPE html>
-  <html dir="ltr" lang="en">
+  <html
+    dir="ltr"
+    lang="en"
+    data-session="log-out"
+    data-theme="dark"
+  >
     <head>
       <title>Cyberia — Sector Not Found</title>
       <link rel="icon" type="image/x-icon" href="/favicon.ico" />
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-      <link rel="https://underpost.net/rel/build-manifest" href="/underpost.manifest" type="application/json" /><script id="underpost-build-manifest" type="application/json">{"schema":1,"application":"cyberia-server","version":"v3.5.0","build":{"id":"82f16bcb7053b9cf","mode":"production"},"runtime":{"basePath":"/","apiBasePath":"api/v1"}}</script>
-      <meta name="description" content="Cyberia Online 404 — the requested sector is not on the grid.">
+      <link rel="https://underpost.net/rel/build-manifest" href="/underpost.manifest" type="application/json" /><script id="underpost-build-manifest" type="application/json">{"schema":1,"application":"cyberia-server","version":"v3.5.0","build":{"id":"82f16bcb7053b9cf","mode":"production"},"runtime":{"basePath":"/","apiBasePath":"api/v1"}}</script> <meta name="description" content="Cyberia Online 404 — the requested sector is not on the grid.">
 <meta property="og:title" content="Cyberia — Sector Not Found">
 <meta property="og:description" content="Cyberia Online 404 — the requested sector is not on the grid.">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    </head>
-    <body>
-      <style>
+      <style class="root-style">
         html {
           scroll-behavior: smooth;
         }
 
         body {
-          /* overscroll-behavior: contain; */
-          /* box-sizing: border-box; */
           padding: 0px;
           margin: 0px;
         }
@@ -68,7 +68,6 @@
 
         .stq {
           position: sticky;
-          /* require defined at least top, bottom, left o right */
         }
 
         .wfa {
@@ -146,12 +145,6 @@
         .hide {
           display: none !important;
         }
-        /*
-
-placeholder
-
-*/
-
         ::placeholder {
           color: black;
           opacity: 1;
@@ -170,12 +163,6 @@ placeholder
           color: black;
           background: none;
         }
-
-        /*
-
-selection
-
-*/
 
         ::-moz-selection {
           /* Code for Firefox */
@@ -209,30 +196,35 @@ selection
         .gray {
           filter: grayscale(1);
         }
+
+        /* Every state except log-in shows the log-out UI. */
+        :root:not([data-session='log-in']) .session-in-log-in,
+        :root:not([data-session='log-in']) .session-inl-log-in,
+        :root:not([data-session='log-in']) .session-fl-log-in,
+        :root[data-session='log-in'] .session-in-log-out,
+        :root[data-session='log-in'] .session-inl-log-out,
+        :root[data-session='log-in'] .session-fl-log-out {
+          display: none;
+        }
+
+        :root:not([data-session='log-in']) .session-in-log-out,
+        :root[data-session='log-in'] .session-in-log-in {
+          display: block;
+        }
+
+        :root:not([data-session='log-in']) .session-inl-log-out,
+        :root[data-session='log-in'] .session-inl-log-in {
+          display: inline-table;
+        }
+
+        :root:not([data-session='log-in']) .session-fl-log-out,
+        :root[data-session='log-in'] .session-fl-log-in {
+          display: flow-root;
+        }
       </style>
-      <div class="session">
-        <style>
-          .session-in-log-out {
-            display: block;
-          }
-          .session-inl-log-out {
-            display: inline-table;
-          }
-          .session-fl-log-out {
-            display: flow-root;
-          }
-          .session-in-log-in {
-            display: none;
-          }
-          .session-inl-log-in {
-            display: none;
-          }
-          .session-fl-log-in {
-            display: none;
-          }
-        </style>
-      </div>
-      <div class="theme"></div>
+      <style class="theme-style"></style>
+    </head>
+    <body>
       <script>
     {
       const s = (el) => document.querySelector(el);
