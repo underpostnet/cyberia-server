@@ -1,0 +1,14 @@
+# Allowlist: scan the Go package folders only.
+/*
+!/api/
+!/cmd/
+!/config/
+!/engine_client/
+!/engineapi/
+!/game/
+!/hotreload/
+!/httpserver/
+!/logx/
+
+*_test.go
+testdata/

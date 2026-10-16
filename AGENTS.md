@@ -45,6 +45,19 @@ it here. This repo is a passive consumer.
 - Never bundle a `manifests/` edit with source changes in one commit.
 - Do not read it as the source of truth for deploy config.
 
+## Code questions — query the graphify graph first
+
+`graphify-out/` holds a knowledge graph of the code. Use it first for a
+question about structure, relations or "where is X". Then read the source.
+
+- `graphify-out/GRAPH_REPORT.md` — summary: main nodes, communities, cross links.
+- `graphify query "<question>"` — search the graph for a question.
+- `graphify path "A" "B"` — shortest path between two nodes.
+- `graphify explain "X"` — a node and its neighbors.
+
+The graph can be older than the code. Confirm each result in the source
+before you edit. If `graphify-out/` is absent, read the source directly.
+
 
 # System Map
 

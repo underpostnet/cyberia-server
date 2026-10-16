@@ -20,6 +20,14 @@ go.work.sum
 /cyberia-server
 /server
 /bin
-/docs
+/docs/*
+!/docs/graphify-out/
 # Underpost CLI package staged into this build context by the image pipeline.
 underpost-cli.tgz
+
+!.graphifyignore
+
+# graphify: share only the graph and its report.
+/docs/graphify-out/*
+!/docs/graphify-out/graph.json
+!/docs/graphify-out/GRAPH_REPORT.md
