@@ -1,11 +1,8 @@
-# normalize LF in repo
-* text=auto
+# LF in repo and in the working tree, on every platform
+* text=auto eol=lf
 
 # treat scripts as text
 *.py text
-
-# enforce LF for Unix specific
-*.sh text eol=lf
 
 # enforce CRLF for windows specific
 *.bat text eol=crlf
