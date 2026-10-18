@@ -66,9 +66,9 @@ type Account struct {
 	DisplayName string
 }
 
-// ResumeTicket is the next launch ticket of a live account session, or the
-// refusal of a session that ended.
-type ResumeTicket struct {
+// IssuedTicket is a launch ticket the engine issued for a live account session
+// (its resume ticket, or the ticket of its travel), or the refusal.
+type IssuedTicket struct {
 	Refusal   string
 	Ticket    string
 	ExpiresAt time.Time
@@ -96,14 +96,28 @@ type FriendRecord struct {
 	InstanceCode string
 	MapCode      string
 	ExpiresAt    time.Time
+	Note         string // the status note of an accepted friend
+	Avatar       string // the identity preview reference of what the account wears
+}
+
+// FriendList is the friends and requests of an account, and its own status
+// note.
+type FriendList struct {
+	Friends          []FriendRecord
+	Note             string
+	NoteNextUpdateAt time.Time
 }
 
 // Accounts is the engine side of account sessions and friendships. A refusal
 // is a value; an error is a transport failure.
 type Accounts interface {
 	ConsumeTicket(ctx context.Context, ticket, instanceCode, connectionID, serverID string) (Account, error)
-	IssueResume(ctx context.Context, lease persist.Lease, instanceCode string) (ResumeTicket, error)
+	IssueResume(ctx context.Context, lease persist.Lease, instanceCode string) (IssuedTicket, error)
+	IssueTravel(ctx context.Context, lease persist.Lease, instanceCode, targetCode string) (IssuedTicket, error)
 	AcquireSession(ctx context.Context, connectionID, instanceCode, serverID string) (AcquiredSession, error)
-	ListFriends(ctx context.Context, accountID string) ([]FriendRecord, error)
+	ListFriends(ctx context.Context, accountID string) (FriendList, error)
 	UpdateFriendship(ctx context.Context, accountID, action, targetAccountID, friendshipID string) (string, *FriendRecord, error)
+	// UpdateStatusNote sets the status note of an account and returns "" or
+	// the refusal.
+	UpdateStatusNote(ctx context.Context, accountID, note string) (string, error)
 }

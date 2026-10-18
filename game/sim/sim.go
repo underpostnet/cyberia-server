@@ -7,6 +7,7 @@ import (
 	"cyberia-server/game/social"
 	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
+	"cyberia-server/logx"
 )
 
 // Sim is the simulation step and its config.
@@ -68,6 +69,11 @@ func (s *Sim) ApplyConfig(cfg *pb.InstanceConfig, rules content.ProgressionRules
 	s.doppelgangerSpawnRadius = sr.GetDoppelgangerSpawnRadius()
 	s.doppelgangerInitialLifeFraction = sr.GetDoppelgangerInitialLifeFraction()
 
-	// Register built-in skill handlers now that skillConfig is populated.
-	s.InitSkills()
+	for trigger, defs := range s.SkillConfig {
+		for _, def := range defs {
+			if !SupportsSkill(def.LogicEventID) {
+				logx.Warnf("[Skills] %s fires %q, which this server does not run", trigger, def.LogicEventID)
+			}
+		}
+	}
 }

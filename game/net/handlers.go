@@ -23,32 +23,52 @@ type OLMeta struct {
 func (s *GameServer) buildSkillMap() map[string][]SkillMapEntry {
 	out := make(map[string][]SkillMapEntry, len(s.SkillConfig))
 	for triggerID, defs := range s.SkillConfig {
-		entries := make([]SkillMapEntry, 0, len(defs))
-		for _, def := range defs {
-			entries = append(entries, SkillMapEntry{
-				LogicEventID:         def.LogicEventID,
-				Name:                 def.Name,
-				Description:          def.Description,
-				SummonedEntityItemID: def.SummonedEntityItemID,
-				Held:                 sim.IsHeldSkill(def.LogicEventID),
-			})
-		}
-		out[triggerID] = entries
+		out[triggerID] = skillEntries(defs)
 	}
 	return out
 }
 
-// buildOLMetadataMap creates the map[itemID] → OLMeta for the metadata message.
-// Must be called while s.olMu is held (read).
-func (s *GameServer) buildOLMetadataMap() map[string]*OLMeta {
-	s.OlMu.RLock()
-	defer s.OlMu.RUnlock()
-	// Pre-allocated capacity per type hint; typical cache has ~400 items.
-	out := make(map[string]*OLMeta, len(s.ObjectLayerDataCache))
-	for itemID, ol := range s.ObjectLayerDataCache {
+// skillEntries is the client shape of the skills of one trigger item; empty when it has none.
+func skillEntries(defs []content.SkillDefinition) []SkillMapEntry {
+	entries := make([]SkillMapEntry, 0, len(defs))
+	for _, def := range defs {
+		entries = append(entries, SkillMapEntry{
+			LogicEventID:         def.LogicEventID,
+			Name:                 def.Name,
+			Description:          def.Description,
+			SummonedEntityItemID: def.SummonedEntityItemID,
+			Held:                 sim.IsHeldSkill(def.LogicEventID),
+		})
+	}
+	return entries
+}
+
+// olMetadata is the objectLayers map of a metadata message.
+func olMetadata(layers map[string]*content.ObjectLayer) map[string]*OLMeta {
+	out := make(map[string]*OLMeta, len(layers))
+	for itemID, ol := range layers {
 		out[itemID] = &OLMeta{Cid: ol.Cid, Data: ol.Data}
 	}
 	return out
+}
+
+// sendObjectLayerChanges sends a player the definitions that changed since the
+// revision its client holds, and their skills. Caller holds s.Mu.
+func (s *GameServer) sendObjectLayerChanges(player *world.Session) {
+	client := s.clients[player.ID]
+	if client == nil || s.ObjectLayerRevision() == client.olSeen {
+		return
+	}
+	changed, revision := s.ObjectLayersSince(client.olSeen)
+	client.olSeen = revision
+	if len(changed) > 0 {
+		skills := make(map[string][]SkillMapEntry, len(changed))
+		for itemID := range changed {
+			skills[itemID] = skillEntries(s.SkillConfig[itemID])
+		}
+		s.recordDefinitionsShared(len(changed))
+		world.SendMessage(player, "metadata", map[string]any{"objectLayers": olMetadata(changed), "skillMap": skills})
+	}
 }
 
 // Send packs one message and queues it on the socket.
@@ -109,6 +129,7 @@ var inputKinds = map[string]world.InputKind{
 	"friend_request": world.InputKindFriendRequest,
 	"friend_reply":   world.InputKindFriendReply,
 	"friend_remove":  world.InputKindFriendRemove,
+	"status_note":    world.InputKindStatusNote,
 }
 
 // inputPayload holds every client event payload field. Each event type fills
@@ -129,7 +150,7 @@ type inputPayload struct {
 
 	Channel string         `json:"channel"` // chat
 	ToID    world.EntityID `json:"toId"`    // chat direct, party_invite, party_kick, friend_request
-	Text    string         `json:"text"`
+	Text    string         `json:"text"`    // chat, status_note
 
 	FromID world.EntityID `json:"fromId"` // party_reply
 	Accept bool           `json:"accept"` // party_reply, friend_reply
@@ -189,8 +210,12 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 	for _, ev := range batch.Events {
 		// The player closes its session: no later event of the batch counts.
 		if ev.Type == "session_leave" {
+			var leaving struct {
+				Travel string `json:"travel"`
+			}
+			_ = json.Unmarshal(ev.Payload, &leaving)
 			c.dispatchInputs(server, cmds)
-			go server.leave(c)
+			go server.leave(c, leaving.Travel)
 			return
 		}
 		var p inputPayload
@@ -241,13 +266,13 @@ func parseInput(msgType string, p *inputPayload) (world.InputCommand, bool) {
 		cmd.Active = p.Stasis
 	case world.InputKindChat:
 		channel, known := world.ParseChatChannel(p.Channel)
-		text := social.CleanText(p.Text)
+		text := social.CleanText(p.Text, content.ChatTextMaxRunes)
 		if !known || text == "" || (channel == world.ChatDirect) != (p.ToID != 0) {
 			return world.InputCommand{}, false
 		}
 		cmd.ChatChannel = channel
 		cmd.EntityID = p.ToID
-		cmd.ChatText = text
+		cmd.Text = text
 	case world.InputKindTalkDone:
 		if p.EntityID == 0 || !sim.ValidIdentifier(p.DialogCode) {
 			return world.InputCommand{}, false
@@ -307,6 +332,8 @@ func parseInput(msgType string, p *inputPayload) (world.InputCommand, bool) {
 		}
 		cmd.FriendshipID = p.FriendshipID
 		cmd.Active = p.Accept
+	case world.InputKindStatusNote:
+		cmd.Text = p.Text
 	}
 	return cmd, true
 }

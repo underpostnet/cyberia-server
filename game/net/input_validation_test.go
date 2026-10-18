@@ -1,8 +1,10 @@
 package net
 
 import (
+	"strings"
 	"testing"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 )
 
@@ -19,7 +21,7 @@ func TestParseInputCarriesTheStasisBool(t *testing.T) {
 // line names a target.
 func TestParseInputValidatesChat(t *testing.T) {
 	cmd, ok := parseInput("chat", &inputPayload{Channel: "party", Text: " hi\tall "})
-	if !ok || cmd.ChatChannel != world.ChatParty || cmd.ChatText != "hi all" || cmd.EntityID != 0 {
+	if !ok || cmd.ChatChannel != world.ChatParty || cmd.Text != "hi all" || cmd.EntityID != 0 {
 		t.Fatalf("party line: ok=%v %+v", ok, cmd)
 	}
 	if cmd, ok := parseInput("chat", &inputPayload{Channel: "direct", ToID: 4, Text: "psst"}); !ok || cmd.EntityID != 4 {
@@ -36,6 +38,27 @@ func TestParseInputValidatesChat(t *testing.T) {
 			t.Fatalf("%s: must be rejected", name)
 		}
 	}
+}
+
+// The engine validates status notes without truncation.
+func TestParseInputPreservesTheStatusNote(t *testing.T) {
+	cmd, ok := parseInput("status_note", &inputPayload{Text: " out\n  farming "})
+	if !ok || cmd.Kind != world.InputKindStatusNote || cmd.Text != " out\n  farming " {
+		t.Fatalf("note: ok=%v %+v", ok, cmd)
+	}
+	cmd, _ = parseInput("status_note", &inputPayload{Text: strings.Repeat("x", content.StatusNoteMaxRunes+5)})
+	if len(cmd.Text) != content.StatusNoteMaxRunes+5 {
+		t.Fatalf("a long note reaches engine validation: bound=%d length=%d", content.StatusNoteMaxRunes, len(cmd.Text))
+	}
+	if cmd, ok := parseInput("status_note", &inputPayload{}); !ok || cmd.Text != "" {
+		t.Fatalf("an empty note clears: ok=%v %+v", ok, cmd)
+	}
+	for _, text := range []string{"🌲", "e\u0301", "👩‍👩‍👧‍👦", strings.Repeat("🌲", 81)} {
+		if got, ok := parseInput("status_note", &inputPayload{Text: text}); !ok || got.Text != text {
+			t.Fatalf("note changed before engine validation: %q -> %q", text, got.Text)
+		}
+	}
+
 }
 
 func TestParseInputNamesThePartyTarget(t *testing.T) {

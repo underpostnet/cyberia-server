@@ -40,18 +40,32 @@ const (
 	// leaveWait bounds how long a player who leaves waits to learn that its
 	// final state is saved.
 	leaveWait = 5 * time.Second
+	// travelWait bounds the engine call for the ticket of a travel.
+	travelWait = 5 * time.Second
 )
 
 // identity is who a connection plays as: a guest, or an account with its
-// acquired profile.
+// acquired profile, the content resolved for its saved stacks and the hold
+// reason of each label whose content this world refused.
 type identity struct {
-	account Account
-	session AcquiredSession
+	account     Account
+	session     AcquiredSession
+	resolved    map[string]*content.ItemContent
+	unavailable map[string]string
 }
 
 // sessionEnd is the payload of session_end.
 type sessionEnd struct {
 	Reason string `json:"reason"`
+	// Travel is the launch ticket of the world the player travels to, set
+	// only when the session left saved.
+	Travel *travelTicket `json:"travel,omitempty"`
+}
+
+// travelTicket is the launch ticket of the world a leaving player travels to.
+type travelTicket struct {
+	InstanceCode string `json:"instanceCode"`
+	Ticket       string `json:"ticket"`
 }
 
 // HandleConnections admits, authenticates and places one WebSocket
@@ -154,7 +168,14 @@ func (s *GameServer) authenticate(sock *Socket, connectionID string) (identity, 
 		return identity{}, acquired.Refusal
 	}
 	acquired.Lease.AccountID = account.AccountID
-	return identity{account: account, session: acquired}, ""
+	resolved, unavailable, err := s.resolveSaved(ctx, acquired.State)
+	if err != nil {
+		logx.Warnf("[Auth] content of account=%s could not resolve: %v", account.AccountID, err)
+		s.durable.Open(acquired.Lease, acquired.State)
+		s.durable.Close(acquired.Lease.PlayerID, acquired.State)
+		return identity{}, EndUnavailable
+	}
+	return identity{account: account, session: acquired, resolved: resolved, unavailable: unavailable}, ""
 }
 
 // takeOver ends the session an account plays on this server, and waits for
@@ -184,6 +205,8 @@ func (s *GameServer) takeOver(accountID string) {
 func (s *GameServer) place(sock *Socket, ip string, who identity) {
 	account := who.account.AccountID != ""
 	s.Mu.Lock()
+	s.AddResolvedContent(who.resolved)
+	s.MarkUnavailable(who.unavailable)
 	player, ok := s.spawnPlayer(who)
 	if !ok {
 		s.Mu.Unlock()
@@ -225,6 +248,7 @@ func (s *GameServer) place(sock *Socket, ip string, who identity) {
 		EntityDefaults: s.BuildEntityDefaultsSlice(),
 		DeadItemIds:    s.DeadItemIDList(),
 		Quests:         s.BuildQuestSnapshot(player),
+		Build:          s.build,
 	}
 	metadataPayload := map[string]interface{}{
 		"instanceCode":   s.InstanceCode,
@@ -235,7 +259,9 @@ func (s *GameServer) place(sock *Socket, ip string, who identity) {
 	// The ObjectLayer metadata map and both JSON marshals are the costly part
 	// of a join. They run outside the world lock so a burst of connections
 	// cannot delay the simulation tick.
-	metadataPayload["objectLayers"] = s.buildOLMetadataMap()
+	layers, revision := s.ObjectLayers()
+	metadataPayload["objectLayers"] = olMetadata(layers)
+	client.olSeen = revision
 	world.SendMessage(player, "init_data", initPayload)
 	world.SendMessage(player, "metadata", metadataPayload)
 
@@ -250,7 +276,7 @@ func (s *GameServer) place(sock *Socket, ip string, who identity) {
 		return
 	}
 	if account {
-		go s.announceArrival(player.PlayerID)
+		go s.pushFriendCircle(player.PlayerID)
 		go s.issueResume(player.PlayerID)
 	}
 	go client.readPump(s)
@@ -412,17 +438,51 @@ func (s *GameServer) removePlayer(client *Client) func() bool {
 
 // leave ends a session the player closed: it leaves the world at once, and
 // session_end says whether its final state is saved (EndLeft) or still on its
-// way to the engine (EndLeftSaving).
-func (s *GameServer) leave(client *Client) {
-	reason := EndLeft
+// way to the engine (EndLeftSaving). A player that travels gets the ticket of
+// the target world, asked while its lease still holds, only once the state is
+// saved: the target acquires the profile after this session released it.
+func (s *GameServer) leave(client *Client, travel string) {
+	ticket := s.travelTicket(client, travel)
+	end := sessionEnd{Reason: EndLeft}
 	if saved := s.removePlayer(client); saved != nil && !saved() {
-		reason = EndLeftSaving
+		end.Reason = EndLeftSaving
+	} else if ticket != "" {
+		end.Travel = &travelTicket{InstanceCode: travel, Ticket: ticket}
 	}
-	s.recordSessionEnd(reason)
-	if pack, err := Pack("session_end", sessionEnd{Reason: reason}); err == nil {
+	s.recordSessionEnd(end.Reason)
+	if pack, err := Pack("session_end", end); err == nil {
 		client.sock.End(pack)
 	}
 	client.released.Do(func() { s.guard.release(client.ip) })
+}
+
+// travelTicket asks the engine for the launch ticket of a travel of an
+// account session, or "" when the session has no live lease, the engine
+// refuses or does not answer.
+func (s *GameServer) travelTicket(client *Client, target string) string {
+	player := client.playerState
+	if target == "" || target == s.InstanceCode || player.AccountID == "" || s.accounts == nil {
+		return ""
+	}
+	lease, ok := s.durable.Lease(string(player.PlayerID))
+	if !ok {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), travelWait)
+	defer cancel()
+	issued, err := s.accounts.IssueTravel(ctx, lease, s.InstanceCode, target)
+	switch {
+	case err != nil:
+		logx.Warnf("[Session] travel of player=%s to %s: %v", player.PlayerID, target, err)
+		s.recordTravel("error")
+	case issued.Refusal != "":
+		logx.Infof("[Session] travel of player=%s to %s refused: %s", player.PlayerID, target, issued.Refusal)
+		s.recordTravel(issued.Refusal)
+	default:
+		s.recordTravel("issued")
+		return issued.Ticket
+	}
+	return ""
 }
 
 // endClient ends a live session with a reason: session_end, then the normal

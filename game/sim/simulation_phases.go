@@ -122,7 +122,7 @@ func (s *Sim) applyInputCommand(player *world.Session, mapState *world.MapState,
 		world.InputKindPartyKick, world.InputKindPartyDisband:
 		s.handlePartyInput(player, cmd)
 	case world.InputKindFriendList, world.InputKindFriendRequest, world.InputKindFriendReply,
-		world.InputKindFriendRemove:
+		world.InputKindFriendRemove, world.InputKindStatusNote:
 		s.handleFriendInput(player, cmd)
 	case world.InputKindUnknown:
 		// failed validation: consumed, never applied

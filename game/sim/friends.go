@@ -14,13 +14,14 @@ import (
 
 // FriendOp is one friend action of an account player. TargetAccountID names
 // the player a request goes to; FriendshipID the friendship an answer or a
-// removal names.
+// removal names; Note the status note a note action sets.
 type FriendOp struct {
 	PlayerID        world.PlayerID
 	AccountID       string
-	Action          string // list | request | accept | decline | remove
+	Action          string // list | request | accept | decline | remove | note
 	TargetAccountID string
 	FriendshipID    string
+	Note            string
 }
 
 // FriendBroker runs friend actions against the engine, off the tick.
@@ -65,6 +66,8 @@ func (s *Sim) handleFriendInput(player *world.Session, cmd *world.InputCommand) 
 		}
 	case world.InputKindFriendRemove:
 		op.Action = "remove"
+	case world.InputKindStatusNote:
+		op.Action, op.Note = "note", cmd.Text
 	}
 	if reason == "" && s.Friendships == nil {
 		reason = social.ReasonGuest

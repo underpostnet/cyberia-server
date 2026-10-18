@@ -279,12 +279,12 @@ func TestCleanTextKeepsPrintableTextWithinTheLimit(t *testing.T) {
 		"   ":               "",
 	}
 	for in, want := range cases {
-		if got := CleanText(in); got != want {
+		if got := CleanText(in, content.ChatTextMaxRunes); got != want {
 			t.Fatalf("CleanText(%q) = %q, want %q", in, got, want)
 		}
 	}
 	long := strings.Repeat("🙂", content.ChatTextMaxRunes*2)
-	if got := []rune(CleanText(long)); len(got) != content.ChatTextMaxRunes {
+	if got := []rune(CleanText(long, content.ChatTextMaxRunes)); len(got) != content.ChatTextMaxRunes {
 		t.Fatalf("a long line keeps %d whole runes, got %d", content.ChatTextMaxRunes, len(got))
 	}
 }
@@ -319,11 +319,11 @@ func TestADirectLineCrossesMapsOnlyBetweenFriends(t *testing.T) {
 	}
 	s.SetFriends(a.PlayerID, []string{"acc-b"})
 	s.SetFriendship("acc-a", "acc-b", true)
-	if reason := s.Chat(a, "skin-a", world.ChatDirect, b, "hi", now); reason != "" || len(ib.lines) != 1 {
+	if reason := s.Chat(a, "cid-skin-a", world.ChatDirect, b, "hi", now); reason != "" || len(ib.lines) != 1 {
 		t.Fatalf("a friend on another map gets the line: reason=%q lines=%d", reason, len(ib.lines))
 	}
-	if ib.lines[0].FromSkin != "skin-a" {
-		t.Fatalf("the line names the skin that draws its sender: %+v", ib.lines[0])
+	if ib.lines[0].FromAvatar != "cid-skin-a" || ib.lines[0].AtMs != now.UnixMilli() {
+		t.Fatalf("the line names the render of its sender and the server time: %+v", ib.lines[0])
 	}
 	s.SetFriendship("acc-a", "acc-b", false)
 	if s.Friends(a, b) || s.Friends(b, a) {

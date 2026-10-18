@@ -29,8 +29,8 @@ type SkillContext struct {
 // SkillHandlerFunc is the signature every skill implementation must satisfy.
 type SkillHandlerFunc func(s *Sim, ctx SkillContext)
 
-// skillRegistry maps logicEventID → handler. Populated by InitSkills() during
-// server startup. New skills only need to add one entry here.
+// skillRegistry maps logicEventID → handler. New skills only need to add one
+// entry in init.
 var skillRegistry = map[string]SkillHandlerFunc{}
 
 // heldSkillRegistry maps logicEventID → handler the simulation runs every tick on each item an
@@ -53,9 +53,14 @@ func IsHeldSkill(logicEventID string) bool {
 	return ok
 }
 
-// InitSkills wires all built-in skill implementations into the registry.
-// Called from ApplyInstanceConfig after all server parameters are set.
-func (s *Sim) InitSkills() {
+// SupportsSkill reports whether this server runs a handler for logicEventID.
+func SupportsSkill(logicEventID string) bool {
+	_, tap := skillRegistry[logicEventID]
+	return tap || IsHeldSkill(logicEventID)
+}
+
+// init wires the built-in skill handlers into the registries.
+func init() {
 	registerSkill("projectile", func(s *Sim, ctx SkillContext) {
 		s.executeProjectileSkill(ctx)
 	})

@@ -36,6 +36,14 @@ type runtimeCounters struct {
 	sessionsMu  sync.Mutex
 	auth        map[string]uint64
 	sessionEnds map[string]uint64
+	travel      map[string]uint64
+
+	// Content resolution: the labels saved states named, by outcome, and the
+	// definitions shared with clients and evicted from the cache.
+	contentMu          sync.Mutex
+	contentOutcomes    map[string]uint64
+	definitionsShared  atomic.Uint64
+	definitionsEvicted atomic.Uint64
 
 	// Last observed tick + wall time. Snapshotted on every read so a
 	// caller can derive a tick/s rate without holding the world lock.
@@ -68,6 +76,20 @@ type RuntimeMetricsSnapshot struct {
 	Auth map[string]uint64 `json:"auth_outcomes"`
 	// SessionEnds counts sessions the server ended, by reason.
 	SessionEnds map[string]uint64 `json:"session_ends"`
+	// Travel counts the travel tickets asked for leaving players: "issued",
+	// the refusal of the engine, or "error".
+	Travel  map[string]uint64 `json:"travel_outcomes"`
+	Content ContentMetrics    `json:"content"`
+}
+
+// ContentMetrics is the residency of definitions outside the warm set.
+type ContentMetrics struct {
+	// Outcomes counts the labels saved states named at placement: "resident"
+	// when the cache held them, else "resolved", "unbound", "mismatch" or "error".
+	Outcomes           map[string]uint64 `json:"label_outcomes"`
+	Resolved           int               `json:"resolved_definitions"`
+	DefinitionsShared  uint64            `json:"definitions_shared_total"`
+	DefinitionsEvicted uint64            `json:"definitions_evicted_total"`
 }
 
 // recordWsRead is called from readPump whenever a frame is decoded
@@ -104,6 +126,32 @@ func (s *GameServer) recordAuth(refusal string) {
 	s.counters.auth[refusal]++
 }
 
+// recordTravel counts one travel ticket asked for a leaving player.
+func (s *GameServer) recordTravel(outcome string) {
+	s.counters.sessionsMu.Lock()
+	defer s.counters.sessionsMu.Unlock()
+	if s.counters.travel == nil {
+		s.counters.travel = make(map[string]uint64)
+	}
+	s.counters.travel[outcome]++
+}
+
+// recordContent counts n labels of one resolution outcome.
+func (s *GameServer) recordContent(outcome string, n int) {
+	if n == 0 {
+		return
+	}
+	s.counters.contentMu.Lock()
+	defer s.counters.contentMu.Unlock()
+	if s.counters.contentOutcomes == nil {
+		s.counters.contentOutcomes = make(map[string]uint64)
+	}
+	s.counters.contentOutcomes[outcome] += uint64(n)
+}
+
+func (s *GameServer) recordDefinitionsShared(n int)  { s.counters.definitionsShared.Add(uint64(n)) }
+func (s *GameServer) recordDefinitionsEvicted(n int) { s.counters.definitionsEvicted.Add(uint64(n)) }
+
 // recordSessionEnd counts one session the server ended.
 func (s *GameServer) recordSessionEnd(reason string) {
 	s.counters.sessionsMu.Lock()
@@ -130,8 +178,11 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 
 	activeConns, activeAddrs := s.guard.counts()
 	s.counters.sessionsMu.Lock()
-	auth, ends := maps.Clone(s.counters.auth), maps.Clone(s.counters.sessionEnds)
+	auth, ends, travel := maps.Clone(s.counters.auth), maps.Clone(s.counters.sessionEnds), maps.Clone(s.counters.travel)
 	s.counters.sessionsMu.Unlock()
+	s.counters.contentMu.Lock()
+	outcomes := maps.Clone(s.counters.contentOutcomes)
+	s.counters.contentMu.Unlock()
 
 	return RuntimeMetricsSnapshot{
 		TickRate:           sim.DefaultTickRate,
@@ -153,6 +204,13 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 		WsActiveAddresses:  activeAddrs,
 		Auth:               auth,
 		SessionEnds:        ends,
+		Travel:             travel,
+		Content: ContentMetrics{
+			Outcomes:           outcomes,
+			Resolved:           s.ResolvedObjectLayerCount(),
+			DefinitionsShared:  s.counters.definitionsShared.Load(),
+			DefinitionsEvicted: s.counters.definitionsEvicted.Load(),
+		},
 	}
 }
 

@@ -23,17 +23,21 @@ const testTicket = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 // fakeEngine is the engine side of launches: one account, one profile, and a
 // log of the calls in order. guest makes every ticket a guest ticket.
 type fakeEngine struct {
-	mu        sync.Mutex
-	calls     []string
-	refusal   string
-	guest     bool
-	down      bool
-	saved     persist.State
-	created   bool
-	epoch     uint64
-	commits   []persist.CommitRequest
-	released  int
-	consumers map[string]bool // connection ids that consumed a ticket
+	mu          sync.Mutex
+	calls       []string
+	refusal     string
+	guest       bool
+	down        bool
+	saved       persist.State
+	created     bool
+	epoch       uint64
+	commits     []persist.CommitRequest
+	released    int
+	consumers   map[string]bool // connection ids that consumed a ticket
+	travel      string          // the refusal of a travel ticket, empty to issue one
+	note        string          // the status note of the account
+	noteRefusal string          // the refusal of a note, empty to take it
+	friends     []FriendRecord  // the friend list of the account
 }
 
 func (f *fakeEngine) log(call string) {
@@ -62,19 +66,32 @@ func (f *fakeEngine) ConsumeTicket(_ context.Context, ticket, instanceCode, conn
 	return Account{Principal: PrincipalAccount, AccountID: "acc1", DisplayName: "neo"}, nil
 }
 
-func (f *fakeEngine) IssueResume(_ context.Context, lease persist.Lease, _ string) (ResumeTicket, error) {
+func (f *fakeEngine) IssueResume(_ context.Context, lease persist.Lease, _ string) (IssuedTicket, error) {
 	f.log("resume")
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if lease.Epoch != f.epoch {
-		return ResumeTicket{Refusal: persist.EndedElsewhere}, nil
+		return IssuedTicket{Refusal: persist.EndedElsewhere}, nil
 	}
-	return ResumeTicket{Ticket: resumeTicketOf(lease.Epoch), ExpiresAt: time.Now().Add(5 * time.Minute)}, nil
+	return IssuedTicket{Ticket: resumeTicketOf(lease.Epoch), ExpiresAt: time.Now().Add(5 * time.Minute)}, nil
 }
 
 // resumeTicketOf is the resume ticket the fake engine issues for an epoch.
 func resumeTicketOf(epoch uint64) string {
 	return fmt.Sprintf("%043d", epoch)
+}
+
+func (f *fakeEngine) IssueTravel(_ context.Context, lease persist.Lease, _, targetCode string) (IssuedTicket, error) {
+	f.log("travel")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if lease.Epoch != f.epoch {
+		return IssuedTicket{Refusal: persist.EndedElsewhere}, nil
+	}
+	if f.travel != "" {
+		return IssuedTicket{Refusal: f.travel}, nil
+	}
+	return IssuedTicket{Ticket: "travel-" + targetCode, ExpiresAt: time.Now().Add(time.Minute)}, nil
 }
 
 func (f *fakeEngine) AcquireSession(_ context.Context, connectionID, _, _ string) (AcquiredSession, error) {
@@ -93,7 +110,21 @@ func (f *fakeEngine) AcquireSession(_ context.Context, connectionID, _, _ string
 	}, nil
 }
 
-func (f *fakeEngine) ListFriends(context.Context, string) ([]FriendRecord, error) { return nil, nil }
+func (f *fakeEngine) ListFriends(context.Context, string) (FriendList, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return FriendList{Friends: f.friends, Note: f.note}, nil
+}
+
+func (f *fakeEngine) UpdateStatusNote(_ context.Context, _, note string) (string, error) {
+	f.log("note")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.noteRefusal == "" {
+		f.note = note
+	}
+	return f.noteRefusal, nil
+}
 
 func (f *fakeEngine) UpdateFriendship(context.Context, string, string, string, string) (string, *FriendRecord, error) {
 	return "", nil, nil
@@ -281,7 +312,7 @@ func TestAnAccountLoadsItsSavedState(t *testing.T) {
 	ms := srv.game.Maps["test"]
 	pos := ms.Tf(player.ID).Pos
 	bag := *srv.game.InventoryLayers(player)
-	held := srv.game.HeldCount(player)
+	held := len(srv.game.HeldView(player))
 	storage := srv.game.PlayerStorage(player)
 	srv.game.Mu.Unlock()
 
@@ -383,16 +414,126 @@ func TestAPlayerWhoLeavesLearnsItsStateIsSaved(t *testing.T) {
 	}
 }
 
+func TestAFriendElsewhereShowsTheAvatarTheEngineNames(t *testing.T) {
+	const avatar = "/api/v1/cyberia-player/appearance/v1/cid-a,cid-sword"
+	engine := &fakeEngine{created: true, friends: []FriendRecord{
+		{FriendshipID: "64a000000000000000000009", AccountID: "acc2", Name: "trinity", Status: "friend", Avatar: avatar},
+	}}
+	srv := newAccountServer(t, engine)
+	conn := connect(t, srv, testTicket)
+	readInitData(t, conn)
+	var list struct {
+		Friends []struct{ Name, Avatar string }
+	}
+	readPayload(t, conn, "friends", &list)
+	if len(list.Friends) != 1 || list.Friends[0].Avatar != avatar {
+		t.Fatalf("a friend on no server of this world keeps the avatar of its profile: %+v", list.Friends)
+	}
+}
+
+func TestAStatusNoteReachesTheEngineAndComesBackWithTheFriendList(t *testing.T) {
+	engine := &fakeEngine{created: true}
+	srv := newAccountServer(t, engine)
+	conn := connect(t, srv, testTicket)
+	readInitData(t, conn)
+	waitFor(t, "the client to register", func() bool { return srv.clientCount() == 1 })
+	type friends struct{ Note string }
+
+	if err := sendEvent(t, conn, "status_note", map[string]any{"seq": 1, "text": "  out\tfarming "}); err != nil {
+		t.Fatalf("note: %v", err)
+	}
+	waitFor(t, "the note to be queued", func() bool { srv.tick(); return strings.Contains(engine.callLog(), "note") })
+	var list friends
+	readPayload(t, conn, "friends", &list)
+	for list.Note == "" {
+		readPayload(t, conn, "friends", &list)
+	}
+	if list.Note != "  out\tfarming " {
+		t.Fatalf("the engine note comes back with the list, got %q", list.Note)
+	}
+
+	var saved struct {
+		Ok     bool
+		Action string
+	}
+	readPayload(t, conn, "friend_ack", &saved)
+	if !saved.Ok || saved.Action != "note" {
+		t.Fatalf("note save: %+v", saved)
+	}
+
+	engine.mu.Lock()
+	engine.noteRefusal = "too_soon"
+	engine.mu.Unlock()
+	if err := sendEvent(t, conn, "status_note", map[string]any{"seq": 2, "text": "again"}); err != nil {
+		t.Fatalf("note: %v", err)
+	}
+	var ack struct {
+		Ok             bool
+		Reason, Action string
+	}
+	waitFor(t, "the second note to be queued", func() bool { srv.tick(); return strings.Count(engine.callLog(), "note") == 2 })
+	readPayload(t, conn, "friend_ack", &ack)
+	if ack.Ok || ack.Reason != "too_soon" || ack.Action != "note" {
+		t.Fatalf("a refused note answers with friend_ack: %+v", ack)
+	}
+}
+
+func TestATravelerLeavesSavedWithTheTicketOfItsTarget(t *testing.T) {
+	engine := &fakeEngine{created: true}
+	srv := newAccountServer(t, engine)
+	srv.game.SetBuild("0123456789abcdef")
+	conn := connect(t, srv, testTicket)
+	if init := readInitData(t, conn); init.Build != "0123456789abcdef" {
+		t.Fatalf("init_data names the build of the server: %q", init.Build)
+	}
+	waitFor(t, "the client to register", func() bool { return srv.clientCount() == 1 })
+	if err := sendEvent(t, conn, "session_leave", map[string]any{"seq": 1, "travel": "world-b"}); err != nil {
+		t.Fatalf("leave: %v", err)
+	}
+	var end sessionEnd
+	readPayload(t, conn, "session_end", &end)
+	if end.Reason != EndLeft || end.Travel == nil || *end.Travel != (travelTicket{InstanceCode: "world-b", Ticket: "travel-world-b"}) {
+		t.Fatalf("a saved leave carries the ticket of the target world: %+v", end)
+	}
+	if log := engine.callLog(); !strings.HasSuffix(log, "travel,commit,release") {
+		t.Fatalf("the ticket is asked while the lease holds, then the final state commits and the lease is released: %s", log)
+	}
+	if travel := srv.game.RuntimeMetrics().Travel; travel["issued"] != 1 {
+		t.Fatalf("travel outcomes = %v", travel)
+	}
+}
+
+func TestATravelTheEngineRefusesLeavesWithNoTicket(t *testing.T) {
+	engine := &fakeEngine{created: true, travel: "no_route"}
+	srv := newAccountServer(t, engine)
+	conn := connect(t, srv, testTicket)
+	readInitData(t, conn)
+	waitFor(t, "the client to register", func() bool { return srv.clientCount() == 1 })
+	if err := sendEvent(t, conn, "session_leave", map[string]any{"seq": 1, "travel": "world-b"}); err != nil {
+		t.Fatalf("leave: %v", err)
+	}
+	var end sessionEnd
+	readPayload(t, conn, "session_end", &end)
+	if end.Reason != EndLeft || end.Travel != nil {
+		t.Fatalf("a refused travel still leaves saved, with no ticket: %+v", end)
+	}
+	if travel := srv.game.RuntimeMetrics().Travel; travel["no_route"] != 1 {
+		t.Fatalf("travel outcomes = %v", travel)
+	}
+}
+
 func TestAGuestLeavesAtOnce(t *testing.T) {
 	srv := newWSTestServer(t, DefaultConnectionLimits())
 	conn := connect(t, srv, "")
 	readInitData(t, conn)
 	waitFor(t, "the client to register", func() bool { return srv.clientCount() == 1 })
-	if err := sendEvent(t, conn, "session_leave", map[string]any{"seq": 1}); err != nil {
+	if err := sendEvent(t, conn, "session_leave", map[string]any{"seq": 1, "travel": "world-b"}); err != nil {
 		t.Fatalf("leave: %v", err)
 	}
-	if reason := readSessionEnd(t, conn); reason != EndLeft {
-		t.Fatalf("a guest leaves with %q, got %q", EndLeft, reason)
+	var end sessionEnd
+	readPayload(t, conn, "session_end", &end)
+	if end.Reason != EndLeft || end.Travel != nil {
+		t.Fatalf("a guest leaves with %q and no travel ticket, got %+v", EndLeft, end)
 	}
 }
 

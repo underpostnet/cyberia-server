@@ -33,7 +33,7 @@ type Held struct {
 	Stack      Stack
 	Container  string // ContainerBag | ContainerStorage | ContainerVault
 	ActionCode string // vault only
-	Reason     string // HeldRebound | HeldUnknown | HeldNoRoom
+	Reason     string // HeldRebound | HeldUnknown | HeldNoRoom | HeldUnsupported | HeldIncompatible
 }
 
 // Containers and reasons of a held stack.
@@ -42,9 +42,11 @@ const (
 	ContainerStorage = "storage"
 	ContainerVault   = "vault"
 
-	HeldRebound = "rebound" // the label names another definition now
-	HeldUnknown = "unknown" // the world has no such label
-	HeldNoRoom  = "no_room" // the container had no free slot at load
+	HeldRebound      = "rebound"      // the label names another definition now
+	HeldUnknown      = "unknown"      // the world cannot get the content of the label
+	HeldNoRoom       = "no_room"      // the container had no free slot at load
+	HeldUnsupported  = "unsupported"  // the server runs no handler of its skill
+	HeldIncompatible = "incompatible" // its content comes from another release than the world's
 )
 
 // Position is a cell on a map. An empty MapCode is no position.

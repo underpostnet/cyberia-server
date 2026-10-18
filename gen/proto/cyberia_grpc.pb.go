@@ -36,6 +36,7 @@ const (
 	CyberiaDataService_GetMapData_FullMethodName             = "/cyberia.CyberiaDataService/GetMapData"
 	CyberiaDataService_GetObjectLayerBatch_FullMethodName    = "/cyberia.CyberiaDataService/GetObjectLayerBatch"
 	CyberiaDataService_GetObjectLayer_FullMethodName         = "/cyberia.CyberiaDataService/GetObjectLayer"
+	CyberiaDataService_GetItemContent_FullMethodName         = "/cyberia.CyberiaDataService/GetItemContent"
 	CyberiaDataService_Ping_FullMethodName                   = "/cyberia.CyberiaDataService/Ping"
 	CyberiaDataService_GetObjectLayerManifest_FullMethodName = "/cyberia.CyberiaDataService/GetObjectLayerManifest"
 )
@@ -55,8 +56,14 @@ type CyberiaDataServiceClient interface {
 	// Streams all ObjectLayers in the database.
 	// Useful for initial cache warm-up on the Go server.
 	GetObjectLayerBatch(ctx context.Context, in *GetObjectLayerBatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ObjectLayerMessage], error)
-	// Returns a single ObjectLayer by item ID.
+	// Returns the definition the catalog binds to one item label. A hot reload
+	// refreshes a label with it. NOT_FOUND when the label has no binding.
 	GetObjectLayer(ctx context.Context, in *GetObjectLayerRequest, opts ...grpc.CallOption) (*ObjectLayerMessage, error)
+	// Returns the content one item label needs in a world that does not warm
+	// it: its definition, its skill and what the skill summons, transitively
+	// and bounded. A placement resolves the labels a player brings from another
+	// world with it.
+	GetItemContent(ctx context.Context, in *GetItemContentRequest, opts ...grpc.CallOption) (*GetItemContentResponse, error)
 	// ── Reload / Health ─────────────────────────────────────────────
 	// Lightweight ping to check Engine liveness before hot-reload.
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
@@ -123,6 +130,16 @@ func (c *cyberiaDataServiceClient) GetObjectLayer(ctx context.Context, in *GetOb
 	return out, nil
 }
 
+func (c *cyberiaDataServiceClient) GetItemContent(ctx context.Context, in *GetItemContentRequest, opts ...grpc.CallOption) (*GetItemContentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetItemContentResponse)
+	err := c.cc.Invoke(ctx, CyberiaDataService_GetItemContent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *cyberiaDataServiceClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PingResponse)
@@ -158,8 +175,14 @@ type CyberiaDataServiceServer interface {
 	// Streams all ObjectLayers in the database.
 	// Useful for initial cache warm-up on the Go server.
 	GetObjectLayerBatch(*GetObjectLayerBatchRequest, grpc.ServerStreamingServer[ObjectLayerMessage]) error
-	// Returns a single ObjectLayer by item ID.
+	// Returns the definition the catalog binds to one item label. A hot reload
+	// refreshes a label with it. NOT_FOUND when the label has no binding.
 	GetObjectLayer(context.Context, *GetObjectLayerRequest) (*ObjectLayerMessage, error)
+	// Returns the content one item label needs in a world that does not warm
+	// it: its definition, its skill and what the skill summons, transitively
+	// and bounded. A placement resolves the labels a player brings from another
+	// world with it.
+	GetItemContent(context.Context, *GetItemContentRequest) (*GetItemContentResponse, error)
 	// ── Reload / Health ─────────────────────────────────────────────
 	// Lightweight ping to check Engine liveness before hot-reload.
 	Ping(context.Context, *PingRequest) (*PingResponse, error)
@@ -188,6 +211,9 @@ func (UnimplementedCyberiaDataServiceServer) GetObjectLayerBatch(*GetObjectLayer
 }
 func (UnimplementedCyberiaDataServiceServer) GetObjectLayer(context.Context, *GetObjectLayerRequest) (*ObjectLayerMessage, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetObjectLayer not implemented")
+}
+func (UnimplementedCyberiaDataServiceServer) GetItemContent(context.Context, *GetItemContentRequest) (*GetItemContentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetItemContent not implemented")
 }
 func (UnimplementedCyberiaDataServiceServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Ping not implemented")
@@ -281,6 +307,24 @@ func _CyberiaDataService_GetObjectLayer_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CyberiaDataService_GetItemContent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetItemContentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CyberiaDataServiceServer).GetItemContent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CyberiaDataService_GetItemContent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CyberiaDataServiceServer).GetItemContent(ctx, req.(*GetItemContentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _CyberiaDataService_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PingRequest)
 	if err := dec(in); err != nil {
@@ -337,6 +381,10 @@ var CyberiaDataService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _CyberiaDataService_GetObjectLayer_Handler,
 		},
 		{
+			MethodName: "GetItemContent",
+			Handler:    _CyberiaDataService_GetItemContent_Handler,
+		},
+		{
 			MethodName: "Ping",
 			Handler:    _CyberiaDataService_Ping_Handler,
 		},
@@ -358,12 +406,14 @@ var CyberiaDataService_ServiceDesc = grpc.ServiceDesc{
 const (
 	CyberiaPlayerService_ConsumeGameLaunchTicket_FullMethodName  = "/cyberia.CyberiaPlayerService/ConsumeGameLaunchTicket"
 	CyberiaPlayerService_IssueResumeTicket_FullMethodName        = "/cyberia.CyberiaPlayerService/IssueResumeTicket"
+	CyberiaPlayerService_IssueTravelTicket_FullMethodName        = "/cyberia.CyberiaPlayerService/IssueTravelTicket"
 	CyberiaPlayerService_AcquirePlayerSession_FullMethodName     = "/cyberia.CyberiaPlayerService/AcquirePlayerSession"
 	CyberiaPlayerService_CommitPlayerState_FullMethodName        = "/cyberia.CyberiaPlayerService/CommitPlayerState"
 	CyberiaPlayerService_CheckpointPlayerSessions_FullMethodName = "/cyberia.CyberiaPlayerService/CheckpointPlayerSessions"
 	CyberiaPlayerService_ReleasePlayerSession_FullMethodName     = "/cyberia.CyberiaPlayerService/ReleasePlayerSession"
 	CyberiaPlayerService_ListFriends_FullMethodName              = "/cyberia.CyberiaPlayerService/ListFriends"
 	CyberiaPlayerService_UpdateFriendship_FullMethodName         = "/cyberia.CyberiaPlayerService/UpdateFriendship"
+	CyberiaPlayerService_UpdateStatusNote_FullMethodName         = "/cyberia.CyberiaPlayerService/UpdateStatusNote"
 )
 
 // CyberiaPlayerServiceClient is the client API for CyberiaPlayerService service.
@@ -379,8 +429,13 @@ type CyberiaPlayerServiceClient interface {
 	// Issues the next resume ticket of a live account session: a launch ticket
 	// bound to its account session, its world and its epoch.
 	IssueResumeTicket(ctx context.Context, in *IssueResumeTicketRequest, opts ...grpc.CallOption) (*IssueResumeTicketResponse, error)
+	// Issues the ticket of a travel of a live account session: a launch ticket
+	// of its account session for another world of its universe that a route
+	// reaches and a server takes. The session saves and leaves next.
+	IssueTravelTicket(ctx context.Context, in *IssueTravelTicketRequest, opts ...grpc.CallOption) (*IssueTravelTicketResponse, error)
 	// Makes the connection of a consumed ticket the one writer of its profile
-	// in this world, and loads the saved state. Idempotent per connection.
+	// in the universe of this world, and loads the saved state of this world.
+	// Idempotent per connection.
 	AcquirePlayerSession(ctx context.Context, in *AcquirePlayerSessionRequest, opts ...grpc.CallOption) (*AcquirePlayerSessionResponse, error)
 	// Commits the whole durable state of one player at one sequence number.
 	CommitPlayerState(ctx context.Context, in *CommitPlayerStateRequest, opts ...grpc.CallOption) (*CommitPlayerStateResponse, error)
@@ -392,6 +447,8 @@ type CyberiaPlayerServiceClient interface {
 	ListFriends(ctx context.Context, in *ListFriendsRequest, opts ...grpc.CallOption) (*ListFriendsResponse, error)
 	// Requests, accepts, declines or removes one friendship.
 	UpdateFriendship(ctx context.Context, in *UpdateFriendshipRequest, opts ...grpc.CallOption) (*UpdateFriendshipResponse, error)
+	// Sets or clears the status note of an account.
+	UpdateStatusNote(ctx context.Context, in *UpdateStatusNoteRequest, opts ...grpc.CallOption) (*UpdateStatusNoteResponse, error)
 }
 
 type cyberiaPlayerServiceClient struct {
@@ -416,6 +473,16 @@ func (c *cyberiaPlayerServiceClient) IssueResumeTicket(ctx context.Context, in *
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(IssueResumeTicketResponse)
 	err := c.cc.Invoke(ctx, CyberiaPlayerService_IssueResumeTicket_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *cyberiaPlayerServiceClient) IssueTravelTicket(ctx context.Context, in *IssueTravelTicketRequest, opts ...grpc.CallOption) (*IssueTravelTicketResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(IssueTravelTicketResponse)
+	err := c.cc.Invoke(ctx, CyberiaPlayerService_IssueTravelTicket_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -482,6 +549,16 @@ func (c *cyberiaPlayerServiceClient) UpdateFriendship(ctx context.Context, in *U
 	return out, nil
 }
 
+func (c *cyberiaPlayerServiceClient) UpdateStatusNote(ctx context.Context, in *UpdateStatusNoteRequest, opts ...grpc.CallOption) (*UpdateStatusNoteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateStatusNoteResponse)
+	err := c.cc.Invoke(ctx, CyberiaPlayerService_UpdateStatusNote_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CyberiaPlayerServiceServer is the server API for CyberiaPlayerService service.
 // All implementations must embed UnimplementedCyberiaPlayerServiceServer
 // for forward compatibility.
@@ -495,8 +572,13 @@ type CyberiaPlayerServiceServer interface {
 	// Issues the next resume ticket of a live account session: a launch ticket
 	// bound to its account session, its world and its epoch.
 	IssueResumeTicket(context.Context, *IssueResumeTicketRequest) (*IssueResumeTicketResponse, error)
+	// Issues the ticket of a travel of a live account session: a launch ticket
+	// of its account session for another world of its universe that a route
+	// reaches and a server takes. The session saves and leaves next.
+	IssueTravelTicket(context.Context, *IssueTravelTicketRequest) (*IssueTravelTicketResponse, error)
 	// Makes the connection of a consumed ticket the one writer of its profile
-	// in this world, and loads the saved state. Idempotent per connection.
+	// in the universe of this world, and loads the saved state of this world.
+	// Idempotent per connection.
 	AcquirePlayerSession(context.Context, *AcquirePlayerSessionRequest) (*AcquirePlayerSessionResponse, error)
 	// Commits the whole durable state of one player at one sequence number.
 	CommitPlayerState(context.Context, *CommitPlayerStateRequest) (*CommitPlayerStateResponse, error)
@@ -508,6 +590,8 @@ type CyberiaPlayerServiceServer interface {
 	ListFriends(context.Context, *ListFriendsRequest) (*ListFriendsResponse, error)
 	// Requests, accepts, declines or removes one friendship.
 	UpdateFriendship(context.Context, *UpdateFriendshipRequest) (*UpdateFriendshipResponse, error)
+	// Sets or clears the status note of an account.
+	UpdateStatusNote(context.Context, *UpdateStatusNoteRequest) (*UpdateStatusNoteResponse, error)
 	mustEmbedUnimplementedCyberiaPlayerServiceServer()
 }
 
@@ -523,6 +607,9 @@ func (UnimplementedCyberiaPlayerServiceServer) ConsumeGameLaunchTicket(context.C
 }
 func (UnimplementedCyberiaPlayerServiceServer) IssueResumeTicket(context.Context, *IssueResumeTicketRequest) (*IssueResumeTicketResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method IssueResumeTicket not implemented")
+}
+func (UnimplementedCyberiaPlayerServiceServer) IssueTravelTicket(context.Context, *IssueTravelTicketRequest) (*IssueTravelTicketResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method IssueTravelTicket not implemented")
 }
 func (UnimplementedCyberiaPlayerServiceServer) AcquirePlayerSession(context.Context, *AcquirePlayerSessionRequest) (*AcquirePlayerSessionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AcquirePlayerSession not implemented")
@@ -541,6 +628,9 @@ func (UnimplementedCyberiaPlayerServiceServer) ListFriends(context.Context, *Lis
 }
 func (UnimplementedCyberiaPlayerServiceServer) UpdateFriendship(context.Context, *UpdateFriendshipRequest) (*UpdateFriendshipResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateFriendship not implemented")
+}
+func (UnimplementedCyberiaPlayerServiceServer) UpdateStatusNote(context.Context, *UpdateStatusNoteRequest) (*UpdateStatusNoteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateStatusNote not implemented")
 }
 func (UnimplementedCyberiaPlayerServiceServer) mustEmbedUnimplementedCyberiaPlayerServiceServer() {}
 func (UnimplementedCyberiaPlayerServiceServer) testEmbeddedByValue()                              {}
@@ -595,6 +685,24 @@ func _CyberiaPlayerService_IssueResumeTicket_Handler(srv interface{}, ctx contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CyberiaPlayerServiceServer).IssueResumeTicket(ctx, req.(*IssueResumeTicketRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CyberiaPlayerService_IssueTravelTicket_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IssueTravelTicketRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CyberiaPlayerServiceServer).IssueTravelTicket(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CyberiaPlayerService_IssueTravelTicket_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CyberiaPlayerServiceServer).IssueTravelTicket(ctx, req.(*IssueTravelTicketRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -707,6 +815,24 @@ func _CyberiaPlayerService_UpdateFriendship_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CyberiaPlayerService_UpdateStatusNote_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateStatusNoteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CyberiaPlayerServiceServer).UpdateStatusNote(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CyberiaPlayerService_UpdateStatusNote_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CyberiaPlayerServiceServer).UpdateStatusNote(ctx, req.(*UpdateStatusNoteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CyberiaPlayerService_ServiceDesc is the grpc.ServiceDesc for CyberiaPlayerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -721,6 +847,10 @@ var CyberiaPlayerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "IssueResumeTicket",
 			Handler:    _CyberiaPlayerService_IssueResumeTicket_Handler,
+		},
+		{
+			MethodName: "IssueTravelTicket",
+			Handler:    _CyberiaPlayerService_IssueTravelTicket_Handler,
 		},
 		{
 			MethodName: "AcquirePlayerSession",
@@ -745,6 +875,10 @@ var CyberiaPlayerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateFriendship",
 			Handler:    _CyberiaPlayerService_UpdateFriendship_Handler,
+		},
+		{
+			MethodName: "UpdateStatusNote",
+			Handler:    _CyberiaPlayerService_UpdateStatusNote_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -45,6 +45,7 @@ const (
 	InputKindFriendRequest // ask a visible account player for friendship
 	InputKindFriendReply   // accept or decline a friend request
 	InputKindFriendRemove  // end a friendship
+	InputKindStatusNote    // set or clear the status note of the account
 )
 
 // ChatChannel is who one chat line reaches.
@@ -84,7 +85,7 @@ type InputCommand struct {
 	Slot        int         // ItemActivation — the bag slot of the stack, or -1 for the first stack of ItemID
 	Active      bool        // ItemActivation; PlayerStasis — the stasis bool; PartyReply — accept
 	ChatChannel ChatChannel // Chat
-	ChatText    string      // Chat
+	Text        string      // Chat; StatusNote — clean, empty clears the note
 	EntityID    EntityID    // Chat direct target; party target; TalkDone, ShopBuy, CraftItem, ItemMove to a vault — the NPC entity
 	DialogCode  string      // TalkDone — the dialogue group the player just read
 	Quantity    int         // ShopBuy — units (clamped server-side)

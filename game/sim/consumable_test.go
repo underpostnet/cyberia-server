@@ -25,7 +25,6 @@ func healingServer(t *testing.T, life float64, stacks ...world.ObjectLayerState)
 	s.SkillConfig = map[string][]content.SkillDefinition{
 		"gel": {{LogicEventID: "zero-waste-auto-consume-heal", SummonedEntityItemID: "gel"}},
 	}
-	s.InitSkills()
 	ms.Vt(player.ID).Life = life
 	ms.Ap(player.ID).Layers = stacks
 	return s, ms, player

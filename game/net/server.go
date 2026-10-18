@@ -63,6 +63,9 @@ func (s *GameServer) SetAuthTimeout(timeout time.Duration) {
 // EnableAccounts switches the server to account mode: a connection needs a
 // launch ticket, and store commits the durable state of every player. Call it
 // before Run.
+// SetBuild names the binary of this process for the clients. Call it before Run.
+func (s *GameServer) SetBuild(build string) { s.build = build }
+
 func (s *GameServer) EnableAccounts(accounts Accounts, store persist.Store, serverID string) {
 	s.mode = SessionAccount
 	s.accounts = accounts
@@ -128,6 +131,9 @@ func (s *GameServer) ApplyInstanceConfig(cfg *pb.InstanceConfig) error {
 func (s *GameServer) Run() {
 	go s.listenForClients()
 	go s.gameLoop()
+	if s.resolver != nil {
+		go s.RunContentSweep(context.Background())
+	}
 	if s.durable != nil {
 		go s.durable.Run(context.Background())
 		go s.durable.RunCheckpoints(context.Background())
@@ -257,6 +263,7 @@ func (s *GameServer) sendAOI(player *world.Session) {
 		return
 	}
 
+	s.sendObjectLayerChanges(player)
 	world.SendMessage(player, "snapshot", s.buildSnapshot(player, mapState))
 }
 
@@ -287,6 +294,9 @@ type Client struct {
 	// resumeExpiresAt is when the resume ticket the client holds expires; zero
 	// before the first. Read and written under World.Mu.
 	resumeExpiresAt time.Time
+	// olSeen is the definition revision the client holds. Written at placement,
+	// then under World.Mu.
+	olSeen uint64
 }
 
 // GameServer is the network side: the client links, the tick loop and the
@@ -314,12 +324,19 @@ type GameServer struct {
 	draining atomic.Bool
 
 	// ── Sessions (accounts.go, sessions.go) ──────────────────────────────────
-	mode        SessionMode
-	serverID    string
+	mode     SessionMode
+	serverID string
+	// build names the binary of this process, sent to each client at join.
+	build       string
 	accounts    Accounts
 	durable     *persist.Pipeline
 	upgrader    websocket.Upgrader
 	authTimeout time.Duration
+
+	// resolver fetches the content a player brings from another world, and
+	// release names the content release of the world. See content_resolve.go.
+	resolver *contentResolver
+	release  func() string
 }
 
 // SkillMapEntry describes one skill associated with a trigger item,
@@ -360,6 +377,9 @@ type InitPayload struct {
 	// Empty for a fresh guest. The C client seeds its local quest_store from
 	// this and keeps it live via dialog_ack events (see Quest Journal).
 	Quests []content.QuestSnapshotEntry `json:"quests"`
+	// Build names the binary of this server. A client that plays here plays
+	// on every server of the same build.
+	Build string `json:"build,omitempty"`
 }
 
 // phaseReplication runs last in each tick. Iterates connected players for

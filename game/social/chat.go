@@ -12,7 +12,7 @@
 // Cross-process contract:
 //
 //	chat (client→server)     {channel, toId, text}
-//	chat (server→client)     {channel, fromId, fromName, fromSkin, toId, text}
+//	chat (server→client)     {channel, fromId, fromName, fromAvatar, toId, text, atMs}
 //	chat_ack (server→client) {ok, reason, channel} — sent on a refusal only
 //
 // deliver is the one place a line reaches a recipient; a future mute or
@@ -25,7 +25,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	"cyberia-server/logx"
 )
@@ -59,17 +58,16 @@ type ChatLine struct {
 	Channel  string         `json:"channel"`
 	FromID   world.EntityID `json:"fromId"`
 	FromName string         `json:"fromName"`
-	// FromSkin is the active skin of the sender: the item that draws its
-	// identity beside the line.
-	FromSkin string         `json:"fromSkin,omitempty"`
-	ToID     world.EntityID `json:"toId,omitempty"`
-	Text     string         `json:"text"`
+	// FromAvatar is the identity preview reference of what the sender wears.
+	FromAvatar string         `json:"fromAvatar,omitempty"`
+	ToID       world.EntityID `json:"toId,omitempty"`
+	Text       string         `json:"text"`
+	AtMs       int64          `json:"atMs"` // the server time of the line, Unix ms
 }
 
-// CleanText is a chat line as it may travel: no control or format
-// characters, single spaces, at most content.ChatTextMaxRunes runes. An empty
-// result is no line.
-func CleanText(text string) string {
+// CleanText is a line as it may travel: no control or format characters,
+// single spaces, at most maxRunes runes.
+func CleanText(text string, maxRunes int) string {
 	var b strings.Builder
 	for _, r := range text {
 		switch {
@@ -83,7 +81,7 @@ func CleanText(text string) string {
 	line := strings.Join(strings.Fields(b.String()), " ")
 	runes := 0
 	for i := range line {
-		if runes == content.ChatTextMaxRunes {
+		if runes == maxRunes {
 			return strings.TrimSpace(line[:i])
 		}
 		runes++
@@ -91,12 +89,12 @@ func CleanText(text string) string {
 	return line
 }
 
-// Chat sends one clean line from sender, whose active skin is skin, on
-// channel. A direct line goes to target: a player on the sender's map, or a
-// friend on any map. It returns "" or the reason it refused.
-func (s *Social) Chat(sender *world.Session, skin string, channel world.ChatChannel, target *world.Session, text string, now time.Time) string {
+// Chat sends one clean line from sender, drawn by avatar, on channel. A
+// direct line goes to target: a player on the sender's map, or a friend on
+// any map. It returns "" or the reason it refused.
+func (s *Social) Chat(sender *world.Session, avatar string, channel world.ChatChannel, target *world.Session, text string, now time.Time) string {
 	var recipients []*world.Session
-	line := ChatLine{Channel: channel.String(), FromID: sender.ID, FromName: sender.DisplayName, FromSkin: skin, Text: text}
+	line := ChatLine{Channel: channel.String(), FromID: sender.ID, FromName: sender.DisplayName, FromAvatar: avatar, Text: text, AtMs: now.UnixMilli()}
 	switch channel {
 	case world.ChatWorld:
 		for _, p := range s.online {

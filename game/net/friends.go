@@ -24,6 +24,25 @@ func (s *GameServer) RunFriendOp(op sim.FriendOp) {
 }
 
 func (s *GameServer) runFriendOp(op sim.FriendOp) {
+	if op.Action == "note" {
+		ctx, cancel := context.WithTimeout(context.Background(), friendCallTimeout)
+		refusal, err := s.accounts.UpdateStatusNote(ctx, op.AccountID, op.Note)
+		cancel()
+		if err != nil {
+			logx.Warnf("[Friends] note by account=%s failed: %v", op.AccountID, err)
+			refusal = EndUnavailable
+		}
+		if refusal != "" {
+			s.friendAck(op.PlayerID, refusal, op.Action)
+			if refusal == "too_soon" {
+				s.pushFriends(op.PlayerID)
+			}
+			return
+		}
+		s.pushFriendCircle(op.PlayerID)
+		s.friendAck(op.PlayerID, "", op.Action)
+		return
+	}
 	if op.Action != "list" {
 		ctx, cancel := context.WithTimeout(context.Background(), friendCallTimeout)
 		refusal, friend, err := s.accounts.UpdateFriendship(ctx, op.AccountID, op.Action, op.TargetAccountID, op.FriendshipID)
@@ -64,9 +83,9 @@ func (s *GameServer) friendAck(id world.PlayerID, reason, action string) {
 	}
 }
 
-// announceArrival sends a player that just joined its friend list, and every
-// friend online on this server a fresh one, which shows the new presence.
-func (s *GameServer) announceArrival(id world.PlayerID) {
+// pushFriendCircle sends a player its friend list, and every friend online on
+// this server a fresh one, which shows its presence and its note.
+func (s *GameServer) pushFriendCircle(id world.PlayerID) {
 	s.pushFriends(id)
 	s.Mu.Lock()
 	player := s.Social.Player(id)
@@ -92,7 +111,7 @@ func (s *GameServer) pushFriends(id world.PlayerID) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), friendCallTimeout)
-	records, err := s.accounts.ListFriends(ctx, player.AccountID)
+	list, err := s.accounts.ListFriends(ctx, player.AccountID)
 	cancel()
 	if err != nil {
 		logx.Warnf("[Friends] list of account=%s failed: %v", player.AccountID, err)
@@ -106,21 +125,23 @@ func (s *GameServer) pushFriends(id world.PlayerID) {
 	if s.Social.Player(id) != player {
 		return
 	}
-	rows := make([]social.Friend, 0, len(records))
+	rows := make([]social.Friend, 0, len(list.Friends))
 	var accepted []string
-	for _, r := range records {
-		row := social.Friend{ID: r.FriendshipID, Name: r.Name, Status: r.Status}
+	for _, r := range list.Friends {
+		row := social.Friend{ID: r.FriendshipID, Name: r.Name, Status: r.Status, Note: "", Avatar: r.Avatar}
 		// The entity id lets the client match a row to a player it sees; the
-		// presence goes to friends only.
+		// presence goes to friends only. A player here wears its live layers.
 		here := s.Social.Account(r.AccountID)
 		if here != nil {
-			row.EntityID, row.Skin = here.ID, s.PlayerSkin(here)
+			row.EntityID, row.Avatar = here.ID, s.PlayerAvatar(here)
 		}
 		switch {
 		case r.Status == "friend" && here != nil:
+			row.Note = r.Note
 			accepted = append(accepted, r.AccountID)
 			row.Online, row.World, row.MapCode = true, s.InstanceCode, here.MapCode
 		case r.Status == "friend":
+			row.Note = r.Note
 			accepted = append(accepted, r.AccountID)
 			row.Online, row.World, row.MapCode = r.Online, r.InstanceCode, r.MapCode
 		case !r.ExpiresAt.IsZero():
@@ -129,5 +150,5 @@ func (s *GameServer) pushFriends(id world.PlayerID) {
 		rows = append(rows, row)
 	}
 	s.Social.SetFriends(id, accepted)
-	world.SendMessage(player, "friends", map[string]interface{}{"friends": rows})
+	world.SendMessage(player, "friends", map[string]interface{}{"friends": rows, "note": list.Note, "noteRetryInMs": max(0, list.NoteNextUpdateAt.Sub(now).Milliseconds())})
 }

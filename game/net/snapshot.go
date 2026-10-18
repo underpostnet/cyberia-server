@@ -103,8 +103,8 @@ type SnapshotSelf struct {
 	PartyInvitesSent []SnapshotSentInvite `json:"partyInvitesSent,omitempty"`
 	// Craft is the running assembly, absent when none runs.
 	Craft *content.SnapshotCraft `json:"craft,omitempty"`
-	// Held counts the owned stacks the world cannot load now.
-	Held int `json:"held,omitempty"`
+	// Held is the owned stacks the world cannot load now.
+	Held []content.HeldStack `json:"held,omitempty"`
 	// Unsaved marks an account player whose state the engine has not taken
 	// for a while; its trades wait.
 	Unsaved bool `json:"unsaved,omitempty"`
@@ -511,7 +511,7 @@ func (s *GameServer) buildSnapshotSelf(player *world.Session, mapState *world.Ma
 		PartyInvites:     s.snapshotInvites(player, now),
 		PartyInvitesSent: s.snapshotSentInvites(player, now),
 		Craft:            s.SnapshotCraft(player),
-		Held:             s.HeldCount(player),
+		Held:             s.HeldView(player),
 		Unsaved:          player.Unsaved,
 		Inventory:        s.InventoryView(mapState.Ap(player.ID).Layers),
 		Frozen:           player.Frozen,

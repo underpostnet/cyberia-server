@@ -284,7 +284,7 @@ func (s *Sim) handleChatInput(sender *world.Session, cmd *world.InputCommand) {
 	if cmd.ChatChannel == world.ChatDirect {
 		target = s.Sessions[cmd.EntityID]
 	}
-	if reason := s.Social.Chat(sender, s.PlayerSkin(sender), cmd.ChatChannel, target, cmd.ChatText, time.Now()); reason != "" {
+	if reason := s.Social.Chat(sender, s.PlayerAvatar(sender), cmd.ChatChannel, target, cmd.Text, time.Now()); reason != "" {
 		world.SendAck(sender, "chat_ack", reason, map[string]interface{}{"channel": cmd.ChatChannel.String(), "toId": cmd.EntityID})
 	}
 }

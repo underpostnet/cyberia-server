@@ -10,8 +10,9 @@
 //	friend_request {toId}                — ask a visible account player
 //	friend_reply {friendshipId, accept}  — answer a request; decline also withdraws one
 //	friend_remove {friendshipId}         — end a friendship
-//	friends (server→client)              — the whole list, after each change
-//	friend_ack {ok, reason, action}      — sent on a refusal only
+//	status_note {text}                   — set the status note; empty clears it
+//	friends (server→client)              — the whole list and the own note, after each change
+//	friend_ack {ok, reason, action}      — note save or refusal
 package social
 
 import (
@@ -28,12 +29,14 @@ const (
 )
 
 // Friend is one row of the friend list a client receives. ID is the
-// friendship id; EntityID and Skin, the item that draws its identity, are set
-// while the friend plays on this server.
+// friendship id. Avatar is the identity preview reference of what the account
+// wears; EntityID is set while the friend plays on this server. Note is the
+// status note of an accepted friend.
 type Friend struct {
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`
-	Skin        string         `json:"skin,omitempty"`
+	Avatar      string         `json:"avatar,omitempty"`
+	Note        string         `json:"note,omitempty"`
 	Status      string         `json:"status"` // friend | incoming | outgoing
 	Online      bool           `json:"online"`
 	World       string         `json:"world,omitempty"`
