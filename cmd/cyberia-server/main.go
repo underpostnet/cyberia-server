@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -71,6 +74,25 @@ func serverID() string {
 	return host + "-" + uuid.NewString()[:8]
 }
 
+// buildDigest names the binary this process runs: replicas of one build share
+// it. Empty when the binary cannot be read.
+func buildDigest() string {
+	path, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	binary, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer binary.Close()
+	sum := sha256.New()
+	if _, err := io.Copy(sum, binary); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(sum.Sum(nil)[:8])
+}
+
 // mountAtBasePath preserves the public variant path all the way to the runtime.
 // chi strips the mount prefix before dispatching, so the application router can
 // keep canonical internal routes such as /ws and /api while directly consuming
@@ -96,7 +118,6 @@ func main() {
 	// lifetime; there is no environment fallback.
 	dataServerURL := flag.String("data-server-url", "", "Data Server REST origin, e.g. https://www.cyberiaonline.com")
 	dataServerGRPC := flag.String("data-server-grpc", "", "Data Server gRPC endpoint, e.g. localhost:50051")
-	gameServerPublicURL := flag.String("game-server-public-url", "", "public origin players dial, e.g. https://server.cyberiaonline.com")
 	flag.Parse()
 
 	// Load .env from CWD (project root) if present. Does not override
@@ -116,7 +137,7 @@ func main() {
 	logx.Infof("GC soft memory limit (GOMEMLIMIT) = %d bytes (math.MaxInt64 ⇒ unset)", debug.SetMemoryLimit(-1))
 
 	// All configuration is resolved here, once.
-	cfg, err := config.Load(*dataServerURL, *dataServerGRPC, *gameServerPublicURL)
+	cfg, err := config.Load(*dataServerURL, *dataServerGRPC)
 	if err != nil {
 		runUnderpostStatus(cfg.ContainerDeployID, "error")
 		logx.Errorf("config: %v", err)
@@ -125,6 +146,9 @@ func main() {
 
 	// Core game server
 	s := gamenet.NewGameServer()
+	id := serverID()
+	build := buildDigest()
+	s.SetBuild(build)
 
 	limits := gamenet.ResolveConnectionLimits(gamenet.ConnectionLimitOverrides{
 		DisableAll:          cfg.WSLimits.DisableAll,
@@ -152,6 +176,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer ds.Close()
+	s.SetContentSource(ds)
 
 	// Account mode: launch tickets, leases and commits go to the engine player
 	// service over gRPC.
@@ -163,11 +188,12 @@ func main() {
 			os.Exit(1)
 		}
 		defer players.Close()
-		s.EnableAccounts(players, players, serverID())
+		s.EnableAccounts(players, players, id)
 	}
 	logx.Infof("[GameServer] session mode: %s", s.Mode())
 
 	wb := engine_client.NewWorldBuilder(ds, s)
+	s.FollowRelease(wb.ReleaseID)
 	wb.InstanceCode = cfg.InstanceCode
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	if err := wb.LoadAll(ctx); err != nil {
@@ -243,30 +269,27 @@ func main() {
 	}
 	runUnderpostStatus(cfg.ContainerDeployID, "running-deployment")
 
-	// Report to the Data Server registry. The game client reads that list to
-	// find this server.
-	report := engine_client.Report{
-		ServerURL:    cfg.GameServerPublicURL,
+	// Report to the Data Server registry: this process serves the world at its public URL.
+	registry := engine_client.NewRegistry(cfg.DataServerURL, cfg.ServerAPIKey, engine_client.Report{
+		ServerID:     id,
+		URL:          cfg.PublicURL,
 		InstanceCode: cfg.InstanceCode,
-		Name:         cfg.InstanceCode,
-	}
-	registryCtx, stopRegistry := context.WithCancel(context.Background())
-	engine_client.StartRegistry(registryCtx, cfg.DataServerURL, cfg.ServerAPIKey, report)
+		Name:         wb.InstanceName(),
+		Build:        build,
+	})
+	registry.FollowRelease(wb.ReleaseID)
+	registry.Start()
 
-	// SIGTERM drains: no new session, the registry stops offering this server,
+	// SIGTERM drains: no new session, the registry stops offering this process,
 	// connected players get until DrainTimeout, then the server closes.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, os.Interrupt)
 	go func() {
 		<-stop
 		s.BeginDrain()
-		stopRegistry()
 		runUnderpostStatus(cfg.ContainerDeployID, "draining-deployment")
-		if report.ServerURL != "" && cfg.ServerAPIKey != "" {
-			report.Draining = true
-			if err := engine_client.Register(context.Background(), cfg.DataServerURL, cfg.ServerAPIKey, report); err != nil {
-				logx.Warnf("[Drain] registry report failed: %v", err)
-			}
+		if err := registry.Drain(context.Background()); err != nil {
+			logx.Warnf("[Drain] registry report failed: %v", err)
 		}
 		drainCtx, cancel := context.WithTimeout(context.Background(), max(cfg.DrainTimeout-sessionFlushBudget, 0))
 		remaining := s.WaitDrained(drainCtx, time.Second)

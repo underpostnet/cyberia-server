@@ -121,7 +121,7 @@ func TestLoadRequiresDataServer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Load(tt.url, tt.grpc, "")
+			got, err := Load(tt.url, tt.grpc)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Load(%q, %q) error = %v, wantErr %v", tt.url, tt.grpc, err, tt.wantErr)
 			}
@@ -153,7 +153,7 @@ func TestLoadSessionMode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("CYBERIA_SESSION_MODE", tt.mode)
 			t.Setenv("CYBERIA_SERVER_API_KEY", tt.key)
-			got, err := Load("http://data", "data:50051", "")
+			got, err := Load("http://data", "data:50051")
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
 			}

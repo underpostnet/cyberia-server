@@ -87,11 +87,11 @@ type Config struct {
 	// gRPC service. CYBERIA_HOT_RELOAD_GRPC_ADDRESS, default ":50052".
 	HotReloadGRPCAddress string
 
-	// GameServerPublicURL is the http(s) origin players dial, with the deploy
-	// sub-path ("https://server.cyberiaonline.com/FOREST"). The server reports
-	// it to the Data Server registry, which the game client reads to find its
-	// websocket. --game-server-public-url; empty keeps the server off the list.
-	GameServerPublicURL string
+	// PublicURL is the http(s) origin players dial, with the base path of the
+	// world ("https://server.cyberiaonline.com/test"). The server reports it to
+	// the Data Server registry. CYBERIA_PUBLIC_URL; empty keeps the server off
+	// the registry.
+	PublicURL string
 }
 
 // defaultCORSOrigins is the dev-friendly allow-list used when
@@ -108,12 +108,11 @@ func DefaultCORSOrigins() []string {
 }
 
 // Load reads configuration from the environment, takes the Data Server
-// endpoints and the public game server URL from the command line, applies
-// defaults, and returns an error
+// endpoints from the command line, applies defaults, and returns an error
 // when a required value is missing or malformed. The returned Config is
 // populated even on error (notably ContainerDeployID) so callers can still
 // report deploy status before exiting.
-func Load(dataServerURL, dataServerGRPC, gameServerPublicURL string) (Config, error) {
+func Load(dataServerURL, dataServerGRPC string) (Config, error) {
 	basePath, err := normalizeBasePath(os.Getenv("CYBERIA_BASE_PATH"))
 	c := Config{
 		ServerPort:           getEnv("SERVER_PORT", "8081"),
@@ -122,7 +121,7 @@ func Load(dataServerURL, dataServerGRPC, gameServerPublicURL string) (Config, er
 		InstanceCode:         os.Getenv("INSTANCE_CODE"),
 		DataServerURL:        strings.TrimSpace(dataServerURL),
 		DataServerGRPC:       strings.TrimSpace(dataServerGRPC),
-		GameServerPublicURL:  strings.TrimSpace(gameServerPublicURL),
+		PublicURL:            strings.TrimSpace(os.Getenv("CYBERIA_PUBLIC_URL")),
 		ProblemBaseURI:       os.Getenv("CYBERIA_PROBLEM_BASE_URI"),
 		ContainerDeployID:    os.Getenv("CONTAINER_DEPLOY_ID"),
 		ServerAPIKey:         os.Getenv("CYBERIA_SERVER_API_KEY"),

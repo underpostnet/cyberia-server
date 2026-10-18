@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -51,5 +52,15 @@ func TestMountAtRootBasePath(t *testing.T) {
 	root.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/ws", nil))
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("GET /ws status = %d, want %d", response.Code, http.StatusNoContent)
+	}
+}
+
+func TestBuildDigestNamesTheRunningBinary(t *testing.T) {
+	digest := buildDigest()
+	if len(digest) != 16 || strings.Trim(digest, "0123456789abcdef") != "" {
+		t.Fatalf("buildDigest() = %q, want 16 hex characters", digest)
+	}
+	if buildDigest() != digest {
+		t.Fatal("one binary has one digest")
 	}
 }
