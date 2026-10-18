@@ -26,9 +26,8 @@ type Loop struct {
 // (ENGINE_GRPC_RELOAD_INTERVAL_SEC). A non-positive interval disables polling
 // and returns a Loop whose Stop is a no-op, so callers need no branch.
 //
-// Polling uses ModeIncremental: it diffs the ObjectLayer manifest and patches
-// only what changed. Full world rebuilds stay on-demand (the control trigger),
-// since they churn every map entity.
+// Polling uses ModeFull: it refreshes the cached definitions, and rebuilds the
+// world only when the instance version changed.
 func StartLoop(svc *Service, interval time.Duration) *Loop {
 	l := &Loop{svc: svc, stopCh: make(chan struct{})}
 	if svc == nil || interval <= 0 {
@@ -59,7 +58,7 @@ func (l *Loop) tick() {
 
 	// ErrBusy is expected whenever a triggered reload is mid-flight; the next
 	// tick picks the work up, so it is not an error worth surfacing.
-	if _, err := l.svc.run(ctx, ModeIncremental, "poll"); err != nil && err != ErrBusy {
+	if _, err := l.svc.run(ctx, ModeFull, "poll"); err != nil && err != ErrBusy {
 		logx.Errorf("[HotReload] Passive reload error: %v", err)
 	}
 }

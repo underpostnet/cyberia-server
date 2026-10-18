@@ -135,6 +135,8 @@ func durableQuest(qp *QuestProgress) persist.Quest {
 // holdReason is why a saved stack cannot load into this world, or "".
 func (s *Content) holdReason(stack persist.Stack) string {
 	switch cid := s.DefinitionCID(stack.ItemID); {
+	case cid == "" && s.unavailable[stack.ItemID] != "":
+		return s.unavailable[stack.ItemID]
 	case cid == "":
 		return persist.HeldUnknown
 	case cid != stack.CID:
@@ -268,8 +270,24 @@ func (s *Content) setHeld(id world.PlayerID, held []persist.Held) {
 	s.Held[id] = held
 }
 
-// HeldCount is the number of held stacks of a player.
-func (s *Content) HeldCount(player *world.Session) int { return len(s.Held[player.PlayerID]) }
+// HeldStack is an owned stack the world cannot load now: its owner sees it by
+// its definition, and cannot use it here.
+type HeldStack struct {
+	ItemID   string `json:"itemId"`
+	CID      string `json:"cid"`
+	Quantity int    `json:"quantity"`
+	Reason   string `json:"reason"`
+}
+
+// HeldView is the held stacks of a player.
+func (s *Content) HeldView(player *world.Session) []HeldStack {
+	held := s.Held[player.PlayerID]
+	out := make([]HeldStack, 0, len(held))
+	for _, h := range held {
+		out = append(out, HeldStack{ItemID: h.Stack.ItemID, CID: h.Stack.CID, Quantity: h.Stack.Quantity, Reason: h.Reason})
+	}
+	return out
+}
 
 // restoreQuests loads saved quest progress. The objectives take their type and
 // target from the current definition; a quest the world no longer defines

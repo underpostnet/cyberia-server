@@ -20,6 +20,10 @@ func (source *progressionDataSource) FetchFullInstance(context.Context, string) 
 	return source.response, nil
 }
 
+func (source *progressionDataSource) FetchObjectLayerManifest(context.Context) ([]ManifestEntry, error) {
+	return []ManifestEntry{{ItemID: "sword"}}, nil
+}
+
 func TestReloadRejectsInvalidStatsBeforeMutationAndAllowsRetry(t *testing.T) {
 	server := net.NewGameServer()
 	if err := server.ReplaceObjectLayerCache(map[string]*content.ObjectLayer{

@@ -83,3 +83,8 @@ const PartyInvitesMax = 5
 // PartyXpShareRadius is the most cells between the centres of a party member and a bot it shares the kill of.
 const PartyXpShareRadius = 10
 const ChatTextMaxRunes = 160
+const StatusNoteMaxRunes = 80
+
+// IdentityPreviewPath names an identity preview by the ordered CIDs of its layers.
+const IdentityPreviewPath = "/api/v1/cyberia-player/appearance/v1/"
+const IdentityPreviewMaxLayers = 20

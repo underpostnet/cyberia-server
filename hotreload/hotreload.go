@@ -30,10 +30,11 @@ import (
 // Reloader is the world-rebuild surface Trigger drives — implemented by
 // engine_client.WorldBuilder.
 type Reloader interface {
-	// ReloadWorld re-fetches the full instance and rebuilds when its version
-	// changed, preserving connected players.
+	// ReloadWorld refreshes the cached definitions, re-fetches the full
+	// instance and rebuilds when its version changed, preserving connected
+	// players.
 	ReloadWorld(ctx context.Context) error
-	// HotReload diffs the ObjectLayer manifest and patches only what changed.
+	// HotReload refreshes the cached definitions only.
 	HotReload(ctx context.Context) error
 }
 
@@ -41,10 +42,10 @@ type Reloader interface {
 type Mode string
 
 const (
-	// ModeFull re-fetches the instance and rebuilds maps/entities when the
-	// instance version changed.
+	// ModeFull refreshes the cached definitions, re-fetches the instance and
+	// rebuilds maps/entities when the instance version changed.
 	ModeFull Mode = "full"
-	// ModeIncremental only diffs and patches the ObjectLayer cache.
+	// ModeIncremental only refreshes the cached definitions.
 	ModeIncremental Mode = "incremental"
 )
 

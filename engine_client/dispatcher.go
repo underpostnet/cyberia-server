@@ -8,6 +8,7 @@ package engine_client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"cyberia-server/game/content"
@@ -20,6 +21,7 @@ import (
 type DataSource interface {
 	Ping(ctx context.Context) (int64, error)
 	FetchObjectLayer(ctx context.Context, itemID string) (*content.ObjectLayer, error)
+	FetchItemContent(ctx context.Context, itemID string) (*content.ItemContent, error)
 	FetchFullInstance(ctx context.Context, instanceCode string) (*pb.GetFullInstanceResponse, error)
 	FetchObjectLayerManifest(ctx context.Context) ([]ManifestEntry, error)
 	Close() error
@@ -67,14 +69,15 @@ func (d *Dispatcher) Close() error {
 	return err
 }
 
-// dispatch runs op on gRPC first, then on REST when gRPC is unavailable or fails.
+// dispatch runs op on gRPC first, then on REST when gRPC is unavailable or
+// fails. An unbound label is an answer, not a failure.
 func dispatch[T any](d *Dispatcher, op string, call func(DataSource) (T, error)) (T, error) {
 	var zero T
 	var grpcErr error
 	if d.grpc != nil {
 		result, err := call(d.grpc)
-		if err == nil {
-			return result, nil
+		if err == nil || errors.Is(err, content.ErrUnbound) {
+			return result, err
 		}
 		grpcErr = err
 		if d.rest == nil {
@@ -99,6 +102,12 @@ func (d *Dispatcher) Ping(ctx context.Context) (int64, error) {
 func (d *Dispatcher) FetchObjectLayer(ctx context.Context, itemID string) (*content.ObjectLayer, error) {
 	return dispatch(d, "FetchObjectLayer", func(ds DataSource) (*content.ObjectLayer, error) {
 		return ds.FetchObjectLayer(ctx, itemID)
+	})
+}
+
+func (d *Dispatcher) FetchItemContent(ctx context.Context, itemID string) (*content.ItemContent, error) {
+	return dispatch(d, "FetchItemContent", func(ds DataSource) (*content.ItemContent, error) {
+		return ds.FetchItemContent(ctx, itemID)
 	})
 }
 

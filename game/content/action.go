@@ -18,6 +18,7 @@ package content
 import (
 	"cyberia-server/game/world"
 	"cyberia-server/logx"
+	"strings"
 
 	pb "cyberia-server/gen/proto"
 )
@@ -195,33 +196,68 @@ func (s *Content) BotActiveSkin(id world.EntityID) string {
 	return s.activeSkinOf(id, ms)
 }
 
-// PlayerSkin is the active skin of a player: the item that draws its identity
-// in social views. "" when it wears none.
-func (s *Content) PlayerSkin(p *world.Session) string {
-	ms := s.Maps[p.MapCode]
+// EntityAvatar is the identity preview reference of the visual layers an
+// entity wears, in layer order: each layer on the definition the world binds
+// its label to, as the client draws it. "" when it wears none, or one this
+// world cannot name.
+func (s *Content) EntityAvatar(id world.EntityID, ms *world.MapState) string {
 	if ms == nil {
 		return ""
 	}
-	return s.activeSkinOf(p.ID, ms)
+	cids := make([]string, 0, IdentityPreviewMaxLayers)
+	for _, layer := range wornLayers(id, ms) {
+		if !layer.Active || layer.ItemID == "" {
+			continue
+		}
+		definition := s.ObjectLayerDataCache[layer.ItemID]
+		if definition == nil || definition.Data.Render == nil || definition.Data.Render.Cid == "" {
+			continue
+		}
+		cid := s.DefinitionCID(layer.ItemID)
+		if cid == "" || len(cids) == IdentityPreviewMaxLayers {
+			return ""
+		}
+		cids = append(cids, cid)
+	}
+	if len(cids) == 0 {
+		return ""
+	}
+	return IdentityPreviewPath + strings.Join(cids, ",")
+}
+
+// PlayerAvatar is the EntityAvatar of a player on its map.
+func (s *Content) PlayerAvatar(p *world.Session) string {
+	return s.EntityAvatar(p.ID, s.Maps[p.MapCode])
+}
+
+// wornLayers are the layers an entity wears. A ghost wears its dead loadout;
+// its own layers wait in PreRespawnObjectLayers.
+func wornLayers(id world.EntityID, ms *world.MapState) []world.ObjectLayerState {
+	if ms.Vt(id).Ghost() && len(ms.Mt(id).PreRespawnObjectLayers) > 0 {
+		return ms.Mt(id).PreRespawnObjectLayers
+	}
+	return ms.Ap(id).Layers
 }
 
 // activeSkinOf reads the active skin of an entity on a map directly (no
 // lookup), so the AOI path that already holds it avoids an O(N) map search.
 func (s *Content) activeSkinOf(id world.EntityID, ms *world.MapState) string {
-	// A dead entity's active layers hold the ghost skin; the live skin is
-	// preserved in PreRespawnObjectLayers. Read from there so a talk objective
-	// still validates against a quest-giver that just died, and a dead player
-	// keeps its identity.
-	layers := ms.Ap(id).Layers
-	if ms.Vt(id).Ghost() && len(ms.Mt(id).PreRespawnObjectLayers) > 0 {
-		layers = ms.Mt(id).PreRespawnObjectLayers
-	}
-	for _, ol := range layers {
-		if ol.Active && s.ItemType(ol.ItemID) == "skin" {
-			return ol.ItemID
-		}
+	if skin := s.activeSkinLayer(id, ms); skin != nil {
+		return skin.ItemID
 	}
 	return ""
+}
+
+// activeSkinLayer reads the worn layers, so a talk objective still validates
+// against a quest-giver that just died, and a dead player keeps its identity.
+func (s *Content) activeSkinLayer(id world.EntityID, ms *world.MapState) *world.ObjectLayerState {
+	layers := wornLayers(id, ms)
+	for i := range layers {
+		if layers[i].Active && s.ItemType(layers[i].ItemID) == "skin" {
+			return &layers[i]
+		}
+	}
+	return nil
 }
 
 // BotInteractionFlags builds the per-player interaction capability bitmask.

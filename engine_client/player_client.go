@@ -106,14 +106,31 @@ func (c *PlayerClient) ConsumeTicket(ctx context.Context, ticket, instanceCode, 
 
 // IssueResume implements net.Accounts. It runs off the tick and is not retried:
 // the next renewal asks again.
-func (c *PlayerClient) IssueResume(ctx context.Context, lease persist.Lease, instanceCode string) (net.ResumeTicket, error) {
+func (c *PlayerClient) IssueResume(ctx context.Context, lease persist.Lease, instanceCode string) (net.IssuedTicket, error) {
 	resp, err := c.svc.IssueResumeTicket(c.keyed(ctx), &pb.IssueResumeTicketRequest{
 		PlayerId: lease.PlayerID, AccountId: lease.AccountID, Epoch: lease.Epoch, InstanceCode: instanceCode,
 	})
 	if err != nil {
-		return net.ResumeTicket{}, fmt.Errorf("IssueResumeTicket: %w", err)
+		return net.IssuedTicket{}, fmt.Errorf("IssueResumeTicket: %w", err)
 	}
-	return net.ResumeTicket{
+	return net.IssuedTicket{
+		Refusal:   resp.GetRefusal(),
+		Ticket:    resp.GetTicket(),
+		ExpiresAt: time.UnixMilli(resp.GetExpiresAtMs()),
+	}, nil
+}
+
+// IssueTravel implements net.Accounts. The session asks once before it leaves;
+// a failure leaves the player the launch bridge.
+func (c *PlayerClient) IssueTravel(ctx context.Context, lease persist.Lease, instanceCode, targetCode string) (net.IssuedTicket, error) {
+	resp, err := c.svc.IssueTravelTicket(c.keyed(ctx), &pb.IssueTravelTicketRequest{
+		PlayerId: lease.PlayerID, AccountId: lease.AccountID, Epoch: lease.Epoch,
+		InstanceCode: instanceCode, TargetCode: targetCode,
+	})
+	if err != nil {
+		return net.IssuedTicket{}, fmt.Errorf("IssueTravelTicket: %w", err)
+	}
+	return net.IssuedTicket{
 		Refusal:   resp.GetRefusal(),
 		Ticket:    resp.GetTicket(),
 		ExpiresAt: time.UnixMilli(resp.GetExpiresAtMs()),
@@ -187,16 +204,25 @@ func (c *PlayerClient) Release(ctx context.Context, lease persist.Lease) error {
 }
 
 // ListFriends implements net.Accounts.
-func (c *PlayerClient) ListFriends(ctx context.Context, accountID string) ([]net.FriendRecord, error) {
+func (c *PlayerClient) ListFriends(ctx context.Context, accountID string) (net.FriendList, error) {
 	resp, err := c.svc.ListFriends(c.keyed(ctx), &pb.ListFriendsRequest{AccountId: accountID})
 	if err != nil {
-		return nil, err
+		return net.FriendList{}, err
 	}
-	out := make([]net.FriendRecord, 0, len(resp.GetFriends()))
+	list := net.FriendList{Friends: make([]net.FriendRecord, 0, len(resp.GetFriends())), Note: resp.GetNote(), NoteNextUpdateAt: time.UnixMilli(resp.GetNoteNextUpdateAtMs())}
 	for _, f := range resp.GetFriends() {
-		out = append(out, friendFromProto(f))
+		list.Friends = append(list.Friends, friendFromProto(f))
 	}
-	return out, nil
+	return list, nil
+}
+
+// UpdateStatusNote implements net.Accounts.
+func (c *PlayerClient) UpdateStatusNote(ctx context.Context, accountID, note string) (string, error) {
+	resp, err := c.svc.UpdateStatusNote(c.keyed(ctx), &pb.UpdateStatusNoteRequest{AccountId: accountID, Note: note})
+	if err != nil {
+		return "", err
+	}
+	return resp.GetRefusal(), nil
 }
 
 // UpdateFriendship implements net.Accounts.
@@ -223,6 +249,8 @@ func friendFromProto(f *pb.Friend) net.FriendRecord {
 		Online:       f.GetOnline(),
 		InstanceCode: f.GetInstanceCode(),
 		MapCode:      f.GetMapCode(),
+		Note:         f.GetNote(),
+		Avatar:       f.GetAvatar(),
 	}
 	if ms := f.GetExpiresAtMs(); ms > 0 {
 		record.ExpiresAt = time.UnixMilli(ms)

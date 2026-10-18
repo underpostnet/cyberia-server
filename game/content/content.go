@@ -19,6 +19,13 @@ type Content struct {
 	// Caches (protected by olMu)
 	OlMu                 sync.RWMutex
 	ObjectLayerDataCache map[string]*ObjectLayer
+	// warmLabels is the label set the world names. Every other cached label
+	// was resolved for a player, and leaves when nothing holds it.
+	warmLabels map[string]bool
+	// olRevision counts the definition changes of the cache; olChanged is the
+	// revision of the last change of each cached label.
+	olRevision uint64
+	olChanged  map[string]uint64
 
 	// Durability commits the durable state of account players; nil in
 	// anonymous mode.
@@ -64,8 +71,16 @@ type Content struct {
 	EntityDefaults      map[string]EntityTypeDefaultConfig
 	EntityDefaultBuilds []EntityTypeDefaultConfig
 
-	// Skill map (runtime): trigger item ID → []SkillDefinition
-	SkillConfig map[string][]SkillDefinition
+	// SkillConfig is the skill map the simulation runs: trigger item ID →
+	// []SkillDefinition. It is the resolved skills overridden by the warm
+	// skills the world config names (item_content.go). requires is the labels
+	// the skill of each resolved label summons, and unavailable the hold
+	// reason of each label whose content the world refused.
+	SkillConfig    map[string][]SkillDefinition
+	warmSkills     map[string][]SkillDefinition
+	resolvedSkills map[string][]SkillDefinition
+	requires       map[string][]string
+	unavailable    map[string]string
 
 	// Action / quest content fetched from engine-cyberia REST at instance
 	// init (actions and quests are not part of the gRPC world payload).
@@ -214,12 +229,17 @@ func (s *Content) ApplyConfig(cfg *pb.InstanceConfig, rules ProgressionRules) {
 	// visual resolution happens on the client via domain/presentation_defaults
 	// and the optional /api/v1/cyberia-client-hints override.
 
-	// Skill map
-	s.SkillConfig = make(map[string][]SkillDefinition, len(cfg.GetSkillConfig()))
-	for _, sc := range cfg.GetSkillConfig() {
+	s.warmSkills = SkillsFromConfig(cfg.GetSkillConfig())
+	s.composeSkills()
+}
+
+// SkillsFromConfig is the skill map of skill config entries: trigger item ID → []SkillDefinition.
+func SkillsFromConfig(entries []*pb.SkillConfigEntry) map[string][]SkillDefinition {
+	skills := make(map[string][]SkillDefinition, len(entries))
+	for _, sc := range entries {
 		triggerID := sc.GetTriggerItemId()
 		for _, sk := range sc.GetSkills() {
-			s.SkillConfig[triggerID] = append(s.SkillConfig[triggerID], SkillDefinition{
+			skills[triggerID] = append(skills[triggerID], SkillDefinition{
 				LogicEventID:         sk.GetLogicEventId(),
 				Name:                 sk.GetName(),
 				Description:          sk.GetDescription(),
@@ -227,4 +247,5 @@ func (s *Content) ApplyConfig(cfg *pb.InstanceConfig, rules ProgressionRules) {
 			})
 		}
 	}
+	return skills
 }

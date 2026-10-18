@@ -17,8 +17,10 @@ import (
 	pb "cyberia-server/gen/proto"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/status"
 )
 
 // Connection and per-RPC deadlines for the Engine gRPC server.
@@ -107,10 +109,25 @@ func (c *GrpcClient) FetchObjectLayer(ctx context.Context, itemID string) (*cont
 	defer cancel()
 
 	msg, err := c.svc.GetObjectLayer(ctx, &pb.GetObjectLayerRequest{ItemId: itemID})
+	if status.Code(err) == codes.NotFound {
+		return nil, fmt.Errorf("GetObjectLayer(%s): %w", itemID, content.ErrUnbound)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("GetObjectLayer(%s): %w", itemID, err)
 	}
 	return protoToObjectLayer(msg), nil
+}
+
+// FetchItemContent fetches the content one item label needs.
+func (c *GrpcClient) FetchItemContent(ctx context.Context, itemID string) (*content.ItemContent, error) {
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
+
+	resp, err := c.svc.GetItemContent(ctx, &pb.GetItemContentRequest{ItemId: itemID})
+	if err != nil {
+		return nil, fmt.Errorf("GetItemContent(%s): %w", itemID, err)
+	}
+	return protoToItemContent(resp), nil
 }
 
 // FetchFullInstance returns the instance, maps, and referenced ObjectLayers.
@@ -151,6 +168,22 @@ func (c *GrpcClient) FetchObjectLayerManifest(ctx context.Context) ([]ManifestEn
 // ═══════════════════════════════════════════════════════════════════
 // Proto → domain converters
 // ═══════════════════════════════════════════════════════════════════
+
+func protoToItemContent(resp *pb.GetItemContentResponse) *content.ItemContent {
+	c := &content.ItemContent{
+		ReleaseID:   resp.GetReleaseId(),
+		Layers:      make(map[string]*content.ObjectLayer, len(resp.GetObjectLayers())),
+		Skills:      content.SkillsFromConfig(resp.GetSkills()),
+		Unavailable: make(map[string]string, len(resp.GetUnavailable())),
+	}
+	for _, msg := range resp.GetObjectLayers() {
+		c.Layers[msg.GetItem().GetId()] = protoToObjectLayer(msg)
+	}
+	for _, u := range resp.GetUnavailable() {
+		c.Unavailable[u.GetItemId()] = u.GetReason()
+	}
+	return c
+}
 
 func protoToObjectLayer(msg *pb.ObjectLayerMessage) *content.ObjectLayer {
 	ol := &content.ObjectLayer{

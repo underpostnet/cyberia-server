@@ -3,6 +3,7 @@ package content
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"cyberia-server/game/persist"
 	"cyberia-server/game/world"
@@ -174,5 +175,44 @@ func TestARunningCraftIsRefundedWhenTheSessionEnds(t *testing.T) {
 	s2.RefundCraft(packed)
 	if held := s2.Held[packed.PlayerID]; len(held) != 1 || held[0].Reason != persist.HeldNoRoom || held[0].Stack.Quantity != 2 {
 		t.Fatalf("a refund the bag cannot take is held: %+v", held)
+	}
+}
+
+func TestTheAvatarNamesTheBoundRenderOfEveryWornLayer(t *testing.T) {
+	s, player := durableFixture(
+		world.ObjectLayerState{ItemID: "skin-b", CID: "cid-b-old", Active: true, Quantity: 1},
+		world.ObjectLayerState{ItemID: "sword", CID: "cid-sword", Active: true, Quantity: 1},
+		world.ObjectLayerState{ItemID: "gem", CID: "cid-gem", Active: true, Quantity: 8},
+	)
+	s.ObjectLayerDataCache["skin-b"].Data.Render = &Render{Cid: "render-body"}
+	s.ObjectLayerDataCache["sword"].Data.Render = &Render{Cid: "render-weapon"}
+	want := IdentityPreviewPath + "cid-b,cid-sword"
+	if got := s.PlayerAvatar(player); got != want {
+		t.Fatalf("each layer names the definition the world binds its label to, and a layer without a render none: got %q", got)
+	}
+	ms := s.Maps[player.MapCode]
+	ms.Ap(player.ID).Layers[2].Quantity++
+	if got := s.PlayerAvatar(player); got != want {
+		t.Fatalf("a quantity is no appearance: got %q", got)
+	}
+	own := append([]world.ObjectLayerState(nil), ms.Ap(player.ID).Layers...)
+	ms.Vt(player.ID).RespawnAt = time.Now().Add(time.Minute)
+	ms.Mt(player.ID).PreRespawnObjectLayers = own
+	ms.Ap(player.ID).Layers = []world.ObjectLayerState{{ItemID: "skin-a", Active: true, Quantity: 1}}
+	if got := s.PlayerAvatar(player); got != want {
+		t.Fatalf("a ghost keeps the avatar of its own loadout: got %q", got)
+	}
+	ms.Vt(player.ID).RespawnAt = time.Time{}
+	ms.Ap(player.ID).Layers = own
+	ms.Ap(player.ID).Layers[1].Active = false
+	if got := s.PlayerAvatar(player); got != IdentityPreviewPath+"cid-b" {
+		t.Fatalf("an unequipped weapon leaves the avatar: got %q", got)
+	}
+	if got := s.EntityAvatar(player.ID, ms); got != s.PlayerAvatar(player) {
+		t.Fatalf("a player and any entity share one avatar rule: got %q", got)
+	}
+	ms.Ap(player.ID).Layers[0].Active = false
+	if got := s.PlayerAvatar(player); got != "" {
+		t.Fatalf("an entity that wears no visual layer has no avatar: got %q", got)
 	}
 }

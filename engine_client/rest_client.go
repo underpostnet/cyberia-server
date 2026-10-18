@@ -9,6 +9,7 @@ package engine_client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -53,6 +54,9 @@ type restEnvelope struct {
 
 var restUnmarshal = protojson.UnmarshalOptions{DiscardUnknown: true}
 
+// errNotFound is a 404 of a boot endpoint.
+var errNotFound = errors.New("not found")
+
 func (c *RestClient) getData(ctx context.Context, path string, timeout time.Duration) (json.RawMessage, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -74,6 +78,9 @@ func (c *RestClient) getData(ctx context.Context, path string, timeout time.Dura
 	var env restEnvelope
 	if err := json.Unmarshal(body, &env); err != nil {
 		return nil, fmt.Errorf("engine_client: GET %s: HTTP %d: %w", path, resp.StatusCode, err)
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("engine_client: GET %s: %s: %w", path, env.Message, errNotFound)
 	}
 	if resp.StatusCode != http.StatusOK || env.Status != "success" {
 		return nil, fmt.Errorf("engine_client: GET %s: HTTP %d: %s", path, resp.StatusCode, env.Message)
@@ -104,10 +111,23 @@ func (c *RestClient) Ping(ctx context.Context) (int64, error) {
 // FetchObjectLayer fetches a single ObjectLayer by item ID (boot/object-layer/:itemId).
 func (c *RestClient) FetchObjectLayer(ctx context.Context, itemID string) (*content.ObjectLayer, error) {
 	var msg pb.ObjectLayerMessage
-	if err := c.getProto(ctx, "/object-layer/"+url.PathEscape(itemID), callTimeout, &msg); err != nil {
+	err := c.getProto(ctx, "/object-layer/"+url.PathEscape(itemID), callTimeout, &msg)
+	if errors.Is(err, errNotFound) {
+		return nil, fmt.Errorf("engine_client: object layer %s: %w", itemID, content.ErrUnbound)
+	}
+	if err != nil {
 		return nil, err
 	}
 	return protoToObjectLayer(&msg), nil
+}
+
+// FetchItemContent fetches the content one item label needs (boot/item-content/:itemId).
+func (c *RestClient) FetchItemContent(ctx context.Context, itemID string) (*content.ItemContent, error) {
+	var msg pb.GetItemContentResponse
+	if err := c.getProto(ctx, "/item-content/"+url.PathEscape(itemID), callTimeout, &msg); err != nil {
+		return nil, err
+	}
+	return protoToItemContent(&msg), nil
 }
 
 // FetchFullInstance returns the instance, maps, and referenced ObjectLayers

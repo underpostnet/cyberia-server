@@ -111,6 +111,26 @@ func TestRestClientErrorEnvelope(t *testing.T) {
 	}
 }
 
+func TestRestClientItemContentContract(t *testing.T) {
+	server := httptest.NewServer(fixtureHandler(t, map[string]string{
+		restBootPath + "/item-content/sword": "testdata/boot_item_content.json",
+	}))
+	defer server.Close()
+	c, err := NewRestClient(server.URL).FetchItemContent(context.Background(), "sword")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.ReleaseID != "contract-release" || c.Layers["sword"] == nil || c.Layers["sword"].Cid != contractCid {
+		t.Fatalf("content = %+v", c)
+	}
+	if skills := c.Skills["sword"]; len(skills) != 1 || skills[0].LogicEventID != "projectile" || skills[0].SummonedEntityItemID != "sword-bullet" {
+		t.Fatalf("skills = %+v", c.Skills)
+	}
+	if c.Unavailable["sword-bullet"] != "unbound" {
+		t.Fatalf("unavailable = %v", c.Unavailable)
+	}
+}
+
 func TestRestClientSignedObjectLayer(t *testing.T) {
 	server := httptest.NewServer(fixtureHandler(t, map[string]string{
 		restBootPath + "/object-layer/sword": "testdata/boot_object_layer.json",

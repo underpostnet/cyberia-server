@@ -1,9 +1,9 @@
 // Package engine_client — world_builder.go
 //
 // WorldBuilder uses an engine DataSource (gRPC primary or REST boot fallback)
-// to populate the GameServer's objectLayerDataCache at startup and supports
-// incremental hot-reload by diffing label → CID manifests and surgically
-// replacing stale entries.
+// to warm the GameServer object layer cache with the definitions its world
+// names. A reload compares the cached labels with the engine catalog and
+// replaces only the stale ones; it never adds a label the world does not name.
 package engine_client
 
 import (
@@ -28,22 +28,21 @@ type WorldBuilder struct {
 	// InstanceCode is the INSTANCE_CODE to query from the Engine.
 	InstanceCode string
 
-	// manifest maps each item label to the CID of its bound definition.
-	manifest map[string]string
+	// instanceName is the name of the loaded instance.
+	instanceName string
 
 	// lastInstanceVersion is the opaque version string returned by
 	// GetFullInstance.  ReloadWorld compares it to skip full rebuilds
 	// when the instance, its maps, and its config have not changed.
 	lastInstanceVersion string
+
+	// releaseID is the content release the engine served the last full load from.
+	releaseID string
 }
 
 // NewWorldBuilder creates a WorldBuilder bound to the given data source + server.
 func NewWorldBuilder(client DataSource, server *net.GameServer) *WorldBuilder {
-	return &WorldBuilder{
-		client:   client,
-		server:   server,
-		manifest: make(map[string]string),
-	}
+	return &WorldBuilder{client: client, server: server}
 }
 
 // LoadAll performs the initial full load via GetFullInstance.
@@ -93,17 +92,11 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 		return err
 	}
 
-	// Build manifest: label → identity of the bound definition.
-	wb.mu.Lock()
-	wb.manifest = make(map[string]string, len(cache))
-	for itemID, ol := range cache {
-		wb.manifest[itemID] = ol.Cid
-	}
-	wb.mu.Unlock()
-
 	// Save initial version for change-detection.
 	wb.mu.Lock()
 	wb.lastInstanceVersion = resp.GetVersion()
+	wb.instanceName = resp.GetInstance().GetName()
+	wb.releaseID = resp.GetReleaseId()
 	wb.mu.Unlock()
 
 	// Build the game world from instance data
@@ -114,95 +107,94 @@ func (wb *WorldBuilder) LoadAll(ctx context.Context) error {
 	return nil
 }
 
-// HotReload fetches the manifest from Engine, diffs against the local
-// copy, and surgically re-fetches only the changed/new ObjectLayers.
-// Deleted items are removed from cache.
-func (wb *WorldBuilder) HotReload(ctx context.Context) error {
-	// 1. Ping Engine to confirm liveness
-	_, err := wb.client.Ping(ctx)
-	if err != nil {
-		return err
-	}
+// ReleaseID is the content release the engine served the last full load
+// from, "" for the workspace.
+func (wb *WorldBuilder) ReleaseID() string {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	return wb.releaseID
+}
 
-	// 2. Fetch remote manifest
+// InstanceName is the name of the loaded instance, or its code when it has none.
+func (wb *WorldBuilder) InstanceName() string {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	if wb.instanceName == "" {
+		return wb.InstanceCode
+	}
+	return wb.instanceName
+}
+
+// refreshLabels compares the cached labels with the engine catalog: a label
+// bound to another definition is fetched again, an unbound one leaves the
+// cache. It never adds a label the world does not hold.
+func (wb *WorldBuilder) refreshLabels(ctx context.Context) error {
 	remoteEntries, err := wb.client.FetchObjectLayerManifest(ctx)
 	if err != nil {
 		return err
 	}
-
-	remoteMap := make(map[string]string, len(remoteEntries))
+	remote := make(map[string]string, len(remoteEntries))
 	for _, e := range remoteEntries {
-		remoteMap[e.ItemID] = e.Cid
+		remote[e.ItemID] = e.Cid
 	}
 
-	wb.mu.Lock()
-	localManifest := wb.manifest
-	wb.mu.Unlock()
-
-	// 3. Diff: labels whose bound definition is new or changed identity
-	var toFetch []string
-	for itemID, remoteCid := range remoteMap {
-		localCid, exists := localManifest[itemID]
-		if !exists || localCid != remoteCid {
-			toFetch = append(toFetch, itemID)
+	var stale, unbound []string
+	for itemID, cid := range wb.server.ObjectLayerManifest() {
+		switch remoteCid, bound := remote[itemID]; {
+		case !bound:
+			unbound = append(unbound, itemID)
+		case remoteCid != cid:
+			stale = append(stale, itemID)
 		}
 	}
-
-	// 4. Diff: find deleted items
-	var toDelete []string
-	for itemID := range localManifest {
-		if _, exists := remoteMap[itemID]; !exists {
-			toDelete = append(toDelete, itemID)
-		}
+	if len(stale) == 0 && len(unbound) == 0 {
+		return nil
 	}
-
-	// 5. Apply OL changes if any were detected.
-	if len(toFetch) > 0 || len(toDelete) > 0 {
-		logx.Infof("[WorldBuilder] Hot-reload: %d changed/new, %d deleted.", len(toFetch), len(toDelete))
-
-		updates := make(map[string]*content.ObjectLayer, len(toFetch))
-		fetchErrors := 0
-		for _, itemID := range toFetch {
-			ol, err := wb.client.FetchObjectLayer(ctx, itemID)
-			if err != nil {
-				logx.Warnf("[WorldBuilder] failed to fetch ObjectLayer %s: %v", itemID, err)
-				fetchErrors++
-				continue
-			}
-			updates[itemID] = ol
+	logx.Infof("[WorldBuilder] Hot-reload: %d rebound, %d unbound.", len(stale), len(unbound))
+	updates := make(map[string]*content.ObjectLayer, len(stale))
+	fetchErrors := 0
+	for _, itemID := range stale {
+		ol, err := wb.client.FetchObjectLayer(ctx, itemID)
+		if err != nil {
+			logx.Warnf("[WorldBuilder] failed to fetch ObjectLayer %s: %v", itemID, err)
+			fetchErrors++
+			continue
 		}
-
-		if err := wb.server.PatchObjectLayerCache(updates, toDelete); err != nil {
-			return err
-		}
-
-		wb.mu.Lock()
-		for itemID, ol := range updates {
-			wb.manifest[itemID] = ol.Cid
-		}
-		for _, itemID := range toDelete {
-			delete(wb.manifest, itemID)
-		}
-		wb.mu.Unlock()
-
-		logx.Infof("[WorldBuilder] Hot-reload applied: %d updated, %d deleted, %d errors.",
-			len(updates), len(toDelete), fetchErrors)
+		updates[itemID] = ol
 	}
-
-	// 6. Always check instance/map version so that admin map edits (via
-	//    MapEngineCyberia or InstanceEngineCyberia) are picked up even when
-	//    no ObjectLayer binary changed.
-	if err := wb.ReloadWorld(ctx); err != nil {
+	if err := wb.server.PatchObjectLayerCache(updates, unbound); err != nil {
 		return err
 	}
-
+	logx.Infof("[WorldBuilder] Hot-reload applied: %d updated, %d deleted, %d errors.",
+		len(updates), len(unbound), fetchErrors)
 	return nil
 }
 
-// ReloadWorld re-fetches the full instance and, when the version
-// string has changed, rebuilds all map entities while preserving connected
-// players.  When nothing changed the rebuild is skipped to avoid churn.
+// HotReload refreshes the cached definitions against the engine catalog and
+// the resolved content, then evicts the resolved content nothing holds. The
+// world stays as it is.
+func (wb *WorldBuilder) HotReload(ctx context.Context) error {
+	if _, err := wb.client.Ping(ctx); err != nil {
+		return err
+	}
+	if err := wb.refreshLabels(ctx); err != nil {
+		return err
+	}
+	wb.server.RefreshResolvedContent(ctx)
+	wb.server.EvictResolvedContent()
+	return nil
+}
+
+// ReloadWorld refreshes the cached definitions, re-fetches the full instance
+// and, when the version string has changed, rebuilds all map entities while
+// preserving connected players. When nothing changed the rebuild is skipped
+// to avoid churn. Then it resolves the resolved content again from the release
+// the engine serves, and evicts the resolved content nothing holds.
 func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
+	if err := wb.refreshLabels(ctx); err != nil {
+		return err
+	}
+	defer wb.server.EvictResolvedContent()
 	resp, err := wb.client.FetchFullInstance(ctx, wb.InstanceCode)
 	if err != nil {
 		return err
@@ -216,9 +208,11 @@ func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
 	newVersion := resp.GetVersion()
 	wb.mu.Lock()
 	same := newVersion != "" && newVersion == wb.lastInstanceVersion
+	wb.releaseID = resp.GetReleaseId()
 	wb.mu.Unlock()
 
 	if same {
+		wb.server.RefreshResolvedContent(ctx)
 		return nil
 	}
 
@@ -231,14 +225,14 @@ func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
 		}
 	}
 
-	updates := make(map[string]*content.ObjectLayer, len(resp.GetObjectLayers()))
+	warm := make(map[string]*content.ObjectLayer, len(resp.GetObjectLayers()))
 	for _, msg := range resp.GetObjectLayers() {
 		ol := protoToObjectLayer(msg)
 		if ol.Data.Item.ID != "" {
-			updates[ol.Data.Item.ID] = ol
+			warm[ol.Data.Item.ID] = ol
 		}
 	}
-	if err := wb.server.PatchObjectLayerCache(updates, nil); err != nil {
+	if err := wb.server.ReplaceWarmObjectLayers(warm); err != nil {
 		return err
 	}
 
@@ -248,7 +242,9 @@ func (wb *WorldBuilder) ReloadWorld(ctx context.Context) error {
 
 	wb.mu.Lock()
 	wb.lastInstanceVersion = newVersion
+	wb.instanceName = resp.GetInstance().GetName()
 	wb.mu.Unlock()
+	wb.server.RefreshResolvedContent(ctx)
 
 	logx.Infof("[WorldBuilder] ReloadWorld complete — maps and entities refreshed.")
 	return nil

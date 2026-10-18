@@ -1,0 +1,54 @@
+{
+  "status": "success",
+  "data": {
+    "releaseId": "contract-release",
+    "objectLayers": [
+      {
+        "stats": {
+          "effect": -100,
+          "resistance": 100,
+          "agility": 0,
+          "range": 0,
+          "intelligence": 0,
+          "utility": 0
+        },
+        "item": {
+          "id": "sword",
+          "type": "weapon",
+          "description": "",
+          "activable": false
+        },
+        "ledger": {
+          "standard": "",
+          "chainId": 0,
+          "contractAddress": "",
+          "tokenId": ""
+        },
+        "render": {
+          "cid": "bafkreidksiktki2pjijlf63djoorcifkov56idvalevbj4clakjz7mvl3q",
+          "metadataCid": "bafkreigcohqyadv5kpqjoph2m4s53wfmu5pvuaufgwilobl7n4hxgha6hm"
+        },
+        "cid": "bafkreihbdxmw6pzohkabf3pxtvqytnmkfi6h6f3ovmihp7vb6g7im3fule"
+      }
+    ],
+    "skills": [
+      {
+        "triggerItemId": "sword",
+        "skills": [
+          {
+            "logicEventId": "projectile",
+            "name": "Contract Shot",
+            "description": "",
+            "summonedEntityItemId": "sword-bullet"
+          }
+        ]
+      }
+    ],
+    "unavailable": [
+      {
+        "itemId": "sword-bullet",
+        "reason": "unbound"
+      }
+    ]
+  }
+}
