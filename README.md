@@ -312,7 +312,17 @@ Paths are relative to `cyberia-server/`. Gameplay logic lives under `game/`, in 
 | `/api/v1/metrics/health`    | GET    | Detailed health with entity/player counts |
 | `/api/v1/metrics/entities`  | GET    | Entity-type breakdown                     |
 | `/api/v1/metrics/websocket` | GET    | Active connections, message rates         |
-| `/api/v1/metrics/workload`  | GET    | Per-map entity workload                   |
+| `/api/v1/metrics/workload`  | GET    | Measured tick workload                   |
+
+Workload measures tick processing time, including simulation, replication, and lock waits.
+It averages the latest 30 ticks, one second at the configured 30 Hz rate.
+Load is that average divided by the tick budget: moderate at 40%, high at 70%, critical at 90%.
+Entity and object-layer counts describe content; they do not determine health or player capacity.
+
+The portal reads player population from `websocket.active_connections`.
+`websocket.max_connections` is the configured `CYBERIA_MAX_CONNECTIONS` admission limit; zero disables that limit.
+The world selector shows Full only when connections reach that limit.
+Tick pressure remains operational information and does not prevent a player from selecting a world.
 
 All content data (ObjectLayer metadata, asset blobs, optional client hints, the Instance Map graph) is served directly by engine-cyberia REST. `cyberia-server` does not proxy content; it only forwards `instanceCode` (alongside `apiBaseUrl`) in the WebSocket `metadata` message so the client can key its engine-cyberia fetches.
 
