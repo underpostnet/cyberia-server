@@ -45,10 +45,11 @@ type runtimeCounters struct {
 	definitionsShared  atomic.Uint64
 	definitionsEvicted atomic.Uint64
 
-	// Last observed tick + wall time. Snapshotted on every read so a
-	// caller can derive a tick/s rate without holding the world lock.
-	lastObservedTick atomic.Uint32
-	lastObservedAt   atomic.Int64 // unix nanoseconds
+	tickMu      sync.Mutex
+	tickSamples [sim.DefaultTickRate]time.Duration
+	tickIndex   int
+	tickCount   int
+	tickTotal   time.Duration
 }
 
 // RuntimeMetricsSnapshot is a read-only view of the runtime counters
@@ -58,6 +59,8 @@ type RuntimeMetricsSnapshot struct {
 	TickRate           int     `json:"tick_rate_hz"`
 	CurrentTick        uint32  `json:"current_tick"`
 	TickDurationMs     float64 `json:"tick_duration_ms"`
+	TickWorkMs         float64 `json:"tick_work_ms"`
+	MaxConnections     int     `json:"max_connections"`
 	AoiRadius          float64 `json:"aoi_radius"`
 	WsMessagesIn       uint64  `json:"ws_messages_in_total"`
 	WsMessagesOut      uint64  `json:"ws_messages_out_total"`
@@ -162,9 +165,28 @@ func (s *GameServer) recordSessionEnd(reason string) {
 	s.counters.sessionEnds[reason]++
 }
 
-// RuntimeMetrics returns a lock-free snapshot of the simulation cadence
-// counters and per-process throughput. Safe to call from the HTTP API
-// without contending with the simulation tick.
+// The sample window holds one second of simulation ticks.
+func (c *runtimeCounters) recordTick(elapsed time.Duration) {
+	c.tickMu.Lock()
+	defer c.tickMu.Unlock()
+	c.tickTotal += elapsed - c.tickSamples[c.tickIndex]
+	c.tickSamples[c.tickIndex] = elapsed
+	c.tickIndex = (c.tickIndex + 1) % len(c.tickSamples)
+	if c.tickCount < len(c.tickSamples) {
+		c.tickCount++
+	}
+}
+
+func (c *runtimeCounters) tickWorkMs() float64 {
+	c.tickMu.Lock()
+	defer c.tickMu.Unlock()
+	if c.tickCount == 0 {
+		return 0
+	}
+	return float64(c.tickTotal) / float64(c.tickCount) / float64(time.Millisecond)
+}
+
+// RuntimeMetrics reads tick timing, connection limits, and process counters.
 func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 	// aoiRadius is only mutated inside ApplyInstanceConfig, which holds
 	// s.mu. Read under the same lock to avoid a torn read.
@@ -172,9 +194,6 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 	aoi := s.aoiRadius
 	tick := s.currentTick
 	s.Mu.Unlock()
-
-	s.counters.lastObservedTick.Store(tick)
-	s.counters.lastObservedAt.Store(time.Now().UnixNano())
 
 	activeConns, activeAddrs := s.guard.counts()
 	s.counters.sessionsMu.Lock()
@@ -187,7 +206,9 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 	return RuntimeMetricsSnapshot{
 		TickRate:           sim.DefaultTickRate,
 		CurrentTick:        tick,
-		TickDurationMs:     float64(sim.TickDuration.Microseconds()) / 1000.0,
+		TickDurationMs:     float64(sim.TickDuration) / float64(time.Millisecond),
+		TickWorkMs:         s.counters.tickWorkMs(),
+		MaxConnections:     s.limits.MaxConnections,
 		AoiRadius:          aoi,
 		WsMessagesIn:       s.counters.wsMessagesIn.Load(),
 		WsMessagesOut:      s.counters.wsMessagesOut.Load(),

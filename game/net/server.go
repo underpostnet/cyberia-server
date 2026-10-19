@@ -192,6 +192,7 @@ func (s *GameServer) gameLoop() {
 		sim.DefaultTickRate, sim.TickDuration)
 
 	for range simTicker.C {
+		started := time.Now()
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -226,6 +227,7 @@ func (s *GameServer) gameLoop() {
 		if s.durable != nil {
 			s.endSessions(s.durable.TakeEnded())
 		}
+		s.counters.recordTick(time.Since(started))
 	}
 }
 
