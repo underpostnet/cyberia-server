@@ -1,37 +1,10 @@
-// Package api owns the cyberia-server REST surface under /api/v1.
-//
-// Contract:
-//   - All success responses are application/json; charset=utf-8.
-//   - All error responses are application/problem+json (RFC 9457) and
-//     constructed via the cyberia-server/httpserver/problem package.
-//   - Resource representations are stable: field names use snake_case
-//     and are versioned implicitly via the /v1 prefix. Breaking changes
-//     require a /v2 carve-out.
-//   - Health and load enums are closed sets (see HealthStatus and
-//     WorkloadLevel constants below); clients may treat any unknown
-//     value as the next-worse known state.
-//   - Caching: every endpoint sets Cache-Control: no-store. Metrics are
-//     observability data with sub-second relevance.
-//
-// Endpoints (also documented in openapi.yaml):
-//
-//	GET /api/v1/health                — liveness, RFC-style
-//	GET /api/v1/health/ready          — readiness (gRPC world loaded?)
-//	GET /api/v1/metrics               — full metrics snapshot
-//	GET /api/v1/metrics/health        — health subset
-//	GET /api/v1/metrics/entities      — entity census
-//	GET /api/v1/metrics/websocket     — websocket throughput + state
-//	GET /api/v1/metrics/workload      — workload / capacity
-//	GET /api/v1/metrics/runtime       — simulation cadence + Go runtime
-//	GET /api/v1/metrics/maps          — per-map breakdown
-//	GET /api/v1/metrics/maps/{code}   — single-map breakdown
+// Package api serves operational metrics under /api/v1.
 package api
 
 import (
 	"encoding/json"
 	"net/http"
 	"runtime"
-	"sync"
 	"time"
 
 	"cyberia-server/game/net"
@@ -62,9 +35,7 @@ const (
 	WebSocketCrashed  WebSocketStatus = "crashed"
 )
 
-// WorkloadLevel is the closed set of load buckets. The dashboard maps
-// each bucket to a color band; "moderate" is the historical name
-// (kept stable to avoid a breaking client change).
+// WorkloadLevel reports the share of the tick budget used by simulation and replication.
 type WorkloadLevel string
 
 const (
@@ -95,7 +66,8 @@ type EntityMetrics struct {
 
 // WorkloadMetrics is the capacity envelope and current bucket.
 type WorkloadMetrics struct {
-	LoadPercentage    float64       `json:"load_percentage"`
+	LoadPercentage float64 `json:"load_percentage"`
+	// Zero means no configured entity or object-layer limit.
 	MaxEntityCapacity int           `json:"max_entity_capacity"`
 	MaxObjectLayers   int           `json:"max_object_layers"`
 	CurrentLoad       WorkloadLevel `json:"current_load"`
@@ -107,6 +79,7 @@ type WorkloadMetrics struct {
 type WebSocketServerMetrics struct {
 	Status            WebSocketStatus `json:"status"`
 	ActiveConnections int             `json:"active_connections"`
+	MaxConnections    int             `json:"max_connections"`
 	UptimeSec         int64           `json:"uptime_sec"`
 	MessagesInTotal   uint64          `json:"messages_in_total"`
 	MessagesOutTotal  uint64          `json:"messages_out_total"`
@@ -197,35 +170,20 @@ func (h *MetricsHandler) collectPersistence() *PersistenceMetrics {
 	return out
 }
 
-// MetricsHandler owns the metrics endpoints. It is safe for concurrent
-// use; per-request reads are coordinated by h.mu, while heavy world
-// reads are delegated to GameServer methods (which take their own lock).
+// MetricsHandler reads metrics from the game server.
 type MetricsHandler struct {
 	gameServer *net.GameServer
 
-	mu              sync.RWMutex
 	serverStartTime time.Time
-	wsStatus        WebSocketStatus
 	instanceCode    string
-
-	// Thresholds. Not user-tunable yet.
-	warningEntityThreshold      int
-	warningObjectLayerThreshold int
-	maxEntityCapacity           int
-	maxObjectLayers             int
 }
 
 // NewMetricsHandler wires a MetricsHandler to a GameServer.
 func NewMetricsHandler(gs *net.GameServer, instanceCode string) *MetricsHandler {
 	return &MetricsHandler{
-		gameServer:                  gs,
-		serverStartTime:             time.Now(),
-		wsStatus:                    WebSocketRunning,
-		instanceCode:                instanceCode,
-		warningEntityThreshold:      800,
-		warningObjectLayerThreshold: 8000,
-		maxEntityCapacity:           3000,
-		maxObjectLayers:             10000,
+		gameServer:      gs,
+		serverStartTime: time.Now(),
+		instanceCode:    instanceCode,
 	}
 }
 
@@ -268,7 +226,7 @@ func (h *MetricsHandler) GetEntities(w http.ResponseWriter, r *http.Request) {
 func (h *MetricsHandler) GetWebSocket(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"timestamp": time.Now().UTC(),
-		"websocket": h.collectWebSocketMetrics(),
+		"websocket": h.collectWebSocketMetrics(h.gameServer.RuntimeMetrics()),
 	})
 }
 
@@ -307,19 +265,14 @@ func (h *MetricsHandler) GetMapByCode(w http.ResponseWriter, r *http.Request) {
 
 // ── Collectors ───────────────────────────────────────────────────────────
 
-// collectMetrics walks the world once and assembles a full MetricsResponse.
-// Lock ordering: h.mu (RLock) → GameServer.* (each method takes its own lock).
 func (h *MetricsHandler) collectMetrics() *MetricsResponse {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
+	runtimeMetrics := h.collectRuntimeMetrics()
 	entityMetrics := h.collectEntityMetrics()
-	workloadMetrics := h.calculateWorkloadMetrics(entityMetrics)
-	wsMetrics := h.collectWebSocketMetricsLocked()
-	runtimeMetrics := h.collectRuntimeMetricsLocked()
+	wsMetrics := h.collectWebSocketMetrics(runtimeMetrics.RuntimeMetricsSnapshot)
+	workloadMetrics := calculateWorkloadMetrics(runtimeMetrics)
 	maps := h.gameServer.MapBreakdowns()
 
-	health, desc := h.determineHealth(entityMetrics, workloadMetrics, wsMetrics)
+	health, desc := h.determineHealth(workloadMetrics, wsMetrics)
 
 	return &MetricsResponse{
 		Timestamp:         time.Now().UTC(),
@@ -337,20 +290,15 @@ func (h *MetricsHandler) collectMetrics() *MetricsResponse {
 	}
 }
 
-// collectWebSocketMetrics is the lock-public wrapper for callers that
-// have not already taken h.mu.
-func (h *MetricsHandler) collectWebSocketMetrics() WebSocketServerMetrics {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return h.collectWebSocketMetricsLocked()
-}
-
-// collectWebSocketMetricsLocked assumes h.mu is already held.
-func (h *MetricsHandler) collectWebSocketMetricsLocked() WebSocketServerMetrics {
-	rc := h.gameServer.RuntimeMetrics()
+func (h *MetricsHandler) collectWebSocketMetrics(rc net.RuntimeMetricsSnapshot) WebSocketServerMetrics {
+	status := WebSocketRunning
+	if h.gameServer.IsDraining() {
+		status = WebSocketStopping
+	}
 	return WebSocketServerMetrics{
-		Status:            h.wsStatus,
-		ActiveConnections: h.gameServer.GetConnectedClientsCount(),
+		Status:            status,
+		ActiveConnections: rc.WsActiveConns,
+		MaxConnections:    rc.MaxConnections,
 		UptimeSec:         int64(time.Since(h.serverStartTime).Seconds()),
 		MessagesInTotal:   rc.WsMessagesIn,
 		MessagesOutTotal:  rc.WsMessagesOut,
@@ -364,12 +312,6 @@ func (h *MetricsHandler) collectWebSocketMetricsLocked() WebSocketServerMetrics 
 }
 
 func (h *MetricsHandler) collectRuntimeMetrics() RuntimeMetrics {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return h.collectRuntimeMetricsLocked()
-}
-
-func (h *MetricsHandler) collectRuntimeMetricsLocked() RuntimeMetrics {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	return RuntimeMetrics{
@@ -384,10 +326,7 @@ func (h *MetricsHandler) collectRuntimeMetricsLocked() RuntimeMetrics {
 	}
 }
 
-// entityTypeOrder is the stable render order for entities_by_type.
-// Operators expect this list to be schema-consistent across responses
-// (every type appears even when count == 0) so the dashboard table
-// columns and per-type alerts stay in fixed positions.
+// Every entity type appears in this order, including empty types.
 var entityTypeOrder = []string{"player", "bot", "floor", "obstacle", "foreground", "portal", "resource"}
 
 func (h *MetricsHandler) collectEntityMetrics() EntityMetrics {
@@ -396,10 +335,7 @@ func (h *MetricsHandler) collectEntityMetrics() EntityMetrics {
 		return metrics
 	}
 
-	// Single locked traversal: avoids the 4 separate world-lock
-	// acquisitions the prior implementation used and guarantees that
-	// per-type counts here agree with the per-map breakdown returned
-	// by /v1/metrics/maps.
+	// One traversal gives consistent counts for all entity types.
 	census := h.gameServer.EntityCensus()
 
 	for _, et := range entityTypeOrder {
@@ -424,16 +360,10 @@ func (h *MetricsHandler) collectEntityMetrics() EntityMetrics {
 	return metrics
 }
 
-func (h *MetricsHandler) calculateWorkloadMetrics(em EntityMetrics) WorkloadMetrics {
-	w := WorkloadMetrics{
-		MaxEntityCapacity: h.maxEntityCapacity,
-		MaxObjectLayers:   h.maxObjectLayers,
-	}
-	entityPct := pct(em.TotalEntities, h.maxEntityCapacity)
-	layerPct := pct(em.TotalObjectLayers, h.maxObjectLayers)
-	w.LoadPercentage = entityPct
-	if layerPct > entityPct {
-		w.LoadPercentage = layerPct
+func calculateWorkloadMetrics(rm RuntimeMetrics) WorkloadMetrics {
+	w := WorkloadMetrics{}
+	if rm.TickDurationMs > 0 {
+		w.LoadPercentage = rm.TickWorkMs / rm.TickDurationMs * 100
 	}
 	switch {
 	case w.LoadPercentage >= 90:
@@ -448,27 +378,21 @@ func (h *MetricsHandler) calculateWorkloadMetrics(em EntityMetrics) WorkloadMetr
 	return w
 }
 
-func pct(num, denom int) float64 {
-	if denom <= 0 {
-		return 0
+func (h *MetricsHandler) determineHealth(wm WorkloadMetrics, ws WebSocketServerMetrics) (HealthStatus, string) {
+	if !h.gameServer.HasMaps() || h.gameServer.IsDraining() || ws.Status == WebSocketStopping {
+		return HealthMaintenance, "The world is loading or the server is draining."
 	}
-	return float64(num) / float64(denom) * 100
-}
-
-func (h *MetricsHandler) determineHealth(em EntityMetrics, wm WorkloadMetrics, ws WebSocketServerMetrics) (HealthStatus, string) {
-	if wm.CurrentLoad == WorkloadCritical {
-		return HealthCritical, "Workload is critical (≥ 90 %) — saturation risk is imminent."
+	if ws.Status == WebSocketError || ws.Status == WebSocketCrashed {
+		return HealthCritical, "The WebSocket server cannot accept connections."
 	}
-	if wm.CurrentLoad == WorkloadHigh {
-		if em.TotalEntities >= h.warningEntityThreshold || em.TotalObjectLayers >= h.warningObjectLayerThreshold {
-			return HealthDegraded, "Workload is high and entity/layer counts are near threshold — degraded responsiveness expected."
-		}
-		return HealthDegraded, "Workload is high (70–90 %) — monitor closely."
+	switch wm.CurrentLoad {
+	case WorkloadCritical:
+		return HealthCritical, "Tick work uses at least 90% of the tick budget."
+	case WorkloadHigh:
+		return HealthDegraded, "Tick work uses at least 70% of the tick budget."
+	default:
+		return HealthHealthy, "All systems operational."
 	}
-	if em.TotalEntities >= h.warningEntityThreshold || em.TotalObjectLayers >= h.warningObjectLayerThreshold {
-		return HealthDegraded, "Entity or object-layer count approaching configured threshold."
-	}
-	return HealthHealthy, "All systems operational."
 }
 
 // ── Response helpers ─────────────────────────────────────────────────────

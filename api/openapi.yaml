@@ -324,6 +324,7 @@ components:
 
     WorkloadLevel:
       type: string
+      description: Tick budget use; moderate starts at 40%, high at 70%, and critical at 90%.
       enum: [low, moderate, high, critical]
 
     WebSocketStatus:
@@ -377,10 +378,14 @@ components:
       properties:
         load_percentage:
           type: number
+          description: Average tick work divided by the tick budget, multiplied by 100.
+          minimum: 0
         max_entity_capacity:
           type: integer
+          description: Zero; the server has no configured entity limit.
         max_object_layers:
           type: integer
+          description: Zero; the server has no configured object-layer limit.
         current_load:
           $ref: "#/components/schemas/WorkloadLevel"
 
@@ -409,6 +414,13 @@ components:
           type: integer
         disconnects_total:
           type: integer
+        active_connections:
+          type: integer
+          minimum: 0
+        max_connections:
+          type: integer
+          minimum: 0
+          description: The admission limit; zero disables it.
         last_error_message:
           type: string
         last_error_time:
@@ -426,6 +438,13 @@ components:
           type: integer
         tick_duration_ms:
           type: number
+          description: The configured simulation tick budget, in milliseconds.
+        tick_work_ms:
+          type: number
+          description: Mean tick work over the latest second of simulation ticks, in milliseconds.
+        max_connections:
+          type: integer
+          description: The admission limit; zero disables it.
         aoi_radius:
           type: number
         ws_messages_in_total:
