@@ -3,15 +3,18 @@
 // PlayerClient is the game server side of CyberiaPlayerService: launch
 // tickets, gameplay sessions, the commits of the persist pipeline and
 // friendships. Every call carries the server key. A refusal comes back as a
-// value; only a transport failure is an error.
+// value; only a failed call is an error, and a call the engine rejects itself
+// wraps persist.ErrRejected.
 package engine_client
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/net"
 	"cyberia-server/game/persist"
 	pb "cyberia-server/gen/proto"
@@ -62,6 +65,16 @@ func retryable(err error) bool {
 		return true
 	}
 	return false
+}
+
+// pipelineError marks a failed call of the persist pipeline that a retry
+// repeats: the engine rejects the key, the method or an argument.
+func pipelineError(err error) error {
+	switch status.Code(err) {
+	case codes.Unauthenticated, codes.PermissionDenied, codes.Unimplemented, codes.InvalidArgument, codes.FailedPrecondition:
+		return fmt.Errorf("%w: %w", persist.ErrRejected, err)
+	}
+	return err
 }
 
 // launchCall runs an idempotent launch call, retrying a transport failure
@@ -169,16 +182,134 @@ func (c *PlayerClient) Commit(ctx context.Context, req persist.CommitRequest) (p
 		PositionChanged: req.PositionChanged,
 	})
 	if err != nil {
-		return persist.CommitResult{}, err
+		return persist.CommitResult{}, pipelineError(err)
 	}
 	return persist.CommitResult{Refusal: resp.GetRefusal(), Duplicate: resp.GetDuplicate()}, nil
+}
+
+func marketOpToProto(m *persist.MarketOp) *pb.MarketOp {
+	if m == nil {
+		return nil
+	}
+	op := &pb.MarketOp{
+		MarketCode: m.MarketCode, ListingId: m.ListingID, Revision: m.Revision, Mode: m.Mode,
+		ItemId: m.ItemID, OlCid: m.CID, Quantity: uint32(m.Quantity), Price: uint32(m.Price), Hours: uint32(m.Hours),
+		ListingFee: uint32(m.ListingFee), SaleFee: uint32(m.SaleFee), SellerName: m.SellerName, ClaimIds: m.ClaimIDs,
+		Coins: uint32(m.Coins),
+	}
+	for _, st := range m.Stacks {
+		op.Stacks = append(op.Stacks, &pb.PlayerStack{ItemId: st.ItemID, OlCid: st.CID, Quantity: uint32(st.Quantity)})
+	}
+	return op
+}
+
+// jointToProto is the wire form of a joint commit and its effect.
+func jointToProto(req persist.JointRequest) *pb.CommitPlayerStatesRequest {
+	joint := &pb.CommitPlayerStatesRequest{
+		OperationId: req.Op, Kind: req.Kind, ClaimDropId: req.Effect.Claim, Market: marketOpToProto(req.Effect.Market),
+	}
+	if d := req.Effect.Drop; d != nil {
+		joint.Drop = &pb.WorldDrop{
+			MapCode: d.MapCode, X: d.X, Y: d.Y, ItemId: d.ItemID, OlCid: d.CID, Quantity: uint32(d.Quantity),
+			LifetimeMs: uint32(d.Lifetime.Milliseconds()),
+		}
+	}
+	for _, commit := range req.Commits {
+		joint.Commits = append(joint.Commits, &pb.CommitPlayerStateRequest{
+			PlayerId:      commit.PlayerID,
+			Epoch:         commit.Epoch,
+			Seq:           commit.Seq,
+			State:         stateToProto(commit.State),
+			QuestsChanged: commit.QuestsChanged,
+		})
+	}
+	return joint
+}
+
+// CommitJoint implements persist.Store.
+func (c *PlayerClient) CommitJoint(ctx context.Context, req persist.JointRequest) (persist.JointResult, error) {
+	resp, err := c.svc.CommitPlayerStates(c.keyed(ctx), jointToProto(req))
+	if err != nil {
+		return persist.JointResult{}, pipelineError(err)
+	}
+	return persist.JointResult{Refusal: resp.GetRefusal(), PlayerID: resp.GetPlayerId(), Duplicate: resp.GetDuplicate()}, nil
+}
+
+// ListWorldDrops implements net.Accounts.
+func (c *PlayerClient) ListWorldDrops(ctx context.Context, instanceCode string) ([]persist.WorldDrop, error) {
+	resp, err := launchCall(ctx, func(ctx context.Context) (*pb.ListWorldDropsResponse, error) {
+		return c.svc.ListWorldDrops(c.keyed(ctx), &pb.ListWorldDropsRequest{InstanceCode: instanceCode})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ListWorldDrops: %w", err)
+	}
+	return worldDropsFromProto(resp.GetDrops()), nil
+}
+
+// ListMarket implements net.Accounts.
+func (c *PlayerClient) ListMarket(ctx context.Context, instanceCode string, q content.MarketQuery) (content.MarketView, error) {
+	resp, err := c.svc.ListMarket(c.keyed(ctx), &pb.ListMarketRequest{
+		InstanceCode: instanceCode, MarketCode: q.Code, PlayerId: string(q.Profile),
+		ItemId: q.ItemID, Mode: q.Mode, After: q.After,
+	})
+	if err != nil {
+		return content.MarketView{}, fmt.Errorf("ListMarket: %w", err)
+	}
+	return marketViewFromProto(resp), nil
+}
+
+func marketViewFromProto(resp *pb.ListMarketResponse) content.MarketView {
+	listings := func(list []*pb.MarketListing) []content.MarketListing {
+		out := make([]content.MarketListing, 0, len(list))
+		for _, l := range list {
+			out = append(out, content.MarketListing{
+				ListingID: l.GetListingId(), Revision: l.GetRevision(), SellerName: l.GetSellerName(),
+				ItemID: l.GetItemId(), CID: l.GetOlCid(), Quantity: int(l.GetQuantity()), Mode: l.GetMode(),
+				Price: int(l.GetPrice()), Bid: int(l.GetBid()), Bids: int(l.GetBids()), MinBid: int(l.GetMinBid()),
+				EndsAt: time.UnixMilli(l.GetEndsAtMs()), Mine: l.GetMine(), Leading: l.GetLeading(),
+			})
+		}
+		return out
+	}
+	view := content.MarketView{
+		Listings: listings(resp.GetListings()), Next: resp.GetNext(), Mine: listings(resp.GetMine()),
+		ScopeKey: resp.GetScopeKey(), Revision: resp.GetRevision(),
+	}
+	for _, c := range resp.GetClaims() {
+		claim := content.MarketClaim{
+			ClaimID: c.GetClaimId(), Reason: c.GetReason(), Coins: int(c.GetCoins()), MarketCode: c.GetMarketCode(),
+		}
+		if st := c.GetStack(); st != nil {
+			claim.ItemID, claim.CID, claim.Quantity = st.GetItemId(), st.GetOlCid(), int(st.GetQuantity())
+		}
+		view.Claims = append(view.Claims, claim)
+	}
+	return view
+}
+
+func worldDropsFromProto(list []*pb.WorldDrop) []persist.WorldDrop {
+	drops := make([]persist.WorldDrop, 0, len(list))
+	for _, d := range list {
+		drops = append(drops, persist.WorldDrop{
+			ID: d.GetDropId(), MapCode: d.GetMapCode(), X: d.GetX(), Y: d.GetY(), ItemID: d.GetItemId(), CID: d.GetOlCid(),
+			Quantity: int(d.GetQuantity()), Owner: d.GetOwnerPlayerId(), ExpiresAt: time.UnixMilli(d.GetExpiresAtMs()),
+		})
+	}
+	return drops
 }
 
 // Checkpoint implements persist.Store.
 func (c *PlayerClient) Checkpoint(ctx context.Context, checkpoints []persist.Checkpoint) ([]persist.Ended, error) {
 	req := &pb.CheckpointPlayerSessionsRequest{Sessions: make([]*pb.SessionCheckpoint, 0, len(checkpoints))}
 	for _, cp := range checkpoints {
-		entry := &pb.SessionCheckpoint{PlayerId: cp.PlayerID, AccountId: cp.AccountID, Epoch: cp.Epoch, MapCode: cp.MapCode}
+		h := cp.Health
+		entry := &pb.SessionCheckpoint{
+			PlayerId: cp.PlayerID, AccountId: cp.AccountID, Epoch: cp.Epoch, MapCode: cp.MapCode,
+			Health: &pb.SessionHealth{
+				Durability: string(h.Durability), Closing: h.Closing, Seq: h.Seq, DurableSeq: h.DurableSeq,
+				UnsavedMs: uint32(min(h.UnsavedFor.Milliseconds(), math.MaxUint32)), Failure: h.Failure,
+			},
+		}
 		if cp.Position != nil {
 			entry.Position = &pb.PlayerPosition{MapCode: cp.Position.MapCode, X: cp.Position.X, Y: cp.Position.Y, Seq: cp.PositionSeq}
 		}
@@ -186,7 +317,7 @@ func (c *PlayerClient) Checkpoint(ctx context.Context, checkpoints []persist.Che
 	}
 	resp, err := c.svc.CheckpointPlayerSessions(c.keyed(ctx), req)
 	if err != nil {
-		return nil, err
+		return nil, pipelineError(err)
 	}
 	ended := make([]persist.Ended, 0, len(resp.GetEnded()))
 	for _, e := range resp.GetEnded() {
@@ -200,7 +331,7 @@ func (c *PlayerClient) Release(ctx context.Context, lease persist.Lease) error {
 	_, err := c.svc.ReleasePlayerSession(c.keyed(ctx), &pb.ReleasePlayerSessionRequest{
 		PlayerId: lease.PlayerID, AccountId: lease.AccountID, Epoch: lease.Epoch,
 	})
-	return err
+	return pipelineError(err)
 }
 
 // ListFriends implements net.Accounts.

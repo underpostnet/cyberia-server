@@ -46,6 +46,21 @@ const (
 	InputKindFriendReply   // accept or decline a friend request
 	InputKindFriendRemove  // end a friendship
 	InputKindStatusNote    // set or clear the status note of the account
+	InputKindItemDrop      // drop units of a bag or storage stack on the ground
+	InputKindItemQuote     // ask the price of a sale or a burn of one stack at a terminal
+	InputKindItemSell      // sell units of a stack to a merchant action
+	InputKindItemBurn      // burn units of a stack at a burn action
+	InputKindTradeRequest  // ask a visible player for a trade
+	InputKindTradeReply    // accept or decline a trade request
+	InputKindTradeOffer    // replace the own offer of the open trade
+	InputKindTradeConfirm  // confirm the offers of one trade revision
+	InputKindTradeCancel   // end a trade that has not committed
+	InputKindMarketOpen    // ask a market terminal for a page of its market
+	InputKindMarketList    // list units of a bag or storage stack at a market
+	InputKindMarketCancel  // take back an own listing without bids
+	InputKindMarketBuy     // buy a fixed-price listing
+	InputKindMarketBid     // bid on an auction
+	InputKindMarketCollect // take the pending claims of the market view
 )
 
 // ChatChannel is who one chat line reaches.
@@ -79,8 +94,8 @@ type InputCommand struct {
 	Frame     uint32  // client fixed-step count at push. Not a server tick.
 	Timestamp float64 // client GetTime() at push. No reader.
 	// Payload fields — only the ones relevant to Kind are populated.
-	TargetX     float64     // PlayerAction
-	TargetY     float64     // PlayerAction
+	TargetX     float64     // PlayerAction; ItemDrop — the cell, negative at the feet
+	TargetY     float64     // PlayerAction; ItemDrop
 	ItemID      string      // ItemActivation, ShopBuy
 	Slot        int         // ItemActivation — the bag slot of the stack, or -1 for the first stack of ItemID
 	Active      bool        // ItemActivation; PlayerStasis — the stasis bool; PartyReply — accept
@@ -90,9 +105,37 @@ type InputCommand struct {
 	DialogCode  string      // TalkDone — the dialogue group the player just read
 	Quantity    int         // ShopBuy — units (clamped server-side)
 	RecipeIndex int         // CraftItem — index into the action's craftRecipes
-	Move        ItemMove    // ItemMove
+	Move        ItemMove    // ItemMove; ItemDrop, ItemQuote — the stack (From, FromSlot); ItemDrop, ItemSell, ItemBurn — the units (Qty)
 	// FriendshipID names the friendship of a FriendReply or FriendRemove.
 	FriendshipID string
+	// Quote is the coins a CraftItem charges, as the player saw them.
+	Quote int64
+	// QuoteKind is sell or burn on an ItemQuote; QuoteID names the quote an
+	// ItemSell or an ItemBurn confirms.
+	QuoteKind, QuoteID string
+	// Offer and Coins are the whole offer of a TradeOffer; Revision names the
+	// trade revision a TradeConfirm confirms.
+	Offer    []OfferLine
+	Coins    int
+	Revision uint32
+	// Market is the market part of a Market* input; EntityID names the
+	// terminal, ItemID filters a MarketOpen and Move names the stack of a
+	// MarketList.
+	Market MarketInput
+}
+
+// MarketInput is the market part of an input.
+type MarketInput struct {
+	ListingID string // MarketCancel, MarketBuy, MarketBid
+	Mode      string // MarketList: fixed | auction; MarketOpen: the listings of one mode, or all
+	Price     int    // MarketList: the price or the opening bid; MarketBid: the bid
+	Hours     int    // MarketList
+	After     string // MarketOpen: the cursor of the page
+}
+
+// OfferLine is units of one bag stack a trade offers.
+type OfferLine struct {
+	Slot, Qty int
 }
 
 // MaxInputQueue bounds one player's queue between two ticks. It equals the
@@ -120,6 +163,9 @@ const (
 )
 
 var boxWords = [...]string{BoxBag: "bag", BoxStorage: "storage", BoxVault: "vault"}
+
+// String is the wire word of the box.
+func (b Box) String() string { return boxWords[b] }
 
 // ParseBox maps a wire word to its box.
 func ParseBox(word string) (Box, bool) {

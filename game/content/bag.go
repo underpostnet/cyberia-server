@@ -81,11 +81,13 @@ func (s *Content) StackIndex(layers []world.ObjectLayerState, itemID string, slo
 	return -1
 }
 
-// stackInto adds qty of itemID, of the definition the world binds now, to the
-// bag: onto its first stack of that definition, else as a new stack in the
-// lowest free slot.
-func (s *Content) stackInto(bag []world.ObjectLayerState, itemID string, qty int) []world.ObjectLayerState {
-	cid := s.DefinitionCID(itemID)
+// stackInto adds qty of itemID of definition cid to the bag: onto its first
+// stack of that definition, else as a new stack in the lowest free slot. An
+// empty cid is the definition the world binds now.
+func (s *Content) stackInto(bag []world.ObjectLayerState, itemID, cid string, qty int) []world.ObjectLayerState {
+	if cid == "" {
+		cid = s.DefinitionCID(itemID)
+	}
 	if at := firstStack(bag, func(l world.ObjectLayerState) bool { return l.ItemID == itemID && l.CID == cid }); at >= 0 {
 		bag[at].Quantity += qty
 		return bag
@@ -104,7 +106,8 @@ func (s *Content) StampDefinitions(layers []world.ObjectLayerState) {
 }
 
 // occupiedSlots counts the stacks of layers that take a slot, and one slot for
-// each item a running assembly pays out that layers holds no stack of.
+// each item a running assembly or a committing trade moves that layers holds
+// no stack of.
 func (s *Content) occupiedSlots(player *world.Session, layers []world.ObjectLayerState) int {
 	n := 0
 	held := make(map[string]bool)
@@ -114,12 +117,18 @@ func (s *Content) occupiedSlots(player *world.Session, layers []world.ObjectLaye
 			held[layer.ItemID] = true
 		}
 	}
+	var pending []Stack
 	if craft := s.crafts[player.ID]; craft != nil {
-		for _, stack := range slices.Concat(craft.Refund, craft.Outputs) {
-			if s.takesSlot(stack.ItemID) && !held[stack.ItemID] {
-				held[stack.ItemID] = true
-				n++
-			}
+		pending = slices.Concat(craft.Refund, craft.Outputs)
+	}
+	// A committing trade holds the slots of what leaves and of what arrives.
+	if trade, side := s.tradeOf(player); trade != nil && trade.State == TradeCommitting {
+		pending = slices.Concat(pending, trade.Sides[side].Escrow, trade.Sides[1-side].Escrow)
+	}
+	for _, stack := range pending {
+		if s.takesSlot(stack.ItemID) && !held[stack.ItemID] {
+			held[stack.ItemID] = true
+			n++
 		}
 	}
 	return n

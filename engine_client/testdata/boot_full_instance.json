@@ -131,12 +131,34 @@
       "initialLifeFraction": 1,
       "collisionLifeLoss": 10,
       "economyRules": {
+        "authorityId": "",
+        "code": "",
+        "revision": 0,
         "botSpawnCoins": 50,
         "playerSpawnCoins": 50,
-        "coinKillMinAmount": 10,
         "coinKillPercentVsBot": 0.4,
         "coinKillPercentVsPlayer": 0.15,
-        "respawnCostPercent": 0
+        "coinKillMinAmount": 10,
+        "respawnCostPercent": 0,
+        "maxBalance": 4294967295,
+        "fees": {
+          "portal": 0,
+          "craft": 0
+        },
+        "itemDefaults": {
+          "itemId": "",
+          "olCid": "",
+          "trade": true,
+          "worldDrop": true,
+          "buyback": false,
+          "buybackPayout": 0,
+          "burn": false,
+          "burnCoinFee": 0,
+          "craftSurcharge": 0,
+          "market": false,
+          "salvage": []
+        },
+        "itemPolicies": []
       },
       "lifeRegenChance": 0.15,
       "maxChance": 0.95,
@@ -200,7 +222,15 @@
         ],
         "shopItems": [],
         "craftRecipes": [],
-        "storageSlots": 0
+        "storageSlots": 0,
+        "buybackItems": [],
+        "burnItems": [],
+        "market": {
+          "marketCode": "",
+          "selection": "policy",
+          "itemIds": [],
+          "listingModes": []
+        }
       }
     ],
     "quests": [

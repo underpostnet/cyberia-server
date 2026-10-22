@@ -76,19 +76,44 @@ func (s *Sim) PhaseInput(tick uint32, mapState *world.MapState) {
 	}
 }
 
-// tradeKinds are the explicit trades an unsaved player may not make: their
-// result could not be committed.
-var tradeKinds = map[world.InputKind]bool{
-	world.InputKindShopBuy:   true,
-	world.InputKindCraftItem: true,
-	world.InputKindItemMove:  true,
+// goodsKinds are the explicit inputs that move the goods of a player. An
+// unsaved player makes none: their result could not be committed.
+var goodsKinds = map[world.InputKind]bool{
+	world.InputKindShopBuy:       true,
+	world.InputKindCraftItem:     true,
+	world.InputKindItemMove:      true,
+	world.InputKindItemDrop:      true,
+	world.InputKindItemQuote:     true,
+	world.InputKindItemSell:      true,
+	world.InputKindItemBurn:      true,
+	world.InputKindTradeRequest:  true,
+	world.InputKindTradeReply:    true,
+	world.InputKindTradeOffer:    true,
+	world.InputKindTradeConfirm:  true,
+	world.InputKindMarketList:    true,
+	world.InputKindMarketCancel:  true,
+	world.InputKindMarketBuy:     true,
+	world.InputKindMarketBid:     true,
+	world.InputKindMarketCollect: true,
+}
+
+// tradeHeldKinds are the inputs an open trade holds back: the offer keeps the
+// goods of the player as they are. A drop, a sale and a burn answer "trading".
+var tradeHeldKinds = map[world.InputKind]bool{
+	world.InputKindShopBuy:        true,
+	world.InputKindCraftItem:      true,
+	world.InputKindItemMove:       true,
+	world.InputKindItemActivation: true,
 }
 
 // applyInputCommand is the typed dispatcher. Kept on *GameServer so it
 // can call into existing simulation helpers without re-acquiring the
 // world lock. Each branch maps to one InputKind constant.
 func (s *Sim) applyInputCommand(player *world.Session, mapState *world.MapState, cmd *world.InputCommand) {
-	if player.Unsaved && tradeKinds[cmd.Kind] {
+	if player.Durable.Unsaved() && goodsKinds[cmd.Kind] {
+		return
+	}
+	if tradeHeldKinds[cmd.Kind] && s.Trading(player) {
 		return
 	}
 	switch cmd.Kind {
@@ -118,6 +143,36 @@ func (s *Sim) applyInputCommand(player *world.Session, mapState *world.MapState,
 		s.HandleCraftCancel(player)
 	case world.InputKindItemMove:
 		s.HandleItemMove(player, cmd)
+	case world.InputKindItemDrop:
+		s.HandleItemDrop(player, cmd)
+	case world.InputKindItemQuote:
+		s.HandleItemQuote(player, cmd)
+	case world.InputKindItemSell:
+		s.HandleItemSell(player, cmd)
+	case world.InputKindItemBurn:
+		s.HandleItemBurn(player, cmd)
+	case world.InputKindTradeRequest:
+		s.HandleTradeRequest(player, cmd)
+	case world.InputKindTradeReply:
+		s.HandleTradeReply(player, cmd)
+	case world.InputKindTradeOffer:
+		s.HandleTradeOffer(player, cmd)
+	case world.InputKindTradeConfirm:
+		s.HandleTradeConfirm(player, cmd)
+	case world.InputKindTradeCancel:
+		s.HandleTradeCancel(player)
+	case world.InputKindMarketOpen:
+		s.HandleMarketOpen(player, cmd)
+	case world.InputKindMarketList:
+		s.HandleMarketList(player, cmd)
+	case world.InputKindMarketCancel:
+		s.HandleMarketCancel(player, cmd)
+	case world.InputKindMarketBuy:
+		s.HandleMarketBuy(player, cmd)
+	case world.InputKindMarketBid:
+		s.HandleMarketBid(player, cmd)
+	case world.InputKindMarketCollect:
+		s.HandleMarketCollect(player, cmd)
 	case world.InputKindPartyInvite, world.InputKindPartyReply, world.InputKindPartyLeave,
 		world.InputKindPartyKick, world.InputKindPartyDisband:
 		s.handlePartyInput(player, cmd)
@@ -130,7 +185,8 @@ func (s *Sim) applyInputCommand(player *world.Session, mapState *world.MapState,
 }
 
 // PhaseLifecycle handles respawn timers and similar lifecycle transitions:
-// respawns, finished assemblies, and quests whose rewards found room.
+// respawns, finished assemblies, quests whose rewards found room, and the
+// trades the players of the map lead.
 func (s *Sim) PhaseLifecycle(tick uint32, mapState *world.MapState) {
 	_ = tick
 	for id := range mapState.Mortals() {
@@ -141,6 +197,7 @@ func (s *Sim) PhaseLifecycle(tick uint32, mapState *world.MapState) {
 	for player := range s.PlayersOn(mapState) {
 		s.CompleteHeldQuests(player)
 	}
+	s.UpdateTrades(mapState, time.Now())
 }
 
 // PhaseSkills resolves skill projectile collisions and runs the skills of held items for this tick.
@@ -207,9 +264,9 @@ func (s *Sim) PhaseLoot(tick uint32, mapState *world.MapState) {
 		if !content.BehaviorIsInert(mapState.Ag(dropID).Behavior) {
 			continue
 		}
-		// Mid-launch tokens register no collision until they settle on the cell;
-		// a locked token waits for the engine to apply the loss it came from.
-		if now.Before(drop.CollectableAt) || !s.DropReleased(drop) {
+		// A locked token waits for the engine to apply the loss it came from;
+		// mid-launch tokens register no collision until they settle on the cell.
+		if !s.SettleDropLock(mapState, dropID, now) || now.Before(drop.CollectableAt) {
 			continue
 		}
 
@@ -218,7 +275,10 @@ func (s *Sim) PhaseLoot(tick uint32, mapState *world.MapState) {
 
 		var collectorID world.EntityID
 		var granted bool
-		if player := s.ResolveDropCollector(mapState, dropID); player != nil {
+		if player := s.ResolveDropCollector(mapState, dropID); player != nil && drop.WorldDrop != "" {
+			s.ClaimWorldDrop(mapState, dropID, player)
+			continue
+		} else if player != nil {
 			granted, collectorID = s.ApplyLootToPlayer(mapState, drop, player), player.ID
 		} else if bot := s.ResolveBotDropCollector(mapState, dropID); bot != 0 {
 			granted, collectorID = s.ApplyLootToBot(mapState, drop, bot), bot

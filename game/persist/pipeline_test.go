@@ -3,6 +3,7 @@ package persist
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -16,7 +17,9 @@ type fakeStore struct {
 	applied   uint64
 	state     State
 	commits   []CommitRequest
-	fail      int // transport failures before the next answer
+	fail      int   // transport failures before the next answer
+	failWith  error // the error of those failures; a transport failure when nil
+	refuse    int   // integrity refusals before the next answer
 	released  []Lease
 	ended     []Ended
 	positions []Checkpoint
@@ -28,7 +31,14 @@ func (f *fakeStore) Commit(_ context.Context, req CommitRequest) (CommitResult, 
 	f.commits = append(f.commits, req)
 	if f.fail > 0 {
 		f.fail--
+		if f.failWith != nil {
+			return CommitResult{}, f.failWith
+		}
 		return CommitResult{}, errors.New("engine down")
+	}
+	if f.refuse > 0 {
+		f.refuse--
+		return CommitResult{Refusal: RefusalIntegrity}, nil
 	}
 	switch {
 	case req.Epoch != f.epoch:
@@ -38,6 +48,10 @@ func (f *fakeStore) Commit(_ context.Context, req CommitRequest) (CommitResult, 
 	}
 	f.applied, f.state = req.Seq, req.State
 	return CommitResult{}, nil
+}
+
+func (f *fakeStore) CommitJoint(context.Context, JointRequest) (JointResult, error) {
+	return JointResult{}, errors.New("one session only")
 }
 
 func (f *fakeStore) Checkpoint(_ context.Context, cps []Checkpoint) ([]Ended, error) {
@@ -171,12 +185,12 @@ func TestCloseCommitsTheFinalStateThenReleases(t *testing.T) {
 	if !p.Committed("p1", Mark{Epoch: 7, Seq: 1}) {
 		t.Fatal("a released session still answers for its applied states")
 	}
-	if p.PendingAccount("a1") != nil {
+	if _, ok := p.Unsettled("p1"); ok || p.Health("p1").Durability != Saved {
 		t.Fatal("a released session leaves the pipeline")
 	}
 }
 
-func TestFailingCommitsMarkThePlayerUnsaved(t *testing.T) {
+func TestFailingCommitsDegradeThePlayer(t *testing.T) {
 	store := &fakeStore{epoch: 7, fail: 1 << 30}
 	p := running(t, store)
 	start := time.Now()
@@ -184,14 +198,120 @@ func TestFailingCommitsMarkThePlayerUnsaved(t *testing.T) {
 	p.Open(lease, State{})
 	p.Capture("p1", State{Coins: 1}, false)
 	eventually(t, "a failure", func() bool { return p.Snapshot().Retries > 0 })
-	if p.Unsaved("p1") {
-		t.Fatal("one failure is not an outage")
+	if d := p.Health("p1").Durability; d != Saving {
+		t.Fatalf("one failure is not an outage: %s", d)
 	}
 	p.mu.Lock()
 	p.now = func() time.Time { return start.Add(DegradedAfter + time.Second) }
 	p.mu.Unlock()
-	if !p.Unsaved("p1") || p.Snapshot().Unsaved != 1 {
-		t.Fatal("failures past DegradedAfter mark the player unsaved")
+	if p.Health("p1").Durability != Degraded || p.Snapshot().Unsaved != 1 {
+		t.Fatal("failures past DegradedAfter degrade the player")
+	}
+}
+
+// A state the database refuses as it stands is no transport failure: the
+// session keeps it, stays live, retries slowly and saves once it is repaired.
+func TestAnIntegrityRefusalWaitsForARepair(t *testing.T) {
+	store := &fakeStore{epoch: 7, refuse: 1}
+	p := running(t, store)
+	p.Open(lease, State{})
+	mark := p.Capture("p1", State{Coins: 3}, false)
+	eventually(t, "the refusal", func() bool { return p.Health("p1").Durability == Recovery })
+	p.mu.Lock()
+	wait := p.records["p1"].nextTry.Sub(p.now())
+	p.mu.Unlock()
+	if wait < recoveryRetry/2-time.Second {
+		t.Fatalf("a refused state waits for a repair, not a fast retry: next try in %v", wait)
+	}
+	if ended := p.TakeEnded(); len(ended) != 0 {
+		t.Fatalf("an integrity refusal ends no session: %+v", ended)
+	}
+	if _, _, sent, _ := store.snapshot(); sent != 1 {
+		t.Fatalf("one try until the next one is due, got %d", sent)
+	}
+	if s := p.Snapshot(); s.Integrity != 1 || s.Recovery != 1 || s.Retries != 0 {
+		t.Fatalf("the snapshot counts the refusal and the session in recovery: %+v", s)
+	}
+
+	p.mu.Lock()
+	p.records["p1"].nextTry = time.Time{}
+	p.mu.Unlock()
+	p.signal()
+	eventually(t, "the repaired commit", func() bool { return p.Committed("p1", mark) })
+	if p.Health("p1").Durability != Saved {
+		t.Fatal("the session is saved again once the engine takes the state")
+	}
+}
+
+func TestARejectedCallWaitsForARepair(t *testing.T) {
+	store := &fakeStore{epoch: 7, fail: 1, failWith: fmt.Errorf("%w: wrong server key", ErrRejected)}
+	p := running(t, store)
+	p.Open(lease, State{})
+	p.Capture("p1", State{Coins: 1}, false)
+	eventually(t, "the rejection", func() bool { return p.Health("p1").Durability == Recovery })
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if r := p.records["p1"]; r.failure != FailureRejected || r.nextTry.Sub(p.now()) < recoveryRetry/2-time.Second {
+		t.Fatalf("a rejected call retries slowly: %s in %v", r.failure, r.nextTry.Sub(p.now()))
+	}
+}
+
+// A reconnect on this server adopts what the closed session could not save:
+// the whole state, quests and position, becomes the first commit of the new
+// epoch, and the older epoch writes nothing more.
+func TestANewEpochAdoptsTheUnsettledState(t *testing.T) {
+	store := &fakeStore{epoch: 7, refuse: 1 << 30}
+	p := running(t, store)
+	p.Open(lease, State{})
+	quest := Quest{Code: "q1", Status: "active"}
+	p.Close("p1", State{Coins: 9, Quests: []Quest{quest}, Position: Position{MapCode: "m", X: 4}})
+	eventually(t, "the refusal", func() bool { return p.Health("p1").Durability == Recovery })
+
+	unsettled, ok := p.Unsettled("p1")
+	if !ok || unsettled.Coins != 9 {
+		t.Fatalf("the closed session holds its unsaved final state: %v %+v", ok, unsettled)
+	}
+	store.mu.Lock()
+	store.epoch, store.refuse = 8, 0
+	store.mu.Unlock()
+	next := Lease{PlayerID: "p1", AccountID: "a1", Epoch: 8}
+	p.Adopt(next, unsettled)
+	eventually(t, "the adopted commit", func() bool { return p.Committed("p1", Mark{Epoch: 8, Seq: 1}) })
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	last := store.commits[len(store.commits)-1]
+	if last.Epoch != 8 || last.State.Coins != 9 || !last.QuestsChanged || !last.PositionChanged {
+		t.Fatalf("the first commit of the new epoch carries the whole adopted state: %+v", last)
+	}
+	for _, c := range store.commits {
+		if c.Epoch == 7 && c.Seq > 1 {
+			t.Fatalf("the older epoch writes nothing after the adoption: %+v", c)
+		}
+	}
+	if s := p.Snapshot(); s.Adopted != 1 {
+		t.Fatalf("the adoption is counted: %+v", s)
+	}
+}
+
+func TestASessionClosedUnsavedReportsItAtOnce(t *testing.T) {
+	store := &fakeStore{epoch: 7, fail: 1 << 30}
+	p := running(t, store)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go p.RunCheckpoints(ctx)
+	p.Open(lease, State{})
+	p.Close("p1", State{Coins: 2})
+	eventually(t, "the closing checkpoint", func() bool {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		return len(store.positions) > 0
+	})
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	h := store.positions[0].Health
+	if !h.Closing || h.Seq != 1 || h.DurableSeq != 0 || h.Durability == Saved {
+		t.Fatalf("the checkpoint tells the engine the session closed with an unsaved state: %+v", h)
 	}
 }
 

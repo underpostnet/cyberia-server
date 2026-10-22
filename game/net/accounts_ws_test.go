@@ -32,12 +32,16 @@ type fakeEngine struct {
 	created     bool
 	epoch       uint64
 	commits     []persist.CommitRequest
+	joints      []persist.JointRequest
 	released    int
 	consumers   map[string]bool // connection ids that consumed a ticket
 	travel      string          // the refusal of a travel ticket, empty to issue one
+	refuse      bool            // commits answer integrity until it clears
+	acquires    []string        // refusals of the next acquisitions, in order
 	note        string          // the status note of the account
 	noteRefusal string          // the refusal of a note, empty to take it
 	friends     []FriendRecord  // the friend list of the account
+	drops       []persist.WorldDrop
 }
 
 func (f *fakeEngine) log(call string) {
@@ -101,6 +105,11 @@ func (f *fakeEngine) AcquireSession(_ context.Context, connectionID, _, _ string
 	if !f.consumers[connectionID] {
 		return AcquiredSession{Refusal: "unknown"}, nil
 	}
+	if len(f.acquires) > 0 {
+		refusal := f.acquires[0]
+		f.acquires = f.acquires[1:]
+		return AcquiredSession{Refusal: refusal}, nil
+	}
 	f.epoch++
 	return AcquiredSession{
 		Lease:       persist.Lease{PlayerID: "prof1", Epoch: f.epoch},
@@ -108,6 +117,16 @@ func (f *fakeEngine) AcquireSession(_ context.Context, connectionID, _, _ string
 		Created:     f.created,
 		LeaseLength: time.Minute,
 	}, nil
+}
+
+func (f *fakeEngine) ListWorldDrops(context.Context, string) ([]persist.WorldDrop, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.drops, nil
+}
+
+func (f *fakeEngine) ListMarket(context.Context, string, content.MarketQuery) (content.MarketView, error) {
+	return content.MarketView{}, nil
 }
 
 func (f *fakeEngine) ListFriends(context.Context, string) (FriendList, error) {
@@ -137,9 +156,25 @@ func (f *fakeEngine) Commit(_ context.Context, req persist.CommitRequest) (persi
 	if req.Epoch != f.epoch {
 		return persist.CommitResult{Refusal: persist.RefusalStaleSession}, nil
 	}
+	if f.refuse {
+		return persist.CommitResult{Refusal: persist.RefusalIntegrity}, nil
+	}
 	f.commits = append(f.commits, req)
 	f.saved = req.State
 	return persist.CommitResult{}, nil
+}
+
+func (f *fakeEngine) CommitJoint(_ context.Context, req persist.JointRequest) (persist.JointResult, error) {
+	f.log("joint")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, commit := range req.Commits {
+		if commit.Epoch != f.epoch {
+			return persist.JointResult{Refusal: persist.RefusalStaleSession, PlayerID: commit.PlayerID}, nil
+		}
+	}
+	f.joints = append(f.joints, req)
+	return persist.JointResult{}, nil
 }
 
 func (f *fakeEngine) Checkpoint(context.Context, []persist.Checkpoint) ([]persist.Ended, error) {
@@ -503,6 +538,34 @@ func TestATravelerLeavesSavedWithTheTicketOfItsTarget(t *testing.T) {
 	}
 }
 
+// A traveler whose final state has not landed still gets the ticket of its
+// target: the target holds the acquisition back until this session saved or
+// can no longer save, so the player never waits on a launch bridge.
+func TestATravelerLeavingUnsavedStillCarriesItsTicket(t *testing.T) {
+	engine := &fakeEngine{created: true, refuse: true}
+	srv := newAccountServer(t, engine)
+	conn := connect(t, srv, testTicket)
+	readInitData(t, conn)
+	waitFor(t, "the client to register", func() bool { return srv.clientCount() == 1 })
+	if err := sendEvent(t, conn, "session_leave", map[string]any{"seq": 1, "travel": "world-b"}); err != nil {
+		t.Fatalf("leave: %v", err)
+	}
+	var end sessionEnd
+	conn.SetReadDeadline(time.Now().Add(leaveWait + 5*time.Second))
+	for end.Reason == "" {
+		_, raw, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("session_end never arrived: %v", err)
+		}
+		if msg, err := Unpack(raw); err == nil && msg.Type == "session_end" {
+			json.Unmarshal(msg.Payload, &end)
+		}
+	}
+	if end.Reason != EndLeftSaving || end.Travel == nil || end.Travel.Ticket != "travel-world-b" {
+		t.Fatalf("an unsaved leave still carries the ticket of the target world: %+v", end)
+	}
+}
+
 func TestATravelTheEngineRefusesLeavesWithNoTicket(t *testing.T) {
 	engine := &fakeEngine{created: true, travel: "no_route"}
 	srv := newAccountServer(t, engine)
@@ -557,22 +620,63 @@ func TestDisconnectCommitsTheFinalStateThenReleases(t *testing.T) {
 	}
 }
 
-func TestASecondLaunchEndsTheFirstSessionAfterItsFinalCommit(t *testing.T) {
-	engine := &fakeEngine{created: true}
+// The incident of a commit the database refuses: the account launches again on
+// the same server at once, and plays the newest state of its closed session
+// instead of waiting for a save that cannot land. That state stays pending
+// under the new epoch until the records are repaired (persist tests the retry).
+func TestASecondLaunchAdoptsWhatTheFirstSessionCouldNotSave(t *testing.T) {
+	engine := &fakeEngine{created: true, refuse: true}
 	srv := newAccountServer(t, engine)
 	first := connect(t, srv, testTicket)
 	readInitData(t, first)
 	waitFor(t, "the first client", func() bool { return srv.clientCount() == 1 })
+	srv.game.Mu.Lock()
+	for _, p := range srv.game.Sessions {
+		srv.game.AddCoins(p.ID, srv.game.Maps[p.MapCode], 25)
+	}
+	srv.game.Mu.Unlock()
 
+	started := time.Now()
 	second := connect(t, srv, testTicket)
 	if got := readSessionEnd(t, first); got != EndElsewhere {
 		t.Fatalf("the older session ends as signed in elsewhere, got %q", got)
 	}
-	readInitData(t, second)
+	if init := readInitData(t, second); !init.Adopted {
+		t.Fatal("init_data tells the client its unsaved state was kept")
+	}
+	if waited := time.Since(started); waited > 2*time.Second {
+		t.Fatalf("the launch waits for no save that cannot land: %v", waited)
+	}
 	waitFor(t, "one client", func() bool { return srv.clientCount() == 1 && srv.playerCount() == 1 })
-	log := engine.callLog()
-	if !strings.Contains(log, "release,acquire") {
-		t.Fatalf("the older session commits and releases before the new one acquires: %s", log)
+	srv.game.Mu.Lock()
+	var coins int
+	for _, p := range srv.game.Sessions {
+		coins = int(p.Coins)
+	}
+	srv.game.Mu.Unlock()
+	if coins != 25 {
+		t.Fatalf("the new session plays the unsaved coins of the closed one, got %d", coins)
+	}
+	waitFor(t, "the refused commit", func() bool { return srv.game.durable.Health("prof1").Durability == persist.Recovery })
+	if s := srv.game.durable.Snapshot(); s.Adopted != 1 || s.Superseded != 0 || s.Sessions != 1 {
+		t.Fatalf("one session holds the adopted state and none was dropped unsaved: %+v", s)
+	}
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	if engine.released != 0 {
+		t.Fatal("the lease of the new epoch stays")
+	}
+}
+
+// While the session an account left still saves on another server, the engine
+// answers saving; the acquisition asks again and the player joins.
+func TestAnAcquisitionWaitsWhileTheLeftSessionSaves(t *testing.T) {
+	engine := &fakeEngine{created: true, acquires: []string{EndSaving, EndSaving}}
+	srv := newAccountServer(t, engine)
+	conn := connect(t, srv, testTicket)
+	readInitData(t, conn)
+	if log := engine.callLog(); !strings.HasPrefix(log, "consume,acquire,acquire,acquire") {
+		t.Fatalf("the acquisition asks again while the engine answers saving: %s", log)
 	}
 }
 

@@ -130,12 +130,17 @@ type PersistenceMetrics struct {
 	PendingStates        int     `json:"pending_states"`
 	OldestPendingSec     float64 `json:"oldest_pending_sec"`
 	UnsavedPlayers       int     `json:"unsaved_players"`
+	RecoveryPlayers      int     `json:"recovery_players"`
 	CommitsTotal         uint64  `json:"commits_total"`
 	DuplicatesTotal      uint64  `json:"duplicates_total"`
 	RetriesTotal         uint64  `json:"retries_total"`
+	IntegrityTotal       uint64  `json:"integrity_total"`
+	RejectedTotal        uint64  `json:"rejected_total"`
 	StaleTotal           uint64  `json:"stale_total"`
 	InvalidTotal         uint64  `json:"invalid_total"`
 	LostFinalTotal       uint64  `json:"lost_final_total"`
+	AdoptedTotal         uint64  `json:"adopted_total"`
+	SupersededTotal      uint64  `json:"superseded_total"`
 	AvgCommitMs          float64 `json:"avg_commit_ms"`
 	CheckpointsTotal     uint64  `json:"checkpoints_total"`
 	CheckpointFailures   uint64  `json:"checkpoint_failures_total"`
@@ -153,12 +158,17 @@ func (h *MetricsHandler) collectPersistence() *PersistenceMetrics {
 		PendingStates:      snap.Pending,
 		OldestPendingSec:   snap.OldestPending.Seconds(),
 		UnsavedPlayers:     snap.Unsaved,
+		RecoveryPlayers:    snap.Recovery,
 		CommitsTotal:       snap.Commits,
 		DuplicatesTotal:    snap.Duplicates,
 		RetriesTotal:       snap.Retries,
+		IntegrityTotal:     snap.Integrity,
+		RejectedTotal:      snap.Rejected,
 		StaleTotal:         snap.Stale,
 		InvalidTotal:       snap.Invalid,
 		LostFinalTotal:     snap.LostFinal,
+		AdoptedTotal:       snap.Adopted,
+		SupersededTotal:    snap.Superseded,
 		AvgCommitMs:        float64(snap.AvgCommitDuration.Microseconds()) / 1000,
 		CheckpointsTotal:   snap.Checkpoints,
 		CheckpointFailures: snap.CheckpointFailures,

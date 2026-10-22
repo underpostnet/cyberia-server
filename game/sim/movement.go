@@ -96,31 +96,42 @@ func (s *Sim) checkPortal(player *world.Session, mapState *world.MapState) {
 		}
 	}
 	if onPortal {
-		if !player.OnPortal {
-			player.OnPortal = true
-			player.TimeOnPortal = time.Now()
-		} else if time.Since(player.TimeOnPortal) > s.PortalHoldTime {
-			s.teleportPlayer(player, mapState, activePortal)
+		quote := world.PortalQuote{Portal: activePortal, Fee: s.PortalFee(mapState, activePortal), Economy: s.EconomyKey()}
+		switch {
+		case !player.OnPortal || player.PortalQuote != quote:
+			// A new hold, or a fee that changed during the hold: the hold starts again at the fee shown.
+			player.OnPortal, player.TimeOnPortal, player.PortalQuote = true, time.Now(), quote
+		case time.Since(player.TimeOnPortal) > s.PortalHoldTime:
+			// A player that cannot pay the fee stays, and hears why once per hold.
+			if reason := s.PortalFeeRefusal(player, quote.Fee); reason != "" {
+				player.TimeOnPortal = time.Now()
+				world.SendAck(player, "portal_ack", reason, map[string]interface{}{"fee": quote.Fee})
+				return
+			}
+			if s.teleportPlayer(player, mapState, activePortal) {
+				s.ChargePortalFee(player, quote.Fee)
+			}
 		}
 	} else {
 		player.OnPortal = false
 	}
 }
 
-func (s *Sim) teleportPlayer(player *world.Session, mapState *world.MapState, portal world.EntityID) {
+// teleportPlayer moves the player through a portal and reports whether it moved.
+func (s *Sim) teleportPlayer(player *world.Session, mapState *world.MapState, portal world.EntityID) bool {
 	// s.mu is held by the caller (phasePortals). Do not release it: map
 	// mutations of the map slots must not race other readers.
 
 	target, linked := mapState.Pt(portal)
 	if !linked {
 		logx.Warnf("Teleportation failed: portal %s has no target.", portal)
-		return
+		return false
 	}
 	destMapCode := target.TargetMap
 	destMapState, ok := s.Maps[destMapCode]
 	if !ok {
 		logx.Warnf("Teleportation failed: destination map %q not found.", destMapCode)
-		return
+		return false
 	}
 
 	// A negative target cell is a random portal: spawn anywhere on the target
@@ -139,7 +150,7 @@ func (s *Sim) teleportPlayer(player *world.Session, mapState *world.MapState, po
 	destPosI, err := destMapState.Pathfinder().FindClosestWalkablePoint(world.Cell{X: int(spawnX), Y: int(spawnY)}, size)
 	if err != nil {
 		logx.Warnf("Could not find a walkable spawn point: %v", err)
-		return
+		return false
 	}
 	row := currentMapState.Take(player.ID)
 	row.Transform.Pos = world.Vec2{X: float64(destPosI.X), Y: float64(destPosI.Y)}
@@ -150,4 +161,5 @@ func (s *Sim) teleportPlayer(player *world.Session, mapState *world.MapState, po
 	player.OnPortal = false
 	destMapState.Put(player.ID, row)
 	s.Teleported = append(s.Teleported, player)
+	return true
 }

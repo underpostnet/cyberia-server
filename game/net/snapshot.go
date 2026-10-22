@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cyberia-server/game/content"
+	"cyberia-server/game/persist"
 	"cyberia-server/game/world"
 )
 
@@ -103,11 +104,18 @@ type SnapshotSelf struct {
 	PartyInvitesSent []SnapshotSentInvite `json:"partyInvitesSent,omitempty"`
 	// Craft is the running assembly, absent when none runs.
 	Craft *content.SnapshotCraft `json:"craft,omitempty"`
+	// Trade is the trade of the player, absent when it is in none.
+	Trade *content.TradeView `json:"trade,omitempty"`
 	// Held is the owned stacks the world cannot load now.
 	Held []content.HeldStack `json:"held,omitempty"`
-	// Unsaved marks an account player whose state the engine has not taken
-	// for a while; its trades wait.
-	Unsaved bool `json:"unsaved,omitempty"`
+	// Durability is how far the engine holds the state of an account player,
+	// absent while it holds every change: saving, degraded or recovery. Its
+	// trades wait while it is degraded or in recovery.
+	Durability persist.Durability `json:"durability,omitempty"`
+	// UnsavedMs is the age of the oldest change the engine has not applied.
+	UnsavedMs int64 `json:"unsavedMs,omitempty"`
+	// PortalFee is the fee the transit of the current portal hold charges.
+	PortalFee int `json:"portalFee,omitempty"`
 	// Interaction has one row per bot in the AOI that offers something.
 	Interaction []SnapshotInteraction `json:"interaction"`
 
@@ -511,8 +519,8 @@ func (s *GameServer) buildSnapshotSelf(player *world.Session, mapState *world.Ma
 		PartyInvites:     s.snapshotInvites(player, now),
 		PartyInvitesSent: s.snapshotSentInvites(player, now),
 		Craft:            s.SnapshotCraft(player),
+		Trade:            s.PlayerTrade(player),
 		Held:             s.HeldView(player),
-		Unsaved:          player.Unsaved,
 		Inventory:        s.InventoryView(mapState.Ap(player.ID).Layers),
 		Frozen:           player.Frozen,
 		MoveSpeed:        s.CalculatePlayerMovementSpeed(stats),
@@ -520,9 +528,15 @@ func (s *GameServer) buildSnapshotSelf(player *world.Session, mapState *world.Ma
 		ActionReadyInMs:  msUntil(mapState.Mt(player.ID).NextSkillAt),
 		ConsumeReadyInMs: msUntil(mapState.Mt(player.ID).NextConsumeAt),
 	}
+	if d := player.Durable; player.AccountID != "" && d.Durability != persist.Saved {
+		self.Durability, self.UnsavedMs = d.Durability, d.UnsavedFor.Milliseconds()
+	}
 	self.setVitals(mapState.Vt(player.ID))
 	s.snapshotStats(&self.SnapshotEntity, mapState)
 	s.snapshotPortalHold(&self.SnapshotEntity, player)
+	if player.OnPortal {
+		self.PortalFee = player.PortalQuote.Fee
+	}
 	self.StatusIcon = content.PlayerStatusIcon(player, mapState.Vt(player.ID))
 	self.Name = player.DisplayName
 	return self

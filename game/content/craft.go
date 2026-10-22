@@ -9,12 +9,17 @@
 //
 // Cross-process contract:
 //
-//	craft_item (client→server) — entity + recipe index the player assembled
+//	craft_item (client→server) — entity + recipe index the player assembled, quote: the fee it saw
+//	craft_ack (server→client)  — a refused assembly and its reason
 //	self.craft (snapshot)      — the running assembly, absent when none runs
 //
-// The client makes the same checks before it sends, so a refusal is a desync
-// and the server drops it without an answer. The assembly holds the slots of
-// its ingredients and outputs (capacity.go), so its payout and refund fit.
+// The client makes the same checks before it sends. A refusal answers
+// craft_ack with its reason. The assembly holds the slots of its ingredients
+// and outputs (capacity.go), so its payout and refund fit.
+//
+// The fee of an assembly (CraftFee) leaves the wallet with the ingredients
+// and returns with them on a cancel. craft_item names the fee the player saw;
+// another amount refuses it.
 //
 // Caller MUST hold s.mu for every handler here (they run inside phaseInput).
 package content
@@ -68,27 +73,34 @@ func (s *Content) botHasCraft(id world.EntityID, ms *world.MapState) bool {
 	return action != nil && len(action.CraftRecipes) > 0
 }
 
-// playerCanCraft reports whether the player holds every ingredient a recipe
-// needs. A line with a non-positive quantity is free.
-//
-// Caller MUST hold s.mu.
-func (s *Content) playerCanCraft(player *world.Session, recipe *ActionCraftRecipe) bool {
-	for _, in := range recipe.Ingredients {
-		if in.Qty <= 0 {
-			continue
+// craftTakes is what an assembly takes from the player: each ingredient with
+// a positive quantity, one line per item, and the fee in coins.
+func (s *Content) craftTakes(recipe *ActionCraftRecipe, fee int) []Stack {
+	var takes []Stack
+	add := func(itemID string, qty int) {
+		if qty <= 0 {
+			return
 		}
-		if s.playerItemQuantity(player, in.ItemID) < in.Qty {
-			return false
+		for i := range takes {
+			if takes[i].ItemID == itemID {
+				takes[i].Qty += qty
+				return
+			}
 		}
+		takes = append(takes, Stack{ItemID: itemID, Qty: qty})
 	}
-	return true
+	for _, in := range recipe.Ingredients {
+		add(in.ItemID, in.Qty)
+	}
+	add(s.CoinItemID, fee)
+	return takes
 }
 
-// HandleCraftItem starts an assembly: validate the assembler, the recipe,
-// every ingredient and the room for the outputs, then consume the inputs and
-// arm the timer. Consuming up front is what lets the client play the
-// ingredient-loss animation the moment the progress bar starts; a cancel
-// before completion refunds them.
+// HandleCraftItem starts an assembly: validate the assembler, the recipe, the
+// fee, every ingredient and the room for the outputs, then consume the inputs
+// and the fee and arm the timer. Consuming up front is what lets the client
+// play the ingredient-loss animation the moment the progress bar starts; a
+// cancel before completion refunds them.
 //
 // Caller MUST hold s.mu.
 func (s *Content) HandleCraftItem(player *world.Session, cmd *world.InputCommand) {
@@ -107,20 +119,35 @@ func (s *Content) HandleCraftItem(player *world.Session, cmd *world.InputCommand
 	if recipe == nil || len(recipe.OutputItems) == 0 {
 		return
 	}
+	fee := s.CraftFee(recipe)
+	takes := s.craftTakes(recipe, fee)
 	// All-or-nothing: a partial consume would burn ingredients for nothing.
 	// The ingredients stay in their slots as the refund, so the outputs need
 	// room beside them.
-	if !s.playerCanCraft(player, recipe) || !s.InventoryFits(player, nil, recipe.OutputItems) {
+	reason := ""
+	switch {
+	case int64(fee) != cmd.Quote:
+		reason = RefuseQuote
+	case !s.InventoryFits(player, nil, recipe.OutputItems):
+		reason = RefuseFull
+	}
+	for _, take := range takes {
+		if reason == "" && s.playerItemQuantity(player, take.ItemID) < take.Qty {
+			reason = RefuseNoStack
+			if take.ItemID == s.CoinItemID {
+				reason = RefuseInsufficient
+			}
+		}
+	}
+	s.recordEconomy("craft", reason)
+	if reason != "" {
+		world.SendAck(player, "craft_ack", reason, map[string]interface{}{
+			"entityId": id, "recipeIndex": cmd.RecipeIndex, "fee": fee,
+		})
 		return
 	}
-
-	refund := make([]Stack, 0, len(recipe.Ingredients))
-	for _, in := range recipe.Ingredients {
-		if in.Qty <= 0 {
-			continue
-		}
-		s.removePlayerItem(player, in.ItemID, in.Qty)
-		refund = append(refund, in)
+	for _, take := range takes {
+		s.removePlayerItem(player, take.ItemID, take.Qty)
 	}
 
 	durationMs := craftTimeMs(recipe)
@@ -130,13 +157,13 @@ func (s *Content) HandleCraftItem(player *world.Session, cmd *world.InputCommand
 	s.crafts[player.ID] = &ActiveCraft{
 		EntityID:    id,
 		RecipeIndex: cmd.RecipeIndex,
-		Refund:      refund,
+		Refund:      takes,
 		Outputs:     append([]Stack(nil), recipe.OutputItems...),
 		CompleteAt:  time.Now().Add(time.Duration(durationMs) * time.Millisecond),
 	}
 
-	logx.Debugf("[CRAFT] player %s started recipe %d at %s (%dms)",
-		player.ID, cmd.RecipeIndex, id, durationMs)
+	logx.Debugf("[CRAFT] player %s started recipe %d at %s (%dms, fee %d)",
+		player.ID, cmd.RecipeIndex, id, durationMs, fee)
 }
 
 // HandleCraftCancel aborts the running assembly and refunds its ingredients.

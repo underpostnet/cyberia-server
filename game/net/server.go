@@ -73,6 +73,24 @@ func (s *GameServer) EnableAccounts(accounts Accounts, store persist.Store, serv
 	s.durable = persist.New(store)
 	s.Durability = s.durable
 	s.Friendships = s
+	s.Markets = s
+}
+
+// RestoreWorldDrops puts back the public world drops of this world. Account
+// mode only; call it once the world is built.
+func (s *GameServer) RestoreWorldDrops(ctx context.Context) error {
+	if s.accounts == nil {
+		return nil
+	}
+	drops, err := s.accounts.ListWorldDrops(ctx, s.InstanceCode)
+	if err != nil {
+		return err
+	}
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	restored := s.Content.RestoreWorldDrops(drops, time.Now())
+	logx.Infof("[GameServer] world drops restored: %d of %d", restored, len(drops))
+	return nil
 }
 
 // Mode is the session mode of the server.
@@ -216,6 +234,9 @@ func (s *GameServer) gameLoop() {
 				}
 				s.Teleported = s.Teleported[:0]
 			}
+			if s.durable != nil {
+				s.SettleLinkedOps(time.Now())
+			}
 			for _, mapState := range s.Maps {
 				s.phaseReplication(mapState)
 			}
@@ -231,8 +252,8 @@ func (s *GameServer) gameLoop() {
 	}
 }
 
-// captureDurable records the durable state of every account player and marks
-// the players whose commits keep failing. Caller holds s.Mu.
+// captureDurable records the durable state of every account player and the
+// health of its commits. Caller holds s.Mu.
 func (s *GameServer) captureDurable() {
 	for _, player := range s.Sessions {
 		if player.AccountID == "" {
@@ -240,7 +261,7 @@ func (s *GameServer) captureDurable() {
 		}
 		id := string(player.PlayerID)
 		s.durable.Capture(id, s.DurableState(player), false)
-		player.Unsaved = s.durable.Unsaved(id)
+		player.Durable = s.durable.Health(id)
 	}
 }
 
@@ -266,6 +287,8 @@ func (s *GameServer) sendAOI(player *world.Session) {
 	}
 
 	s.sendObjectLayerChanges(player)
+	s.sendEconomyChange(player)
+	s.sendWorldChange(player)
 	world.SendMessage(player, "snapshot", s.buildSnapshot(player, mapState))
 }
 
@@ -286,6 +309,16 @@ type Client struct {
 	// limiter is the inbound message budget. Only the read goroutine for this
 	// connection touches it.
 	limiter *inputLimiter
+	// queuedThrough is the last event sequence queued for the simulation;
+	// dropped marks a message the rate limit dropped since, the one cause of a
+	// gap; resendFrom, resendAt name the last input_resend asked, and gapSince
+	// when the server first asked for that gap. Only the read goroutine
+	// touches them.
+	queuedThrough uint32
+	dropped       bool
+	resendFrom    uint32
+	resendAt      time.Time
+	gapSince      time.Time
 	// released guards the guard slot so every disconnect path frees it once.
 	released sync.Once
 	// detached marks a torn-down client. register and unregister are separate
@@ -299,6 +332,10 @@ type Client struct {
 	// olSeen is the definition revision the client holds. Written at placement,
 	// then under World.Mu.
 	olSeen uint64
+	// economySeen names the economy snapshot the client holds, written like olSeen.
+	economySeen string
+	// worldSeen is the world revision the client holds, written like olSeen.
+	worldSeen uint64
 }
 
 // GameServer is the network side: the client links, the tick loop and the
@@ -382,6 +419,9 @@ type InitPayload struct {
 	// Build names the binary of this server. A client that plays here plays
 	// on every server of the same build.
 	Build string `json:"build,omitempty"`
+	// Adopted marks an account session that plays the state its closed
+	// session on this server had not saved yet; that state saves next.
+	Adopted bool `json:"adopted,omitempty"`
 }
 
 // phaseReplication runs last in each tick. Iterates connected players for

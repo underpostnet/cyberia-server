@@ -202,6 +202,12 @@ func main() {
 		logx.Errorf("Data Server world load failed: %v — the Data Server must run before cyberia-server starts.", err)
 		os.Exit(1)
 	}
+	if err := s.RestoreWorldDrops(ctx); err != nil {
+		cancel()
+		runUnderpostStatus(cfg.ContainerDeployID, "error")
+		logx.Errorf("world drops restore failed: %v", err)
+		os.Exit(1)
+	}
 	cancel()
 
 	// On-demand hot-reload trigger (engine-cyberia -> this server). Serves a

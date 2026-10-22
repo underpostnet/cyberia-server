@@ -20,9 +20,18 @@ func (f *fakeDurability) Capture(string, persist.State, bool) persist.Mark {
 	return persist.Mark{Epoch: 1, Seq: uint64(f.captured)}
 }
 
-func (f *fakeDurability) Committed(_ string, mark persist.Mark) bool {
-	return mark.Epoch == f.applied.Epoch && mark.Seq <= f.applied.Seq
+func (f *fakeDurability) Outcome(_ string, mark persist.Mark) persist.Outcome {
+	if mark.Epoch == f.applied.Epoch && mark.Seq <= f.applied.Seq {
+		return persist.Applied
+	}
+	return persist.Pending
 }
+
+func (f *fakeDurability) Link(string, string, []persist.LinkMember, persist.Effect) bool {
+	return false
+}
+func (f *fakeDurability) LinkOutcome(string) (persist.Outcome, string) { return persist.Refused, "" }
+func (f *fakeDurability) Unlink(string)                                {}
 
 func TestCoinsAPlayerLostWaitForTheEngine(t *testing.T) {
 	s, ms, collector := movementFixture(t)
@@ -61,15 +70,17 @@ func TestCoinsAPlayerLostWaitForTheEngine(t *testing.T) {
 }
 
 func TestAnUnsavedPlayerMakesNoTrade(t *testing.T) {
-	s, ms, player := movementFixture(t)
-	player.Unsaved = true
-	player.InputQueue = []world.InputCommand{{Kind: world.InputKindItemMove, Sequence: 1,
-		Move: world.ItemMove{From: world.BoxBag, To: world.BoxStorage, Qty: 1}}}
-	s.PhaseInput(0, ms)
-	if player.InputConsumedThrough != 1 {
-		t.Fatal("a refused trade is still consumed")
-	}
-	if len(s.PlayerStorage(player)) != 0 {
-		t.Fatal("an unsaved player banks nothing")
+	for _, d := range []persist.Durability{persist.Degraded, persist.Recovery} {
+		s, ms, player := movementFixture(t)
+		player.Durable = persist.Health{Durability: d}
+		player.InputQueue = []world.InputCommand{{Kind: world.InputKindItemMove, Sequence: 1,
+			Move: world.ItemMove{From: world.BoxBag, To: world.BoxStorage, Qty: 1}}}
+		s.PhaseInput(0, ms)
+		if player.InputConsumedThrough != 1 {
+			t.Fatalf("%s: a refused trade is still consumed", d)
+		}
+		if len(s.PlayerStorage(player)) != 0 {
+			t.Fatalf("%s: an unsaved player banks nothing", d)
+		}
 	}
 }

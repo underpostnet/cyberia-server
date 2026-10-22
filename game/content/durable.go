@@ -25,8 +25,15 @@ import (
 type Durability interface {
 	// Capture records the newest state of a player and returns its mark.
 	Capture(playerID string, state persist.State, commitPosition bool) persist.Mark
-	// Committed reports whether the engine applied a marked state of a player.
-	Committed(playerID string, mark persist.Mark) bool
+	// Outcome reports whether a marked state of a player applied, may still
+	// apply, or never will.
+	Outcome(playerID string, mark persist.Mark) persist.Outcome
+	// Link joins the states of players and an effect into one atomic commit.
+	Link(op, kind string, members []persist.LinkMember, effect persist.Effect) bool
+	// LinkOutcome reports the outcome of a link and the refusal of the engine.
+	LinkOutcome(op string) (persist.Outcome, string)
+	// Unlink ends a resolved link once the world holds its result.
+	Unlink(op string)
 }
 
 // CaptureNow records the state of an account player at once and returns its
@@ -38,15 +45,19 @@ func (s *Content) CaptureNow(player *world.Session, commitPosition bool) persist
 	return s.Durability.Capture(string(player.PlayerID), s.DurableState(player), commitPosition)
 }
 
-// DropReleased reports whether a token may be collected: a token made of what
-// a player lost waits until the engine applied that loss.
-func (s *Content) DropReleased(drop *world.Brain) bool {
+// DropLockOutcome is how the mark lock of a token ends: applied once the
+// engine applied the loss the token came from, refused when that loss can no
+// longer apply. A token without a lock is applied.
+func (s *Content) DropLockOutcome(drop *world.Brain) persist.Outcome {
 	lock := drop.Lock
-	return lock.PlayerID == "" || s.Durability == nil || s.Durability.Committed(lock.PlayerID, lock.Mark)
+	if lock.PlayerID == "" || s.Durability == nil {
+		return persist.Applied
+	}
+	return s.Durability.Outcome(lock.PlayerID, lock.Mark)
 }
 
-// LossLock is the lock of the coins a player loses now: its state is captured
-// at once. Zero for a guest.
+// LossLock is the lock of what a player loses now: its state is captured at
+// once. Zero for a guest.
 func (s *Content) LossLock(player *world.Session) world.DropLock {
 	mark := s.CaptureNow(player, false)
 	if mark.Seq == 0 {
@@ -87,15 +98,26 @@ func (s *Content) PositionOf(player *world.Session) persist.Position {
 
 // DurableState is the whole durable state of a player.
 func (s *Content) DurableState(player *world.Session) persist.State {
+	return s.durableStateWith(player, *s.InventoryLayers(player), s.PersonalStorage[player.PlayerID], player.Coins)
+}
+
+// plannedState is the durable state of a player once a transfer plan applies.
+func (s *Content) plannedState(player *world.Session, plan transferPlan) persist.State {
+	return s.durableStateWith(player, plan.bag, plan.storage, uint32(int64(player.Coins)+plan.coins))
+}
+
+// durableStateWith is the durable state of a player with the given bag,
+// personal storage and wallet.
+func (s *Content) durableStateWith(player *world.Session, bag []world.ObjectLayerState, storage []Stack, coins uint32) persist.State {
 	ms := s.Maps[player.MapCode]
 	state := persist.State{
-		Coins:    player.Coins,
+		Coins:    coins,
 		XP:       s.EntityProgression(player.ID, ms).XP,
-		Storage:  durableStacks(s.PersonalStorage[player.PlayerID]),
+		Storage:  durableStacks(storage),
 		Held:     slices.Clone(s.Held[player.PlayerID]),
 		Position: s.PositionOf(player),
 	}
-	for _, layer := range *s.InventoryLayers(player) {
+	for _, layer := range bag {
 		if s.takesSlot(layer.ItemID) && !s.DeadItemIDs[layer.ItemID] && layer.Quantity > 0 {
 			state.Bag = append(state.Bag, durableStack(layer.ItemID, layer.CID, layer.Quantity, layer.Slot, layer.Active))
 		}

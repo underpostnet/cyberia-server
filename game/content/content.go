@@ -57,6 +57,23 @@ type Content struct {
 
 	CoinItemID string
 	economy    EconomyRules
+	// economyOutcomes counts the economic operations by "op:outcome".
+	economyOutcomes map[string]uint64
+	// trades holds the trade of each player in one, by entity id (trade.go).
+	trades   map[world.EntityID]*Trade
+	tradeSeq uint64
+	// quotes holds the open quote of each player (merchant.go).
+	quotes map[world.EntityID]*quote
+	// linkedOps holds each linked operation that waits for its commit, by op
+	// (linked_op.go).
+	linkedOps map[string]*linkedOp
+	// Markets reads market views from the engine; nil in anonymous mode.
+	Markets MarketBroker
+	// marketProfiles holds the market profiles the terminals of the world name,
+	// by code (market_profile.go).
+	marketProfiles map[string]MarketProfile
+	// marketViews holds the last market view of each player (market.go).
+	marketViews map[world.EntityID]*marketSeen
 
 	// Regen
 	LifeRegenChance float64

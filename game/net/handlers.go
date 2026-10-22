@@ -3,6 +3,8 @@ package net
 import (
 	"encoding/json"
 	"regexp"
+	"slices"
+	"time"
 
 	"cyberia-server/game/content"
 	"cyberia-server/game/sim"
@@ -71,6 +73,28 @@ func (s *GameServer) sendObjectLayerChanges(player *world.Session) {
 	}
 }
 
+// sendEconomyChange sends a player the economy the world runs once its
+// revision differs from the one the client holds. Caller holds s.Mu.
+func (s *GameServer) sendEconomyChange(player *world.Session) {
+	client := s.clients[player.ID]
+	if client == nil || s.EconomyKey() == client.economySeen {
+		return
+	}
+	client.economySeen = s.EconomyKey()
+	world.SendMessage(player, "metadata", map[string]any{"economy": s.EconomyView()})
+}
+
+// sendWorldChange tells a player the world was rebuilt since the revision its
+// client holds: its map views read the content again. Caller holds s.Mu.
+func (s *GameServer) sendWorldChange(player *world.Session) {
+	client := s.clients[player.ID]
+	if client == nil || s.WorldRevision() == client.worldSeen {
+		return
+	}
+	client.worldSeen = s.WorldRevision()
+	world.SendMessage(player, "metadata", map[string]any{"worldRevision": client.worldSeen})
+}
+
 // Send packs one message and queues it on the socket.
 func (c *Client) Send(msgType string, payload any) {
 	if c.sock == nil {
@@ -130,6 +154,23 @@ var inputKinds = map[string]world.InputKind{
 	"friend_reply":   world.InputKindFriendReply,
 	"friend_remove":  world.InputKindFriendRemove,
 	"status_note":    world.InputKindStatusNote,
+
+	"item_drop":     world.InputKindItemDrop,
+	"item_quote":    world.InputKindItemQuote,
+	"item_sell":     world.InputKindItemSell,
+	"item_burn":     world.InputKindItemBurn,
+	"trade_request": world.InputKindTradeRequest,
+	"trade_reply":   world.InputKindTradeReply,
+	"trade_offer":   world.InputKindTradeOffer,
+	"trade_confirm": world.InputKindTradeConfirm,
+	"trade_cancel":  world.InputKindTradeCancel,
+
+	"market_open":    world.InputKindMarketOpen,
+	"market_list":    world.InputKindMarketList,
+	"market_cancel":  world.InputKindMarketCancel,
+	"market_buy":     world.InputKindMarketBuy,
+	"market_bid":     world.InputKindMarketBid,
+	"market_collect": world.InputKindMarketCollect,
 }
 
 // inputPayload holds every client event payload field. Each event type fills
@@ -161,7 +202,7 @@ type inputPayload struct {
 	DialogCode string         `json:"dialogCode"` // talk_done
 	QuestCode  string         `json:"questCode"`  // quest_*
 
-	Quantity    int `json:"quantity"`    // shop_buy
+	Quantity    int `json:"quantity"`    // shop_buy, item_drop, item_sell, item_burn
 	RecipeIndex int `json:"recipeIndex"` // craft_item
 
 	From     string `json:"from"` // item_move
@@ -169,6 +210,27 @@ type inputPayload struct {
 	FromSlot int    `json:"fromSlot"`
 	ToSlot   int    `json:"toSlot"`
 	Qty      int    `json:"qty"`
+
+	Box     string `json:"box"`     // item_drop, item_quote: the stack's box and slot
+	Quote   int64  `json:"quote"`   // craft_item: the coins the player saw
+	Kind    string `json:"kind"`    // item_quote: sell | burn
+	QuoteID string `json:"quoteId"` // item_sell, item_burn
+
+	Items    []offerLine `json:"items"`    // trade_offer
+	Coins    int         `json:"coins"`    // trade_offer
+	Revision uint32      `json:"revision"` // trade_confirm
+
+	ListingID string `json:"listingId"` // market_cancel, market_buy, market_bid
+	Mode      string `json:"mode"`      // market_list; market_open: the listings of one mode
+	Price     int    `json:"price"`     // market_list, market_bid
+	Hours     int    `json:"hours"`     // market_list
+	After     string `json:"after"`     // market_open
+}
+
+// offerLine is one bag stack of a trade_offer.
+type offerLine struct {
+	Slot int `json:"slot"`
+	Qty  int `json:"quantity"`
 }
 
 // eventsPayload is the payload of "events", the one uplink input message.
@@ -176,10 +238,31 @@ type eventsPayload struct {
 	Events []Message `json:"events"`
 }
 
+const (
+	// resendInterval spaces the input_resend requests of one gap.
+	resendInterval = 250 * time.Millisecond
+	// gapWait bounds how long a gap holds the stream: a client that never
+	// sends the events again loses them, not every event after them.
+	gapWait = time.Second
+)
+
+// inputResend asks the client to send its events again from From: the server
+// queued every event before it and none after it.
+type inputResend struct {
+	From uint32 `json:"from"`
+}
+
 // receiveMessage is the single client → server dispatch point once a player is
 // placed: every message is one batch of client events. The batch becomes one
 // InputCommand per event and is enqueued whole; phaseInput applies each
 // command once.
+//
+// The events of a connection form one sequence. An event at or below the last
+// queued one repeats it and is skipped. An event past the next one means a
+// batch never arrived, which the rate limit causes: the server refuses the
+// batch and asks for the events again from the gap (input_resend), because
+// applying them past it would lose the missing ones for good. A gap no resend
+// fills within gapWait is skipped.
 //
 // A protocol violation evicts: a message that is not a batch, a batch over
 // maxInputQueue, or an event without a seq. An event that fails
@@ -188,6 +271,7 @@ type eventsPayload struct {
 func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 	// Rate limit first: an over-budget frame costs no parsing work.
 	if allowed, evict := c.limiter.allow(); !allowed {
+		c.dropped = true
 		server.recordWsRateLimited()
 		if evict {
 			c.evict(server, "input rate limit")
@@ -207,20 +291,34 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 	}
 
 	cmds := make([]world.InputCommand, 0, len(batch.Events))
+	next := c.queuedThrough + 1
 	for _, ev := range batch.Events {
+		var p inputPayload
+		if err := json.Unmarshal(ev.Payload, &p); err != nil || p.Seq == 0 {
+			c.evict(server, "event without seq")
+			return
+		}
+		if p.Seq < next {
+			continue
+		}
+		if p.Seq > next {
+			if c.resendFrom != next || time.Since(c.gapSince) < gapWait {
+				c.askResend(server, next)
+				return
+			}
+			logx.Warnf("[input] player=%s: no resend filled the gap %d..%d; skipped", c.playerID, next, p.Seq-1)
+			server.recordInputGapSkipped()
+			next = p.Seq
+		}
+		next++
 		// The player closes its session: no later event of the batch counts.
 		if ev.Type == "session_leave" {
 			var leaving struct {
 				Travel string `json:"travel"`
 			}
 			_ = json.Unmarshal(ev.Payload, &leaving)
-			c.dispatchInputs(server, cmds)
+			c.queue(server, cmds, p.Seq)
 			go server.leave(c, leaving.Travel)
-			return
-		}
-		var p inputPayload
-		if err := json.Unmarshal(ev.Payload, &p); err != nil || p.Seq == 0 {
-			c.evict(server, "event without seq")
 			return
 		}
 		cmd, ok := parseInput(ev.Type, &p)
@@ -235,7 +333,34 @@ func (c *Client) receiveMessage(pack []byte, server *GameServer) {
 		cmd.Sequence, cmd.Frame, cmd.Timestamp = p.Seq, p.Frame, p.Timestamp
 		cmds = append(cmds, cmd)
 	}
-	c.dispatchInputs(server, cmds)
+	c.queue(server, cmds, next-1)
+}
+
+// askResend sends input_resend from the first missing event, once per gap
+// and resendInterval, so a burst of refused batches asks once. TCP keeps the
+// order, so a gap no dropped message explains is a protocol violation.
+func (c *Client) askResend(server *GameServer, from uint32) {
+	if !c.dropped && c.limiter.strike() {
+		c.evict(server, "repeated sequence gaps")
+		return
+	}
+	now := time.Now()
+	if c.resendFrom != from {
+		c.gapSince = now
+	} else if now.Sub(c.resendAt) < resendInterval {
+		return
+	}
+	c.resendFrom, c.resendAt = from, now
+	server.recordInputResend()
+	c.Send("input_resend", inputResend{From: from})
+}
+
+// queue enqueues the commands of a batch and records the last sequence it
+// consumed, through.
+func (c *Client) queue(server *GameServer, cmds []world.InputCommand, through uint32) {
+	if c.dispatchInputs(server, cmds) {
+		c.queuedThrough, c.dropped = through, false
+	}
 }
 
 // parseInput validates one event payload and builds its command. False means
@@ -298,11 +423,87 @@ func parseInput(msgType string, p *inputPayload) (world.InputCommand, bool) {
 		cmd.ItemID = p.ItemID
 		cmd.Quantity = sim.ClampQuantity(p.Quantity)
 	case world.InputKindCraftItem:
-		if p.EntityID == 0 || p.RecipeIndex < 0 {
+		if p.EntityID == 0 || p.RecipeIndex < 0 || p.Quote < 0 {
 			return world.InputCommand{}, false
 		}
 		cmd.EntityID = p.EntityID
 		cmd.RecipeIndex = p.RecipeIndex
+		cmd.Quote = p.Quote
+	case world.InputKindItemDrop:
+		box, known := world.ParseBox(p.Box)
+		if !known || box == world.BoxVault || p.Slot < 0 || p.Slot >= content.StorageMaxSlots || p.Quantity < 1 ||
+			p.EntityID != 0 || !sim.ValidTapTarget(p.X, p.Y) {
+			return world.InputCommand{}, false
+		}
+		cmd.Move = world.ItemMove{From: box, FromSlot: p.Slot, Qty: sim.ClampQuantity(p.Quantity)}
+		cmd.TargetX, cmd.TargetY = p.X, p.Y
+	case world.InputKindItemQuote:
+		box, known := world.ParseBox(p.Box)
+		if !known || box == world.BoxVault || p.Slot < 0 || p.Slot >= content.StorageMaxSlots || p.EntityID == 0 ||
+			(p.Kind != content.QuoteSell && p.Kind != content.QuoteBurn) {
+			return world.InputCommand{}, false
+		}
+		cmd.EntityID = p.EntityID
+		cmd.Move = world.ItemMove{From: box, FromSlot: p.Slot}
+		cmd.QuoteKind = p.Kind
+	case world.InputKindMarketOpen:
+		if p.EntityID == 0 || !sim.ValidIdentifier(p.ItemID) || !sim.ValidIdentifier(p.After) ||
+			(p.Mode != "" && !slices.Contains(content.MarketModes, p.Mode)) {
+			return world.InputCommand{}, false
+		}
+		cmd.EntityID, cmd.ItemID = p.EntityID, p.ItemID
+		cmd.Market.After, cmd.Market.Mode = p.After, p.Mode
+	case world.InputKindMarketList:
+		box, known := world.ParseBox(p.Box)
+		if !known || box == world.BoxVault || p.Slot < 0 || p.Slot >= content.StorageMaxSlots || p.Quantity < 1 ||
+			p.EntityID == 0 || p.Mode == "" || !sim.ValidIdentifier(p.Mode) || p.Price < 1 || p.Hours < 1 {
+			return world.InputCommand{}, false
+		}
+		cmd.EntityID = p.EntityID
+		cmd.Move = world.ItemMove{From: box, FromSlot: p.Slot, Qty: sim.ClampQuantity(p.Quantity)}
+		cmd.Market = world.MarketInput{Mode: p.Mode, Price: p.Price, Hours: p.Hours}
+	case world.InputKindMarketCancel, world.InputKindMarketBuy, world.InputKindMarketBid:
+		if p.EntityID == 0 || p.ListingID == "" || !sim.ValidIdentifier(p.ListingID) ||
+			(cmd.Kind == world.InputKindMarketBid && p.Price < 1) {
+			return world.InputCommand{}, false
+		}
+		cmd.EntityID = p.EntityID
+		cmd.Market = world.MarketInput{ListingID: p.ListingID, Price: p.Price}
+	case world.InputKindMarketCollect:
+		if p.EntityID == 0 {
+			return world.InputCommand{}, false
+		}
+		cmd.EntityID = p.EntityID
+	case world.InputKindItemSell, world.InputKindItemBurn:
+		if p.QuoteID == "" || !sim.ValidIdentifier(p.QuoteID) || p.Quantity < 1 {
+			return world.InputCommand{}, false
+		}
+		cmd.QuoteID = p.QuoteID
+		cmd.Move = world.ItemMove{Qty: sim.ClampQuantity(p.Quantity)}
+	case world.InputKindTradeRequest:
+		if p.ToID == 0 {
+			return world.InputCommand{}, false
+		}
+		cmd.EntityID = p.ToID
+	case world.InputKindTradeReply:
+		if p.FromID == 0 {
+			return world.InputCommand{}, false
+		}
+		cmd.EntityID = p.FromID
+		cmd.Active = p.Accept
+	case world.InputKindTradeOffer:
+		if len(p.Items) > content.TradeOfferMaxStacks || p.Coins < 0 {
+			return world.InputCommand{}, false
+		}
+		for _, line := range p.Items {
+			if line.Slot < 0 || line.Slot >= content.StorageMaxSlots || line.Qty < 1 {
+				return world.InputCommand{}, false
+			}
+			cmd.Offer = append(cmd.Offer, world.OfferLine{Slot: line.Slot, Qty: sim.ClampQuantity(line.Qty)})
+		}
+		cmd.Coins = p.Coins
+	case world.InputKindTradeConfirm:
+		cmd.Revision = p.Revision
 	case world.InputKindItemMove:
 		move, ok := parseItemMove(p)
 		if !ok {
@@ -368,8 +569,8 @@ func (c *Client) evict(server *GameServer, reason string) {
 
 // dispatchInputs enqueues one batch on the player's per-tick input queue.
 // phaseInput drains and applies each command exactly once. A batch that does
-// not fit evicts the client.
-func (c *Client) dispatchInputs(server *GameServer, cmds []world.InputCommand) {
+// not fit evicts the client; the result reports whether it was queued.
+func (c *Client) dispatchInputs(server *GameServer, cmds []world.InputCommand) bool {
 	fits := true
 	server.Mu.Lock()
 	if player := server.Sessions[c.playerID]; player != nil {
@@ -379,4 +580,5 @@ func (c *Client) dispatchInputs(server *GameServer, cmds []world.InputCommand) {
 	if !fits {
 		c.evict(server, "input queue full")
 	}
+	return fits
 }

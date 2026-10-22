@@ -22,6 +22,8 @@ type Sim struct {
 	InstanceCode   string            // INSTANCE_CODE — selects which instance to load
 	PlayerSpawn    PlayerSpawnConfig // authoritative initial spawn for new players
 	PortalHoldTime time.Duration
+	// worldRevision counts the rebuilds of the world; a client map of an older one is stale.
+	worldRevision uint64
 	// Teleported holds the players a portal moved this map step. gameLoop
 	// sends their snapshots after phasePortals and clears it.
 	Teleported []*world.Session

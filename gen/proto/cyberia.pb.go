@@ -1197,6 +1197,7 @@ type ActionCraftRecipe struct {
 	OutputItems   []*ActionCraftItem     `protobuf:"bytes,1,rep,name=output_items,json=outputItems,proto3" json:"output_items,omitempty"`
 	Ingredients   []*ActionCraftItem     `protobuf:"bytes,2,rep,name=ingredients,proto3" json:"ingredients,omitempty"`
 	CraftTimeMs   int32                  `protobuf:"varint,3,opt,name=craft_time_ms,json=craftTimeMs,proto3" json:"craft_time_ms,omitempty"` // assembly duration
+	Fee           *uint32                `protobuf:"varint,4,opt,name=fee,proto3,oneof" json:"fee,omitempty"`                                // coins; absent, the economy decides
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1252,6 +1253,13 @@ func (x *ActionCraftRecipe) GetCraftTimeMs() int32 {
 	return 0
 }
 
+func (x *ActionCraftRecipe) GetFee() uint32 {
+	if x != nil && x.Fee != nil {
+		return *x.Fee
+	}
+	return 0
+}
+
 type CyberiaActionMessage struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Code               string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
@@ -1264,6 +1272,9 @@ type CyberiaActionMessage struct {
 	ShopItems          []*ActionShopItem      `protobuf:"bytes,11,rep,name=shop_items,json=shopItems,proto3" json:"shop_items,omitempty"`
 	CraftRecipes       []*ActionCraftRecipe   `protobuf:"bytes,12,rep,name=craft_recipes,json=craftRecipes,proto3" json:"craft_recipes,omitempty"`
 	StorageSlots       int32                  `protobuf:"varint,13,opt,name=storage_slots,json=storageSlots,proto3" json:"storage_slots,omitempty"` // personal vault capacity
+	BuybackItems       []string               `protobuf:"bytes,14,rep,name=buyback_items,json=buybackItems,proto3" json:"buyback_items,omitempty"`  // items this merchant buys back
+	BurnItems          []string               `protobuf:"bytes,15,rep,name=burn_items,json=burnItems,proto3" json:"burn_items,omitempty"`           // items this terminal burns
+	Market             *ActionMarket          `protobuf:"bytes,16,opt,name=market,proto3" json:"market,omitempty"`                                  // the market this terminal opens
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -1368,6 +1379,97 @@ func (x *CyberiaActionMessage) GetStorageSlots() int32 {
 	return 0
 }
 
+func (x *CyberiaActionMessage) GetBuybackItems() []string {
+	if x != nil {
+		return x.BuybackItems
+	}
+	return nil
+}
+
+func (x *CyberiaActionMessage) GetBurnItems() []string {
+	if x != nil {
+		return x.BurnItems
+	}
+	return nil
+}
+
+func (x *CyberiaActionMessage) GetMarket() *ActionMarket {
+	if x != nil {
+		return x.Market
+	}
+	return nil
+}
+
+// A market terminal: the market profile it opens, and what a seller lists here. An empty code opens
+// no market.
+type ActionMarket struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MarketCode    string                 `protobuf:"bytes,1,opt,name=market_code,json=marketCode,proto3" json:"market_code,omitempty"`
+	Selection     string                 `protobuf:"bytes,3,opt,name=selection,proto3" json:"selection,omitempty"`                           // policy | items
+	ItemIds       []string               `protobuf:"bytes,4,rep,name=item_ids,json=itemIds,proto3" json:"item_ids,omitempty"`                // selection items: what a seller lists here
+	ListingModes  []string               `protobuf:"bytes,5,rep,name=listing_modes,json=listingModes,proto3" json:"listing_modes,omitempty"` // the modes a seller lists in here; the profile must support each
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ActionMarket) Reset() {
+	*x = ActionMarket{}
+	mi := &file_cyberia_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ActionMarket) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ActionMarket) ProtoMessage() {}
+
+func (x *ActionMarket) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ActionMarket.ProtoReflect.Descriptor instead.
+func (*ActionMarket) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *ActionMarket) GetMarketCode() string {
+	if x != nil {
+		return x.MarketCode
+	}
+	return ""
+}
+
+func (x *ActionMarket) GetSelection() string {
+	if x != nil {
+		return x.Selection
+	}
+	return ""
+}
+
+func (x *ActionMarket) GetItemIds() []string {
+	if x != nil {
+		return x.ItemIds
+	}
+	return nil
+}
+
+func (x *ActionMarket) GetListingModes() []string {
+	if x != nil {
+		return x.ListingModes
+	}
+	return nil
+}
+
 type QuestObjectiveMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"` // collect | talk | kill
@@ -1379,7 +1481,7 @@ type QuestObjectiveMessage struct {
 
 func (x *QuestObjectiveMessage) Reset() {
 	*x = QuestObjectiveMessage{}
-	mi := &file_cyberia_proto_msgTypes[20]
+	mi := &file_cyberia_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1391,7 +1493,7 @@ func (x *QuestObjectiveMessage) String() string {
 func (*QuestObjectiveMessage) ProtoMessage() {}
 
 func (x *QuestObjectiveMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[20]
+	mi := &file_cyberia_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1404,7 +1506,7 @@ func (x *QuestObjectiveMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestObjectiveMessage.ProtoReflect.Descriptor instead.
 func (*QuestObjectiveMessage) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{20}
+	return file_cyberia_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *QuestObjectiveMessage) GetType() string {
@@ -1439,7 +1541,7 @@ type QuestStepMessage struct {
 
 func (x *QuestStepMessage) Reset() {
 	*x = QuestStepMessage{}
-	mi := &file_cyberia_proto_msgTypes[21]
+	mi := &file_cyberia_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1451,7 +1553,7 @@ func (x *QuestStepMessage) String() string {
 func (*QuestStepMessage) ProtoMessage() {}
 
 func (x *QuestStepMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[21]
+	mi := &file_cyberia_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1464,7 +1566,7 @@ func (x *QuestStepMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestStepMessage.ProtoReflect.Descriptor instead.
 func (*QuestStepMessage) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{21}
+	return file_cyberia_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *QuestStepMessage) GetId() string {
@@ -1498,7 +1600,7 @@ type QuestRewardMessage struct {
 
 func (x *QuestRewardMessage) Reset() {
 	*x = QuestRewardMessage{}
-	mi := &file_cyberia_proto_msgTypes[22]
+	mi := &file_cyberia_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1510,7 +1612,7 @@ func (x *QuestRewardMessage) String() string {
 func (*QuestRewardMessage) ProtoMessage() {}
 
 func (x *QuestRewardMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[22]
+	mi := &file_cyberia_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1523,7 +1625,7 @@ func (x *QuestRewardMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestRewardMessage.ProtoReflect.Descriptor instead.
 func (*QuestRewardMessage) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{22}
+	return file_cyberia_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *QuestRewardMessage) GetItemId() string {
@@ -1560,7 +1662,7 @@ type CyberiaQuestMessage struct {
 
 func (x *CyberiaQuestMessage) Reset() {
 	*x = CyberiaQuestMessage{}
-	mi := &file_cyberia_proto_msgTypes[23]
+	mi := &file_cyberia_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1572,7 +1674,7 @@ func (x *CyberiaQuestMessage) String() string {
 func (*CyberiaQuestMessage) ProtoMessage() {}
 
 func (x *CyberiaQuestMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[23]
+	mi := &file_cyberia_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1585,7 +1687,7 @@ func (x *CyberiaQuestMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CyberiaQuestMessage.ProtoReflect.Descriptor instead.
 func (*CyberiaQuestMessage) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{23}
+	return file_cyberia_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *CyberiaQuestMessage) GetCode() string {
@@ -1667,7 +1769,7 @@ type GetFullInstanceRequest struct {
 
 func (x *GetFullInstanceRequest) Reset() {
 	*x = GetFullInstanceRequest{}
-	mi := &file_cyberia_proto_msgTypes[24]
+	mi := &file_cyberia_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1679,7 +1781,7 @@ func (x *GetFullInstanceRequest) String() string {
 func (*GetFullInstanceRequest) ProtoMessage() {}
 
 func (x *GetFullInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[24]
+	mi := &file_cyberia_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1692,7 +1794,7 @@ func (x *GetFullInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFullInstanceRequest.ProtoReflect.Descriptor instead.
 func (*GetFullInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{24}
+	return file_cyberia_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetFullInstanceRequest) GetInstanceCode() string {
@@ -1718,14 +1820,16 @@ type GetFullInstanceResponse struct {
 	// The content release the engine serves, empty for the workspace. The
 	// server reports it to the registry, so the convergence of a promotion
 	// across replicas is visible.
-	ReleaseId     string `protobuf:"bytes,8,opt,name=release_id,json=releaseId,proto3" json:"release_id,omitempty"`
+	ReleaseId string `protobuf:"bytes,8,opt,name=release_id,json=releaseId,proto3" json:"release_id,omitempty"`
+	// The market profiles the terminals of this world open, in the scope key of this world.
+	Markets       []*MarketProfile `protobuf:"bytes,9,rep,name=markets,proto3" json:"markets,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetFullInstanceResponse) Reset() {
 	*x = GetFullInstanceResponse{}
-	mi := &file_cyberia_proto_msgTypes[25]
+	mi := &file_cyberia_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1737,7 +1841,7 @@ func (x *GetFullInstanceResponse) String() string {
 func (*GetFullInstanceResponse) ProtoMessage() {}
 
 func (x *GetFullInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[25]
+	mi := &file_cyberia_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1750,7 +1854,7 @@ func (x *GetFullInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFullInstanceResponse.ProtoReflect.Descriptor instead.
 func (*GetFullInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{25}
+	return file_cyberia_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GetFullInstanceResponse) GetInstance() *InstanceMessage {
@@ -1809,6 +1913,187 @@ func (x *GetFullInstanceResponse) GetReleaseId() string {
 	return ""
 }
 
+func (x *GetFullInstanceResponse) GetMarkets() []*MarketProfile {
+	if x != nil {
+		return x.Markets
+	}
+	return nil
+}
+
+// The shared contract of a market as one world sees it. A profile with a defect opens no market
+// in this world: its terminals list nothing.
+type MarketProfile struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Code              string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	Revision          uint64                 `protobuf:"varint,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	Status            string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`                     // active | retired
+	Scope             string                 `protobuf:"bytes,4,opt,name=scope,proto3" json:"scope,omitempty"`                       // instance | universe
+	ScopeKey          string                 `protobuf:"bytes,5,opt,name=scope_key,json=scopeKey,proto3" json:"scope_key,omitempty"` // the instance or the universe of this world
+	Ref               string                 `protobuf:"bytes,6,opt,name=ref,proto3" json:"ref,omitempty"`                           // authority/scope:scope_key/code
+	CurrencyCode      string                 `protobuf:"bytes,7,opt,name=currency_code,json=currencyCode,proto3" json:"currency_code,omitempty"`
+	Modes             []string               `protobuf:"bytes,8,rep,name=modes,proto3" json:"modes,omitempty"`                                     // fixed | auction
+	Hours             []uint32               `protobuf:"varint,9,rep,packed,name=hours,proto3" json:"hours,omitempty"`                             // the durations a listing may run
+	RaisePercent      uint32                 `protobuf:"varint,10,opt,name=raise_percent,json=raisePercent,proto3" json:"raise_percent,omitempty"` // a bid raises the highest one by this percent...
+	MinRaise          uint32                 `protobuf:"varint,11,opt,name=min_raise,json=minRaise,proto3" json:"min_raise,omitempty"`             // ...and by this many coins at least
+	ListingFee        uint32                 `protobuf:"varint,12,opt,name=listing_fee,json=listingFee,proto3" json:"listing_fee,omitempty"`       // coins a listing charges once
+	SaleFee           uint32                 `protobuf:"varint,13,opt,name=sale_fee,json=saleFee,proto3" json:"sale_fee,omitempty"`                // coins a sale takes from the proceeds
+	PriceMin          uint32                 `protobuf:"varint,14,opt,name=price_min,json=priceMin,proto3" json:"price_min,omitempty"`
+	PriceMax          uint32                 `protobuf:"varint,15,opt,name=price_max,json=priceMax,proto3" json:"price_max,omitempty"`
+	ListingsPerPlayer uint32                 `protobuf:"varint,16,opt,name=listings_per_player,json=listingsPerPlayer,proto3" json:"listings_per_player,omitempty"`
+	Defect            string                 `protobuf:"bytes,17,opt,name=defect,proto3" json:"defect,omitempty"` // why it opens no market in this world; empty: it opens
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *MarketProfile) Reset() {
+	*x = MarketProfile{}
+	mi := &file_cyberia_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MarketProfile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MarketProfile) ProtoMessage() {}
+
+func (x *MarketProfile) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MarketProfile.ProtoReflect.Descriptor instead.
+func (*MarketProfile) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *MarketProfile) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *MarketProfile) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *MarketProfile) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *MarketProfile) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *MarketProfile) GetScopeKey() string {
+	if x != nil {
+		return x.ScopeKey
+	}
+	return ""
+}
+
+func (x *MarketProfile) GetRef() string {
+	if x != nil {
+		return x.Ref
+	}
+	return ""
+}
+
+func (x *MarketProfile) GetCurrencyCode() string {
+	if x != nil {
+		return x.CurrencyCode
+	}
+	return ""
+}
+
+func (x *MarketProfile) GetModes() []string {
+	if x != nil {
+		return x.Modes
+	}
+	return nil
+}
+
+func (x *MarketProfile) GetHours() []uint32 {
+	if x != nil {
+		return x.Hours
+	}
+	return nil
+}
+
+func (x *MarketProfile) GetRaisePercent() uint32 {
+	if x != nil {
+		return x.RaisePercent
+	}
+	return 0
+}
+
+func (x *MarketProfile) GetMinRaise() uint32 {
+	if x != nil {
+		return x.MinRaise
+	}
+	return 0
+}
+
+func (x *MarketProfile) GetListingFee() uint32 {
+	if x != nil {
+		return x.ListingFee
+	}
+	return 0
+}
+
+func (x *MarketProfile) GetSaleFee() uint32 {
+	if x != nil {
+		return x.SaleFee
+	}
+	return 0
+}
+
+func (x *MarketProfile) GetPriceMin() uint32 {
+	if x != nil {
+		return x.PriceMin
+	}
+	return 0
+}
+
+func (x *MarketProfile) GetPriceMax() uint32 {
+	if x != nil {
+		return x.PriceMax
+	}
+	return 0
+}
+
+func (x *MarketProfile) GetListingsPerPlayer() uint32 {
+	if x != nil {
+		return x.ListingsPerPlayer
+	}
+	return 0
+}
+
+func (x *MarketProfile) GetDefect() string {
+	if x != nil {
+		return x.Defect
+	}
+	return ""
+}
+
 type DefaultObjectLayerState struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	ItemId   string                 `protobuf:"bytes,1,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"`
@@ -1825,7 +2110,7 @@ type DefaultObjectLayerState struct {
 
 func (x *DefaultObjectLayerState) Reset() {
 	*x = DefaultObjectLayerState{}
-	mi := &file_cyberia_proto_msgTypes[26]
+	mi := &file_cyberia_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1837,7 +2122,7 @@ func (x *DefaultObjectLayerState) String() string {
 func (*DefaultObjectLayerState) ProtoMessage() {}
 
 func (x *DefaultObjectLayerState) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[26]
+	mi := &file_cyberia_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1850,7 +2135,7 @@ func (x *DefaultObjectLayerState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DefaultObjectLayerState.ProtoReflect.Descriptor instead.
 func (*DefaultObjectLayerState) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{26}
+	return file_cyberia_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *DefaultObjectLayerState) GetItemId() string {
@@ -1893,7 +2178,7 @@ type SkillDetail struct {
 
 func (x *SkillDetail) Reset() {
 	*x = SkillDetail{}
-	mi := &file_cyberia_proto_msgTypes[27]
+	mi := &file_cyberia_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1905,7 +2190,7 @@ func (x *SkillDetail) String() string {
 func (*SkillDetail) ProtoMessage() {}
 
 func (x *SkillDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[27]
+	mi := &file_cyberia_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1918,7 +2203,7 @@ func (x *SkillDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillDetail.ProtoReflect.Descriptor instead.
 func (*SkillDetail) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{27}
+	return file_cyberia_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *SkillDetail) GetLogicEventId() string {
@@ -1959,7 +2244,7 @@ type SkillConfigEntry struct {
 
 func (x *SkillConfigEntry) Reset() {
 	*x = SkillConfigEntry{}
-	mi := &file_cyberia_proto_msgTypes[28]
+	mi := &file_cyberia_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1971,7 +2256,7 @@ func (x *SkillConfigEntry) String() string {
 func (*SkillConfigEntry) ProtoMessage() {}
 
 func (x *SkillConfigEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[28]
+	mi := &file_cyberia_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1984,7 +2269,7 @@ func (x *SkillConfigEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillConfigEntry.ProtoReflect.Descriptor instead.
 func (*SkillConfigEntry) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{28}
+	return file_cyberia_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *SkillConfigEntry) GetTriggerItemId() string {
@@ -2001,26 +2286,34 @@ func (x *SkillConfigEntry) GetSkills() []*SkillDetail {
 	return nil
 }
 
-// EconomyRules is the coin model of one instance. The wallet is session state:
-// it starts at player_spawn_coins and ends with the session. A death drops a
-// share of the victim's coins as a loot token for its damage contributors. The
-// rate follows the type of the victim, whoever made the kill. A drop is at
-// least coin_kill_min_amount and never more than the victim holds.
+// EconomyRules is the economy of an instance: the CyberiaEconomy profile its
+// conf names, with every item policy row of the profile compiled against the
+// catalog binding of its item. A death drops a share of the victim's coins as
+// a loot token for its damage contributors. The rate follows the type of the
+// victim, whoever made the kill. A drop is at least coin_kill_min_amount and
+// never more than the victim holds.
 type EconomyRules struct {
 	state                   protoimpl.MessageState `protogen:"open.v1"`
 	BotSpawnCoins           int32                  `protobuf:"varint,1,opt,name=bot_spawn_coins,json=botSpawnCoins,proto3" json:"bot_spawn_coins,omitempty"`                                    // the wallet of a bot at each spawn; a bot drop is new coins
-	PlayerSpawnCoins        int32                  `protobuf:"varint,2,opt,name=player_spawn_coins,json=playerSpawnCoins,proto3" json:"player_spawn_coins,omitempty"`                           // the wallet of a new session
+	PlayerSpawnCoins        int32                  `protobuf:"varint,2,opt,name=player_spawn_coins,json=playerSpawnCoins,proto3" json:"player_spawn_coins,omitempty"`                           // the wallet of a new guest session or account profile
 	CoinKillPercentVsBot    float64                `protobuf:"fixed64,3,opt,name=coin_kill_percent_vs_bot,json=coinKillPercentVsBot,proto3" json:"coin_kill_percent_vs_bot,omitempty"`          // fraction [0,1] of its coins a dead bot drops
 	CoinKillPercentVsPlayer float64                `protobuf:"fixed64,4,opt,name=coin_kill_percent_vs_player,json=coinKillPercentVsPlayer,proto3" json:"coin_kill_percent_vs_player,omitempty"` // fraction [0,1] of its coins a dead player drops
 	CoinKillMinAmount       int32                  `protobuf:"varint,5,opt,name=coin_kill_min_amount,json=coinKillMinAmount,proto3" json:"coin_kill_min_amount,omitempty"`                      // least coins a death drops, capped at what the victim holds
 	RespawnCostPercent      float64                `protobuf:"fixed64,6,opt,name=respawn_cost_percent,json=respawnCostPercent,proto3" json:"respawn_cost_percent,omitempty"`                    // fraction [0,1] of its coins a dead player burns; 0 disables
+	Code                    string                 `protobuf:"bytes,9,opt,name=code,proto3" json:"code,omitempty"`                                                                              // the profile; empty for a world without content
+	Revision                uint64                 `protobuf:"varint,10,opt,name=revision,proto3" json:"revision,omitempty"`                                                                    // the profile revision the snapshot compiled
+	MaxBalance              uint32                 `protobuf:"varint,11,opt,name=max_balance,json=maxBalance,proto3" json:"max_balance,omitempty"`                                              // a credit past it is refused, never clamped
+	Fees                    *OperationFees         `protobuf:"bytes,12,opt,name=fees,proto3" json:"fees,omitempty"`
+	ItemDefaults            *ItemPolicy            `protobuf:"bytes,13,opt,name=item_defaults,json=itemDefaults,proto3" json:"item_defaults,omitempty"` // the policy of an item without a row
+	ItemPolicies            []*ItemPolicy          `protobuf:"bytes,14,rep,name=item_policies,json=itemPolicies,proto3" json:"item_policies,omitempty"` // one per item row, effective
+	AuthorityId             string                 `protobuf:"bytes,15,opt,name=authority_id,json=authorityId,proto3" json:"authority_id,omitempty"`    // the deployment that owns the profile; a code is local to it
 	unknownFields           protoimpl.UnknownFields
 	sizeCache               protoimpl.SizeCache
 }
 
 func (x *EconomyRules) Reset() {
 	*x = EconomyRules{}
-	mi := &file_cyberia_proto_msgTypes[29]
+	mi := &file_cyberia_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2032,7 +2325,7 @@ func (x *EconomyRules) String() string {
 func (*EconomyRules) ProtoMessage() {}
 
 func (x *EconomyRules) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[29]
+	mi := &file_cyberia_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2045,7 +2338,7 @@ func (x *EconomyRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EconomyRules.ProtoReflect.Descriptor instead.
 func (*EconomyRules) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{29}
+	return file_cyberia_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *EconomyRules) GetBotSpawnCoins() int32 {
@@ -2090,6 +2383,294 @@ func (x *EconomyRules) GetRespawnCostPercent() float64 {
 	return 0
 }
 
+func (x *EconomyRules) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *EconomyRules) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *EconomyRules) GetMaxBalance() uint32 {
+	if x != nil {
+		return x.MaxBalance
+	}
+	return 0
+}
+
+func (x *EconomyRules) GetFees() *OperationFees {
+	if x != nil {
+		return x.Fees
+	}
+	return nil
+}
+
+func (x *EconomyRules) GetItemDefaults() *ItemPolicy {
+	if x != nil {
+		return x.ItemDefaults
+	}
+	return nil
+}
+
+func (x *EconomyRules) GetItemPolicies() []*ItemPolicy {
+	if x != nil {
+		return x.ItemPolicies
+	}
+	return nil
+}
+
+func (x *EconomyRules) GetAuthorityId() string {
+	if x != nil {
+		return x.AuthorityId
+	}
+	return ""
+}
+
+// Coins one operation that succeeds charges once.
+type OperationFees struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Portal        uint32                 `protobuf:"varint,1,opt,name=portal,proto3" json:"portal,omitempty"` // a portal transit whose active portal items name no fee
+	Craft         uint32                 `protobuf:"varint,2,opt,name=craft,proto3" json:"craft,omitempty"`   // an assembly whose recipe and outputs name no fee
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OperationFees) Reset() {
+	*x = OperationFees{}
+	mi := &file_cyberia_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OperationFees) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OperationFees) ProtoMessage() {}
+
+func (x *OperationFees) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OperationFees.ProtoReflect.Descriptor instead.
+func (*OperationFees) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *OperationFees) GetPortal() uint32 {
+	if x != nil {
+		return x.Portal
+	}
+	return 0
+}
+
+func (x *OperationFees) GetCraft() uint32 {
+	if x != nil {
+		return x.Craft
+	}
+	return 0
+}
+
+// One salvage output: units granted per burned unit.
+type SalvageLine struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ItemId        string                 `protobuf:"bytes,1,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"`
+	Qty           uint32                 `protobuf:"varint,2,opt,name=qty,proto3" json:"qty,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SalvageLine) Reset() {
+	*x = SalvageLine{}
+	mi := &file_cyberia_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SalvageLine) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SalvageLine) ProtoMessage() {}
+
+func (x *SalvageLine) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SalvageLine.ProtoReflect.Descriptor instead.
+func (*SalvageLine) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *SalvageLine) GetItemId() string {
+	if x != nil {
+		return x.ItemId
+	}
+	return ""
+}
+
+func (x *SalvageLine) GetQty() uint32 {
+	if x != nil {
+		return x.Qty
+	}
+	return 0
+}
+
+// What one item may do in the economy. Coin amounts are per unit.
+type ItemPolicy struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ItemId         string                 `protobuf:"bytes,1,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"` // empty for the defaults
+	OlCid          string                 `protobuf:"bytes,2,opt,name=ol_cid,json=olCid,proto3" json:"ol_cid,omitempty"`    // the definition the policy compiled against
+	Trade          bool                   `protobuf:"varint,3,opt,name=trade,proto3" json:"trade,omitempty"`
+	WorldDrop      bool                   `protobuf:"varint,4,opt,name=world_drop,json=worldDrop,proto3" json:"world_drop,omitempty"`
+	Buyback        bool                   `protobuf:"varint,5,opt,name=buyback,proto3" json:"buyback,omitempty"`
+	BuybackPayout  uint32                 `protobuf:"varint,6,opt,name=buyback_payout,json=buybackPayout,proto3" json:"buyback_payout,omitempty"`
+	Burn           bool                   `protobuf:"varint,7,opt,name=burn,proto3" json:"burn,omitempty"`
+	BurnCoinFee    uint32                 `protobuf:"varint,8,opt,name=burn_coin_fee,json=burnCoinFee,proto3" json:"burn_coin_fee,omitempty"`
+	CraftSurcharge uint32                 `protobuf:"varint,9,opt,name=craft_surcharge,json=craftSurcharge,proto3" json:"craft_surcharge,omitempty"` // per produced unit when the recipe names no fee
+	Salvage        []*SalvageLine         `protobuf:"bytes,10,rep,name=salvage,proto3" json:"salvage,omitempty"`
+	PortalFee      *uint32                `protobuf:"varint,11,opt,name=portal_fee,json=portalFee,proto3,oneof" json:"portal_fee,omitempty"` // per active portal item of the label; unset adds nothing
+	Market         bool                   `protobuf:"varint,12,opt,name=market,proto3" json:"market,omitempty"`                              // a market may list it
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ItemPolicy) Reset() {
+	*x = ItemPolicy{}
+	mi := &file_cyberia_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ItemPolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ItemPolicy) ProtoMessage() {}
+
+func (x *ItemPolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ItemPolicy.ProtoReflect.Descriptor instead.
+func (*ItemPolicy) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *ItemPolicy) GetItemId() string {
+	if x != nil {
+		return x.ItemId
+	}
+	return ""
+}
+
+func (x *ItemPolicy) GetOlCid() string {
+	if x != nil {
+		return x.OlCid
+	}
+	return ""
+}
+
+func (x *ItemPolicy) GetTrade() bool {
+	if x != nil {
+		return x.Trade
+	}
+	return false
+}
+
+func (x *ItemPolicy) GetWorldDrop() bool {
+	if x != nil {
+		return x.WorldDrop
+	}
+	return false
+}
+
+func (x *ItemPolicy) GetBuyback() bool {
+	if x != nil {
+		return x.Buyback
+	}
+	return false
+}
+
+func (x *ItemPolicy) GetBuybackPayout() uint32 {
+	if x != nil {
+		return x.BuybackPayout
+	}
+	return 0
+}
+
+func (x *ItemPolicy) GetBurn() bool {
+	if x != nil {
+		return x.Burn
+	}
+	return false
+}
+
+func (x *ItemPolicy) GetBurnCoinFee() uint32 {
+	if x != nil {
+		return x.BurnCoinFee
+	}
+	return 0
+}
+
+func (x *ItemPolicy) GetCraftSurcharge() uint32 {
+	if x != nil {
+		return x.CraftSurcharge
+	}
+	return 0
+}
+
+func (x *ItemPolicy) GetSalvage() []*SalvageLine {
+	if x != nil {
+		return x.Salvage
+	}
+	return nil
+}
+
+func (x *ItemPolicy) GetPortalFee() uint32 {
+	if x != nil && x.PortalFee != nil {
+		return *x.PortalFee
+	}
+	return 0
+}
+
+func (x *ItemPolicy) GetMarket() bool {
+	if x != nil {
+		return x.Market
+	}
+	return false
+}
+
 // SkillRules groups the numeric tuning parameters for each skill archetype.
 // These are instance-level defaults; individual SkillConfigEntry entries define
 // WHICH items trigger WHICH logic, while SkillRules defines HOW that logic behaves.
@@ -2112,7 +2693,7 @@ type SkillRules struct {
 
 func (x *SkillRules) Reset() {
 	*x = SkillRules{}
-	mi := &file_cyberia_proto_msgTypes[30]
+	mi := &file_cyberia_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2124,7 +2705,7 @@ func (x *SkillRules) String() string {
 func (*SkillRules) ProtoMessage() {}
 
 func (x *SkillRules) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[30]
+	mi := &file_cyberia_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2137,7 +2718,7 @@ func (x *SkillRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillRules.ProtoReflect.Descriptor instead.
 func (*SkillRules) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{30}
+	return file_cyberia_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *SkillRules) GetProjectileSpawnChance() float64 {
@@ -2227,7 +2808,7 @@ type EquipmentRules struct {
 
 func (x *EquipmentRules) Reset() {
 	*x = EquipmentRules{}
-	mi := &file_cyberia_proto_msgTypes[31]
+	mi := &file_cyberia_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2239,7 +2820,7 @@ func (x *EquipmentRules) String() string {
 func (*EquipmentRules) ProtoMessage() {}
 
 func (x *EquipmentRules) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[31]
+	mi := &file_cyberia_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2252,7 +2833,7 @@ func (x *EquipmentRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EquipmentRules.ProtoReflect.Descriptor instead.
 func (*EquipmentRules) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{31}
+	return file_cyberia_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *EquipmentRules) GetActiveItemTypes() []string {
@@ -2296,7 +2877,7 @@ type ProgressionRules struct {
 
 func (x *ProgressionRules) Reset() {
 	*x = ProgressionRules{}
-	mi := &file_cyberia_proto_msgTypes[32]
+	mi := &file_cyberia_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2308,7 +2889,7 @@ func (x *ProgressionRules) String() string {
 func (*ProgressionRules) ProtoMessage() {}
 
 func (x *ProgressionRules) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[32]
+	mi := &file_cyberia_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2321,7 +2902,7 @@ func (x *ProgressionRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProgressionRules.ProtoReflect.Descriptor instead.
 func (*ProgressionRules) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{32}
+	return file_cyberia_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ProgressionRules) GetMaxLevel() int32 {
@@ -2460,7 +3041,7 @@ type InstanceConfig struct {
 
 func (x *InstanceConfig) Reset() {
 	*x = InstanceConfig{}
-	mi := &file_cyberia_proto_msgTypes[33]
+	mi := &file_cyberia_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2472,7 +3053,7 @@ func (x *InstanceConfig) String() string {
 func (*InstanceConfig) ProtoMessage() {}
 
 func (x *InstanceConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[33]
+	mi := &file_cyberia_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2485,7 +3066,7 @@ func (x *InstanceConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstanceConfig.ProtoReflect.Descriptor instead.
 func (*InstanceConfig) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{33}
+	return file_cyberia_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *InstanceConfig) GetAoiRadius() float64 {
@@ -2689,7 +3270,7 @@ type EntityTypeDefault struct {
 
 func (x *EntityTypeDefault) Reset() {
 	*x = EntityTypeDefault{}
-	mi := &file_cyberia_proto_msgTypes[34]
+	mi := &file_cyberia_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2701,7 +3282,7 @@ func (x *EntityTypeDefault) String() string {
 func (*EntityTypeDefault) ProtoMessage() {}
 
 func (x *EntityTypeDefault) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[34]
+	mi := &file_cyberia_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2714,7 +3295,7 @@ func (x *EntityTypeDefault) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntityTypeDefault.ProtoReflect.Descriptor instead.
 func (*EntityTypeDefault) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{34}
+	return file_cyberia_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *EntityTypeDefault) GetEntityType() string {
@@ -2790,7 +3371,7 @@ type EntityMessage struct {
 
 func (x *EntityMessage) Reset() {
 	*x = EntityMessage{}
-	mi := &file_cyberia_proto_msgTypes[35]
+	mi := &file_cyberia_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2802,7 +3383,7 @@ func (x *EntityMessage) String() string {
 func (*EntityMessage) ProtoMessage() {}
 
 func (x *EntityMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[35]
+	mi := &file_cyberia_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2815,7 +3396,7 @@ func (x *EntityMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntityMessage.ProtoReflect.Descriptor instead.
 func (*EntityMessage) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{35}
+	return file_cyberia_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *EntityMessage) GetLevel() int32 {
@@ -2960,7 +3541,7 @@ type MapDataMessage struct {
 
 func (x *MapDataMessage) Reset() {
 	*x = MapDataMessage{}
-	mi := &file_cyberia_proto_msgTypes[36]
+	mi := &file_cyberia_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2972,7 +3553,7 @@ func (x *MapDataMessage) String() string {
 func (*MapDataMessage) ProtoMessage() {}
 
 func (x *MapDataMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[36]
+	mi := &file_cyberia_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2985,7 +3566,7 @@ func (x *MapDataMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MapDataMessage.ProtoReflect.Descriptor instead.
 func (*MapDataMessage) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{36}
+	return file_cyberia_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *MapDataMessage) GetMongoId() string {
@@ -3056,7 +3637,7 @@ type GetMapDataRequest struct {
 
 func (x *GetMapDataRequest) Reset() {
 	*x = GetMapDataRequest{}
-	mi := &file_cyberia_proto_msgTypes[37]
+	mi := &file_cyberia_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3068,7 +3649,7 @@ func (x *GetMapDataRequest) String() string {
 func (*GetMapDataRequest) ProtoMessage() {}
 
 func (x *GetMapDataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[37]
+	mi := &file_cyberia_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3081,7 +3662,7 @@ func (x *GetMapDataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMapDataRequest.ProtoReflect.Descriptor instead.
 func (*GetMapDataRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{37}
+	return file_cyberia_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *GetMapDataRequest) GetMapCode() string {
@@ -3107,7 +3688,7 @@ type GetMapDataResponse struct {
 
 func (x *GetMapDataResponse) Reset() {
 	*x = GetMapDataResponse{}
-	mi := &file_cyberia_proto_msgTypes[38]
+	mi := &file_cyberia_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3119,7 +3700,7 @@ func (x *GetMapDataResponse) String() string {
 func (*GetMapDataResponse) ProtoMessage() {}
 
 func (x *GetMapDataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[38]
+	mi := &file_cyberia_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3132,7 +3713,7 @@ func (x *GetMapDataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMapDataResponse.ProtoReflect.Descriptor instead.
 func (*GetMapDataResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{38}
+	return file_cyberia_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *GetMapDataResponse) GetMap() *MapDataMessage {
@@ -3150,7 +3731,7 @@ type PingRequest struct {
 
 func (x *PingRequest) Reset() {
 	*x = PingRequest{}
-	mi := &file_cyberia_proto_msgTypes[39]
+	mi := &file_cyberia_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3162,7 +3743,7 @@ func (x *PingRequest) String() string {
 func (*PingRequest) ProtoMessage() {}
 
 func (x *PingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[39]
+	mi := &file_cyberia_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3175,7 +3756,7 @@ func (x *PingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingRequest.ProtoReflect.Descriptor instead.
 func (*PingRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{39}
+	return file_cyberia_proto_rawDescGZIP(), []int{44}
 }
 
 type PingResponse struct {
@@ -3187,7 +3768,7 @@ type PingResponse struct {
 
 func (x *PingResponse) Reset() {
 	*x = PingResponse{}
-	mi := &file_cyberia_proto_msgTypes[40]
+	mi := &file_cyberia_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3199,7 +3780,7 @@ func (x *PingResponse) String() string {
 func (*PingResponse) ProtoMessage() {}
 
 func (x *PingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[40]
+	mi := &file_cyberia_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3212,7 +3793,7 @@ func (x *PingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingResponse.ProtoReflect.Descriptor instead.
 func (*PingResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{40}
+	return file_cyberia_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *PingResponse) GetServerTimeMs() int64 {
@@ -3233,7 +3814,7 @@ type ObjectLayerManifestEntry struct {
 
 func (x *ObjectLayerManifestEntry) Reset() {
 	*x = ObjectLayerManifestEntry{}
-	mi := &file_cyberia_proto_msgTypes[41]
+	mi := &file_cyberia_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3245,7 +3826,7 @@ func (x *ObjectLayerManifestEntry) String() string {
 func (*ObjectLayerManifestEntry) ProtoMessage() {}
 
 func (x *ObjectLayerManifestEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[41]
+	mi := &file_cyberia_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3258,7 +3839,7 @@ func (x *ObjectLayerManifestEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObjectLayerManifestEntry.ProtoReflect.Descriptor instead.
 func (*ObjectLayerManifestEntry) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{41}
+	return file_cyberia_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ObjectLayerManifestEntry) GetItemId() string {
@@ -3283,7 +3864,7 @@ type GetObjectLayerManifestRequest struct {
 
 func (x *GetObjectLayerManifestRequest) Reset() {
 	*x = GetObjectLayerManifestRequest{}
-	mi := &file_cyberia_proto_msgTypes[42]
+	mi := &file_cyberia_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3295,7 +3876,7 @@ func (x *GetObjectLayerManifestRequest) String() string {
 func (*GetObjectLayerManifestRequest) ProtoMessage() {}
 
 func (x *GetObjectLayerManifestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[42]
+	mi := &file_cyberia_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3308,7 +3889,7 @@ func (x *GetObjectLayerManifestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetObjectLayerManifestRequest.ProtoReflect.Descriptor instead.
 func (*GetObjectLayerManifestRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{42}
+	return file_cyberia_proto_rawDescGZIP(), []int{47}
 }
 
 type GetObjectLayerManifestResponse struct {
@@ -3320,7 +3901,7 @@ type GetObjectLayerManifestResponse struct {
 
 func (x *GetObjectLayerManifestResponse) Reset() {
 	*x = GetObjectLayerManifestResponse{}
-	mi := &file_cyberia_proto_msgTypes[43]
+	mi := &file_cyberia_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3332,7 +3913,7 @@ func (x *GetObjectLayerManifestResponse) String() string {
 func (*GetObjectLayerManifestResponse) ProtoMessage() {}
 
 func (x *GetObjectLayerManifestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[43]
+	mi := &file_cyberia_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3345,7 +3926,7 @@ func (x *GetObjectLayerManifestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetObjectLayerManifestResponse.ProtoReflect.Descriptor instead.
 func (*GetObjectLayerManifestResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{43}
+	return file_cyberia_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *GetObjectLayerManifestResponse) GetEntries() []*ObjectLayerManifestEntry {
@@ -3367,7 +3948,7 @@ type ConsumeGameLaunchTicketRequest struct {
 
 func (x *ConsumeGameLaunchTicketRequest) Reset() {
 	*x = ConsumeGameLaunchTicketRequest{}
-	mi := &file_cyberia_proto_msgTypes[44]
+	mi := &file_cyberia_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3379,7 +3960,7 @@ func (x *ConsumeGameLaunchTicketRequest) String() string {
 func (*ConsumeGameLaunchTicketRequest) ProtoMessage() {}
 
 func (x *ConsumeGameLaunchTicketRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[44]
+	mi := &file_cyberia_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3392,7 +3973,7 @@ func (x *ConsumeGameLaunchTicketRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsumeGameLaunchTicketRequest.ProtoReflect.Descriptor instead.
 func (*ConsumeGameLaunchTicketRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{44}
+	return file_cyberia_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ConsumeGameLaunchTicketRequest) GetTicket() string {
@@ -3426,8 +4007,8 @@ func (x *ConsumeGameLaunchTicketRequest) GetServerId() string {
 type ConsumeGameLaunchTicketResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Empty when accepted; else unknown | expired | replayed | wrong_instance |
-	// revoked | signed_in_elsewhere | busy (a resume whose session still holds
-	// its lease: try again).
+	// revoked | signed_in_elsewhere | busy (a resume whose session still writes
+	// on another server: try again).
 	Refusal       string `protobuf:"bytes,1,opt,name=refusal,proto3" json:"refusal,omitempty"`
 	AccountId     string `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`       // account only
 	DisplayName   string `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"` // account only: the account username
@@ -3438,7 +4019,7 @@ type ConsumeGameLaunchTicketResponse struct {
 
 func (x *ConsumeGameLaunchTicketResponse) Reset() {
 	*x = ConsumeGameLaunchTicketResponse{}
-	mi := &file_cyberia_proto_msgTypes[45]
+	mi := &file_cyberia_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3450,7 +4031,7 @@ func (x *ConsumeGameLaunchTicketResponse) String() string {
 func (*ConsumeGameLaunchTicketResponse) ProtoMessage() {}
 
 func (x *ConsumeGameLaunchTicketResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[45]
+	mi := &file_cyberia_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3463,7 +4044,7 @@ func (x *ConsumeGameLaunchTicketResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsumeGameLaunchTicketResponse.ProtoReflect.Descriptor instead.
 func (*ConsumeGameLaunchTicketResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{45}
+	return file_cyberia_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ConsumeGameLaunchTicketResponse) GetRefusal() string {
@@ -3506,7 +4087,7 @@ type IssueResumeTicketRequest struct {
 
 func (x *IssueResumeTicketRequest) Reset() {
 	*x = IssueResumeTicketRequest{}
-	mi := &file_cyberia_proto_msgTypes[46]
+	mi := &file_cyberia_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3518,7 +4099,7 @@ func (x *IssueResumeTicketRequest) String() string {
 func (*IssueResumeTicketRequest) ProtoMessage() {}
 
 func (x *IssueResumeTicketRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[46]
+	mi := &file_cyberia_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3531,7 +4112,7 @@ func (x *IssueResumeTicketRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IssueResumeTicketRequest.ProtoReflect.Descriptor instead.
 func (*IssueResumeTicketRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{46}
+	return file_cyberia_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *IssueResumeTicketRequest) GetPlayerId() string {
@@ -3564,7 +4145,7 @@ func (x *IssueResumeTicketRequest) GetInstanceCode() string {
 
 type IssueResumeTicketResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Refusal       string                 `protobuf:"bytes,1,opt,name=refusal,proto3" json:"refusal,omitempty"` // empty, or signed_in_elsewhere | revoked
+	Refusal       string                 `protobuf:"bytes,1,opt,name=refusal,proto3" json:"refusal,omitempty"` // empty, or signed_in_elsewhere | revoked | ended
 	Ticket        string                 `protobuf:"bytes,2,opt,name=ticket,proto3" json:"ticket,omitempty"`
 	ExpiresAtMs   int64                  `protobuf:"varint,3,opt,name=expires_at_ms,json=expiresAtMs,proto3" json:"expires_at_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -3573,7 +4154,7 @@ type IssueResumeTicketResponse struct {
 
 func (x *IssueResumeTicketResponse) Reset() {
 	*x = IssueResumeTicketResponse{}
-	mi := &file_cyberia_proto_msgTypes[47]
+	mi := &file_cyberia_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3585,7 +4166,7 @@ func (x *IssueResumeTicketResponse) String() string {
 func (*IssueResumeTicketResponse) ProtoMessage() {}
 
 func (x *IssueResumeTicketResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[47]
+	mi := &file_cyberia_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3598,7 +4179,7 @@ func (x *IssueResumeTicketResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IssueResumeTicketResponse.ProtoReflect.Descriptor instead.
 func (*IssueResumeTicketResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{47}
+	return file_cyberia_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *IssueResumeTicketResponse) GetRefusal() string {
@@ -3635,7 +4216,7 @@ type IssueTravelTicketRequest struct {
 
 func (x *IssueTravelTicketRequest) Reset() {
 	*x = IssueTravelTicketRequest{}
-	mi := &file_cyberia_proto_msgTypes[48]
+	mi := &file_cyberia_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3647,7 +4228,7 @@ func (x *IssueTravelTicketRequest) String() string {
 func (*IssueTravelTicketRequest) ProtoMessage() {}
 
 func (x *IssueTravelTicketRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[48]
+	mi := &file_cyberia_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3660,7 +4241,7 @@ func (x *IssueTravelTicketRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IssueTravelTicketRequest.ProtoReflect.Descriptor instead.
 func (*IssueTravelTicketRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{48}
+	return file_cyberia_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *IssueTravelTicketRequest) GetPlayerId() string {
@@ -3700,7 +4281,7 @@ func (x *IssueTravelTicketRequest) GetTargetCode() string {
 
 type IssueTravelTicketResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Refusal       string                 `protobuf:"bytes,1,opt,name=refusal,proto3" json:"refusal,omitempty"` // empty, or signed_in_elsewhere | revoked | no_route | unavailable
+	Refusal       string                 `protobuf:"bytes,1,opt,name=refusal,proto3" json:"refusal,omitempty"` // empty, or signed_in_elsewhere | revoked | ended | no_route | unavailable
 	Ticket        string                 `protobuf:"bytes,2,opt,name=ticket,proto3" json:"ticket,omitempty"`
 	ExpiresAtMs   int64                  `protobuf:"varint,3,opt,name=expires_at_ms,json=expiresAtMs,proto3" json:"expires_at_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -3709,7 +4290,7 @@ type IssueTravelTicketResponse struct {
 
 func (x *IssueTravelTicketResponse) Reset() {
 	*x = IssueTravelTicketResponse{}
-	mi := &file_cyberia_proto_msgTypes[49]
+	mi := &file_cyberia_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3721,7 +4302,7 @@ func (x *IssueTravelTicketResponse) String() string {
 func (*IssueTravelTicketResponse) ProtoMessage() {}
 
 func (x *IssueTravelTicketResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[49]
+	mi := &file_cyberia_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3734,7 +4315,7 @@ func (x *IssueTravelTicketResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IssueTravelTicketResponse.ProtoReflect.Descriptor instead.
 func (*IssueTravelTicketResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{49}
+	return file_cyberia_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *IssueTravelTicketResponse) GetRefusal() string {
@@ -3769,7 +4350,7 @@ type AcquirePlayerSessionRequest struct {
 
 func (x *AcquirePlayerSessionRequest) Reset() {
 	*x = AcquirePlayerSessionRequest{}
-	mi := &file_cyberia_proto_msgTypes[50]
+	mi := &file_cyberia_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3781,7 +4362,7 @@ func (x *AcquirePlayerSessionRequest) String() string {
 func (*AcquirePlayerSessionRequest) ProtoMessage() {}
 
 func (x *AcquirePlayerSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[50]
+	mi := &file_cyberia_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3794,7 +4375,7 @@ func (x *AcquirePlayerSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcquirePlayerSessionRequest.ProtoReflect.Descriptor instead.
 func (*AcquirePlayerSessionRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{50}
+	return file_cyberia_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *AcquirePlayerSessionRequest) GetConnectionId() string {
@@ -3819,20 +4400,22 @@ func (x *AcquirePlayerSessionRequest) GetServerId() string {
 }
 
 type AcquirePlayerSessionResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Refusal       string                 `protobuf:"bytes,1,opt,name=refusal,proto3" json:"refusal,omitempty"`                   // empty, or unknown | revoked
-	PlayerId      string                 `protobuf:"bytes,2,opt,name=player_id,json=playerId,proto3" json:"player_id,omitempty"` // the profile id
-	Epoch         uint64                 `protobuf:"varint,3,opt,name=epoch,proto3" json:"epoch,omitempty"`                      // every write of this session carries it
-	State         *PlayerState           `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"`
-	Created       bool                   `protobuf:"varint,5,opt,name=created,proto3" json:"created,omitempty"`                               // the first session of the account in this universe
-	LeaseSeconds  uint32                 `protobuf:"varint,6,opt,name=lease_seconds,json=leaseSeconds,proto3" json:"lease_seconds,omitempty"` // a checkpoint renews the lease before it ends
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Empty, or unknown | revoked | unavailable | saving (the session the
+	// account left still saves on another server: try again).
+	Refusal       string       `protobuf:"bytes,1,opt,name=refusal,proto3" json:"refusal,omitempty"`
+	PlayerId      string       `protobuf:"bytes,2,opt,name=player_id,json=playerId,proto3" json:"player_id,omitempty"` // the profile id
+	Epoch         uint64       `protobuf:"varint,3,opt,name=epoch,proto3" json:"epoch,omitempty"`                      // every write of this session carries it
+	State         *PlayerState `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"`
+	Created       bool         `protobuf:"varint,5,opt,name=created,proto3" json:"created,omitempty"`                               // the first session of the account in this universe
+	LeaseSeconds  uint32       `protobuf:"varint,6,opt,name=lease_seconds,json=leaseSeconds,proto3" json:"lease_seconds,omitempty"` // a checkpoint renews the lease before it ends
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AcquirePlayerSessionResponse) Reset() {
 	*x = AcquirePlayerSessionResponse{}
-	mi := &file_cyberia_proto_msgTypes[51]
+	mi := &file_cyberia_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3844,7 +4427,7 @@ func (x *AcquirePlayerSessionResponse) String() string {
 func (*AcquirePlayerSessionResponse) ProtoMessage() {}
 
 func (x *AcquirePlayerSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[51]
+	mi := &file_cyberia_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3857,7 +4440,7 @@ func (x *AcquirePlayerSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcquirePlayerSessionResponse.ProtoReflect.Descriptor instead.
 func (*AcquirePlayerSessionResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{51}
+	return file_cyberia_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *AcquirePlayerSessionResponse) GetRefusal() string {
@@ -3915,7 +4498,7 @@ type PlayerStack struct {
 
 func (x *PlayerStack) Reset() {
 	*x = PlayerStack{}
-	mi := &file_cyberia_proto_msgTypes[52]
+	mi := &file_cyberia_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3927,7 +4510,7 @@ func (x *PlayerStack) String() string {
 func (*PlayerStack) ProtoMessage() {}
 
 func (x *PlayerStack) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[52]
+	mi := &file_cyberia_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3940,7 +4523,7 @@ func (x *PlayerStack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerStack.ProtoReflect.Descriptor instead.
 func (*PlayerStack) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{52}
+	return file_cyberia_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *PlayerStack) GetItemId() string {
@@ -3988,7 +4571,7 @@ type PlayerVault struct {
 
 func (x *PlayerVault) Reset() {
 	*x = PlayerVault{}
-	mi := &file_cyberia_proto_msgTypes[53]
+	mi := &file_cyberia_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4000,7 +4583,7 @@ func (x *PlayerVault) String() string {
 func (*PlayerVault) ProtoMessage() {}
 
 func (x *PlayerVault) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[53]
+	mi := &file_cyberia_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4013,7 +4596,7 @@ func (x *PlayerVault) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerVault.ProtoReflect.Descriptor instead.
 func (*PlayerVault) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{53}
+	return file_cyberia_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *PlayerVault) GetActionCode() string {
@@ -4043,7 +4626,7 @@ type HeldStack struct {
 
 func (x *HeldStack) Reset() {
 	*x = HeldStack{}
-	mi := &file_cyberia_proto_msgTypes[54]
+	mi := &file_cyberia_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4055,7 +4638,7 @@ func (x *HeldStack) String() string {
 func (*HeldStack) ProtoMessage() {}
 
 func (x *HeldStack) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[54]
+	mi := &file_cyberia_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4068,7 +4651,7 @@ func (x *HeldStack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeldStack.ProtoReflect.Descriptor instead.
 func (*HeldStack) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{54}
+	return file_cyberia_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *HeldStack) GetStack() *PlayerStack {
@@ -4111,7 +4694,7 @@ type PlayerPosition struct {
 
 func (x *PlayerPosition) Reset() {
 	*x = PlayerPosition{}
-	mi := &file_cyberia_proto_msgTypes[55]
+	mi := &file_cyberia_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4123,7 +4706,7 @@ func (x *PlayerPosition) String() string {
 func (*PlayerPosition) ProtoMessage() {}
 
 func (x *PlayerPosition) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[55]
+	mi := &file_cyberia_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4136,7 +4719,7 @@ func (x *PlayerPosition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerPosition.ProtoReflect.Descriptor instead.
 func (*PlayerPosition) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{55}
+	return file_cyberia_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *PlayerPosition) GetMapCode() string {
@@ -4177,7 +4760,7 @@ type QuestObjectiveState struct {
 
 func (x *QuestObjectiveState) Reset() {
 	*x = QuestObjectiveState{}
-	mi := &file_cyberia_proto_msgTypes[56]
+	mi := &file_cyberia_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4189,7 +4772,7 @@ func (x *QuestObjectiveState) String() string {
 func (*QuestObjectiveState) ProtoMessage() {}
 
 func (x *QuestObjectiveState) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[56]
+	mi := &file_cyberia_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4202,7 +4785,7 @@ func (x *QuestObjectiveState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestObjectiveState.ProtoReflect.Descriptor instead.
 func (*QuestObjectiveState) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{56}
+	return file_cyberia_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *QuestObjectiveState) GetCurrent() uint32 {
@@ -4229,7 +4812,7 @@ type QuestStepState struct {
 
 func (x *QuestStepState) Reset() {
 	*x = QuestStepState{}
-	mi := &file_cyberia_proto_msgTypes[57]
+	mi := &file_cyberia_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4241,7 +4824,7 @@ func (x *QuestStepState) String() string {
 func (*QuestStepState) ProtoMessage() {}
 
 func (x *QuestStepState) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[57]
+	mi := &file_cyberia_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4254,7 +4837,7 @@ func (x *QuestStepState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestStepState.ProtoReflect.Descriptor instead.
 func (*QuestStepState) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{57}
+	return file_cyberia_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *QuestStepState) GetStepId() string {
@@ -4284,7 +4867,7 @@ type PlayerQuest struct {
 
 func (x *PlayerQuest) Reset() {
 	*x = PlayerQuest{}
-	mi := &file_cyberia_proto_msgTypes[58]
+	mi := &file_cyberia_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4296,7 +4879,7 @@ func (x *PlayerQuest) String() string {
 func (*PlayerQuest) ProtoMessage() {}
 
 func (x *PlayerQuest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[58]
+	mi := &file_cyberia_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4309,7 +4892,7 @@ func (x *PlayerQuest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerQuest.ProtoReflect.Descriptor instead.
 func (*PlayerQuest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{58}
+	return file_cyberia_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *PlayerQuest) GetQuestCode() string {
@@ -4367,7 +4950,7 @@ type PlayerState struct {
 
 func (x *PlayerState) Reset() {
 	*x = PlayerState{}
-	mi := &file_cyberia_proto_msgTypes[59]
+	mi := &file_cyberia_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4379,7 +4962,7 @@ func (x *PlayerState) String() string {
 func (*PlayerState) ProtoMessage() {}
 
 func (x *PlayerState) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[59]
+	mi := &file_cyberia_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4392,7 +4975,7 @@ func (x *PlayerState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerState.ProtoReflect.Descriptor instead.
 func (*PlayerState) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{59}
+	return file_cyberia_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *PlayerState) GetCoins() uint32 {
@@ -4472,7 +5055,7 @@ type CommitPlayerStateRequest struct {
 
 func (x *CommitPlayerStateRequest) Reset() {
 	*x = CommitPlayerStateRequest{}
-	mi := &file_cyberia_proto_msgTypes[60]
+	mi := &file_cyberia_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4484,7 +5067,7 @@ func (x *CommitPlayerStateRequest) String() string {
 func (*CommitPlayerStateRequest) ProtoMessage() {}
 
 func (x *CommitPlayerStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[60]
+	mi := &file_cyberia_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4497,7 +5080,7 @@ func (x *CommitPlayerStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitPlayerStateRequest.ProtoReflect.Descriptor instead.
 func (*CommitPlayerStateRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{60}
+	return file_cyberia_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *CommitPlayerStateRequest) GetPlayerId() string {
@@ -4543,17 +5126,19 @@ func (x *CommitPlayerStateRequest) GetPositionChanged() bool {
 }
 
 type CommitPlayerStateResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Refusal       string                 `protobuf:"bytes,1,opt,name=refusal,proto3" json:"refusal,omitempty"`      // empty, or stale_session | unknown | invalid
-	Duplicate     bool                   `protobuf:"varint,2,opt,name=duplicate,proto3" json:"duplicate,omitempty"` // this seq was already applied
-	Revision      uint64                 `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Empty, or stale_session | unknown | invalid | integrity (the database
+	// refuses the write as it stands: a retry waits for an operator repair).
+	Refusal       string `protobuf:"bytes,1,opt,name=refusal,proto3" json:"refusal,omitempty"`
+	Duplicate     bool   `protobuf:"varint,2,opt,name=duplicate,proto3" json:"duplicate,omitempty"` // this seq was already applied
+	Revision      uint64 `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CommitPlayerStateResponse) Reset() {
 	*x = CommitPlayerStateResponse{}
-	mi := &file_cyberia_proto_msgTypes[61]
+	mi := &file_cyberia_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4565,7 +5150,7 @@ func (x *CommitPlayerStateResponse) String() string {
 func (*CommitPlayerStateResponse) ProtoMessage() {}
 
 func (x *CommitPlayerStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[61]
+	mi := &file_cyberia_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4578,7 +5163,7 @@ func (x *CommitPlayerStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitPlayerStateResponse.ProtoReflect.Descriptor instead.
 func (*CommitPlayerStateResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{61}
+	return file_cyberia_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *CommitPlayerStateResponse) GetRefusal() string {
@@ -4602,6 +5187,912 @@ func (x *CommitPlayerStateResponse) GetRevision() uint64 {
 	return 0
 }
 
+// A stack an account player dropped on the ground of a world.
+type WorldDrop struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DropId        string                 `protobuf:"bytes,1,opt,name=drop_id,json=dropId,proto3" json:"drop_id,omitempty"` // the id of the drop operation; list only
+	MapCode       string                 `protobuf:"bytes,2,opt,name=map_code,json=mapCode,proto3" json:"map_code,omitempty"`
+	X             float64                `protobuf:"fixed64,3,opt,name=x,proto3" json:"x,omitempty"`
+	Y             float64                `protobuf:"fixed64,4,opt,name=y,proto3" json:"y,omitempty"`
+	ItemId        string                 `protobuf:"bytes,5,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"`
+	OlCid         string                 `protobuf:"bytes,6,opt,name=ol_cid,json=olCid,proto3" json:"ol_cid,omitempty"` // the definition the stack was granted with
+	Quantity      uint32                 `protobuf:"varint,7,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	OwnerPlayerId string                 `protobuf:"bytes,8,opt,name=owner_player_id,json=ownerPlayerId,proto3" json:"owner_player_id,omitempty"` // list only
+	ExpiresAtMs   int64                  `protobuf:"varint,9,opt,name=expires_at_ms,json=expiresAtMs,proto3" json:"expires_at_ms,omitempty"`      // list only
+	LifetimeMs    uint32                 `protobuf:"varint,10,opt,name=lifetime_ms,json=lifetimeMs,proto3" json:"lifetime_ms,omitempty"`          // commit only: how long it stays once the commit applies
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorldDrop) Reset() {
+	*x = WorldDrop{}
+	mi := &file_cyberia_proto_msgTypes[67]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorldDrop) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorldDrop) ProtoMessage() {}
+
+func (x *WorldDrop) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[67]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorldDrop.ProtoReflect.Descriptor instead.
+func (*WorldDrop) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{67}
+}
+
+func (x *WorldDrop) GetDropId() string {
+	if x != nil {
+		return x.DropId
+	}
+	return ""
+}
+
+func (x *WorldDrop) GetMapCode() string {
+	if x != nil {
+		return x.MapCode
+	}
+	return ""
+}
+
+func (x *WorldDrop) GetX() float64 {
+	if x != nil {
+		return x.X
+	}
+	return 0
+}
+
+func (x *WorldDrop) GetY() float64 {
+	if x != nil {
+		return x.Y
+	}
+	return 0
+}
+
+func (x *WorldDrop) GetItemId() string {
+	if x != nil {
+		return x.ItemId
+	}
+	return ""
+}
+
+func (x *WorldDrop) GetOlCid() string {
+	if x != nil {
+		return x.OlCid
+	}
+	return ""
+}
+
+func (x *WorldDrop) GetQuantity() uint32 {
+	if x != nil {
+		return x.Quantity
+	}
+	return 0
+}
+
+func (x *WorldDrop) GetOwnerPlayerId() string {
+	if x != nil {
+		return x.OwnerPlayerId
+	}
+	return ""
+}
+
+func (x *WorldDrop) GetExpiresAtMs() int64 {
+	if x != nil {
+		return x.ExpiresAtMs
+	}
+	return 0
+}
+
+func (x *WorldDrop) GetLifetimeMs() uint32 {
+	if x != nil {
+		return x.LifetimeMs
+	}
+	return 0
+}
+
+// A market operation of one player. The market checks every field against
+// its records in the transaction of the state.
+type MarketOp struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MarketCode    string                 `protobuf:"bytes,1,opt,name=market_code,json=marketCode,proto3" json:"market_code,omitempty"`
+	ListingId     string                 `protobuf:"bytes,3,opt,name=listing_id,json=listingId,proto3" json:"listing_id,omitempty"` // cancel, buy, bid
+	Revision      uint32                 `protobuf:"varint,4,opt,name=revision,proto3" json:"revision,omitempty"`                   // cancel, buy, bid: the revision the player saw
+	Mode          string                 `protobuf:"bytes,5,opt,name=mode,proto3" json:"mode,omitempty"`                            // list: fixed | auction
+	ItemId        string                 `protobuf:"bytes,6,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"`          // list, cancel, buy: the stack
+	OlCid         string                 `protobuf:"bytes,7,opt,name=ol_cid,json=olCid,proto3" json:"ol_cid,omitempty"`
+	Quantity      uint32                 `protobuf:"varint,8,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	Price         uint32                 `protobuf:"varint,9,opt,name=price,proto3" json:"price,omitempty"`                              // list: the price or the opening bid; buy: the price; bid: the bid
+	Hours         uint32                 `protobuf:"varint,10,opt,name=hours,proto3" json:"hours,omitempty"`                             // list
+	SaleFee       uint32                 `protobuf:"varint,11,opt,name=sale_fee,json=saleFee,proto3" json:"sale_fee,omitempty"`          // list: the sale fee the seller saw
+	SellerName    string                 `protobuf:"bytes,12,opt,name=seller_name,json=sellerName,proto3" json:"seller_name,omitempty"`  // list
+	ClaimIds      []string               `protobuf:"bytes,13,rep,name=claim_ids,json=claimIds,proto3" json:"claim_ids,omitempty"`        // collect
+	Coins         uint32                 `protobuf:"varint,14,opt,name=coins,proto3" json:"coins,omitempty"`                             // collect: the coins of the claims
+	Stacks        []*PlayerStack         `protobuf:"bytes,15,rep,name=stacks,proto3" json:"stacks,omitempty"`                            // collect: the stacks of the claims
+	ListingFee    uint32                 `protobuf:"varint,16,opt,name=listing_fee,json=listingFee,proto3" json:"listing_fee,omitempty"` // list: the listing fee the seller saw
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MarketOp) Reset() {
+	*x = MarketOp{}
+	mi := &file_cyberia_proto_msgTypes[68]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MarketOp) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MarketOp) ProtoMessage() {}
+
+func (x *MarketOp) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[68]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MarketOp.ProtoReflect.Descriptor instead.
+func (*MarketOp) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{68}
+}
+
+func (x *MarketOp) GetMarketCode() string {
+	if x != nil {
+		return x.MarketCode
+	}
+	return ""
+}
+
+func (x *MarketOp) GetListingId() string {
+	if x != nil {
+		return x.ListingId
+	}
+	return ""
+}
+
+func (x *MarketOp) GetRevision() uint32 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *MarketOp) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+func (x *MarketOp) GetItemId() string {
+	if x != nil {
+		return x.ItemId
+	}
+	return ""
+}
+
+func (x *MarketOp) GetOlCid() string {
+	if x != nil {
+		return x.OlCid
+	}
+	return ""
+}
+
+func (x *MarketOp) GetQuantity() uint32 {
+	if x != nil {
+		return x.Quantity
+	}
+	return 0
+}
+
+func (x *MarketOp) GetPrice() uint32 {
+	if x != nil {
+		return x.Price
+	}
+	return 0
+}
+
+func (x *MarketOp) GetHours() uint32 {
+	if x != nil {
+		return x.Hours
+	}
+	return 0
+}
+
+func (x *MarketOp) GetSaleFee() uint32 {
+	if x != nil {
+		return x.SaleFee
+	}
+	return 0
+}
+
+func (x *MarketOp) GetSellerName() string {
+	if x != nil {
+		return x.SellerName
+	}
+	return ""
+}
+
+func (x *MarketOp) GetClaimIds() []string {
+	if x != nil {
+		return x.ClaimIds
+	}
+	return nil
+}
+
+func (x *MarketOp) GetCoins() uint32 {
+	if x != nil {
+		return x.Coins
+	}
+	return 0
+}
+
+func (x *MarketOp) GetStacks() []*PlayerStack {
+	if x != nil {
+		return x.Stacks
+	}
+	return nil
+}
+
+func (x *MarketOp) GetListingFee() uint32 {
+	if x != nil {
+		return x.ListingFee
+	}
+	return 0
+}
+
+type CommitPlayerStatesRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	OperationId string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"` // one id per operation; a retry repeats it
+	// trade | drop | pickup | market_list | market_cancel | market_buy |
+	// market_bid | market_collect
+	Kind          string                      `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Commits       []*CommitPlayerStateRequest `protobuf:"bytes,3,rep,name=commits,proto3" json:"commits,omitempty"`                              // distinct players: two or more for a trade, one else
+	Drop          *WorldDrop                  `protobuf:"bytes,4,opt,name=drop,proto3" json:"drop,omitempty"`                                    // drop: the stack it puts on the ground
+	ClaimDropId   string                      `protobuf:"bytes,5,opt,name=claim_drop_id,json=claimDropId,proto3" json:"claim_drop_id,omitempty"` // pickup: the world drop it claims
+	Market        *MarketOp                   `protobuf:"bytes,6,opt,name=market,proto3" json:"market,omitempty"`                                // market_*
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommitPlayerStatesRequest) Reset() {
+	*x = CommitPlayerStatesRequest{}
+	mi := &file_cyberia_proto_msgTypes[69]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommitPlayerStatesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommitPlayerStatesRequest) ProtoMessage() {}
+
+func (x *CommitPlayerStatesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[69]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommitPlayerStatesRequest.ProtoReflect.Descriptor instead.
+func (*CommitPlayerStatesRequest) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{69}
+}
+
+func (x *CommitPlayerStatesRequest) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+func (x *CommitPlayerStatesRequest) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *CommitPlayerStatesRequest) GetCommits() []*CommitPlayerStateRequest {
+	if x != nil {
+		return x.Commits
+	}
+	return nil
+}
+
+func (x *CommitPlayerStatesRequest) GetDrop() *WorldDrop {
+	if x != nil {
+		return x.Drop
+	}
+	return nil
+}
+
+func (x *CommitPlayerStatesRequest) GetClaimDropId() string {
+	if x != nil {
+		return x.ClaimDropId
+	}
+	return ""
+}
+
+func (x *CommitPlayerStatesRequest) GetMarket() *MarketOp {
+	if x != nil {
+		return x.Market
+	}
+	return nil
+}
+
+type CommitPlayerStatesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Empty, or stale_session | unknown | invalid | integrity. An operation
+	// refusal ends no session: drop_gone (the world drop a pickup claims is claimed, expired or
+	// unknown), listing_gone, listing_changed, bid_low, market_full, claim_gone,
+	// market_closed, market_changed (the fees the seller saw are not the fees of
+	// the profile), terms_refused (a mode, duration, price or bid outside the terms).
+	Refusal       string `protobuf:"bytes,1,opt,name=refusal,proto3" json:"refusal,omitempty"`
+	PlayerId      string `protobuf:"bytes,2,opt,name=player_id,json=playerId,proto3" json:"player_id,omitempty"` // the player a refusal names
+	Duplicate     bool   `protobuf:"varint,3,opt,name=duplicate,proto3" json:"duplicate,omitempty"`              // the operation was already applied
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommitPlayerStatesResponse) Reset() {
+	*x = CommitPlayerStatesResponse{}
+	mi := &file_cyberia_proto_msgTypes[70]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommitPlayerStatesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommitPlayerStatesResponse) ProtoMessage() {}
+
+func (x *CommitPlayerStatesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[70]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommitPlayerStatesResponse.ProtoReflect.Descriptor instead.
+func (*CommitPlayerStatesResponse) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{70}
+}
+
+func (x *CommitPlayerStatesResponse) GetRefusal() string {
+	if x != nil {
+		return x.Refusal
+	}
+	return ""
+}
+
+func (x *CommitPlayerStatesResponse) GetPlayerId() string {
+	if x != nil {
+		return x.PlayerId
+	}
+	return ""
+}
+
+func (x *CommitPlayerStatesResponse) GetDuplicate() bool {
+	if x != nil {
+		return x.Duplicate
+	}
+	return false
+}
+
+type ListWorldDropsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InstanceCode  string                 `protobuf:"bytes,1,opt,name=instance_code,json=instanceCode,proto3" json:"instance_code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListWorldDropsRequest) Reset() {
+	*x = ListWorldDropsRequest{}
+	mi := &file_cyberia_proto_msgTypes[71]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListWorldDropsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListWorldDropsRequest) ProtoMessage() {}
+
+func (x *ListWorldDropsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[71]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListWorldDropsRequest.ProtoReflect.Descriptor instead.
+func (*ListWorldDropsRequest) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{71}
+}
+
+func (x *ListWorldDropsRequest) GetInstanceCode() string {
+	if x != nil {
+		return x.InstanceCode
+	}
+	return ""
+}
+
+type ListWorldDropsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Drops         []*WorldDrop           `protobuf:"bytes,1,rep,name=drops,proto3" json:"drops,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListWorldDropsResponse) Reset() {
+	*x = ListWorldDropsResponse{}
+	mi := &file_cyberia_proto_msgTypes[72]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListWorldDropsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListWorldDropsResponse) ProtoMessage() {}
+
+func (x *ListWorldDropsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[72]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListWorldDropsResponse.ProtoReflect.Descriptor instead.
+func (*ListWorldDropsResponse) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{72}
+}
+
+func (x *ListWorldDropsResponse) GetDrops() []*WorldDrop {
+	if x != nil {
+		return x.Drops
+	}
+	return nil
+}
+
+type ListMarketRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InstanceCode  string                 `protobuf:"bytes,1,opt,name=instance_code,json=instanceCode,proto3" json:"instance_code,omitempty"` // the world of the terminal
+	MarketCode    string                 `protobuf:"bytes,2,opt,name=market_code,json=marketCode,proto3" json:"market_code,omitempty"`
+	PlayerId      string                 `protobuf:"bytes,4,opt,name=player_id,json=playerId,proto3" json:"player_id,omitempty"` // the viewer
+	ItemId        string                 `protobuf:"bytes,5,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"`       // optional: listings of one item
+	After         string                 `protobuf:"bytes,6,opt,name=after,proto3" json:"after,omitempty"`                       // the cursor of the page; empty: the first
+	Mode          string                 `protobuf:"bytes,7,opt,name=mode,proto3" json:"mode,omitempty"`                         // optional: listings of one mode
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMarketRequest) Reset() {
+	*x = ListMarketRequest{}
+	mi := &file_cyberia_proto_msgTypes[73]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMarketRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMarketRequest) ProtoMessage() {}
+
+func (x *ListMarketRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[73]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMarketRequest.ProtoReflect.Descriptor instead.
+func (*ListMarketRequest) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{73}
+}
+
+func (x *ListMarketRequest) GetInstanceCode() string {
+	if x != nil {
+		return x.InstanceCode
+	}
+	return ""
+}
+
+func (x *ListMarketRequest) GetMarketCode() string {
+	if x != nil {
+		return x.MarketCode
+	}
+	return ""
+}
+
+func (x *ListMarketRequest) GetPlayerId() string {
+	if x != nil {
+		return x.PlayerId
+	}
+	return ""
+}
+
+func (x *ListMarketRequest) GetItemId() string {
+	if x != nil {
+		return x.ItemId
+	}
+	return ""
+}
+
+func (x *ListMarketRequest) GetAfter() string {
+	if x != nil {
+		return x.After
+	}
+	return ""
+}
+
+func (x *ListMarketRequest) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+type MarketListing struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ListingId     string                 `protobuf:"bytes,1,opt,name=listing_id,json=listingId,proto3" json:"listing_id,omitempty"`
+	Revision      uint32                 `protobuf:"varint,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	SellerName    string                 `protobuf:"bytes,3,opt,name=seller_name,json=sellerName,proto3" json:"seller_name,omitempty"`
+	ItemId        string                 `protobuf:"bytes,4,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"`
+	OlCid         string                 `protobuf:"bytes,5,opt,name=ol_cid,json=olCid,proto3" json:"ol_cid,omitempty"`
+	Quantity      uint32                 `protobuf:"varint,6,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	Mode          string                 `protobuf:"bytes,7,opt,name=mode,proto3" json:"mode,omitempty"`    // fixed | auction
+	Price         uint32                 `protobuf:"varint,8,opt,name=price,proto3" json:"price,omitempty"` // the fixed price, or the opening bid
+	Bid           uint32                 `protobuf:"varint,9,opt,name=bid,proto3" json:"bid,omitempty"`     // the highest bid; 0: none
+	Bids          uint32                 `protobuf:"varint,10,opt,name=bids,proto3" json:"bids,omitempty"`
+	MinBid        uint32                 `protobuf:"varint,11,opt,name=min_bid,json=minBid,proto3" json:"min_bid,omitempty"` // auction: the lowest bid it takes now
+	EndsAtMs      int64                  `protobuf:"varint,12,opt,name=ends_at_ms,json=endsAtMs,proto3" json:"ends_at_ms,omitempty"`
+	Mine          bool                   `protobuf:"varint,13,opt,name=mine,proto3" json:"mine,omitempty"`       // the viewer sells it
+	Leading       bool                   `protobuf:"varint,14,opt,name=leading,proto3" json:"leading,omitempty"` // the viewer holds the highest bid
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MarketListing) Reset() {
+	*x = MarketListing{}
+	mi := &file_cyberia_proto_msgTypes[74]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MarketListing) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MarketListing) ProtoMessage() {}
+
+func (x *MarketListing) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[74]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MarketListing.ProtoReflect.Descriptor instead.
+func (*MarketListing) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{74}
+}
+
+func (x *MarketListing) GetListingId() string {
+	if x != nil {
+		return x.ListingId
+	}
+	return ""
+}
+
+func (x *MarketListing) GetRevision() uint32 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *MarketListing) GetSellerName() string {
+	if x != nil {
+		return x.SellerName
+	}
+	return ""
+}
+
+func (x *MarketListing) GetItemId() string {
+	if x != nil {
+		return x.ItemId
+	}
+	return ""
+}
+
+func (x *MarketListing) GetOlCid() string {
+	if x != nil {
+		return x.OlCid
+	}
+	return ""
+}
+
+func (x *MarketListing) GetQuantity() uint32 {
+	if x != nil {
+		return x.Quantity
+	}
+	return 0
+}
+
+func (x *MarketListing) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+func (x *MarketListing) GetPrice() uint32 {
+	if x != nil {
+		return x.Price
+	}
+	return 0
+}
+
+func (x *MarketListing) GetBid() uint32 {
+	if x != nil {
+		return x.Bid
+	}
+	return 0
+}
+
+func (x *MarketListing) GetBids() uint32 {
+	if x != nil {
+		return x.Bids
+	}
+	return 0
+}
+
+func (x *MarketListing) GetMinBid() uint32 {
+	if x != nil {
+		return x.MinBid
+	}
+	return 0
+}
+
+func (x *MarketListing) GetEndsAtMs() int64 {
+	if x != nil {
+		return x.EndsAtMs
+	}
+	return 0
+}
+
+func (x *MarketListing) GetMine() bool {
+	if x != nil {
+		return x.Mine
+	}
+	return false
+}
+
+func (x *MarketListing) GetLeading() bool {
+	if x != nil {
+		return x.Leading
+	}
+	return false
+}
+
+type MarketClaim struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClaimId       string                 `protobuf:"bytes,1,opt,name=claim_id,json=claimId,proto3" json:"claim_id,omitempty"`
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"` // sale | won | outbid | unsold
+	Coins         uint32                 `protobuf:"varint,3,opt,name=coins,proto3" json:"coins,omitempty"`
+	Stack         *PlayerStack           `protobuf:"bytes,4,opt,name=stack,proto3" json:"stack,omitempty"`                             // absent: coins only
+	MarketCode    string                 `protobuf:"bytes,5,opt,name=market_code,json=marketCode,proto3" json:"market_code,omitempty"` // the market that owes it
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MarketClaim) Reset() {
+	*x = MarketClaim{}
+	mi := &file_cyberia_proto_msgTypes[75]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MarketClaim) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MarketClaim) ProtoMessage() {}
+
+func (x *MarketClaim) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[75]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MarketClaim.ProtoReflect.Descriptor instead.
+func (*MarketClaim) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{75}
+}
+
+func (x *MarketClaim) GetClaimId() string {
+	if x != nil {
+		return x.ClaimId
+	}
+	return ""
+}
+
+func (x *MarketClaim) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *MarketClaim) GetCoins() uint32 {
+	if x != nil {
+		return x.Coins
+	}
+	return 0
+}
+
+func (x *MarketClaim) GetStack() *PlayerStack {
+	if x != nil {
+		return x.Stack
+	}
+	return nil
+}
+
+func (x *MarketClaim) GetMarketCode() string {
+	if x != nil {
+		return x.MarketCode
+	}
+	return ""
+}
+
+type ListMarketResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Listings      []*MarketListing       `protobuf:"bytes,1,rep,name=listings,proto3" json:"listings,omitempty"`                 // soonest end first
+	Next          string                 `protobuf:"bytes,2,opt,name=next,proto3" json:"next,omitempty"`                         // the cursor of the next page; empty: the last
+	Mine          []*MarketListing       `protobuf:"bytes,3,rep,name=mine,proto3" json:"mine,omitempty"`                         // the open listings of the viewer in this market
+	Claims        []*MarketClaim         `protobuf:"bytes,4,rep,name=claims,proto3" json:"claims,omitempty"`                     // the pending claims of the viewer
+	ScopeKey      string                 `protobuf:"bytes,5,opt,name=scope_key,json=scopeKey,proto3" json:"scope_key,omitempty"` // the market of this world; empty: none
+	Revision      uint64                 `protobuf:"varint,6,opt,name=revision,proto3" json:"revision,omitempty"`                // the profile revision
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMarketResponse) Reset() {
+	*x = ListMarketResponse{}
+	mi := &file_cyberia_proto_msgTypes[76]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMarketResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMarketResponse) ProtoMessage() {}
+
+func (x *ListMarketResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[76]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMarketResponse.ProtoReflect.Descriptor instead.
+func (*ListMarketResponse) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{76}
+}
+
+func (x *ListMarketResponse) GetListings() []*MarketListing {
+	if x != nil {
+		return x.Listings
+	}
+	return nil
+}
+
+func (x *ListMarketResponse) GetNext() string {
+	if x != nil {
+		return x.Next
+	}
+	return ""
+}
+
+func (x *ListMarketResponse) GetMine() []*MarketListing {
+	if x != nil {
+		return x.Mine
+	}
+	return nil
+}
+
+func (x *ListMarketResponse) GetClaims() []*MarketClaim {
+	if x != nil {
+		return x.Claims
+	}
+	return nil
+}
+
+func (x *ListMarketResponse) GetScopeKey() string {
+	if x != nil {
+		return x.ScopeKey
+	}
+	return ""
+}
+
+func (x *ListMarketResponse) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
 type SessionCheckpoint struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PlayerId      string                 `protobuf:"bytes,1,opt,name=player_id,json=playerId,proto3" json:"player_id,omitempty"`
@@ -4609,13 +6100,14 @@ type SessionCheckpoint struct {
 	Epoch         uint64                 `protobuf:"varint,3,opt,name=epoch,proto3" json:"epoch,omitempty"`
 	MapCode       string                 `protobuf:"bytes,4,opt,name=map_code,json=mapCode,proto3" json:"map_code,omitempty"` // presence
 	Position      *PlayerPosition        `protobuf:"bytes,5,opt,name=position,proto3" json:"position,omitempty"`              // set only when it changed
+	Health        *SessionHealth         `protobuf:"bytes,6,opt,name=health,proto3" json:"health,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SessionCheckpoint) Reset() {
 	*x = SessionCheckpoint{}
-	mi := &file_cyberia_proto_msgTypes[62]
+	mi := &file_cyberia_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4627,7 +6119,7 @@ func (x *SessionCheckpoint) String() string {
 func (*SessionCheckpoint) ProtoMessage() {}
 
 func (x *SessionCheckpoint) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[62]
+	mi := &file_cyberia_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4640,7 +6132,7 @@ func (x *SessionCheckpoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionCheckpoint.ProtoReflect.Descriptor instead.
 func (*SessionCheckpoint) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{62}
+	return file_cyberia_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *SessionCheckpoint) GetPlayerId() string {
@@ -4678,6 +6170,98 @@ func (x *SessionCheckpoint) GetPosition() *PlayerPosition {
 	return nil
 }
 
+func (x *SessionCheckpoint) GetHealth() *SessionHealth {
+	if x != nil {
+		return x.Health
+	}
+	return nil
+}
+
+// How far the engine holds the state of one session, as its server sees it.
+type SessionHealth struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Durability    string                 `protobuf:"bytes,1,opt,name=durability,proto3" json:"durability,omitempty"`                    // saved | saving | degraded | recovery
+	Closing       bool                   `protobuf:"varint,2,opt,name=closing,proto3" json:"closing,omitempty"`                         // the session ended; its final state is on its way
+	Seq           uint64                 `protobuf:"varint,3,opt,name=seq,proto3" json:"seq,omitempty"`                                 // the newest captured state
+	DurableSeq    uint64                 `protobuf:"varint,4,opt,name=durable_seq,json=durableSeq,proto3" json:"durable_seq,omitempty"` // the newest state the engine applied
+	UnsavedMs     uint32                 `protobuf:"varint,5,opt,name=unsaved_ms,json=unsavedMs,proto3" json:"unsaved_ms,omitempty"`    // age of the oldest change not applied; 0 when saved
+	Failure       string                 `protobuf:"bytes,6,opt,name=failure,proto3" json:"failure,omitempty"`                          // empty, or transport | integrity | rejected
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SessionHealth) Reset() {
+	*x = SessionHealth{}
+	mi := &file_cyberia_proto_msgTypes[78]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionHealth) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionHealth) ProtoMessage() {}
+
+func (x *SessionHealth) ProtoReflect() protoreflect.Message {
+	mi := &file_cyberia_proto_msgTypes[78]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionHealth.ProtoReflect.Descriptor instead.
+func (*SessionHealth) Descriptor() ([]byte, []int) {
+	return file_cyberia_proto_rawDescGZIP(), []int{78}
+}
+
+func (x *SessionHealth) GetDurability() string {
+	if x != nil {
+		return x.Durability
+	}
+	return ""
+}
+
+func (x *SessionHealth) GetClosing() bool {
+	if x != nil {
+		return x.Closing
+	}
+	return false
+}
+
+func (x *SessionHealth) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *SessionHealth) GetDurableSeq() uint64 {
+	if x != nil {
+		return x.DurableSeq
+	}
+	return 0
+}
+
+func (x *SessionHealth) GetUnsavedMs() uint32 {
+	if x != nil {
+		return x.UnsavedMs
+	}
+	return 0
+}
+
+func (x *SessionHealth) GetFailure() string {
+	if x != nil {
+		return x.Failure
+	}
+	return ""
+}
+
 type CheckpointPlayerSessionsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -4689,7 +6273,7 @@ type CheckpointPlayerSessionsRequest struct {
 
 func (x *CheckpointPlayerSessionsRequest) Reset() {
 	*x = CheckpointPlayerSessionsRequest{}
-	mi := &file_cyberia_proto_msgTypes[63]
+	mi := &file_cyberia_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4701,7 +6285,7 @@ func (x *CheckpointPlayerSessionsRequest) String() string {
 func (*CheckpointPlayerSessionsRequest) ProtoMessage() {}
 
 func (x *CheckpointPlayerSessionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[63]
+	mi := &file_cyberia_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4714,7 +6298,7 @@ func (x *CheckpointPlayerSessionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckpointPlayerSessionsRequest.ProtoReflect.Descriptor instead.
 func (*CheckpointPlayerSessionsRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{63}
+	return file_cyberia_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *CheckpointPlayerSessionsRequest) GetServerId() string {
@@ -4741,14 +6325,14 @@ func (x *CheckpointPlayerSessionsRequest) GetSessions() []*SessionCheckpoint {
 type EndedSession struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PlayerId      string                 `protobuf:"bytes,1,opt,name=player_id,json=playerId,proto3" json:"player_id,omitempty"`
-	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"` // signed_in_elsewhere | revoked
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"` // signed_in_elsewhere | revoked | ended (by an operator)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EndedSession) Reset() {
 	*x = EndedSession{}
-	mi := &file_cyberia_proto_msgTypes[64]
+	mi := &file_cyberia_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4760,7 +6344,7 @@ func (x *EndedSession) String() string {
 func (*EndedSession) ProtoMessage() {}
 
 func (x *EndedSession) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[64]
+	mi := &file_cyberia_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4773,7 +6357,7 @@ func (x *EndedSession) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndedSession.ProtoReflect.Descriptor instead.
 func (*EndedSession) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{64}
+	return file_cyberia_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *EndedSession) GetPlayerId() string {
@@ -4799,7 +6383,7 @@ type CheckpointPlayerSessionsResponse struct {
 
 func (x *CheckpointPlayerSessionsResponse) Reset() {
 	*x = CheckpointPlayerSessionsResponse{}
-	mi := &file_cyberia_proto_msgTypes[65]
+	mi := &file_cyberia_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4811,7 +6395,7 @@ func (x *CheckpointPlayerSessionsResponse) String() string {
 func (*CheckpointPlayerSessionsResponse) ProtoMessage() {}
 
 func (x *CheckpointPlayerSessionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[65]
+	mi := &file_cyberia_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4824,7 +6408,7 @@ func (x *CheckpointPlayerSessionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckpointPlayerSessionsResponse.ProtoReflect.Descriptor instead.
 func (*CheckpointPlayerSessionsResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{65}
+	return file_cyberia_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *CheckpointPlayerSessionsResponse) GetEnded() []*EndedSession {
@@ -4845,7 +6429,7 @@ type ReleasePlayerSessionRequest struct {
 
 func (x *ReleasePlayerSessionRequest) Reset() {
 	*x = ReleasePlayerSessionRequest{}
-	mi := &file_cyberia_proto_msgTypes[66]
+	mi := &file_cyberia_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4857,7 +6441,7 @@ func (x *ReleasePlayerSessionRequest) String() string {
 func (*ReleasePlayerSessionRequest) ProtoMessage() {}
 
 func (x *ReleasePlayerSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[66]
+	mi := &file_cyberia_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4870,7 +6454,7 @@ func (x *ReleasePlayerSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleasePlayerSessionRequest.ProtoReflect.Descriptor instead.
 func (*ReleasePlayerSessionRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{66}
+	return file_cyberia_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *ReleasePlayerSessionRequest) GetPlayerId() string {
@@ -4902,7 +6486,7 @@ type ReleasePlayerSessionResponse struct {
 
 func (x *ReleasePlayerSessionResponse) Reset() {
 	*x = ReleasePlayerSessionResponse{}
-	mi := &file_cyberia_proto_msgTypes[67]
+	mi := &file_cyberia_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4914,7 +6498,7 @@ func (x *ReleasePlayerSessionResponse) String() string {
 func (*ReleasePlayerSessionResponse) ProtoMessage() {}
 
 func (x *ReleasePlayerSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[67]
+	mi := &file_cyberia_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4927,7 +6511,7 @@ func (x *ReleasePlayerSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleasePlayerSessionResponse.ProtoReflect.Descriptor instead.
 func (*ReleasePlayerSessionResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{67}
+	return file_cyberia_proto_rawDescGZIP(), []int{83}
 }
 
 type Friend struct {
@@ -4948,7 +6532,7 @@ type Friend struct {
 
 func (x *Friend) Reset() {
 	*x = Friend{}
-	mi := &file_cyberia_proto_msgTypes[68]
+	mi := &file_cyberia_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4960,7 +6544,7 @@ func (x *Friend) String() string {
 func (*Friend) ProtoMessage() {}
 
 func (x *Friend) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[68]
+	mi := &file_cyberia_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4973,7 +6557,7 @@ func (x *Friend) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Friend.ProtoReflect.Descriptor instead.
 func (*Friend) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{68}
+	return file_cyberia_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *Friend) GetFriendshipId() string {
@@ -5055,7 +6639,7 @@ type ListFriendsRequest struct {
 
 func (x *ListFriendsRequest) Reset() {
 	*x = ListFriendsRequest{}
-	mi := &file_cyberia_proto_msgTypes[69]
+	mi := &file_cyberia_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5067,7 +6651,7 @@ func (x *ListFriendsRequest) String() string {
 func (*ListFriendsRequest) ProtoMessage() {}
 
 func (x *ListFriendsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[69]
+	mi := &file_cyberia_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5080,7 +6664,7 @@ func (x *ListFriendsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFriendsRequest.ProtoReflect.Descriptor instead.
 func (*ListFriendsRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{69}
+	return file_cyberia_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *ListFriendsRequest) GetAccountId() string {
@@ -5101,7 +6685,7 @@ type ListFriendsResponse struct {
 
 func (x *ListFriendsResponse) Reset() {
 	*x = ListFriendsResponse{}
-	mi := &file_cyberia_proto_msgTypes[70]
+	mi := &file_cyberia_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5113,7 +6697,7 @@ func (x *ListFriendsResponse) String() string {
 func (*ListFriendsResponse) ProtoMessage() {}
 
 func (x *ListFriendsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[70]
+	mi := &file_cyberia_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5126,7 +6710,7 @@ func (x *ListFriendsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFriendsResponse.ProtoReflect.Descriptor instead.
 func (*ListFriendsResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{70}
+	return file_cyberia_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *ListFriendsResponse) GetFriends() []*Friend {
@@ -5162,7 +6746,7 @@ type UpdateFriendshipRequest struct {
 
 func (x *UpdateFriendshipRequest) Reset() {
 	*x = UpdateFriendshipRequest{}
-	mi := &file_cyberia_proto_msgTypes[71]
+	mi := &file_cyberia_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5174,7 +6758,7 @@ func (x *UpdateFriendshipRequest) String() string {
 func (*UpdateFriendshipRequest) ProtoMessage() {}
 
 func (x *UpdateFriendshipRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[71]
+	mi := &file_cyberia_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5187,7 +6771,7 @@ func (x *UpdateFriendshipRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateFriendshipRequest.ProtoReflect.Descriptor instead.
 func (*UpdateFriendshipRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{71}
+	return file_cyberia_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *UpdateFriendshipRequest) GetAccountId() string {
@@ -5229,7 +6813,7 @@ type UpdateFriendshipResponse struct {
 
 func (x *UpdateFriendshipResponse) Reset() {
 	*x = UpdateFriendshipResponse{}
-	mi := &file_cyberia_proto_msgTypes[72]
+	mi := &file_cyberia_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5241,7 +6825,7 @@ func (x *UpdateFriendshipResponse) String() string {
 func (*UpdateFriendshipResponse) ProtoMessage() {}
 
 func (x *UpdateFriendshipResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[72]
+	mi := &file_cyberia_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5254,7 +6838,7 @@ func (x *UpdateFriendshipResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateFriendshipResponse.ProtoReflect.Descriptor instead.
 func (*UpdateFriendshipResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{72}
+	return file_cyberia_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *UpdateFriendshipResponse) GetRefusal() string {
@@ -5281,7 +6865,7 @@ type UpdateStatusNoteRequest struct {
 
 func (x *UpdateStatusNoteRequest) Reset() {
 	*x = UpdateStatusNoteRequest{}
-	mi := &file_cyberia_proto_msgTypes[73]
+	mi := &file_cyberia_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5293,7 +6877,7 @@ func (x *UpdateStatusNoteRequest) String() string {
 func (*UpdateStatusNoteRequest) ProtoMessage() {}
 
 func (x *UpdateStatusNoteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[73]
+	mi := &file_cyberia_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5306,7 +6890,7 @@ func (x *UpdateStatusNoteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateStatusNoteRequest.ProtoReflect.Descriptor instead.
 func (*UpdateStatusNoteRequest) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{73}
+	return file_cyberia_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *UpdateStatusNoteRequest) GetAccountId() string {
@@ -5335,7 +6919,7 @@ type UpdateStatusNoteResponse struct {
 
 func (x *UpdateStatusNoteResponse) Reset() {
 	*x = UpdateStatusNoteResponse{}
-	mi := &file_cyberia_proto_msgTypes[74]
+	mi := &file_cyberia_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5347,7 +6931,7 @@ func (x *UpdateStatusNoteResponse) String() string {
 func (*UpdateStatusNoteResponse) ProtoMessage() {}
 
 func (x *UpdateStatusNoteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cyberia_proto_msgTypes[74]
+	mi := &file_cyberia_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5360,7 +6944,7 @@ func (x *UpdateStatusNoteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateStatusNoteResponse.ProtoReflect.Descriptor instead.
 func (*UpdateStatusNoteResponse) Descriptor() ([]byte, []int) {
-	return file_cyberia_proto_rawDescGZIP(), []int{74}
+	return file_cyberia_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *UpdateStatusNoteResponse) GetRefusal() string {
@@ -5478,11 +7062,13 @@ const file_cyberia_proto_rawDesc = "" +
 	"\tprice_qty\x18\x03 \x01(\x05R\bpriceQtyJ\x04\b\x04\x10\x05J\x04\b\x05\x10\x06R\x10object_layer_cidR\x16price_object_layer_cid\"T\n" +
 	"\x0fActionCraftItem\x12\x17\n" +
 	"\aitem_id\x18\x01 \x01(\tR\x06itemId\x12\x10\n" +
-	"\x03qty\x18\x02 \x01(\x05R\x03qtyJ\x04\b\x03\x10\x04R\x10object_layer_cid\"\xb0\x01\n" +
+	"\x03qty\x18\x02 \x01(\x05R\x03qtyJ\x04\b\x03\x10\x04R\x10object_layer_cid\"\xcf\x01\n" +
 	"\x11ActionCraftRecipe\x12;\n" +
 	"\foutput_items\x18\x01 \x03(\v2\x18.cyberia.ActionCraftItemR\voutputItems\x12:\n" +
 	"\vingredients\x18\x02 \x03(\v2\x18.cyberia.ActionCraftItemR\vingredients\x12\"\n" +
-	"\rcraft_time_ms\x18\x03 \x01(\x05R\vcraftTimeMs\"\xd1\x03\n" +
+	"\rcraft_time_ms\x18\x03 \x01(\x05R\vcraftTimeMs\x12\x15\n" +
+	"\x03fee\x18\x04 \x01(\rH\x00R\x03fee\x88\x01\x01B\x06\n" +
+	"\x04_fee\"\xc4\x04\n" +
 	"\x14CyberiaActionMessage\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x14\n" +
 	"\x05label\x18\x03 \x01(\tR\x05label\x12&\n" +
@@ -5496,7 +7082,17 @@ const file_cyberia_proto_rawDesc = "" +
 	"\n" +
 	"shop_items\x18\v \x03(\v2\x17.cyberia.ActionShopItemR\tshopItems\x12?\n" +
 	"\rcraft_recipes\x18\f \x03(\v2\x1a.cyberia.ActionCraftRecipeR\fcraftRecipes\x12#\n" +
-	"\rstorage_slots\x18\r \x01(\x05R\fstorageSlotsJ\x04\b\x02\x10\x03J\x04\b\a\x10\bJ\x04\b\b\x10\t\"x\n" +
+	"\rstorage_slots\x18\r \x01(\x05R\fstorageSlots\x12#\n" +
+	"\rbuyback_items\x18\x0e \x03(\tR\fbuybackItems\x12\x1d\n" +
+	"\n" +
+	"burn_items\x18\x0f \x03(\tR\tburnItems\x12-\n" +
+	"\x06market\x18\x10 \x01(\v2\x15.cyberia.ActionMarketR\x06marketJ\x04\b\x02\x10\x03J\x04\b\a\x10\bJ\x04\b\b\x10\t\"\x93\x01\n" +
+	"\fActionMarket\x12\x1f\n" +
+	"\vmarket_code\x18\x01 \x01(\tR\n" +
+	"marketCode\x12\x1c\n" +
+	"\tselection\x18\x03 \x01(\tR\tselection\x12\x19\n" +
+	"\bitem_ids\x18\x04 \x03(\tR\aitemIds\x12#\n" +
+	"\rlisting_modes\x18\x05 \x03(\tR\flistingModesJ\x04\b\x02\x10\x03\"x\n" +
 	"\x15QuestObjectiveMessage\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x17\n" +
 	"\aitem_id\x18\x02 \x01(\tR\x06itemId\x12\x1a\n" +
@@ -5523,7 +7119,7 @@ const file_cyberia_proto_rawDesc = "" +
 	"\rsource_cell_y\x18\n" +
 	" \x01(\x05R\vsourceCellY\"=\n" +
 	"\x16GetFullInstanceRequest\x12#\n" +
-	"\rinstance_code\x18\x01 \x01(\tR\finstanceCode\"\x97\x03\n" +
+	"\rinstance_code\x18\x01 \x01(\tR\finstanceCode\"\xc9\x03\n" +
 	"\x17GetFullInstanceResponse\x124\n" +
 	"\binstance\x18\x01 \x01(\v2\x18.cyberia.InstanceMessageR\binstance\x12+\n" +
 	"\x04maps\x18\x02 \x03(\v2\x17.cyberia.MapDataMessageR\x04maps\x12@\n" +
@@ -5533,7 +7129,28 @@ const file_cyberia_proto_rawDesc = "" +
 	"\aactions\x18\x06 \x03(\v2\x1d.cyberia.CyberiaActionMessageR\aactions\x124\n" +
 	"\x06quests\x18\a \x03(\v2\x1c.cyberia.CyberiaQuestMessageR\x06quests\x12\x1d\n" +
 	"\n" +
-	"release_id\x18\b \x01(\tR\treleaseId\"\xc8\x01\n" +
+	"release_id\x18\b \x01(\tR\treleaseId\x120\n" +
+	"\amarkets\x18\t \x03(\v2\x16.cyberia.MarketProfileR\amarkets\"\xed\x03\n" +
+	"\rMarketProfile\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12\x1a\n" +
+	"\brevision\x18\x02 \x01(\x04R\brevision\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12\x14\n" +
+	"\x05scope\x18\x04 \x01(\tR\x05scope\x12\x1b\n" +
+	"\tscope_key\x18\x05 \x01(\tR\bscopeKey\x12\x10\n" +
+	"\x03ref\x18\x06 \x01(\tR\x03ref\x12#\n" +
+	"\rcurrency_code\x18\a \x01(\tR\fcurrencyCode\x12\x14\n" +
+	"\x05modes\x18\b \x03(\tR\x05modes\x12\x14\n" +
+	"\x05hours\x18\t \x03(\rR\x05hours\x12#\n" +
+	"\rraise_percent\x18\n" +
+	" \x01(\rR\fraisePercent\x12\x1b\n" +
+	"\tmin_raise\x18\v \x01(\rR\bminRaise\x12\x1f\n" +
+	"\vlisting_fee\x18\f \x01(\rR\n" +
+	"listingFee\x12\x19\n" +
+	"\bsale_fee\x18\r \x01(\rR\asaleFee\x12\x1b\n" +
+	"\tprice_min\x18\x0e \x01(\rR\bpriceMin\x12\x1b\n" +
+	"\tprice_max\x18\x0f \x01(\rR\bpriceMax\x12.\n" +
+	"\x13listings_per_player\x18\x10 \x01(\rR\x11listingsPerPlayer\x12\x16\n" +
+	"\x06defect\x18\x11 \x01(\tR\x06defect\"\xc8\x01\n" +
 	"\x17DefaultObjectLayerState\x12\x17\n" +
 	"\aitem_id\x18\x01 \x01(\tR\x06itemId\x12\x16\n" +
 	"\x06active\x18\x02 \x01(\bR\x06active\x12\x1a\n" +
@@ -5548,15 +7165,48 @@ const file_cyberia_proto_rawDesc = "" +
 	"\x04name\x18\x04 \x01(\tR\x04name\"\xdf\x01\n" +
 	"\x10SkillConfigEntry\x12&\n" +
 	"\x0ftrigger_item_id\x18\x01 \x01(\tR\rtriggerItemId\x12,\n" +
-	"\x06skills\x18\a \x03(\v2\x14.cyberia.SkillDetailR\x06skillsJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\x10spawned_item_idsR\x0elogic_event_idR\x0flogic_event_idsR\vdescriptionR\x17summoned_entity_item_id\"\xeb\x02\n" +
+	"\x06skills\x18\a \x03(\v2\x14.cyberia.SkillDetailR\x06skillsJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\x10spawned_item_idsR\x0elogic_event_idR\x0flogic_event_idsR\vdescriptionR\x17summoned_entity_item_id\"\xff\x04\n" +
 	"\fEconomyRules\x12&\n" +
 	"\x0fbot_spawn_coins\x18\x01 \x01(\x05R\rbotSpawnCoins\x12,\n" +
 	"\x12player_spawn_coins\x18\x02 \x01(\x05R\x10playerSpawnCoins\x126\n" +
 	"\x18coin_kill_percent_vs_bot\x18\x03 \x01(\x01R\x14coinKillPercentVsBot\x12<\n" +
 	"\x1bcoin_kill_percent_vs_player\x18\x04 \x01(\x01R\x17coinKillPercentVsPlayer\x12/\n" +
 	"\x14coin_kill_min_amount\x18\x05 \x01(\x05R\x11coinKillMinAmount\x120\n" +
-	"\x14respawn_cost_percent\x18\x06 \x01(\x01R\x12respawnCostPercentJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\n" +
-	"portal_feeR\x14crafting_fee_percent\"\x91\x04\n" +
+	"\x14respawn_cost_percent\x18\x06 \x01(\x01R\x12respawnCostPercent\x12\x12\n" +
+	"\x04code\x18\t \x01(\tR\x04code\x12\x1a\n" +
+	"\brevision\x18\n" +
+	" \x01(\x04R\brevision\x12\x1f\n" +
+	"\vmax_balance\x18\v \x01(\rR\n" +
+	"maxBalance\x12*\n" +
+	"\x04fees\x18\f \x01(\v2\x16.cyberia.OperationFeesR\x04fees\x128\n" +
+	"\ritem_defaults\x18\r \x01(\v2\x13.cyberia.ItemPolicyR\fitemDefaults\x128\n" +
+	"\ritem_policies\x18\x0e \x03(\v2\x13.cyberia.ItemPolicyR\fitemPolicies\x12!\n" +
+	"\fauthority_id\x18\x0f \x01(\tR\vauthorityIdJ\x04\b\a\x10\bJ\x04\b\b\x10\tR\n" +
+	"portal_feeR\x14crafting_fee_percent\"f\n" +
+	"\rOperationFees\x12\x16\n" +
+	"\x06portal\x18\x01 \x01(\rR\x06portal\x12\x14\n" +
+	"\x05craft\x18\x02 \x01(\rR\x05craftJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05R\x0emarket_listingR\vmarket_sale\"8\n" +
+	"\vSalvageLine\x12\x17\n" +
+	"\aitem_id\x18\x01 \x01(\tR\x06itemId\x12\x10\n" +
+	"\x03qty\x18\x02 \x01(\rR\x03qty\"\x8e\x03\n" +
+	"\n" +
+	"ItemPolicy\x12\x17\n" +
+	"\aitem_id\x18\x01 \x01(\tR\x06itemId\x12\x15\n" +
+	"\x06ol_cid\x18\x02 \x01(\tR\x05olCid\x12\x14\n" +
+	"\x05trade\x18\x03 \x01(\bR\x05trade\x12\x1d\n" +
+	"\n" +
+	"world_drop\x18\x04 \x01(\bR\tworldDrop\x12\x18\n" +
+	"\abuyback\x18\x05 \x01(\bR\abuyback\x12%\n" +
+	"\x0ebuyback_payout\x18\x06 \x01(\rR\rbuybackPayout\x12\x12\n" +
+	"\x04burn\x18\a \x01(\bR\x04burn\x12\"\n" +
+	"\rburn_coin_fee\x18\b \x01(\rR\vburnCoinFee\x12'\n" +
+	"\x0fcraft_surcharge\x18\t \x01(\rR\x0ecraftSurcharge\x12.\n" +
+	"\asalvage\x18\n" +
+	" \x03(\v2\x14.cyberia.SalvageLineR\asalvage\x12\"\n" +
+	"\n" +
+	"portal_fee\x18\v \x01(\rH\x00R\tportalFee\x88\x01\x01\x12\x16\n" +
+	"\x06market\x18\f \x01(\bR\x06marketB\r\n" +
+	"\v_portal_fee\"\x91\x04\n" +
 	"\n" +
 	"SkillRules\x126\n" +
 	"\x17projectile_spawn_chance\x18\x01 \x01(\x01R\x15projectileSpawnChance\x124\n" +
@@ -5776,14 +7426,116 @@ const file_cyberia_proto_rawDesc = "" +
 	"\x19CommitPlayerStateResponse\x12\x18\n" +
 	"\arefusal\x18\x01 \x01(\tR\arefusal\x12\x1c\n" +
 	"\tduplicate\x18\x02 \x01(\bR\tduplicate\x12\x1a\n" +
-	"\brevision\x18\x03 \x01(\x04R\brevision\"\xb5\x01\n" +
+	"\brevision\x18\x03 \x01(\x04R\brevision\"\x94\x02\n" +
+	"\tWorldDrop\x12\x17\n" +
+	"\adrop_id\x18\x01 \x01(\tR\x06dropId\x12\x19\n" +
+	"\bmap_code\x18\x02 \x01(\tR\amapCode\x12\f\n" +
+	"\x01x\x18\x03 \x01(\x01R\x01x\x12\f\n" +
+	"\x01y\x18\x04 \x01(\x01R\x01y\x12\x17\n" +
+	"\aitem_id\x18\x05 \x01(\tR\x06itemId\x12\x15\n" +
+	"\x06ol_cid\x18\x06 \x01(\tR\x05olCid\x12\x1a\n" +
+	"\bquantity\x18\a \x01(\rR\bquantity\x12&\n" +
+	"\x0fowner_player_id\x18\b \x01(\tR\rownerPlayerId\x12\"\n" +
+	"\rexpires_at_ms\x18\t \x01(\x03R\vexpiresAtMs\x12\x1f\n" +
+	"\vlifetime_ms\x18\n" +
+	" \x01(\rR\n" +
+	"lifetimeMs\"\xb6\x03\n" +
+	"\bMarketOp\x12\x1f\n" +
+	"\vmarket_code\x18\x01 \x01(\tR\n" +
+	"marketCode\x12\x1d\n" +
+	"\n" +
+	"listing_id\x18\x03 \x01(\tR\tlistingId\x12\x1a\n" +
+	"\brevision\x18\x04 \x01(\rR\brevision\x12\x12\n" +
+	"\x04mode\x18\x05 \x01(\tR\x04mode\x12\x17\n" +
+	"\aitem_id\x18\x06 \x01(\tR\x06itemId\x12\x15\n" +
+	"\x06ol_cid\x18\a \x01(\tR\x05olCid\x12\x1a\n" +
+	"\bquantity\x18\b \x01(\rR\bquantity\x12\x14\n" +
+	"\x05price\x18\t \x01(\rR\x05price\x12\x14\n" +
+	"\x05hours\x18\n" +
+	" \x01(\rR\x05hours\x12\x19\n" +
+	"\bsale_fee\x18\v \x01(\rR\asaleFee\x12\x1f\n" +
+	"\vseller_name\x18\f \x01(\tR\n" +
+	"sellerName\x12\x1b\n" +
+	"\tclaim_ids\x18\r \x03(\tR\bclaimIds\x12\x14\n" +
+	"\x05coins\x18\x0e \x01(\rR\x05coins\x12,\n" +
+	"\x06stacks\x18\x0f \x03(\v2\x14.cyberia.PlayerStackR\x06stacks\x12\x1f\n" +
+	"\vlisting_fee\x18\x10 \x01(\rR\n" +
+	"listingFeeJ\x04\b\x02\x10\x03\"\x86\x02\n" +
+	"\x19CommitPlayerStatesRequest\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12;\n" +
+	"\acommits\x18\x03 \x03(\v2!.cyberia.CommitPlayerStateRequestR\acommits\x12&\n" +
+	"\x04drop\x18\x04 \x01(\v2\x12.cyberia.WorldDropR\x04drop\x12\"\n" +
+	"\rclaim_drop_id\x18\x05 \x01(\tR\vclaimDropId\x12)\n" +
+	"\x06market\x18\x06 \x01(\v2\x11.cyberia.MarketOpR\x06market\"q\n" +
+	"\x1aCommitPlayerStatesResponse\x12\x18\n" +
+	"\arefusal\x18\x01 \x01(\tR\arefusal\x12\x1b\n" +
+	"\tplayer_id\x18\x02 \x01(\tR\bplayerId\x12\x1c\n" +
+	"\tduplicate\x18\x03 \x01(\bR\tduplicate\"<\n" +
+	"\x15ListWorldDropsRequest\x12#\n" +
+	"\rinstance_code\x18\x01 \x01(\tR\finstanceCode\"B\n" +
+	"\x16ListWorldDropsResponse\x12(\n" +
+	"\x05drops\x18\x01 \x03(\v2\x12.cyberia.WorldDropR\x05drops\"\xbf\x01\n" +
+	"\x11ListMarketRequest\x12#\n" +
+	"\rinstance_code\x18\x01 \x01(\tR\finstanceCode\x12\x1f\n" +
+	"\vmarket_code\x18\x02 \x01(\tR\n" +
+	"marketCode\x12\x1b\n" +
+	"\tplayer_id\x18\x04 \x01(\tR\bplayerId\x12\x17\n" +
+	"\aitem_id\x18\x05 \x01(\tR\x06itemId\x12\x14\n" +
+	"\x05after\x18\x06 \x01(\tR\x05after\x12\x12\n" +
+	"\x04mode\x18\a \x01(\tR\x04modeJ\x04\b\x03\x10\x04\"\xec\x02\n" +
+	"\rMarketListing\x12\x1d\n" +
+	"\n" +
+	"listing_id\x18\x01 \x01(\tR\tlistingId\x12\x1a\n" +
+	"\brevision\x18\x02 \x01(\rR\brevision\x12\x1f\n" +
+	"\vseller_name\x18\x03 \x01(\tR\n" +
+	"sellerName\x12\x17\n" +
+	"\aitem_id\x18\x04 \x01(\tR\x06itemId\x12\x15\n" +
+	"\x06ol_cid\x18\x05 \x01(\tR\x05olCid\x12\x1a\n" +
+	"\bquantity\x18\x06 \x01(\rR\bquantity\x12\x12\n" +
+	"\x04mode\x18\a \x01(\tR\x04mode\x12\x14\n" +
+	"\x05price\x18\b \x01(\rR\x05price\x12\x10\n" +
+	"\x03bid\x18\t \x01(\rR\x03bid\x12\x12\n" +
+	"\x04bids\x18\n" +
+	" \x01(\rR\x04bids\x12\x17\n" +
+	"\amin_bid\x18\v \x01(\rR\x06minBid\x12\x1c\n" +
+	"\n" +
+	"ends_at_ms\x18\f \x01(\x03R\bendsAtMs\x12\x12\n" +
+	"\x04mine\x18\r \x01(\bR\x04mine\x12\x18\n" +
+	"\aleading\x18\x0e \x01(\bR\aleading\"\xa3\x01\n" +
+	"\vMarketClaim\x12\x19\n" +
+	"\bclaim_id\x18\x01 \x01(\tR\aclaimId\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x14\n" +
+	"\x05coins\x18\x03 \x01(\rR\x05coins\x12*\n" +
+	"\x05stack\x18\x04 \x01(\v2\x14.cyberia.PlayerStackR\x05stack\x12\x1f\n" +
+	"\vmarket_code\x18\x05 \x01(\tR\n" +
+	"marketCode\"\xef\x01\n" +
+	"\x12ListMarketResponse\x122\n" +
+	"\blistings\x18\x01 \x03(\v2\x16.cyberia.MarketListingR\blistings\x12\x12\n" +
+	"\x04next\x18\x02 \x01(\tR\x04next\x12*\n" +
+	"\x04mine\x18\x03 \x03(\v2\x16.cyberia.MarketListingR\x04mine\x12,\n" +
+	"\x06claims\x18\x04 \x03(\v2\x14.cyberia.MarketClaimR\x06claims\x12\x1b\n" +
+	"\tscope_key\x18\x05 \x01(\tR\bscopeKey\x12\x1a\n" +
+	"\brevision\x18\x06 \x01(\x04R\brevision\"\xe5\x01\n" +
 	"\x11SessionCheckpoint\x12\x1b\n" +
 	"\tplayer_id\x18\x01 \x01(\tR\bplayerId\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x02 \x01(\tR\taccountId\x12\x14\n" +
 	"\x05epoch\x18\x03 \x01(\x04R\x05epoch\x12\x19\n" +
 	"\bmap_code\x18\x04 \x01(\tR\amapCode\x123\n" +
-	"\bposition\x18\x05 \x01(\v2\x17.cyberia.PlayerPositionR\bposition\"\x9b\x01\n" +
+	"\bposition\x18\x05 \x01(\v2\x17.cyberia.PlayerPositionR\bposition\x12.\n" +
+	"\x06health\x18\x06 \x01(\v2\x16.cyberia.SessionHealthR\x06health\"\xb5\x01\n" +
+	"\rSessionHealth\x12\x1e\n" +
+	"\n" +
+	"durability\x18\x01 \x01(\tR\n" +
+	"durability\x12\x18\n" +
+	"\aclosing\x18\x02 \x01(\bR\aclosing\x12\x10\n" +
+	"\x03seq\x18\x03 \x01(\x04R\x03seq\x12\x1f\n" +
+	"\vdurable_seq\x18\x04 \x01(\x04R\n" +
+	"durableSeq\x12\x1d\n" +
+	"\n" +
+	"unsaved_ms\x18\x05 \x01(\rR\tunsavedMs\x12\x18\n" +
+	"\afailure\x18\x06 \x01(\tR\afailure\"\x9b\x01\n" +
 	"\x1fCheckpointPlayerSessionsRequest\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12#\n" +
 	"\rinstance_code\x18\x02 \x01(\tR\finstanceCode\x126\n" +
@@ -5844,13 +7596,17 @@ const file_cyberia_proto_rawDesc = "" +
 	"\x0eGetObjectLayer\x12\x1e.cyberia.GetObjectLayerRequest\x1a\x1b.cyberia.ObjectLayerMessage\x12Q\n" +
 	"\x0eGetItemContent\x12\x1e.cyberia.GetItemContentRequest\x1a\x1f.cyberia.GetItemContentResponse\x123\n" +
 	"\x04Ping\x12\x14.cyberia.PingRequest\x1a\x15.cyberia.PingResponse\x12i\n" +
-	"\x16GetObjectLayerManifest\x12&.cyberia.GetObjectLayerManifestRequest\x1a'.cyberia.GetObjectLayerManifestResponse2\xcf\a\n" +
+	"\x16GetObjectLayerManifest\x12&.cyberia.GetObjectLayerManifestRequest\x1a'.cyberia.GetObjectLayerManifestResponse2\xc8\t\n" +
 	"\x14CyberiaPlayerService\x12l\n" +
 	"\x17ConsumeGameLaunchTicket\x12'.cyberia.ConsumeGameLaunchTicketRequest\x1a(.cyberia.ConsumeGameLaunchTicketResponse\x12Z\n" +
 	"\x11IssueResumeTicket\x12!.cyberia.IssueResumeTicketRequest\x1a\".cyberia.IssueResumeTicketResponse\x12Z\n" +
 	"\x11IssueTravelTicket\x12!.cyberia.IssueTravelTicketRequest\x1a\".cyberia.IssueTravelTicketResponse\x12c\n" +
 	"\x14AcquirePlayerSession\x12$.cyberia.AcquirePlayerSessionRequest\x1a%.cyberia.AcquirePlayerSessionResponse\x12Z\n" +
-	"\x11CommitPlayerState\x12!.cyberia.CommitPlayerStateRequest\x1a\".cyberia.CommitPlayerStateResponse\x12o\n" +
+	"\x11CommitPlayerState\x12!.cyberia.CommitPlayerStateRequest\x1a\".cyberia.CommitPlayerStateResponse\x12]\n" +
+	"\x12CommitPlayerStates\x12\".cyberia.CommitPlayerStatesRequest\x1a#.cyberia.CommitPlayerStatesResponse\x12Q\n" +
+	"\x0eListWorldDrops\x12\x1e.cyberia.ListWorldDropsRequest\x1a\x1f.cyberia.ListWorldDropsResponse\x12E\n" +
+	"\n" +
+	"ListMarket\x12\x1a.cyberia.ListMarketRequest\x1a\x1b.cyberia.ListMarketResponse\x12o\n" +
 	"\x18CheckpointPlayerSessions\x12(.cyberia.CheckpointPlayerSessionsRequest\x1a).cyberia.CheckpointPlayerSessionsResponse\x12c\n" +
 	"\x14ReleasePlayerSession\x12$.cyberia.ReleasePlayerSessionRequest\x1a%.cyberia.ReleasePlayerSessionResponse\x12H\n" +
 	"\vListFriends\x12\x1b.cyberia.ListFriendsRequest\x1a\x1c.cyberia.ListFriendsResponse\x12W\n" +
@@ -5869,7 +7625,7 @@ func file_cyberia_proto_rawDescGZIP() []byte {
 	return file_cyberia_proto_rawDescData
 }
 
-var file_cyberia_proto_msgTypes = make([]protoimpl.MessageInfo, 75)
+var file_cyberia_proto_msgTypes = make([]protoimpl.MessageInfo, 91)
 var file_cyberia_proto_goTypes = []any{
 	(*Vec2)(nil),                             // 0: cyberia.Vec2
 	(*Vec2I)(nil),                            // 1: cyberia.Vec2I
@@ -5891,61 +7647,77 @@ var file_cyberia_proto_goTypes = []any{
 	(*ActionCraftItem)(nil),                  // 17: cyberia.ActionCraftItem
 	(*ActionCraftRecipe)(nil),                // 18: cyberia.ActionCraftRecipe
 	(*CyberiaActionMessage)(nil),             // 19: cyberia.CyberiaActionMessage
-	(*QuestObjectiveMessage)(nil),            // 20: cyberia.QuestObjectiveMessage
-	(*QuestStepMessage)(nil),                 // 21: cyberia.QuestStepMessage
-	(*QuestRewardMessage)(nil),               // 22: cyberia.QuestRewardMessage
-	(*CyberiaQuestMessage)(nil),              // 23: cyberia.CyberiaQuestMessage
-	(*GetFullInstanceRequest)(nil),           // 24: cyberia.GetFullInstanceRequest
-	(*GetFullInstanceResponse)(nil),          // 25: cyberia.GetFullInstanceResponse
-	(*DefaultObjectLayerState)(nil),          // 26: cyberia.DefaultObjectLayerState
-	(*SkillDetail)(nil),                      // 27: cyberia.SkillDetail
-	(*SkillConfigEntry)(nil),                 // 28: cyberia.SkillConfigEntry
-	(*EconomyRules)(nil),                     // 29: cyberia.EconomyRules
-	(*SkillRules)(nil),                       // 30: cyberia.SkillRules
-	(*EquipmentRules)(nil),                   // 31: cyberia.EquipmentRules
-	(*ProgressionRules)(nil),                 // 32: cyberia.ProgressionRules
-	(*InstanceConfig)(nil),                   // 33: cyberia.InstanceConfig
-	(*EntityTypeDefault)(nil),                // 34: cyberia.EntityTypeDefault
-	(*EntityMessage)(nil),                    // 35: cyberia.EntityMessage
-	(*MapDataMessage)(nil),                   // 36: cyberia.MapDataMessage
-	(*GetMapDataRequest)(nil),                // 37: cyberia.GetMapDataRequest
-	(*GetMapDataResponse)(nil),               // 38: cyberia.GetMapDataResponse
-	(*PingRequest)(nil),                      // 39: cyberia.PingRequest
-	(*PingResponse)(nil),                     // 40: cyberia.PingResponse
-	(*ObjectLayerManifestEntry)(nil),         // 41: cyberia.ObjectLayerManifestEntry
-	(*GetObjectLayerManifestRequest)(nil),    // 42: cyberia.GetObjectLayerManifestRequest
-	(*GetObjectLayerManifestResponse)(nil),   // 43: cyberia.GetObjectLayerManifestResponse
-	(*ConsumeGameLaunchTicketRequest)(nil),   // 44: cyberia.ConsumeGameLaunchTicketRequest
-	(*ConsumeGameLaunchTicketResponse)(nil),  // 45: cyberia.ConsumeGameLaunchTicketResponse
-	(*IssueResumeTicketRequest)(nil),         // 46: cyberia.IssueResumeTicketRequest
-	(*IssueResumeTicketResponse)(nil),        // 47: cyberia.IssueResumeTicketResponse
-	(*IssueTravelTicketRequest)(nil),         // 48: cyberia.IssueTravelTicketRequest
-	(*IssueTravelTicketResponse)(nil),        // 49: cyberia.IssueTravelTicketResponse
-	(*AcquirePlayerSessionRequest)(nil),      // 50: cyberia.AcquirePlayerSessionRequest
-	(*AcquirePlayerSessionResponse)(nil),     // 51: cyberia.AcquirePlayerSessionResponse
-	(*PlayerStack)(nil),                      // 52: cyberia.PlayerStack
-	(*PlayerVault)(nil),                      // 53: cyberia.PlayerVault
-	(*HeldStack)(nil),                        // 54: cyberia.HeldStack
-	(*PlayerPosition)(nil),                   // 55: cyberia.PlayerPosition
-	(*QuestObjectiveState)(nil),              // 56: cyberia.QuestObjectiveState
-	(*QuestStepState)(nil),                   // 57: cyberia.QuestStepState
-	(*PlayerQuest)(nil),                      // 58: cyberia.PlayerQuest
-	(*PlayerState)(nil),                      // 59: cyberia.PlayerState
-	(*CommitPlayerStateRequest)(nil),         // 60: cyberia.CommitPlayerStateRequest
-	(*CommitPlayerStateResponse)(nil),        // 61: cyberia.CommitPlayerStateResponse
-	(*SessionCheckpoint)(nil),                // 62: cyberia.SessionCheckpoint
-	(*CheckpointPlayerSessionsRequest)(nil),  // 63: cyberia.CheckpointPlayerSessionsRequest
-	(*EndedSession)(nil),                     // 64: cyberia.EndedSession
-	(*CheckpointPlayerSessionsResponse)(nil), // 65: cyberia.CheckpointPlayerSessionsResponse
-	(*ReleasePlayerSessionRequest)(nil),      // 66: cyberia.ReleasePlayerSessionRequest
-	(*ReleasePlayerSessionResponse)(nil),     // 67: cyberia.ReleasePlayerSessionResponse
-	(*Friend)(nil),                           // 68: cyberia.Friend
-	(*ListFriendsRequest)(nil),               // 69: cyberia.ListFriendsRequest
-	(*ListFriendsResponse)(nil),              // 70: cyberia.ListFriendsResponse
-	(*UpdateFriendshipRequest)(nil),          // 71: cyberia.UpdateFriendshipRequest
-	(*UpdateFriendshipResponse)(nil),         // 72: cyberia.UpdateFriendshipResponse
-	(*UpdateStatusNoteRequest)(nil),          // 73: cyberia.UpdateStatusNoteRequest
-	(*UpdateStatusNoteResponse)(nil),         // 74: cyberia.UpdateStatusNoteResponse
+	(*ActionMarket)(nil),                     // 20: cyberia.ActionMarket
+	(*QuestObjectiveMessage)(nil),            // 21: cyberia.QuestObjectiveMessage
+	(*QuestStepMessage)(nil),                 // 22: cyberia.QuestStepMessage
+	(*QuestRewardMessage)(nil),               // 23: cyberia.QuestRewardMessage
+	(*CyberiaQuestMessage)(nil),              // 24: cyberia.CyberiaQuestMessage
+	(*GetFullInstanceRequest)(nil),           // 25: cyberia.GetFullInstanceRequest
+	(*GetFullInstanceResponse)(nil),          // 26: cyberia.GetFullInstanceResponse
+	(*MarketProfile)(nil),                    // 27: cyberia.MarketProfile
+	(*DefaultObjectLayerState)(nil),          // 28: cyberia.DefaultObjectLayerState
+	(*SkillDetail)(nil),                      // 29: cyberia.SkillDetail
+	(*SkillConfigEntry)(nil),                 // 30: cyberia.SkillConfigEntry
+	(*EconomyRules)(nil),                     // 31: cyberia.EconomyRules
+	(*OperationFees)(nil),                    // 32: cyberia.OperationFees
+	(*SalvageLine)(nil),                      // 33: cyberia.SalvageLine
+	(*ItemPolicy)(nil),                       // 34: cyberia.ItemPolicy
+	(*SkillRules)(nil),                       // 35: cyberia.SkillRules
+	(*EquipmentRules)(nil),                   // 36: cyberia.EquipmentRules
+	(*ProgressionRules)(nil),                 // 37: cyberia.ProgressionRules
+	(*InstanceConfig)(nil),                   // 38: cyberia.InstanceConfig
+	(*EntityTypeDefault)(nil),                // 39: cyberia.EntityTypeDefault
+	(*EntityMessage)(nil),                    // 40: cyberia.EntityMessage
+	(*MapDataMessage)(nil),                   // 41: cyberia.MapDataMessage
+	(*GetMapDataRequest)(nil),                // 42: cyberia.GetMapDataRequest
+	(*GetMapDataResponse)(nil),               // 43: cyberia.GetMapDataResponse
+	(*PingRequest)(nil),                      // 44: cyberia.PingRequest
+	(*PingResponse)(nil),                     // 45: cyberia.PingResponse
+	(*ObjectLayerManifestEntry)(nil),         // 46: cyberia.ObjectLayerManifestEntry
+	(*GetObjectLayerManifestRequest)(nil),    // 47: cyberia.GetObjectLayerManifestRequest
+	(*GetObjectLayerManifestResponse)(nil),   // 48: cyberia.GetObjectLayerManifestResponse
+	(*ConsumeGameLaunchTicketRequest)(nil),   // 49: cyberia.ConsumeGameLaunchTicketRequest
+	(*ConsumeGameLaunchTicketResponse)(nil),  // 50: cyberia.ConsumeGameLaunchTicketResponse
+	(*IssueResumeTicketRequest)(nil),         // 51: cyberia.IssueResumeTicketRequest
+	(*IssueResumeTicketResponse)(nil),        // 52: cyberia.IssueResumeTicketResponse
+	(*IssueTravelTicketRequest)(nil),         // 53: cyberia.IssueTravelTicketRequest
+	(*IssueTravelTicketResponse)(nil),        // 54: cyberia.IssueTravelTicketResponse
+	(*AcquirePlayerSessionRequest)(nil),      // 55: cyberia.AcquirePlayerSessionRequest
+	(*AcquirePlayerSessionResponse)(nil),     // 56: cyberia.AcquirePlayerSessionResponse
+	(*PlayerStack)(nil),                      // 57: cyberia.PlayerStack
+	(*PlayerVault)(nil),                      // 58: cyberia.PlayerVault
+	(*HeldStack)(nil),                        // 59: cyberia.HeldStack
+	(*PlayerPosition)(nil),                   // 60: cyberia.PlayerPosition
+	(*QuestObjectiveState)(nil),              // 61: cyberia.QuestObjectiveState
+	(*QuestStepState)(nil),                   // 62: cyberia.QuestStepState
+	(*PlayerQuest)(nil),                      // 63: cyberia.PlayerQuest
+	(*PlayerState)(nil),                      // 64: cyberia.PlayerState
+	(*CommitPlayerStateRequest)(nil),         // 65: cyberia.CommitPlayerStateRequest
+	(*CommitPlayerStateResponse)(nil),        // 66: cyberia.CommitPlayerStateResponse
+	(*WorldDrop)(nil),                        // 67: cyberia.WorldDrop
+	(*MarketOp)(nil),                         // 68: cyberia.MarketOp
+	(*CommitPlayerStatesRequest)(nil),        // 69: cyberia.CommitPlayerStatesRequest
+	(*CommitPlayerStatesResponse)(nil),       // 70: cyberia.CommitPlayerStatesResponse
+	(*ListWorldDropsRequest)(nil),            // 71: cyberia.ListWorldDropsRequest
+	(*ListWorldDropsResponse)(nil),           // 72: cyberia.ListWorldDropsResponse
+	(*ListMarketRequest)(nil),                // 73: cyberia.ListMarketRequest
+	(*MarketListing)(nil),                    // 74: cyberia.MarketListing
+	(*MarketClaim)(nil),                      // 75: cyberia.MarketClaim
+	(*ListMarketResponse)(nil),               // 76: cyberia.ListMarketResponse
+	(*SessionCheckpoint)(nil),                // 77: cyberia.SessionCheckpoint
+	(*SessionHealth)(nil),                    // 78: cyberia.SessionHealth
+	(*CheckpointPlayerSessionsRequest)(nil),  // 79: cyberia.CheckpointPlayerSessionsRequest
+	(*EndedSession)(nil),                     // 80: cyberia.EndedSession
+	(*CheckpointPlayerSessionsResponse)(nil), // 81: cyberia.CheckpointPlayerSessionsResponse
+	(*ReleasePlayerSessionRequest)(nil),      // 82: cyberia.ReleasePlayerSessionRequest
+	(*ReleasePlayerSessionResponse)(nil),     // 83: cyberia.ReleasePlayerSessionResponse
+	(*Friend)(nil),                           // 84: cyberia.Friend
+	(*ListFriendsRequest)(nil),               // 85: cyberia.ListFriendsRequest
+	(*ListFriendsResponse)(nil),              // 86: cyberia.ListFriendsResponse
+	(*UpdateFriendshipRequest)(nil),          // 87: cyberia.UpdateFriendshipRequest
+	(*UpdateFriendshipResponse)(nil),         // 88: cyberia.UpdateFriendshipResponse
+	(*UpdateStatusNoteRequest)(nil),          // 89: cyberia.UpdateStatusNoteRequest
+	(*UpdateStatusNoteResponse)(nil),         // 90: cyberia.UpdateStatusNoteResponse
 }
 var file_cyberia_proto_depIdxs = []int32{
 	2,  // 0: cyberia.ObjectLayerMessage.stats:type_name -> cyberia.Stats
@@ -5953,7 +7725,7 @@ var file_cyberia_proto_depIdxs = []int32{
 	4,  // 2: cyberia.ObjectLayerMessage.ledger:type_name -> cyberia.Ledger
 	5,  // 3: cyberia.ObjectLayerMessage.render:type_name -> cyberia.Render
 	6,  // 4: cyberia.GetItemContentResponse.object_layers:type_name -> cyberia.ObjectLayerMessage
-	28, // 5: cyberia.GetItemContentResponse.skills:type_name -> cyberia.SkillConfigEntry
+	30, // 5: cyberia.GetItemContentResponse.skills:type_name -> cyberia.SkillConfigEntry
 	10, // 6: cyberia.GetItemContentResponse.unavailable:type_name -> cyberia.UnavailableItem
 	12, // 7: cyberia.InstanceMessage.portals:type_name -> cyberia.PortalEdge
 	13, // 8: cyberia.InstanceMessage.player_spawn:type_name -> cyberia.PlayerSpawn
@@ -5962,84 +7734,106 @@ var file_cyberia_proto_depIdxs = []int32{
 	15, // 11: cyberia.CyberiaActionMessage.quest_dialogue_codes:type_name -> cyberia.ActionQuestDialogue
 	16, // 12: cyberia.CyberiaActionMessage.shop_items:type_name -> cyberia.ActionShopItem
 	18, // 13: cyberia.CyberiaActionMessage.craft_recipes:type_name -> cyberia.ActionCraftRecipe
-	20, // 14: cyberia.QuestStepMessage.objectives:type_name -> cyberia.QuestObjectiveMessage
-	21, // 15: cyberia.CyberiaQuestMessage.steps:type_name -> cyberia.QuestStepMessage
-	22, // 16: cyberia.CyberiaQuestMessage.rewards:type_name -> cyberia.QuestRewardMessage
-	14, // 17: cyberia.GetFullInstanceResponse.instance:type_name -> cyberia.InstanceMessage
-	36, // 18: cyberia.GetFullInstanceResponse.maps:type_name -> cyberia.MapDataMessage
-	6,  // 19: cyberia.GetFullInstanceResponse.object_layers:type_name -> cyberia.ObjectLayerMessage
-	33, // 20: cyberia.GetFullInstanceResponse.config:type_name -> cyberia.InstanceConfig
-	19, // 21: cyberia.GetFullInstanceResponse.actions:type_name -> cyberia.CyberiaActionMessage
-	23, // 22: cyberia.GetFullInstanceResponse.quests:type_name -> cyberia.CyberiaQuestMessage
-	27, // 23: cyberia.SkillConfigEntry.skills:type_name -> cyberia.SkillDetail
-	2,  // 24: cyberia.ProgressionRules.base_stats:type_name -> cyberia.Stats
-	2,  // 25: cyberia.ProgressionRules.per_level_stats:type_name -> cyberia.Stats
-	32, // 26: cyberia.InstanceConfig.progression_rules:type_name -> cyberia.ProgressionRules
-	28, // 27: cyberia.InstanceConfig.skill_config:type_name -> cyberia.SkillConfigEntry
-	30, // 28: cyberia.InstanceConfig.skill_rules:type_name -> cyberia.SkillRules
-	29, // 29: cyberia.InstanceConfig.economy_rules:type_name -> cyberia.EconomyRules
-	31, // 30: cyberia.InstanceConfig.equipment_rules:type_name -> cyberia.EquipmentRules
-	34, // 31: cyberia.InstanceConfig.entity_defaults:type_name -> cyberia.EntityTypeDefault
-	26, // 32: cyberia.EntityTypeDefault.default_object_layers:type_name -> cyberia.DefaultObjectLayerState
-	35, // 33: cyberia.MapDataMessage.entities:type_name -> cyberia.EntityMessage
-	36, // 34: cyberia.GetMapDataResponse.map:type_name -> cyberia.MapDataMessage
-	41, // 35: cyberia.GetObjectLayerManifestResponse.entries:type_name -> cyberia.ObjectLayerManifestEntry
-	59, // 36: cyberia.AcquirePlayerSessionResponse.state:type_name -> cyberia.PlayerState
-	52, // 37: cyberia.PlayerVault.stacks:type_name -> cyberia.PlayerStack
-	52, // 38: cyberia.HeldStack.stack:type_name -> cyberia.PlayerStack
-	56, // 39: cyberia.QuestStepState.objectives:type_name -> cyberia.QuestObjectiveState
-	57, // 40: cyberia.PlayerQuest.steps:type_name -> cyberia.QuestStepState
-	52, // 41: cyberia.PlayerState.bag:type_name -> cyberia.PlayerStack
-	52, // 42: cyberia.PlayerState.storage:type_name -> cyberia.PlayerStack
-	53, // 43: cyberia.PlayerState.vaults:type_name -> cyberia.PlayerVault
-	54, // 44: cyberia.PlayerState.held:type_name -> cyberia.HeldStack
-	55, // 45: cyberia.PlayerState.position:type_name -> cyberia.PlayerPosition
-	58, // 46: cyberia.PlayerState.quests:type_name -> cyberia.PlayerQuest
-	59, // 47: cyberia.CommitPlayerStateRequest.state:type_name -> cyberia.PlayerState
-	55, // 48: cyberia.SessionCheckpoint.position:type_name -> cyberia.PlayerPosition
-	62, // 49: cyberia.CheckpointPlayerSessionsRequest.sessions:type_name -> cyberia.SessionCheckpoint
-	64, // 50: cyberia.CheckpointPlayerSessionsResponse.ended:type_name -> cyberia.EndedSession
-	68, // 51: cyberia.ListFriendsResponse.friends:type_name -> cyberia.Friend
-	68, // 52: cyberia.UpdateFriendshipResponse.friend:type_name -> cyberia.Friend
-	24, // 53: cyberia.CyberiaDataService.GetFullInstance:input_type -> cyberia.GetFullInstanceRequest
-	37, // 54: cyberia.CyberiaDataService.GetMapData:input_type -> cyberia.GetMapDataRequest
-	7,  // 55: cyberia.CyberiaDataService.GetObjectLayerBatch:input_type -> cyberia.GetObjectLayerBatchRequest
-	8,  // 56: cyberia.CyberiaDataService.GetObjectLayer:input_type -> cyberia.GetObjectLayerRequest
-	9,  // 57: cyberia.CyberiaDataService.GetItemContent:input_type -> cyberia.GetItemContentRequest
-	39, // 58: cyberia.CyberiaDataService.Ping:input_type -> cyberia.PingRequest
-	42, // 59: cyberia.CyberiaDataService.GetObjectLayerManifest:input_type -> cyberia.GetObjectLayerManifestRequest
-	44, // 60: cyberia.CyberiaPlayerService.ConsumeGameLaunchTicket:input_type -> cyberia.ConsumeGameLaunchTicketRequest
-	46, // 61: cyberia.CyberiaPlayerService.IssueResumeTicket:input_type -> cyberia.IssueResumeTicketRequest
-	48, // 62: cyberia.CyberiaPlayerService.IssueTravelTicket:input_type -> cyberia.IssueTravelTicketRequest
-	50, // 63: cyberia.CyberiaPlayerService.AcquirePlayerSession:input_type -> cyberia.AcquirePlayerSessionRequest
-	60, // 64: cyberia.CyberiaPlayerService.CommitPlayerState:input_type -> cyberia.CommitPlayerStateRequest
-	63, // 65: cyberia.CyberiaPlayerService.CheckpointPlayerSessions:input_type -> cyberia.CheckpointPlayerSessionsRequest
-	66, // 66: cyberia.CyberiaPlayerService.ReleasePlayerSession:input_type -> cyberia.ReleasePlayerSessionRequest
-	69, // 67: cyberia.CyberiaPlayerService.ListFriends:input_type -> cyberia.ListFriendsRequest
-	71, // 68: cyberia.CyberiaPlayerService.UpdateFriendship:input_type -> cyberia.UpdateFriendshipRequest
-	73, // 69: cyberia.CyberiaPlayerService.UpdateStatusNote:input_type -> cyberia.UpdateStatusNoteRequest
-	25, // 70: cyberia.CyberiaDataService.GetFullInstance:output_type -> cyberia.GetFullInstanceResponse
-	38, // 71: cyberia.CyberiaDataService.GetMapData:output_type -> cyberia.GetMapDataResponse
-	6,  // 72: cyberia.CyberiaDataService.GetObjectLayerBatch:output_type -> cyberia.ObjectLayerMessage
-	6,  // 73: cyberia.CyberiaDataService.GetObjectLayer:output_type -> cyberia.ObjectLayerMessage
-	11, // 74: cyberia.CyberiaDataService.GetItemContent:output_type -> cyberia.GetItemContentResponse
-	40, // 75: cyberia.CyberiaDataService.Ping:output_type -> cyberia.PingResponse
-	43, // 76: cyberia.CyberiaDataService.GetObjectLayerManifest:output_type -> cyberia.GetObjectLayerManifestResponse
-	45, // 77: cyberia.CyberiaPlayerService.ConsumeGameLaunchTicket:output_type -> cyberia.ConsumeGameLaunchTicketResponse
-	47, // 78: cyberia.CyberiaPlayerService.IssueResumeTicket:output_type -> cyberia.IssueResumeTicketResponse
-	49, // 79: cyberia.CyberiaPlayerService.IssueTravelTicket:output_type -> cyberia.IssueTravelTicketResponse
-	51, // 80: cyberia.CyberiaPlayerService.AcquirePlayerSession:output_type -> cyberia.AcquirePlayerSessionResponse
-	61, // 81: cyberia.CyberiaPlayerService.CommitPlayerState:output_type -> cyberia.CommitPlayerStateResponse
-	65, // 82: cyberia.CyberiaPlayerService.CheckpointPlayerSessions:output_type -> cyberia.CheckpointPlayerSessionsResponse
-	67, // 83: cyberia.CyberiaPlayerService.ReleasePlayerSession:output_type -> cyberia.ReleasePlayerSessionResponse
-	70, // 84: cyberia.CyberiaPlayerService.ListFriends:output_type -> cyberia.ListFriendsResponse
-	72, // 85: cyberia.CyberiaPlayerService.UpdateFriendship:output_type -> cyberia.UpdateFriendshipResponse
-	74, // 86: cyberia.CyberiaPlayerService.UpdateStatusNote:output_type -> cyberia.UpdateStatusNoteResponse
-	70, // [70:87] is the sub-list for method output_type
-	53, // [53:70] is the sub-list for method input_type
-	53, // [53:53] is the sub-list for extension type_name
-	53, // [53:53] is the sub-list for extension extendee
-	0,  // [0:53] is the sub-list for field type_name
+	20, // 14: cyberia.CyberiaActionMessage.market:type_name -> cyberia.ActionMarket
+	21, // 15: cyberia.QuestStepMessage.objectives:type_name -> cyberia.QuestObjectiveMessage
+	22, // 16: cyberia.CyberiaQuestMessage.steps:type_name -> cyberia.QuestStepMessage
+	23, // 17: cyberia.CyberiaQuestMessage.rewards:type_name -> cyberia.QuestRewardMessage
+	14, // 18: cyberia.GetFullInstanceResponse.instance:type_name -> cyberia.InstanceMessage
+	41, // 19: cyberia.GetFullInstanceResponse.maps:type_name -> cyberia.MapDataMessage
+	6,  // 20: cyberia.GetFullInstanceResponse.object_layers:type_name -> cyberia.ObjectLayerMessage
+	38, // 21: cyberia.GetFullInstanceResponse.config:type_name -> cyberia.InstanceConfig
+	19, // 22: cyberia.GetFullInstanceResponse.actions:type_name -> cyberia.CyberiaActionMessage
+	24, // 23: cyberia.GetFullInstanceResponse.quests:type_name -> cyberia.CyberiaQuestMessage
+	27, // 24: cyberia.GetFullInstanceResponse.markets:type_name -> cyberia.MarketProfile
+	29, // 25: cyberia.SkillConfigEntry.skills:type_name -> cyberia.SkillDetail
+	32, // 26: cyberia.EconomyRules.fees:type_name -> cyberia.OperationFees
+	34, // 27: cyberia.EconomyRules.item_defaults:type_name -> cyberia.ItemPolicy
+	34, // 28: cyberia.EconomyRules.item_policies:type_name -> cyberia.ItemPolicy
+	33, // 29: cyberia.ItemPolicy.salvage:type_name -> cyberia.SalvageLine
+	2,  // 30: cyberia.ProgressionRules.base_stats:type_name -> cyberia.Stats
+	2,  // 31: cyberia.ProgressionRules.per_level_stats:type_name -> cyberia.Stats
+	37, // 32: cyberia.InstanceConfig.progression_rules:type_name -> cyberia.ProgressionRules
+	30, // 33: cyberia.InstanceConfig.skill_config:type_name -> cyberia.SkillConfigEntry
+	35, // 34: cyberia.InstanceConfig.skill_rules:type_name -> cyberia.SkillRules
+	31, // 35: cyberia.InstanceConfig.economy_rules:type_name -> cyberia.EconomyRules
+	36, // 36: cyberia.InstanceConfig.equipment_rules:type_name -> cyberia.EquipmentRules
+	39, // 37: cyberia.InstanceConfig.entity_defaults:type_name -> cyberia.EntityTypeDefault
+	28, // 38: cyberia.EntityTypeDefault.default_object_layers:type_name -> cyberia.DefaultObjectLayerState
+	40, // 39: cyberia.MapDataMessage.entities:type_name -> cyberia.EntityMessage
+	41, // 40: cyberia.GetMapDataResponse.map:type_name -> cyberia.MapDataMessage
+	46, // 41: cyberia.GetObjectLayerManifestResponse.entries:type_name -> cyberia.ObjectLayerManifestEntry
+	64, // 42: cyberia.AcquirePlayerSessionResponse.state:type_name -> cyberia.PlayerState
+	57, // 43: cyberia.PlayerVault.stacks:type_name -> cyberia.PlayerStack
+	57, // 44: cyberia.HeldStack.stack:type_name -> cyberia.PlayerStack
+	61, // 45: cyberia.QuestStepState.objectives:type_name -> cyberia.QuestObjectiveState
+	62, // 46: cyberia.PlayerQuest.steps:type_name -> cyberia.QuestStepState
+	57, // 47: cyberia.PlayerState.bag:type_name -> cyberia.PlayerStack
+	57, // 48: cyberia.PlayerState.storage:type_name -> cyberia.PlayerStack
+	58, // 49: cyberia.PlayerState.vaults:type_name -> cyberia.PlayerVault
+	59, // 50: cyberia.PlayerState.held:type_name -> cyberia.HeldStack
+	60, // 51: cyberia.PlayerState.position:type_name -> cyberia.PlayerPosition
+	63, // 52: cyberia.PlayerState.quests:type_name -> cyberia.PlayerQuest
+	64, // 53: cyberia.CommitPlayerStateRequest.state:type_name -> cyberia.PlayerState
+	57, // 54: cyberia.MarketOp.stacks:type_name -> cyberia.PlayerStack
+	65, // 55: cyberia.CommitPlayerStatesRequest.commits:type_name -> cyberia.CommitPlayerStateRequest
+	67, // 56: cyberia.CommitPlayerStatesRequest.drop:type_name -> cyberia.WorldDrop
+	68, // 57: cyberia.CommitPlayerStatesRequest.market:type_name -> cyberia.MarketOp
+	67, // 58: cyberia.ListWorldDropsResponse.drops:type_name -> cyberia.WorldDrop
+	57, // 59: cyberia.MarketClaim.stack:type_name -> cyberia.PlayerStack
+	74, // 60: cyberia.ListMarketResponse.listings:type_name -> cyberia.MarketListing
+	74, // 61: cyberia.ListMarketResponse.mine:type_name -> cyberia.MarketListing
+	75, // 62: cyberia.ListMarketResponse.claims:type_name -> cyberia.MarketClaim
+	60, // 63: cyberia.SessionCheckpoint.position:type_name -> cyberia.PlayerPosition
+	78, // 64: cyberia.SessionCheckpoint.health:type_name -> cyberia.SessionHealth
+	77, // 65: cyberia.CheckpointPlayerSessionsRequest.sessions:type_name -> cyberia.SessionCheckpoint
+	80, // 66: cyberia.CheckpointPlayerSessionsResponse.ended:type_name -> cyberia.EndedSession
+	84, // 67: cyberia.ListFriendsResponse.friends:type_name -> cyberia.Friend
+	84, // 68: cyberia.UpdateFriendshipResponse.friend:type_name -> cyberia.Friend
+	25, // 69: cyberia.CyberiaDataService.GetFullInstance:input_type -> cyberia.GetFullInstanceRequest
+	42, // 70: cyberia.CyberiaDataService.GetMapData:input_type -> cyberia.GetMapDataRequest
+	7,  // 71: cyberia.CyberiaDataService.GetObjectLayerBatch:input_type -> cyberia.GetObjectLayerBatchRequest
+	8,  // 72: cyberia.CyberiaDataService.GetObjectLayer:input_type -> cyberia.GetObjectLayerRequest
+	9,  // 73: cyberia.CyberiaDataService.GetItemContent:input_type -> cyberia.GetItemContentRequest
+	44, // 74: cyberia.CyberiaDataService.Ping:input_type -> cyberia.PingRequest
+	47, // 75: cyberia.CyberiaDataService.GetObjectLayerManifest:input_type -> cyberia.GetObjectLayerManifestRequest
+	49, // 76: cyberia.CyberiaPlayerService.ConsumeGameLaunchTicket:input_type -> cyberia.ConsumeGameLaunchTicketRequest
+	51, // 77: cyberia.CyberiaPlayerService.IssueResumeTicket:input_type -> cyberia.IssueResumeTicketRequest
+	53, // 78: cyberia.CyberiaPlayerService.IssueTravelTicket:input_type -> cyberia.IssueTravelTicketRequest
+	55, // 79: cyberia.CyberiaPlayerService.AcquirePlayerSession:input_type -> cyberia.AcquirePlayerSessionRequest
+	65, // 80: cyberia.CyberiaPlayerService.CommitPlayerState:input_type -> cyberia.CommitPlayerStateRequest
+	69, // 81: cyberia.CyberiaPlayerService.CommitPlayerStates:input_type -> cyberia.CommitPlayerStatesRequest
+	71, // 82: cyberia.CyberiaPlayerService.ListWorldDrops:input_type -> cyberia.ListWorldDropsRequest
+	73, // 83: cyberia.CyberiaPlayerService.ListMarket:input_type -> cyberia.ListMarketRequest
+	79, // 84: cyberia.CyberiaPlayerService.CheckpointPlayerSessions:input_type -> cyberia.CheckpointPlayerSessionsRequest
+	82, // 85: cyberia.CyberiaPlayerService.ReleasePlayerSession:input_type -> cyberia.ReleasePlayerSessionRequest
+	85, // 86: cyberia.CyberiaPlayerService.ListFriends:input_type -> cyberia.ListFriendsRequest
+	87, // 87: cyberia.CyberiaPlayerService.UpdateFriendship:input_type -> cyberia.UpdateFriendshipRequest
+	89, // 88: cyberia.CyberiaPlayerService.UpdateStatusNote:input_type -> cyberia.UpdateStatusNoteRequest
+	26, // 89: cyberia.CyberiaDataService.GetFullInstance:output_type -> cyberia.GetFullInstanceResponse
+	43, // 90: cyberia.CyberiaDataService.GetMapData:output_type -> cyberia.GetMapDataResponse
+	6,  // 91: cyberia.CyberiaDataService.GetObjectLayerBatch:output_type -> cyberia.ObjectLayerMessage
+	6,  // 92: cyberia.CyberiaDataService.GetObjectLayer:output_type -> cyberia.ObjectLayerMessage
+	11, // 93: cyberia.CyberiaDataService.GetItemContent:output_type -> cyberia.GetItemContentResponse
+	45, // 94: cyberia.CyberiaDataService.Ping:output_type -> cyberia.PingResponse
+	48, // 95: cyberia.CyberiaDataService.GetObjectLayerManifest:output_type -> cyberia.GetObjectLayerManifestResponse
+	50, // 96: cyberia.CyberiaPlayerService.ConsumeGameLaunchTicket:output_type -> cyberia.ConsumeGameLaunchTicketResponse
+	52, // 97: cyberia.CyberiaPlayerService.IssueResumeTicket:output_type -> cyberia.IssueResumeTicketResponse
+	54, // 98: cyberia.CyberiaPlayerService.IssueTravelTicket:output_type -> cyberia.IssueTravelTicketResponse
+	56, // 99: cyberia.CyberiaPlayerService.AcquirePlayerSession:output_type -> cyberia.AcquirePlayerSessionResponse
+	66, // 100: cyberia.CyberiaPlayerService.CommitPlayerState:output_type -> cyberia.CommitPlayerStateResponse
+	70, // 101: cyberia.CyberiaPlayerService.CommitPlayerStates:output_type -> cyberia.CommitPlayerStatesResponse
+	72, // 102: cyberia.CyberiaPlayerService.ListWorldDrops:output_type -> cyberia.ListWorldDropsResponse
+	76, // 103: cyberia.CyberiaPlayerService.ListMarket:output_type -> cyberia.ListMarketResponse
+	81, // 104: cyberia.CyberiaPlayerService.CheckpointPlayerSessions:output_type -> cyberia.CheckpointPlayerSessionsResponse
+	83, // 105: cyberia.CyberiaPlayerService.ReleasePlayerSession:output_type -> cyberia.ReleasePlayerSessionResponse
+	86, // 106: cyberia.CyberiaPlayerService.ListFriends:output_type -> cyberia.ListFriendsResponse
+	88, // 107: cyberia.CyberiaPlayerService.UpdateFriendship:output_type -> cyberia.UpdateFriendshipResponse
+	90, // 108: cyberia.CyberiaPlayerService.UpdateStatusNote:output_type -> cyberia.UpdateStatusNoteResponse
+	89, // [89:109] is the sub-list for method output_type
+	69, // [69:89] is the sub-list for method input_type
+	69, // [69:69] is the sub-list for extension type_name
+	69, // [69:69] is the sub-list for extension extendee
+	0,  // [0:69] is the sub-list for field type_name
 }
 
 func init() { file_cyberia_proto_init() }
@@ -6047,14 +7841,16 @@ func file_cyberia_proto_init() {
 	if File_cyberia_proto != nil {
 		return
 	}
-	file_cyberia_proto_msgTypes[26].OneofWrappers = []any{}
+	file_cyberia_proto_msgTypes[18].OneofWrappers = []any{}
+	file_cyberia_proto_msgTypes[28].OneofWrappers = []any{}
+	file_cyberia_proto_msgTypes[34].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cyberia_proto_rawDesc), len(file_cyberia_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   75,
+			NumMessages:   91,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

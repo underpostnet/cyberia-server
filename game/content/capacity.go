@@ -75,7 +75,7 @@ func (s *Content) exchanged(player *world.Session, takes, gives []Stack) ([]worl
 		case give.ItemID == s.CoinItemID:
 			coins += give.Qty
 		default:
-			bag = s.stackInto(bag, give.ItemID, give.Qty)
+			bag = s.stackInto(bag, give.ItemID, give.CID, give.Qty)
 		}
 	}
 	return bag, coins
@@ -90,22 +90,34 @@ func (s *Content) InventoryFits(player *world.Session, takes, gives []Stack) boo
 
 // ExchangeItems is the one path that adds items to a player: it removes takes
 // and adds gives as one change, or changes nothing. It refuses when the player
-// lacks a take or the result does not fit the inventory capacity.
+// lacks a take, the result does not fit the inventory capacity, or a credit
+// passes the wallet maximum.
 func (s *Content) ExchangeItems(player *world.Session, takes, gives []Stack) bool {
+	return s.exchangeRefusal(player, takes, gives) == ""
+}
+
+// exchangeRefusal applies ExchangeItems and says why it changed nothing, or "".
+func (s *Content) exchangeRefusal(player *world.Session, takes, gives []Stack) string {
 	for _, take := range takes {
 		if take.Qty > 0 && s.playerItemQuantity(player, take.ItemID) < take.Qty {
-			return false
+			if take.ItemID == s.CoinItemID {
+				return RefuseInsufficient
+			}
+			return RefuseNoStack
 		}
 	}
 	bag, coins := s.exchanged(player, takes, gives)
+	if int64(coins) > s.coinRoom(player) {
+		return RefuseWalletFull
+	}
 	if !s.fitsBag(player, bag) {
-		return false
+		return RefuseFull
 	}
 	*s.InventoryLayers(player) = bag
 	if coins != 0 {
 		s.AddCoins(player.ID, s.Maps[player.MapCode], coins)
 	}
-	return true
+	return ""
 }
 
 // removePlayerItem deducts qty of itemID from the carried inventory. Coins

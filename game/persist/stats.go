@@ -7,9 +7,15 @@ type Stats struct {
 	Commits            uint64 // applied
 	Duplicates         uint64 // already applied; the engine changed nothing
 	Retries            uint64 // transport failures, each retried
+	Integrity          uint64 // refused by the database as they stand, each retried slowly
+	Rejected           uint64 // calls the engine rejects itself, each retried slowly
 	Stale              uint64 // refused for an older epoch
 	Invalid            uint64 // refused as malformed
 	LostFinal          uint64 // final states dropped after finalWindow
+	Adopted            uint64 // unsettled states a new session of the profile took over
+	Superseded         uint64 // unsaved states a new epoch replaced
+	Joints             uint64 // joint commits applied
+	JointRefused       uint64 // joint commits refused: no state of the operation applied
 	Checkpoints        uint64
 	CheckpointFailures uint64
 	Positions          uint64 // positions written by checkpoints
@@ -24,7 +30,8 @@ type Snapshot struct {
 	Sessions          int           // live and closing
 	Pending           int           // sessions with an unapplied state
 	OldestPending     time.Duration // age of the oldest unapplied state
-	Unsaved           int
+	Unsaved           int           // sessions degraded or in recovery
+	Recovery          int           // sessions the engine refuses to save as they stand
 	AvgCommitDuration time.Duration
 }
 
@@ -48,7 +55,11 @@ func (p *Pipeline) Snapshot() Snapshot {
 		}
 		out.Pending++
 		out.OldestPending = max(out.OldestPending, now.Sub(r.pendingSince))
-		if !r.failingSince.IsZero() && now.Sub(r.failingSince) >= DegradedAfter {
+		switch d := p.durabilityOf(r); {
+		case d == Recovery:
+			out.Recovery++
+			out.Unsaved++
+		case d.Unsaved():
 			out.Unsaved++
 		}
 	}

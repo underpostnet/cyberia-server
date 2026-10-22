@@ -51,8 +51,10 @@ const (
 	// second; 30 leaves room for taps plus UI actions in the same second.
 	DefaultMessageRate = 30
 
-	// DefaultMessageBurst absorbs a short burst without a strike.
-	DefaultMessageBurst = 60
+	// DefaultMessageBurst absorbs the batches a client queues through a 5 s
+	// network stall: it sends at most one batch per 30 Hz step, and the stall
+	// delivers them at once.
+	DefaultMessageBurst = 150
 
 	// DefaultMaxStrikes is how many violations a connection may accumulate
 	// before the server closes it. Tokens refill, so an occasional overrun
@@ -305,6 +307,10 @@ type inputLimiter struct {
 	strikes    int
 	maxStrikes int
 	lastDecay  time.Time
+	// dropped counts the messages over budget; each perStrike of them, one
+	// second of excess at the message rate, costs one strike.
+	dropped   int
+	perStrike int
 }
 
 func newInputLimiter(limits ConnectionLimits) *inputLimiter {
@@ -312,12 +318,15 @@ func newInputLimiter(limits ConnectionLimits) *inputLimiter {
 	// A zero rate leaves bucket nil, which allow() reads as "no limit".
 	if limits.MessageRate > 0 {
 		l.bucket = newTokenBucket(limits.MessageRate, limits.MessageBurst)
+		l.perStrike = max(1, int(limits.MessageRate))
 	}
 	return l
 }
 
 // allow charges one message. It reports whether the message may be processed
-// and whether the connection has earned a disconnect.
+// and whether the connection has earned a disconnect. A message over budget is
+// dropped; the client sends its events again when the server asks
+// (input_resend), so a burst after a stall costs one strike, a flood many.
 func (l *inputLimiter) allow() (ok bool, evict bool) {
 	if l.bucket == nil {
 		return true, false // rate limiting disabled
@@ -331,6 +340,10 @@ func (l *inputLimiter) allow() (ok bool, evict bool) {
 	}
 	if l.bucket.allow(now) {
 		return true, false
+	}
+	l.dropped++
+	if (l.dropped-1)%l.perStrike != 0 {
+		return false, false
 	}
 	return false, l.strike()
 }

@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/persist"
 )
 
@@ -52,6 +53,8 @@ const (
 	EndRestart      = "server_restart"
 	EndLeft         = "left"
 	EndLeftSaving   = "left_saving"
+	// EndSaving: the session the account left still saves on another server.
+	EndSaving = "saving"
 )
 
 // ticketPattern is the shape of a launch ticket: 32 random bytes in base64url.
@@ -76,13 +79,16 @@ type IssuedTicket struct {
 
 // AcquiredSession is the lease and the saved state of a profile. Refusal is
 // empty when acquired; Created marks a profile with no committed state;
-// LeaseLength is how long the lease lives without a checkpoint.
+// LeaseLength is how long the lease lives without a checkpoint; Adopted marks
+// a State that is the unsettled state of the closed session it replaces on
+// this server (persist.Pipeline.Unsettled), not the saved one.
 type AcquiredSession struct {
 	Refusal     string
 	Lease       persist.Lease
 	State       persist.State
 	Created     bool
 	LeaseLength time.Duration
+	Adopted     bool
 }
 
 // FriendRecord is one friendship or request of an account, as the engine
@@ -120,4 +126,9 @@ type Accounts interface {
 	// UpdateStatusNote sets the status note of an account and returns "" or
 	// the refusal.
 	UpdateStatusNote(ctx context.Context, accountID, note string) (string, error)
+	// ListWorldDrops returns the public world drops of a world that have not
+	// expired.
+	ListWorldDrops(ctx context.Context, instanceCode string) ([]persist.WorldDrop, error)
+	// ListMarket reads the view of the market of a terminal of a world.
+	ListMarket(ctx context.Context, instanceCode string, q content.MarketQuery) (content.MarketView, error)
 }

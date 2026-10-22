@@ -229,7 +229,7 @@ func (s *Content) HandleItemMove(player *world.Session, cmd *world.InputCommand)
 		w.capacity = s.StorageSlots(player)
 		w.stacks = slices.Clone(s.PersonalStorage[player.PlayerID])
 	}
-	if !w.apply(m) || !s.fitsBag(player, w.bag) {
+	if !w.apply(m) || !s.fitsBag(player, w.bag) || int64(w.coins-int(player.Coins)) > s.coinRoom(player) {
 		return
 	}
 

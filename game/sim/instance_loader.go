@@ -50,6 +50,7 @@ func (s *Sim) BuildWorldFromInstance(
 	olMsgs []*pb.ObjectLayerMessage,
 	actions []*pb.CyberiaActionMessage,
 	quests []*pb.CyberiaQuestMessage,
+	markets []*pb.MarketProfile,
 ) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
@@ -64,6 +65,7 @@ func (s *Sim) BuildWorldFromInstance(
 	// the world to the freshly built entities. No separate fetch.
 	s.BindQuests(instance.GetMapCodes(), quests)
 	s.BindActions(instance.GetMapCodes(), actions)
+	s.BindMarkets(markets)
 
 	logx.Infof("[InstanceLoader] World built: %d maps loaded.", len(s.Maps))
 
@@ -92,29 +94,37 @@ func (s *Sim) SetInstanceCode(code string) {
 
 // RebuildWorld re-fetches instance data and rebuilds all map entities
 // (floors, obstacles, foregrounds, portals, bots) while preserving
-// connected players.  Called by the hot-reload loop so that map edits
-// made in the admin UI are reflected without a full server restart.
+// connected players and the stacks players dropped. Called by the hot-reload
+// loop so that map edits made in the admin UI are reflected without a full
+// server restart.
 func (s *Sim) RebuildWorld(
 	instance *pb.InstanceMessage,
 	mapMsgs []*pb.MapDataMessage,
 	olMsgs []*pb.ObjectLayerMessage,
 	actions []*pb.CyberiaActionMessage,
 	quests []*pb.CyberiaQuestMessage,
+	markets []*pb.MarketProfile,
 ) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
 	logx.Infof("[InstanceLoader] RebuildWorld for instance %q (%d maps)", instance.GetCode(), len(mapMsgs))
 
-	// Snapshot existing players per map so they survive the rebuild.
+	// Snapshot existing players and player drops per map so they survive the rebuild.
 	type savedPlayer struct {
 		id  world.EntityID
 		row world.EntityRow
 	}
 	savedPlayers := make(map[string][]savedPlayer)
+	savedDrops := make(map[string][]savedPlayer)
 	for code, ms := range s.Maps {
 		for id := range ms.OfKind(world.EntityPlayer) {
 			savedPlayers[code] = append(savedPlayers[code], savedPlayer{id, ms.Take(id)})
+		}
+		for id := range ms.OfKind(world.EntityBot) {
+			if ms.Br(id).LootOrigin == world.LootOriginPlayer {
+				savedDrops[code] = append(savedDrops[code], savedPlayer{id, ms.Take(id)})
+			}
 		}
 	}
 	s.ForgetNonPlayers()
@@ -124,6 +134,8 @@ func (s *Sim) RebuildWorld(
 	s.PlayerSpawn = playerSpawnFromInstance(instance)
 	s.BindQuests(instance.GetMapCodes(), quests)
 	s.BindActions(instance.GetMapCodes(), actions)
+	s.BindMarkets(markets)
+	s.worldRevision++
 
 	// Restore players into the (possibly new) map states.
 	for code, players := range savedPlayers {
@@ -138,6 +150,13 @@ func (s *Sim) RebuildWorld(
 			ms.Put(p.id, p.row)
 		}
 	}
+	for code, drops := range savedDrops {
+		if ms, ok := s.Maps[code]; ok {
+			for _, d := range drops {
+				ms.Put(d.id, d.row)
+			}
+		}
+	}
 
 	logx.Infof("[InstanceLoader] RebuildWorld complete: %d maps.", len(s.Maps))
 	for code, ms := range s.Maps {
@@ -146,6 +165,9 @@ func (s *Sim) RebuildWorld(
 	}
 	printInstanceGraph(instance, s.Maps)
 }
+
+// WorldRevision counts the rebuilds of the world since the server started. Caller holds s.Mu.
+func (s *Sim) WorldRevision() uint64 { return s.worldRevision }
 
 // buildMapsFromInstance is the shared implementation for BuildWorldFromInstance
 // and RebuildWorld.  Caller MUST hold s.mu.

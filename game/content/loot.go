@@ -29,9 +29,17 @@ package content
 // │  5. Expiry        — uncollected death drops despawn via ExpiresAt       │
 // │     (updateBots). World tokens stay until collected; a consuming one    │
 // │     comes back on its cell after the respawn time of its entity.        │
+// │                                                                         │
+// │  6. Lock          — a token of what an account player lost or dropped   │
+// │     opens once the commit of that loss applied, and its lifetime starts │
+// │     then. A loss that can never apply removes the token.                │
 // └─────────────────────────────────────────────────────────────────────────┘
+//
+// A player drop (drop.go) is public: any living player takes it, its owner
+// too, and no bot. It grants the stack of the definition it was dropped with.
 
 import (
+	"cyberia-server/game/persist"
 	"cyberia-server/game/world"
 	"math"
 	"math/rand"
@@ -222,6 +230,9 @@ func (s *Content) spawnDropToken(mapState *world.MapState, center world.Vec2, it
 		ExpiresAt:        now.Add(lootLifetime),
 		Lock:             lock,
 	}, 0)
+	if lock.PlayerID != "" {
+		mapState.Br(dropID).ExpiresAt = time.Time{}
+	}
 
 	// Announce the launch so viewers play the corpse→cell parabola. The landing
 	// point is the token center.
@@ -336,6 +347,35 @@ func (s *Content) BuildLoot(mapState *world.MapState, ent *pb.EntityMessage) {
 
 // ── Authoritative collection ─────────────────────────────────────────────
 
+// SettleDropLock reports whether a token is open for collection. A token
+// locked by a world drop op waits for SettleWorldDrops. A token locked by a
+// loss stays closed while the loss may still commit; once it applied, the lock
+// clears and the lifetime of the token starts. A loss that can never apply
+// removes the token: the saved state still holds what it carries. Caller holds
+// s.mu.
+func (s *Content) SettleDropLock(mapState *world.MapState, dropID world.EntityID, now time.Time) bool {
+	drop := mapState.Br(dropID)
+	switch {
+	case drop.Lock.PlayerID == "":
+		return true
+	case drop.Lock.Op != "":
+		return false
+	}
+	switch s.DropLockOutcome(drop) {
+	case persist.Pending:
+		return false
+	case persist.Refused:
+		logx.Warnf("[LOOT] token %s of %s x%d removed: the loss of player %s never applied",
+			dropID, drop.DropItemID, drop.DropQuantity, drop.Lock.PlayerID)
+		s.recordEconomy("drop_lock", "refused")
+		s.Despawn(mapState, dropID)
+		return false
+	}
+	drop.Lock = world.DropLock{}
+	drop.ExpiresAt = now.Add(lootLifetime)
+	return true
+}
+
 // LootConsumes reports whether the collector consumes the token at once: a
 // consuming token heals a collector that misses life; one at full life keeps the item.
 func LootConsumes(drop *world.Brain, collector *world.Vitals) bool {
@@ -353,22 +393,40 @@ func (s *Content) ApplyLootToPlayer(mapState *world.MapState, drop *world.Brain,
 	case LootConsumes(drop, mapState.Vt(player.ID)):
 		s.ConsumeItem(mapState, player.ID, drop.DropItemID)
 		return false
+	case drop.DropCID != "" && drop.DropCID != s.DefinitionCID(drop.DropItemID):
+		// The label names another definition now: the stack keeps its own, held.
+		s.setHeld(player.PlayerID, append(s.Held[player.PlayerID], persist.Held{
+			Stack:     durableStack(drop.DropItemID, drop.DropCID, drop.DropQuantity, 0, false),
+			Container: persist.ContainerBag,
+			Reason:    persist.HeldRebound,
+		}))
 	default:
-		if !s.ExchangeItems(player, nil, []Stack{{ItemID: drop.DropItemID, Qty: drop.DropQuantity}}) {
+		if !s.ExchangeItems(player, nil, []Stack{{ItemID: drop.DropItemID, CID: drop.DropCID, Qty: drop.DropQuantity}}) {
 			return false
 		}
 		s.AdvancePlayerQuestsOnGain(player)
+	}
+	if drop.LootOrigin == world.LootOriginPlayer {
+		s.recordEconomy("pickup", "")
+		logx.Infof("[ECONOMY] pickup player=%s item=%s cid=%s qty=%d owner=%s",
+			player.PlayerID, drop.DropItemID, drop.DropCID, drop.DropQuantity, drop.DropOwner)
 	}
 	return true
 }
 
 // LootFits reports whether the player has room for what the token gives it:
-// coins and a consumption take no slot, an item needs one.
+// coins need room in the wallet, a consumption and a held stack take no slot,
+// an item needs one.
 func (s *Content) LootFits(mapState *world.MapState, drop *world.Brain, player *world.Session) bool {
-	if drop.LootOutcome == world.LootOutcomeCoin || LootConsumes(drop, mapState.Vt(player.ID)) {
+	switch {
+	case drop.LootOutcome == world.LootOutcomeCoin:
+		return int64(drop.DropQuantity) <= s.coinRoom(player)
+	case LootConsumes(drop, mapState.Vt(player.ID)):
+		return true
+	case drop.DropCID != "" && drop.DropCID != s.DefinitionCID(drop.DropItemID):
 		return true
 	}
-	return s.InventoryFits(player, nil, []Stack{{ItemID: drop.DropItemID, Qty: drop.DropQuantity}})
+	return s.InventoryFits(player, nil, []Stack{{ItemID: drop.DropItemID, CID: drop.DropCID, Qty: drop.DropQuantity}})
 }
 
 // ApplyLootToBot applies the token's outcome to the collecting bot and reports
@@ -388,8 +446,10 @@ func (s *Content) ApplyLootToBot(mapState *world.MapState, drop *world.Brain, bo
 }
 
 // LootAdmits reports whether the token's collection policy admits collectorID.
+// A player drop admits players only; its caller resolves players apart.
 func LootAdmits(drop *world.Brain, collectorID world.EntityID) bool {
-	if drop.LootCollection == world.LootCollectFirstContact {
+	switch drop.LootCollection {
+	case world.LootCollectFirstContact, world.LootCollectPlayers:
 		return true
 	}
 	_, ok := drop.LootContributors[collectorID]
@@ -398,14 +458,17 @@ func LootAdmits(drop *world.Brain, collectorID world.EntityID) bool {
 
 // ResolveDropCollector returns the first live, non-frozen player overlapping the
 // token that its policy admits and that has room for it, or nil. Go's random
-// map iteration order fairly breaks ties between simultaneous colliders.
+// map iteration order fairly breaks ties between simultaneous colliders. It
+// releases the owner hold once the owner no longer touches the token.
 func (s *Content) ResolveDropCollector(mapState *world.MapState, dropID world.EntityID) *world.Session {
 	drop := mapState.Br(dropID)
 	for player := range s.PlayersOn(mapState) {
-		if mapState.Vt(player.ID).Ghost() || player.Frozen {
+		touches := world.CheckAABBCollision(mapState.Tf(dropID).Pos, mapState.Tf(dropID).Size, mapState.Tf(player.ID).Pos, mapState.Tf(player.ID).Size)
+		if drop.DropOwner != "" && player.PlayerID == drop.DropOwner && drop.OwnerHold {
+			drop.OwnerHold = touches
 			continue
 		}
-		if !world.CheckAABBCollision(mapState.Tf(dropID).Pos, mapState.Tf(dropID).Size, mapState.Tf(player.ID).Pos, mapState.Tf(player.ID).Size) {
+		if !touches || mapState.Vt(player.ID).Ghost() || player.Frozen || !sharesPrincipal(drop, player) {
 			continue
 		}
 		if LootAdmits(drop, player.ID) && s.LootFits(mapState, drop, player) {
@@ -419,6 +482,9 @@ func (s *Content) ResolveDropCollector(mapState *world.MapState, dropID world.En
 // the token that its policy admits, or 0.
 func (s *Content) ResolveBotDropCollector(mapState *world.MapState, dropID world.EntityID) world.EntityID {
 	drop := mapState.Br(dropID)
+	if drop.LootCollection == world.LootCollectPlayers {
+		return 0
+	}
 	for id := range mapState.OfKind(world.EntityBot) {
 		if id == dropID || mapState.Vt(id).Ghost() || !BehaviorCollectsLoot(mapState.Ag(id).Behavior) {
 			continue

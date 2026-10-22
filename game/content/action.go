@@ -41,11 +41,13 @@ type ActionShopItem struct {
 }
 
 // ActionCraftRecipe is one assembler recipe: ingredients consumed, outputs
-// produced. Recipes are addressed by their index in the action's list.
+// produced. Recipes are addressed by their index in the action's list. Fee is
+// the coins the recipe charges, nil when the economy decides.
 type ActionCraftRecipe struct {
 	OutputItems []Stack `json:"outputItems"`
 	Ingredients []Stack `json:"ingredients"`
 	CraftTimeMs int     `json:"craftTimeMs"`
+	Fee         *int    `json:"fee"`
 }
 
 type CyberiaAction struct {
@@ -59,6 +61,20 @@ type CyberiaAction struct {
 	ShopItems          []ActionShopItem      `json:"shopItems"`
 	CraftRecipes       []ActionCraftRecipe   `json:"craftRecipes"`
 	StorageSlots       int                   `json:"storageSlots"`
+	BuybackItems       []string              `json:"buybackItems"`
+	BurnItems          []string              `json:"burnItems"`
+	Market             ActionMarket          `json:"market"`
+}
+
+// ActionMarket is the market profile a terminal opens and what a seller lists
+// there: every item whose policy allows a listing (Selection "policy"), or
+// ItemIDs, in the ListingModes the profile supports. An empty MarketCode opens
+// no market.
+type ActionMarket struct {
+	MarketCode   string   `json:"marketCode"`
+	Selection    string   `json:"selection"`
+	ItemIDs      []string `json:"itemIds"`
+	ListingModes []string `json:"listingModes"`
 }
 
 // actionCell returns the cell key for an action's source cell.
@@ -88,13 +104,25 @@ func protoToAction(a *pb.CyberiaActionMessage) *CyberiaAction {
 		})
 	}
 	for _, r := range a.GetCraftRecipes() {
-		ca.CraftRecipes = append(ca.CraftRecipes, ActionCraftRecipe{
+		recipe := ActionCraftRecipe{
 			OutputItems: protoToCraftItems(r.GetOutputItems()),
 			Ingredients: protoToCraftItems(r.GetIngredients()),
 			CraftTimeMs: int(r.GetCraftTimeMs()),
-		})
+		}
+		if r.Fee != nil {
+			fee := int(r.GetFee())
+			recipe.Fee = &fee
+		}
+		ca.CraftRecipes = append(ca.CraftRecipes, recipe)
 	}
 	ca.StorageSlots = int(a.GetStorageSlots())
+	ca.BuybackItems = a.GetBuybackItems()
+	ca.BurnItems = a.GetBurnItems()
+	if m := a.GetMarket(); m != nil {
+		ca.Market = ActionMarket{
+			MarketCode: m.GetMarketCode(), Selection: m.GetSelection(), ItemIDs: m.GetItemIds(), ListingModes: m.GetListingModes(),
+		}
+	}
 	return ca
 }
 
@@ -319,13 +347,13 @@ func (s *Content) PendingActionTalkDialogs(player *world.Session, id world.Entit
 }
 
 // BotHasUsableAction reports whether a bot exposes an action capability any
-// player can use on sight — a live vendor or assembler today. The single place
-// that decides what lights the action-provider bit, so adding a capability does
-// not grow botInteractionFlags.
+// player can use on sight: a live vendor, assembler, vault terminal, merchant
+// or burner. The single place that decides what lights the action-provider
+// bit, so adding a capability does not grow botInteractionFlags.
 //
 // Caller MUST hold s.mu.
 func (s *Content) BotHasUsableAction(id world.EntityID, ms *world.MapState) bool {
-	return s.botHasShop(id, ms) || s.botHasCraft(id, ms) || s.botHasStorage(id, ms)
+	return s.botHasShop(id, ms) || s.botHasCraft(id, ms) || s.botHasStorage(id, ms) || s.botHasMerchant(id, ms)
 }
 
 // inPlayerView reports whether an entity can be interacted with: same map,

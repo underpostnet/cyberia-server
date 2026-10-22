@@ -60,33 +60,19 @@ func TestCraftRecipeAtBoundsTheIndex(t *testing.T) {
 	}
 }
 
-func TestPlayerCanCraftChecksEveryIngredient(t *testing.T) {
+// An assembly takes each item once, its ingredient lines and the fee summed;
+// a free line takes nothing.
+func TestCraftTakesSumLinesAndTheFee(t *testing.T) {
 	s := &Content{World: &world.World{}, CoinItemID: "coin"}
-	player := worldtest.PlacePlayer(s.World, 1, []world.ObjectLayerState{{ItemID: "wood-drop-1", Quantity: 2}})
-	player.Coins = 5
 	recipe := &ActionCraftRecipe{Ingredients: []Stack{
 		{ItemID: "wood-drop-1", Qty: 2},
 		{ItemID: "coin", Qty: 5},
+		{ItemID: "wood-drop-1", Qty: 1},
+		{ItemID: "wood-drop-9", Qty: 0},
 	}}
-
-	if !s.playerCanCraft(player, recipe) {
-		t.Fatal("holding exactly the required amounts must be craftable")
-	}
-	// One short of any single line blocks the whole synthesis.
-	player.Coins = 4
-	if s.playerCanCraft(player, recipe) {
-		t.Fatal("a short currency line must block the synthesis")
-	}
-	player.Coins = 5
-	s.Ap(player.ID, player.MapCode).Layers[0].Quantity = 1
-	if s.playerCanCraft(player, recipe) {
-		t.Fatal("a short component line must block the synthesis")
-	}
-	// A free line is always satisfied, so a recipe of them always runs.
-	if !s.playerCanCraft(player, &ActionCraftRecipe{
-		Ingredients: []Stack{{ItemID: "wood-drop-9", Qty: 0}},
-	}) {
-		t.Fatal("a zero-quantity line costs nothing")
+	takes := s.craftTakes(recipe, 3)
+	if len(takes) != 2 || takes[0] != (Stack{ItemID: "wood-drop-1", Qty: 3}) || takes[1] != (Stack{ItemID: "coin", Qty: 8}) {
+		t.Fatalf("want 3 wood and 8 coins, got %+v", takes)
 	}
 }
 

@@ -30,6 +30,8 @@ type runtimeCounters struct {
 	wsRefusedTotal     atomic.Uint64 // rejected by the admission guard
 	wsRateLimitedTotal atomic.Uint64 // inbound messages dropped over budget
 	wsEvictedTotal     atomic.Uint64 // closed for repeated violations
+	inputResendTotal   atomic.Uint64 // input_resend asked after a sequence gap
+	inputGapSkipped    atomic.Uint64 // gaps no resend filled within gapWait
 
 	// Authentication outcomes ("ok" or the refusal) and the reasons sessions
 	// ended. Both change once per connection, so a mutex is enough.
@@ -72,6 +74,8 @@ type RuntimeMetricsSnapshot struct {
 	WsDisconnectsTotal uint64  `json:"ws_disconnects_total"`
 	WsRefusedTotal     uint64  `json:"ws_refused_total"`
 	WsRateLimitedTotal uint64  `json:"ws_rate_limited_total"`
+	InputResendTotal   uint64  `json:"input_resend_total"`
+	InputGapSkipped    uint64  `json:"input_gap_skipped_total"`
 	WsEvictedTotal     uint64  `json:"ws_evicted_total"`
 	WsActiveConns      int     `json:"ws_active_connections"`
 	WsActiveAddresses  int     `json:"ws_active_addresses"`
@@ -83,6 +87,8 @@ type RuntimeMetricsSnapshot struct {
 	// the refusal of the engine, or "error".
 	Travel  map[string]uint64 `json:"travel_outcomes"`
 	Content ContentMetrics    `json:"content"`
+	// Economy counts the economic operations by "op:outcome": "ok" or the refusal.
+	Economy map[string]uint64 `json:"economy_outcomes"`
 }
 
 // ContentMetrics is the residency of definitions outside the warm set.
@@ -108,13 +114,15 @@ func (s *GameServer) recordWsWrite(n int) {
 	s.counters.wsBytesOut.Add(uint64(n))
 }
 
-func (s *GameServer) recordWsReadError()   { s.counters.wsReadErrors.Add(1) }
-func (s *GameServer) recordWsWriteError()  { s.counters.wsWriteErrors.Add(1) }
-func (s *GameServer) recordWsConnect()     { s.counters.wsConnectsTotal.Add(1) }
-func (s *GameServer) recordWsDisconnect()  { s.counters.wsDisconnectsTotal.Add(1) }
-func (s *GameServer) recordWsRefused()     { s.counters.wsRefusedTotal.Add(1) }
-func (s *GameServer) recordWsRateLimited() { s.counters.wsRateLimitedTotal.Add(1) }
-func (s *GameServer) recordWsEvicted()     { s.counters.wsEvictedTotal.Add(1) }
+func (s *GameServer) recordWsReadError()     { s.counters.wsReadErrors.Add(1) }
+func (s *GameServer) recordWsWriteError()    { s.counters.wsWriteErrors.Add(1) }
+func (s *GameServer) recordWsConnect()       { s.counters.wsConnectsTotal.Add(1) }
+func (s *GameServer) recordWsDisconnect()    { s.counters.wsDisconnectsTotal.Add(1) }
+func (s *GameServer) recordWsRefused()       { s.counters.wsRefusedTotal.Add(1) }
+func (s *GameServer) recordWsRateLimited()   { s.counters.wsRateLimitedTotal.Add(1) }
+func (s *GameServer) recordWsEvicted()       { s.counters.wsEvictedTotal.Add(1) }
+func (s *GameServer) recordInputResend()     { s.counters.inputResendTotal.Add(1) }
+func (s *GameServer) recordInputGapSkipped() { s.counters.inputGapSkipped.Add(1) }
 
 // recordAuth counts one authentication: refusal is empty when it passed.
 func (s *GameServer) recordAuth(refusal string) {
@@ -193,6 +201,7 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 	s.Mu.Lock()
 	aoi := s.aoiRadius
 	tick := s.currentTick
+	economy := s.EconomyOutcomes()
 	s.Mu.Unlock()
 
 	activeConns, activeAddrs := s.guard.counts()
@@ -220,6 +229,8 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 		WsDisconnectsTotal: s.counters.wsDisconnectsTotal.Load(),
 		WsRefusedTotal:     s.counters.wsRefusedTotal.Load(),
 		WsRateLimitedTotal: s.counters.wsRateLimitedTotal.Load(),
+		InputResendTotal:   s.counters.inputResendTotal.Load(),
+		InputGapSkipped:    s.counters.inputGapSkipped.Load(),
 		WsEvictedTotal:     s.counters.wsEvictedTotal.Load(),
 		WsActiveConns:      activeConns,
 		WsActiveAddresses:  activeAddrs,
@@ -232,6 +243,7 @@ func (s *GameServer) RuntimeMetrics() RuntimeMetricsSnapshot {
 			DefinitionsShared:  s.counters.definitionsShared.Load(),
 			DefinitionsEvicted: s.counters.definitionsEvicted.Load(),
 		},
+		Economy: economy,
 	}
 }
 

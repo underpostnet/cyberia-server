@@ -569,3 +569,205 @@ func TestWSUnlimitedProfileAcceptsAWideSameAddressRun(t *testing.T) {
 		return total == 0 && addresses == 0
 	})
 }
+
+// readResend reads frames until input_resend and returns the sequence it asks from.
+func readResend(t *testing.T, conn *websocket.Conn) uint32 {
+	t.Helper()
+	var resend inputResend
+	readPayload(t, conn, "input_resend", &resend)
+	return resend.From
+}
+
+// queuedSeqs is the sequence of every command the one player of the map holds.
+func queuedSeqs(w *wsTestServer) []uint32 {
+	w.game.Mu.Lock()
+	defer w.game.Mu.Unlock()
+	var seqs []uint32
+	for p := range w.game.PlayersOn(w.game.Maps["test"]) {
+		for _, cmd := range p.InputQueue {
+			seqs = append(seqs, cmd.Sequence)
+		}
+	}
+	return seqs
+}
+
+// A batch past a gap waits for the missing events: the server asks for them,
+// and the answer repeats the batch it refused. A repeated event is queued once.
+func TestWSAGapAsksForTheMissingEvents(t *testing.T) {
+	srv := newWSTestServer(t, DefaultConnectionLimits())
+	conn, _, err := dial(t, srv.url)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	readInitData(t, conn)
+	waitFor(t, "the client to register", func() bool { return srv.clientCount() == 1 })
+	tap := func(seq int) map[string]any { return map[string]any{"x": 10, "y": 10, "seq": seq} }
+
+	conn.WriteMessage(websocket.BinaryMessage, packEvents(t, "player_action", tap(1)))
+	conn.WriteMessage(websocket.BinaryMessage, packEvents(t, "player_action", tap(3)))
+	if from := readResend(t, conn); from != 2 {
+		t.Fatalf("the server asks for the events from the gap, got %d", from)
+	}
+	conn.WriteMessage(websocket.BinaryMessage, packEvents(t, "player_action", tap(1), tap(2), tap(3)))
+	waitFor(t, "the resent events", func() bool { return len(queuedSeqs(srv)) == 3 })
+	if got := queuedSeqs(srv); got[0] != 1 || got[1] != 2 || got[2] != 3 {
+		t.Fatalf("each event is queued once, in order: %v", got)
+	}
+	if srv.game.counters.wsEvictedTotal.Load() != 0 || srv.game.counters.inputResendTotal.Load() != 1 {
+		t.Fatal("a gap evicts nothing and asks once")
+	}
+}
+
+// A client that never sends the events again loses the gap, not every event
+// after it: past gapWait the server skips the gap and queues the stream.
+func TestWSAGapNoResendFillsIsSkipped(t *testing.T) {
+	srv := newWSTestServer(t, DefaultConnectionLimits())
+	conn, _, err := dial(t, srv.url)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	readInitData(t, conn)
+	waitFor(t, "the client to register", func() bool { return srv.clientCount() == 1 })
+	tap := func(seq int) map[string]any { return map[string]any{"x": 10, "y": 10, "seq": seq} }
+
+	conn.WriteMessage(websocket.BinaryMessage, packEvents(t, "player_action", tap(1)))
+	conn.WriteMessage(websocket.BinaryMessage, packEvents(t, "player_action", tap(3)))
+	readResend(t, conn)
+	time.Sleep(gapWait + 100*time.Millisecond)
+	conn.WriteMessage(websocket.BinaryMessage, packEvents(t, "player_action", tap(4)))
+	waitFor(t, "the stream past the gap", func() bool { return len(queuedSeqs(srv)) == 2 })
+	if got := queuedSeqs(srv); got[0] != 1 || got[1] != 4 {
+		t.Fatalf("the gap is skipped and the stream goes on: %v", got)
+	}
+	if srv.game.counters.inputGapSkipped.Load() != 1 {
+		t.Fatal("the skipped gap is counted")
+	}
+}
+
+// clientEvents is the event list of a real client: it keeps every event
+// until a snapshot consumes it, and sends from any sequence again.
+type clientEvents []map[string]any
+
+func (e *clientEvents) push(eventType string, payload map[string]any) {
+	payload["type"], payload["seq"] = eventType, len(*e)+1
+	*e = append(*e, payload)
+}
+
+// send writes the events from sequence from to last as one batch.
+func (e clientEvents) send(t *testing.T, conn *websocket.Conn, from, last int) error {
+	t.Helper()
+	batch := make([]json.RawMessage, 0, last-from+1)
+	for _, event := range e[from-1 : last] {
+		payload := map[string]any{}
+		for k, v := range event {
+			if k != "type" {
+				payload[k] = v
+			}
+		}
+		pack, err := Pack(event["type"].(string), payload)
+		if err != nil {
+			t.Fatalf("pack: %v", err)
+		}
+		batch = append(batch, pack)
+	}
+	pack, _ := Pack("events", map[string]any{"events": batch})
+	return conn.WriteMessage(websocket.BinaryMessage, pack)
+}
+
+// The tap and shoot freeze: a mobile stall makes the browser deliver queued
+// batches at once, and the rate limit dropped the tail. A dropped batch that
+// closed a modal left the server player frozen while the client drew it free,
+// and every later tap and shot was refused; a longer stall evicted the player.
+// Now a stall evicts nobody and dropped events arrive through input_resend:
+// the player is free again and every sequence is consumed.
+func TestWSAStallBurstLosesNoInput(t *testing.T) {
+	for _, stall := range []struct {
+		name          string
+		batches, free int
+		drops         bool
+	}{
+		{"2.3 s", 70, 65, false},
+		{"3 s", 90, 70, false},
+		{"8 s", 240, 230, true},
+	} {
+		t.Run(stall.name, func(t *testing.T) {
+			srv := newWSTestServer(t, DefaultConnectionLimits())
+			conn, _, err := dial(t, srv.url)
+			if err != nil {
+				t.Fatalf("dial: %v", err)
+			}
+			defer conn.Close()
+			readInitData(t, conn)
+			waitFor(t, "the client to register", func() bool { return srv.clientCount() == 1 })
+			consumed := func() int {
+				srv.game.Mu.Lock()
+				defer srv.game.Mu.Unlock()
+				srv.game.PhaseInput(0, srv.game.Maps["test"])
+				for p := range srv.game.PlayersOn(srv.game.Maps["test"]) {
+					return int(p.InputConsumedThrough)
+				}
+				return 0
+			}
+
+			// Tap to start, then one batch per step through the stall: a modal
+			// opens at batch 10 and closes at batch stall.free.
+			var events clientEvents
+			events.push("player_stasis", map[string]any{"stasis": false})
+			for i := 1; i <= stall.batches; i++ {
+				switch i {
+				case 10:
+					events.push("player_stasis", map[string]any{"stasis": true})
+				case stall.free:
+					events.push("player_stasis", map[string]any{"stasis": false})
+				default:
+					events.push("player_action", map[string]any{"x": 10, "y": 10})
+				}
+			}
+			for seq := 1; seq <= len(events); seq++ {
+				if err := events.send(t, conn, seq, seq); err != nil {
+					t.Fatalf("the stall evicts the player at batch %d: %v", seq, err)
+				}
+			}
+			time.Sleep(100 * time.Millisecond)
+			consumed()
+			events.push("player_action", map[string]any{"x": 12, "y": 12})
+			if err := events.send(t, conn, len(events), len(events)); err != nil {
+				t.Fatalf("send: %v", err)
+			}
+			for attempt := 0; consumed() < len(events); attempt++ {
+				if attempt > 20 {
+					t.Fatalf("consumed %d of %d events", consumed(), len(events))
+				}
+				conn.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
+				for {
+					_, raw, err := conn.ReadMessage()
+					if err != nil {
+						break
+					}
+					if msg, err := Unpack(raw); err == nil && msg.Type == "input_resend" {
+						var resend inputResend
+						json.Unmarshal(msg.Payload, &resend)
+						events.send(t, conn, int(resend.From), len(events))
+					}
+				}
+			}
+
+			srv.game.Mu.Lock()
+			defer srv.game.Mu.Unlock()
+			for p := range srv.game.PlayersOn(srv.game.Maps["test"]) {
+				if p.Frozen {
+					t.Fatal("the dropped unfreeze arrived: the player is free")
+				}
+			}
+			if srv.game.counters.wsEvictedTotal.Load() != 0 || len(srv.game.clients) != 1 {
+				t.Fatal("a stall evicts nobody")
+			}
+			dropped := srv.game.counters.wsRateLimitedTotal.Load() > 0
+			if dropped != stall.drops || dropped != (srv.game.counters.inputResendTotal.Load() > 0) {
+				t.Fatalf("drops=%v, want %v; every drop is answered by a resend", dropped, stall.drops)
+			}
+		})
+	}
+}

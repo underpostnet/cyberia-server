@@ -11,7 +11,9 @@
 // plays an ephemeral session.
 //
 // One account plays one session on this server: a new launch ends the older
-// session first, and waits for its final commit.
+// session first and adopts what it could not save. A session of the account
+// that still saves on another server holds the acquisition back (saving)
+// until it saved, or until handoffWait passes.
 package net
 
 import (
@@ -32,11 +34,15 @@ import (
 )
 
 const (
-	// engineCallBudget bounds the engine calls of one authentication.
+	// engineCallBudget bounds each engine step of one authentication: the
+	// ticket, the acquisition, the content of the saved stacks.
 	engineCallBudget = 10 * time.Second
-	// takeoverWait bounds how long a launch waits for the final commit of the
-	// older session of its account.
+	// takeoverWait bounds how long a launch waits for a pending joint commit
+	// of the older session of its account.
 	takeoverWait = 10 * time.Second
+	// handoffWait bounds how long an acquisition asks again while the session
+	// the account left still saves on another server.
+	handoffWait = 8 * time.Second
 	// leaveWait bounds how long a player who leaves waits to learn that its
 	// final state is saved.
 	leaveWait = 5 * time.Second
@@ -58,7 +64,7 @@ type identity struct {
 type sessionEnd struct {
 	Reason string `json:"reason"`
 	// Travel is the launch ticket of the world the player travels to, set
-	// only when the session left saved.
+	// when the engine issued one.
 	Travel *travelTicket `json:"travel,omitempty"`
 }
 
@@ -146,8 +152,8 @@ func (s *GameServer) authenticate(sock *Socket, connectionID string) (identity, 
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), engineCallBudget)
-	defer cancel()
 	account, err := s.accounts.ConsumeTicket(ctx, auth.Ticket, s.InstanceCode, connectionID, s.serverID)
+	cancel()
 	if err != nil {
 		logx.Warnf("[Auth] ticket consumption failed: %v", err)
 		return identity{}, EndUnavailable
@@ -159,7 +165,7 @@ func (s *GameServer) authenticate(sock *Socket, connectionID string) (identity, 
 		return identity{}, ""
 	}
 	s.takeOver(account.AccountID)
-	acquired, err := s.accounts.AcquireSession(ctx, connectionID, s.InstanceCode, s.serverID)
+	acquired, err := s.acquire(connectionID)
 	if err != nil {
 		logx.Warnf("[Auth] session acquisition failed account=%s: %v", account.AccountID, err)
 		return identity{}, EndUnavailable
@@ -168,18 +174,60 @@ func (s *GameServer) authenticate(sock *Socket, connectionID string) (identity, 
 		return identity{}, acquired.Refusal
 	}
 	acquired.Lease.AccountID = account.AccountID
+	if state, ok := s.durable.Unsettled(acquired.Lease.PlayerID); ok {
+		logx.Infof("[Auth] account=%s adopts the unsaved state of its closed session", account.AccountID)
+		acquired.State, acquired.Adopted = state, true
+	}
+	ctx, cancel = context.WithTimeout(context.Background(), engineCallBudget)
+	defer cancel()
 	resolved, unavailable, err := s.resolveSaved(ctx, acquired.State)
 	if err != nil {
 		logx.Warnf("[Auth] content of account=%s could not resolve: %v", account.AccountID, err)
-		s.durable.Open(acquired.Lease, acquired.State)
-		s.durable.Close(acquired.Lease.PlayerID, acquired.State)
+		s.releaseAcquired(acquired)
 		return identity{}, EndUnavailable
 	}
 	return identity{account: account, session: acquired, resolved: resolved, unavailable: unavailable}, ""
 }
 
-// takeOver ends the session an account plays on this server, and waits for
-// the final commit of any session it closed.
+// acquire makes the connection the writer of its profile. While the session
+// the account left still saves on another server, the engine answers saving
+// and the acquisition asks again, at most handoffWait.
+func (s *GameServer) acquire(connectionID string) (AcquiredSession, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), engineCallBudget)
+	defer cancel()
+	deadline := time.Now().Add(handoffWait)
+	for wait := 250 * time.Millisecond; ; wait = min(wait*2, 2*time.Second) {
+		acquired, err := s.accounts.AcquireSession(ctx, connectionID, s.InstanceCode, s.serverID)
+		if err != nil || acquired.Refusal != EndSaving || time.Now().Add(wait).After(deadline) {
+			return acquired, err
+		}
+		select {
+		case <-ctx.Done():
+			return acquired, nil
+		case <-time.After(wait):
+		}
+	}
+}
+
+// openDurable starts the durable session of an acquired profile.
+func (s *GameServer) openDurable(acquired AcquiredSession) {
+	if acquired.Adopted {
+		s.durable.Adopt(acquired.Lease, acquired.State)
+	} else {
+		s.durable.Open(acquired.Lease, acquired.State)
+	}
+}
+
+// releaseAcquired ends an acquired session that never played: its state, the
+// adopted one included, commits and the lease is released.
+func (s *GameServer) releaseAcquired(acquired AcquiredSession) {
+	s.openDurable(acquired)
+	s.durable.Close(acquired.Lease.PlayerID, acquired.State)
+}
+
+// takeOver ends the session an account plays on this server. A joint commit of
+// that session that is still pending decides which state the next session
+// adopts, so the launch waits for it, at most takeoverWait.
 func (s *GameServer) takeOver(accountID string) {
 	s.Mu.Lock()
 	var old *Client
@@ -191,11 +239,11 @@ func (s *GameServer) takeOver(accountID string) {
 		s.recordSessionEnd(EndElsewhere)
 		s.endClient(old, EndElsewhere)
 	}
-	if done := s.durable.PendingAccount(accountID); done != nil {
+	if pending := s.durable.PendingLink(accountID); pending != nil {
 		select {
-		case <-done:
+		case <-pending:
 		case <-time.After(takeoverWait):
-			logx.Warnf("[Auth] account=%s: the older session is still saving", accountID)
+			logx.Warnf("[Auth] account=%s: a joint commit of the older session is still pending", accountID)
 		}
 	}
 }
@@ -211,8 +259,7 @@ func (s *GameServer) place(sock *Socket, ip string, who identity) {
 	if !ok {
 		s.Mu.Unlock()
 		if account {
-			s.durable.Open(who.session.Lease, who.session.State)
-			s.durable.Close(who.session.Lease.PlayerID, who.session.State)
+			s.releaseAcquired(who.session)
 		}
 		s.refuse(sock, EndUnavailable)
 		s.guard.release(ip)
@@ -229,7 +276,7 @@ func (s *GameServer) place(sock *Socket, ip string, who identity) {
 	s.Social.Join(player)
 	if account {
 		s.durable.SetLease(who.session.LeaseLength)
-		s.durable.Open(who.session.Lease, who.session.State)
+		s.openDurable(who.session)
 		s.CaptureNow(player, s.PositionOf(player) != who.session.State.Position)
 	}
 	mapState := s.Maps[player.MapCode]
@@ -249,11 +296,16 @@ func (s *GameServer) place(sock *Socket, ip string, who identity) {
 		DeadItemIds:    s.DeadItemIDList(),
 		Quests:         s.BuildQuestSnapshot(player),
 		Build:          s.build,
+		Adopted:        who.session.Adopted,
 	}
 	metadataPayload := map[string]interface{}{
 		"instanceCode":   s.InstanceCode,
 		"equipmentRules": s.EquipmentRules,
+		"economy":        s.EconomyView(),
+		"worldRevision":  s.WorldRevision(),
 	}
+	client.economySeen = s.EconomyKey()
+	client.worldSeen = s.WorldRevision()
 	s.Mu.Unlock()
 
 	// The ObjectLayer metadata map and both JSON marshals are the costly part
@@ -331,7 +383,7 @@ func (s *GameServer) spawnPlayer(who identity) (*world.Session, bool) {
 	// The session goes in now: the economy and the restore read it.
 	s.Sessions[playerID] = player
 
-	if player.AccountID == "" || who.session.Created {
+	if player.AccountID == "" || (who.session.Created && !who.session.Adopted) {
 		s.SetProgression(playerID, content.NewEntityProgression(1, false, s.ProgressionConfig()))
 		// Economy: credit the player's starting wallet (Fountain: playerSpawnCoins).
 		s.FountainInitPlayer(player)
@@ -414,7 +466,8 @@ func (s *GameServer) removePlayer(client *Client) func() bool {
 	if !client.detached && player.AccountID != "" && s.durable != nil {
 		s.RefundCraft(player)
 		id := string(player.PlayerID)
-		done, mark := s.durable.Close(id, s.DurableState(player))
+		applied, refused := s.FinalStates(player)
+		done, mark := s.durable.CloseLinked(id, applied, refused)
 		saved = func() bool {
 			select {
 			case <-done:
@@ -423,6 +476,9 @@ func (s *GameServer) removePlayer(client *Client) func() bool {
 				return false
 			}
 		}
+	}
+	if player.AccountID == "" {
+		s.TradeFinalStates(player)
 	}
 	client.detached = true
 	delete(s.clients, client.playerID)
@@ -439,14 +495,16 @@ func (s *GameServer) removePlayer(client *Client) func() bool {
 // leave ends a session the player closed: it leaves the world at once, and
 // session_end says whether its final state is saved (EndLeft) or still on its
 // way to the engine (EndLeftSaving). A player that travels gets the ticket of
-// the target world, asked while its lease still holds, only once the state is
-// saved: the target acquires the profile after this session released it.
+// the target world, asked while its lease still holds. The target acquires the
+// profile once this session released it, or once it can no longer save: the
+// engine answers saving until then.
 func (s *GameServer) leave(client *Client, travel string) {
 	ticket := s.travelTicket(client, travel)
 	end := sessionEnd{Reason: EndLeft}
 	if saved := s.removePlayer(client); saved != nil && !saved() {
 		end.Reason = EndLeftSaving
-	} else if ticket != "" {
+	}
+	if ticket != "" {
 		end.Travel = &travelTicket{InstanceCode: travel, Ticket: ticket}
 	}
 	s.recordSessionEnd(end.Reason)

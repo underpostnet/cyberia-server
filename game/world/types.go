@@ -182,6 +182,14 @@ func (v *Vitals) Ghost() bool { return !v.RespawnAt.IsZero() }
 
 // Session is the server-only side table row of a connected player: its link,
 // its map, its economy, its quests and its input stream.
+// PortalQuote is the fee a transit through Portal charges and the economy it
+// came from, as the hold on it started.
+type PortalQuote struct {
+	Portal  EntityID
+	Fee     int
+	Economy string
+}
+
 type Session struct {
 	ID EntityID
 	// PlayerID never goes on the wire.
@@ -189,9 +197,9 @@ type Session struct {
 	// AccountID is the account of an account-mode session; empty for a guest.
 	// It never goes on the wire.
 	AccountID string `json:"-"`
-	// Unsaved marks a player whose commits fail past the outage threshold. The
-	// server refuses its explicit trades until a commit succeeds.
-	Unsaved bool `json:"-"`
+	// Durable is how far the engine holds the state of an account player. The
+	// server refuses its explicit trades while it is unsaved.
+	Durable persist.Health `json:"-"`
 	// DisplayName is the name every viewer sees.
 	DisplayName  string    `json:"-"`
 	MapCode      string    `json:"MapCode"`
@@ -201,6 +209,9 @@ type Session struct {
 	Client       Conn      `json:"-"`
 	OnPortal     bool      `json:"onPortal"`
 	TimeOnPortal time.Time `json:"-"`
+	// PortalQuote is the fee the hold on a portal will charge; a change starts
+	// the hold again.
+	PortalQuote PortalQuote `json:"-"`
 	// Coins is the canonical flat coin balance — the single source of truth
 	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
 	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
@@ -243,13 +254,17 @@ type Session struct {
 type LootOrigin uint8
 
 const (
-	LootOriginDeath LootOrigin = iota // scattered from a dying entity
-	LootOriginWorld                   // placed on the map by the world build
+	LootOriginDeath  LootOrigin = iota // scattered from a dying entity
+	LootOriginWorld                    // placed on the map by the world build
+	LootOriginPlayer                   // dropped by a player from its bag or storage
 )
 
 func (o LootOrigin) String() string {
-	if o == LootOriginWorld {
+	switch o {
+	case LootOriginWorld:
 		return "world"
+	case LootOriginPlayer:
+		return "player"
 	}
 	return "death"
 }
@@ -260,6 +275,7 @@ type LootCollection uint8
 const (
 	LootCollectContributors LootCollection = iota // a damage contributor only
 	LootCollectFirstContact                       // any living player or bot it benefits
+	LootCollectPlayers                            // any living player, its owner too; never a bot
 )
 
 // LootOutcome is what a collection does.
@@ -294,6 +310,15 @@ type Brain struct {
 	// placed by the world build. It shows one item and is picked up by walking over it.
 	// DropItemID is the item this token grants on collection.
 	DropItemID string `json:"-"`
+	// DropCID is the definition of a dropped stack; a collection grants it
+	// unchanged. Empty: the definition the world binds.
+	DropCID string `json:"-"`
+	// DropOwner is the profile that dropped the stack; empty for any other
+	// token. A profile outlives a session, so the owner hold survives a
+	// reconnect and a restart.
+	DropOwner PlayerID `json:"-"`
+	// OwnerHold keeps the token from its owner until the owner steps off it once.
+	OwnerHold bool `json:"-"`
 	// DropQuantity is how many units this token grants on collection. 1 for a
 	// scattered inventory item; the coin amount for a coin drop (DropItemID ==
 	// coinItemID). Mirrored into the token's active ObjectLayer.Quantity so the
@@ -316,15 +341,21 @@ type Brain struct {
 	LootOrigin     LootOrigin     `json:"-"`
 	LootCollection LootCollection `json:"-"`
 	LootOutcome    LootOutcome    `json:"-"`
-	// Lock holds back a token made of coins an account player lost.
+	// Lock holds back a token made of what an account player lost or dropped,
+	// and a token an account player claims.
 	Lock DropLock `json:"-"`
+	// WorldDrop is the id of the engine record of a stack an account player
+	// dropped; "" for any other token.
+	WorldDrop string `json:"-"`
 }
 
-// DropLock holds a token back until the engine applied the loss it came from:
-// the marked state of PlayerID. A zero lock holds nothing.
+// DropLock holds a token back until the engine applied what it waits for: the
+// marked state of PlayerID, or the link Op of PlayerID. A zero lock holds
+// nothing.
 type DropLock struct {
 	PlayerID string
 	Mark     persist.Mark
+	Op       string
 }
 
 type MapState struct {

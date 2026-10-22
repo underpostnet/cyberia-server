@@ -409,6 +409,9 @@ const (
 	CyberiaPlayerService_IssueTravelTicket_FullMethodName        = "/cyberia.CyberiaPlayerService/IssueTravelTicket"
 	CyberiaPlayerService_AcquirePlayerSession_FullMethodName     = "/cyberia.CyberiaPlayerService/AcquirePlayerSession"
 	CyberiaPlayerService_CommitPlayerState_FullMethodName        = "/cyberia.CyberiaPlayerService/CommitPlayerState"
+	CyberiaPlayerService_CommitPlayerStates_FullMethodName       = "/cyberia.CyberiaPlayerService/CommitPlayerStates"
+	CyberiaPlayerService_ListWorldDrops_FullMethodName           = "/cyberia.CyberiaPlayerService/ListWorldDrops"
+	CyberiaPlayerService_ListMarket_FullMethodName               = "/cyberia.CyberiaPlayerService/ListMarket"
 	CyberiaPlayerService_CheckpointPlayerSessions_FullMethodName = "/cyberia.CyberiaPlayerService/CheckpointPlayerSessions"
 	CyberiaPlayerService_ReleasePlayerSession_FullMethodName     = "/cyberia.CyberiaPlayerService/ReleasePlayerSession"
 	CyberiaPlayerService_ListFriends_FullMethodName              = "/cyberia.CyberiaPlayerService/ListFriends"
@@ -439,6 +442,19 @@ type CyberiaPlayerServiceClient interface {
 	AcquirePlayerSession(ctx context.Context, in *AcquirePlayerSessionRequest, opts ...grpc.CallOption) (*AcquirePlayerSessionResponse, error)
 	// Commits the whole durable state of one player at one sequence number.
 	CommitPlayerState(ctx context.Context, in *CommitPlayerStateRequest, opts ...grpc.CallOption) (*CommitPlayerStateResponse, error)
+	// Commits the whole durable states and the effect of one operation in one
+	// transaction: all or nothing. A trade joins the states of its players, a
+	// drop the state of its owner and a new world drop, a pickup the state of
+	// its collector and the claim of a world drop, a market operation the state
+	// of its player and the change of the market. A retry with the same
+	// operation id and request answers duplicate.
+	CommitPlayerStates(ctx context.Context, in *CommitPlayerStatesRequest, opts ...grpc.CallOption) (*CommitPlayerStatesResponse, error)
+	// The public world drops of a world that have not expired.
+	ListWorldDrops(ctx context.Context, in *ListWorldDropsRequest, opts ...grpc.CallOption) (*ListWorldDropsResponse, error)
+	// The view of a market terminal for one player: a page of the open
+	// listings, its own listings and its pending claims. Listings that ended
+	// settle first.
+	ListMarket(ctx context.Context, in *ListMarketRequest, opts ...grpc.CallOption) (*ListMarketResponse, error)
 	// Renews the leases of one server and writes their dirty positions.
 	CheckpointPlayerSessions(ctx context.Context, in *CheckpointPlayerSessionsRequest, opts ...grpc.CallOption) (*CheckpointPlayerSessionsResponse, error)
 	// Ends a lease after the final commit of its session.
@@ -503,6 +519,36 @@ func (c *cyberiaPlayerServiceClient) CommitPlayerState(ctx context.Context, in *
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CommitPlayerStateResponse)
 	err := c.cc.Invoke(ctx, CyberiaPlayerService_CommitPlayerState_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *cyberiaPlayerServiceClient) CommitPlayerStates(ctx context.Context, in *CommitPlayerStatesRequest, opts ...grpc.CallOption) (*CommitPlayerStatesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommitPlayerStatesResponse)
+	err := c.cc.Invoke(ctx, CyberiaPlayerService_CommitPlayerStates_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *cyberiaPlayerServiceClient) ListWorldDrops(ctx context.Context, in *ListWorldDropsRequest, opts ...grpc.CallOption) (*ListWorldDropsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListWorldDropsResponse)
+	err := c.cc.Invoke(ctx, CyberiaPlayerService_ListWorldDrops_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *cyberiaPlayerServiceClient) ListMarket(ctx context.Context, in *ListMarketRequest, opts ...grpc.CallOption) (*ListMarketResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMarketResponse)
+	err := c.cc.Invoke(ctx, CyberiaPlayerService_ListMarket_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -582,6 +628,19 @@ type CyberiaPlayerServiceServer interface {
 	AcquirePlayerSession(context.Context, *AcquirePlayerSessionRequest) (*AcquirePlayerSessionResponse, error)
 	// Commits the whole durable state of one player at one sequence number.
 	CommitPlayerState(context.Context, *CommitPlayerStateRequest) (*CommitPlayerStateResponse, error)
+	// Commits the whole durable states and the effect of one operation in one
+	// transaction: all or nothing. A trade joins the states of its players, a
+	// drop the state of its owner and a new world drop, a pickup the state of
+	// its collector and the claim of a world drop, a market operation the state
+	// of its player and the change of the market. A retry with the same
+	// operation id and request answers duplicate.
+	CommitPlayerStates(context.Context, *CommitPlayerStatesRequest) (*CommitPlayerStatesResponse, error)
+	// The public world drops of a world that have not expired.
+	ListWorldDrops(context.Context, *ListWorldDropsRequest) (*ListWorldDropsResponse, error)
+	// The view of a market terminal for one player: a page of the open
+	// listings, its own listings and its pending claims. Listings that ended
+	// settle first.
+	ListMarket(context.Context, *ListMarketRequest) (*ListMarketResponse, error)
 	// Renews the leases of one server and writes their dirty positions.
 	CheckpointPlayerSessions(context.Context, *CheckpointPlayerSessionsRequest) (*CheckpointPlayerSessionsResponse, error)
 	// Ends a lease after the final commit of its session.
@@ -616,6 +675,15 @@ func (UnimplementedCyberiaPlayerServiceServer) AcquirePlayerSession(context.Cont
 }
 func (UnimplementedCyberiaPlayerServiceServer) CommitPlayerState(context.Context, *CommitPlayerStateRequest) (*CommitPlayerStateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CommitPlayerState not implemented")
+}
+func (UnimplementedCyberiaPlayerServiceServer) CommitPlayerStates(context.Context, *CommitPlayerStatesRequest) (*CommitPlayerStatesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CommitPlayerStates not implemented")
+}
+func (UnimplementedCyberiaPlayerServiceServer) ListWorldDrops(context.Context, *ListWorldDropsRequest) (*ListWorldDropsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListWorldDrops not implemented")
+}
+func (UnimplementedCyberiaPlayerServiceServer) ListMarket(context.Context, *ListMarketRequest) (*ListMarketResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListMarket not implemented")
 }
 func (UnimplementedCyberiaPlayerServiceServer) CheckpointPlayerSessions(context.Context, *CheckpointPlayerSessionsRequest) (*CheckpointPlayerSessionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CheckpointPlayerSessions not implemented")
@@ -743,6 +811,60 @@ func _CyberiaPlayerService_CommitPlayerState_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CyberiaPlayerService_CommitPlayerStates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CommitPlayerStatesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CyberiaPlayerServiceServer).CommitPlayerStates(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CyberiaPlayerService_CommitPlayerStates_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CyberiaPlayerServiceServer).CommitPlayerStates(ctx, req.(*CommitPlayerStatesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CyberiaPlayerService_ListWorldDrops_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListWorldDropsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CyberiaPlayerServiceServer).ListWorldDrops(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CyberiaPlayerService_ListWorldDrops_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CyberiaPlayerServiceServer).ListWorldDrops(ctx, req.(*ListWorldDropsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CyberiaPlayerService_ListMarket_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMarketRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CyberiaPlayerServiceServer).ListMarket(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CyberiaPlayerService_ListMarket_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CyberiaPlayerServiceServer).ListMarket(ctx, req.(*ListMarketRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _CyberiaPlayerService_CheckpointPlayerSessions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CheckpointPlayerSessionsRequest)
 	if err := dec(in); err != nil {
@@ -859,6 +981,18 @@ var CyberiaPlayerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CommitPlayerState",
 			Handler:    _CyberiaPlayerService_CommitPlayerState_Handler,
+		},
+		{
+			MethodName: "CommitPlayerStates",
+			Handler:    _CyberiaPlayerService_CommitPlayerStates_Handler,
+		},
+		{
+			MethodName: "ListWorldDrops",
+			Handler:    _CyberiaPlayerService_ListWorldDrops_Handler,
+		},
+		{
+			MethodName: "ListMarket",
+			Handler:    _CyberiaPlayerService_ListMarket_Handler,
 		},
 		{
 			MethodName: "CheckpointPlayerSessions",

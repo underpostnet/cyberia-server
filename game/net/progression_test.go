@@ -108,7 +108,7 @@ func TestSnapshotCarriesOnlyTheDestructibleLife(t *testing.T) {
 			{EntityType: "obstacle", ObjectLayerItemIds: []string{"wall"}, InitCellX: 2, InitCellY: 2, DimX: 2, DimY: 2},
 			{EntityType: "obstacle", ObjectLayerItemIds: []string{"crystal"}, InitCellX: 10, InitCellY: 10, DimX: 2, DimY: 2, MaxLife: 9},
 		},
-	}}, nil, nil, nil)
+	}}, nil, nil, nil, nil)
 	player := worldtest.PlacePlayer(s.World, 1000, nil)
 	player.AOI = world.Rectangle{MaxX: 20, MaxY: 20}
 

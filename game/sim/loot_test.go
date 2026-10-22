@@ -39,7 +39,7 @@ func buildWorld(s *Sim, mapCodes []string, entities ...*pb.EntityMessage) {
 	for _, code := range mapCodes {
 		maps = append(maps, &pb.MapDataMessage{Code: code, GridX: 20, GridY: 20, Entities: entities})
 	}
-	s.BuildWorldFromInstance(&pb.InstanceMessage{Code: "loot-test", MapCodes: mapCodes}, maps, nil, nil, nil)
+	s.BuildWorldFromInstance(&pb.InstanceMessage{Code: "loot-test", MapCodes: mapCodes}, maps, nil, nil, nil, nil)
 }
 
 func lootEntity(x, y int32, itemIDs ...string) *pb.EntityMessage {

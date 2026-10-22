@@ -74,6 +74,8 @@ func (s *Content) Despawn(ms *world.MapState, id world.EntityID) {
 	delete(s.Progression, id)
 	delete(s.quests, id)
 	delete(s.crafts, id)
+	delete(s.quotes, id)
+	delete(s.marketViews, id)
 }
 
 // ForgetNonPlayers drops the content rows of every entity without a session.

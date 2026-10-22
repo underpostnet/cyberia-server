@@ -11,6 +11,29 @@ func (r ProgressionRules) validScalarBounds() bool {
 func (r EconomyRules) validBounds() bool {
 	return r.BotSpawnCoins >= 0 && r.BotSpawnCoins <= 1000000 && r.PlayerSpawnCoins >= 0 && r.PlayerSpawnCoins <= 1000000 && r.CoinKillMinAmount >= 0 && r.CoinKillMinAmount <= 1000000 && r.CoinKillPercentVsBot >= 0 && r.CoinKillPercentVsBot <= 1 && r.CoinKillPercentVsPlayer >= 0 && r.CoinKillPercentVsPlayer <= 1 && r.RespawnCostPercent >= 0 && r.RespawnCostPercent <= 1
 }
+func (f OperationFees) validBounds() bool {
+	return f.Portal >= 0 && f.Portal <= 1000000 && f.Craft >= 0 && f.Craft <= 1000000
+}
+func (p ItemPolicy) validBounds() bool {
+	return len(p.Salvage) <= 8 && p.BuybackPayout >= 0 && p.BuybackPayout <= 1000000 && p.BurnCoinFee >= 0 && p.BurnCoinFee <= 1000000 && p.CraftSurcharge >= 0 && p.CraftSurcharge <= 1000000 && (p.PortalFee == nil || (*p.PortalFee >= 0 && *p.PortalFee <= 1000000))
+}
+
+// PortalFeeMax bounds the fee of one transit, the sum of its portal items included.
+const PortalFeeMax = 1000000
+
+// SalvageQuantityMax bounds the units of one salvage line per burned unit.
+const SalvageQuantityMax = 1000
+
+// CoinBalanceMax is the largest wallet balance of any economy.
+const CoinBalanceMax = 4294967295
+
+// The listing modes and the durations a market profile may offer, in hours.
+var MarketModes = []string{"fixed", "auction"}
+var MarketHourOptions = []int{1, 6, 12, 24, 48, 72, 168}
+
+func (m MarketProfile) validBounds() bool {
+	return m.RaisePercent >= 1 && m.RaisePercent <= 100 && m.MinRaise >= 1 && m.MinRaise <= 1000000 && m.ListingFee >= 0 && m.ListingFee <= 1000000 && m.SaleFee >= 0 && m.SaleFee <= 1000000 && m.PriceMin >= 1 && m.PriceMin <= 1000000000 && m.PriceMax >= 1 && m.PriceMax <= 1000000000 && m.ListingsPerPlayer >= 1 && m.ListingsPerPlayer <= 100
+}
 
 var statNames = [StatCount]string{"effect", "resistance", "agility", "range", "intelligence", "utility"}
 var statEffectiveFloors = [StatCount]float64{1, 0, -90, 0, 0, 0}
@@ -83,6 +106,12 @@ const PartyInvitesMax = 5
 // PartyXpShareRadius is the most cells between the centres of a party member and a bot it shares the kill of.
 const PartyXpShareRadius = 10
 const ChatTextMaxRunes = 160
+
+// TradeOfferMaxStacks bounds the bag stacks one side of a trade offers.
+const TradeOfferMaxStacks = 8
+
+// ItemDropReach is the most cells between the centre of a player and the cell it drops a stack on.
+const ItemDropReach = 4
 const StatusNoteMaxRunes = 80
 
 // IdentityPreviewPath names an identity preview by the ordered CIDs of its layers.

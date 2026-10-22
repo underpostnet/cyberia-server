@@ -17,8 +17,8 @@ package content
 
 import (
 	"fmt"
+	"slices"
 	"sort"
-	"strings"
 	"time"
 
 	"cyberia-server/game/world"
@@ -96,10 +96,13 @@ type QuestObjectiveProgress struct {
 // the engine REST endpoint /api/v1/cyberia-quest/:code — the simulation
 // never transmits non-authoritative presentation data.
 type QuestSnapshotEntry struct {
-	Code           string `json:"code"`
-	Status         string `json:"status"`         // "active" | "completed"
-	ActiveStep     string `json:"activeStep"`     // first incomplete step description
-	ObjectivesText string `json:"objectivesText"` // "2/3 kill scp-2040, 1/1 talk wason"
+	Code       string `json:"code"`
+	Status     string `json:"status"`     // "active" | "completed"
+	ActiveStep string `json:"activeStep"` // first incomplete step description
+	// StepID names the first incomplete step and Objectives counts its objectives;
+	// both are empty once every step is done.
+	StepID     string                   `json:"stepId"`
+	Objectives []QuestObjectiveProgress `json:"objectives"`
 	// RewardsHeld marks an active quest with every step done whose rewards
 	// wait for room in the inventory.
 	RewardsHeld bool `json:"rewardsHeld,omitempty"`
@@ -815,12 +818,8 @@ func (s *Content) questSnapshot(qp *QuestProgress) QuestSnapshotEntry {
 		if ok && stepIdx < len(def.Steps) {
 			entry.ActiveStep = def.Steps[stepIdx].Description
 		}
-		parts := make([]string, 0, len(sp.Objectives))
-		for i := range sp.Objectives {
-			op := &sp.Objectives[i]
-			parts = append(parts, fmt.Sprintf("%d/%d %s %s", op.Current, op.Required, op.Type, op.ItemID))
-		}
-		entry.ObjectivesText = strings.Join(parts, ", ")
+		entry.StepID = sp.StepID
+		entry.Objectives = slices.Clone(sp.Objectives)
 	}
 	return entry
 }
