@@ -27,7 +27,8 @@ underpost-cli.tgz
 
 !.graphifyignore
 
-# graphify: share only the graph and its report.
+# graphify: share only the graph, its report and its stamp.
 /docs/graphify-out/*
 !/docs/graphify-out/graph.json
 !/docs/graphify-out/GRAPH_REPORT.md
+!/docs/graphify-out/graph.stamp.json
