@@ -3,7 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: dd-cyberia-mmo-server-production-blue
-  namespace: default
+  namespace: underpost-workloads
   labels:
     app: dd-cyberia-mmo-server-production-blue
     deploy-id: dd-cyberia-mmo-server-production
@@ -18,6 +18,15 @@ spec:
         app: dd-cyberia-mmo-server-production-blue
         deploy-id: dd-cyberia-mmo-server-production
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - hp-envy-iso-ram-rocky9
       containers:
         - name: dd-cyberia-mmo-server-production-blue
           image: underpost/cyberia-server:v4.0.0
@@ -38,7 +47,7 @@ spec:
             - /bin/sh
             - -c
             - >
-              set -a && . /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server/env/production.env && set +a && exec /home/dd/engine/cyberia-server/server --data-server-url=$CYBERIA_DATA_SERVER_URL --data-server-grpc=dd-cyberia-grpc-service-production.default.svc.cluster.local:50051
+              exec /home/dd/engine/cyberia-server/server --data-server-url=$CYBERIA_DATA_SERVER_URL --data-server-grpc=dd-cyberia-grpc-service-production.underpost-workloads.svc.cluster.local:50051
           readinessProbe:
             {
               "tcpSocket": {
@@ -82,23 +91,13 @@ spec:
             }
 
 
-    
-          volumeMounts:
-            - name: instance-cyberia-server-dd-cyberia-mmo-server-production-blue
-              mountPath: /home/dd/engine/engine-private/conf/dd-cyberia/instances/mmo-server/env
-    
-      volumes:
-        - name: instance-cyberia-server-dd-cyberia-mmo-server-production-blue
-          persistentVolumeClaim:
-            claimName: instance-cyberia-server-dd-cyberia-mmo-server-production-blue
-    
-      
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: dd-cyberia-mmo-server-production-blue-service
-  namespace: default
+  namespace: underpost-workloads
 spec:
   selector:
     app: dd-cyberia-mmo-server-production-blue

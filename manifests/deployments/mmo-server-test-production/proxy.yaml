@@ -4,7 +4,7 @@ apiVersion: projectcontour.io/v1
 kind: HTTPProxy
 metadata:
   name: server.cyberiaonline.com
-  namespace: default
+  namespace: underpost-workloads
 spec:
   virtualhost:
     fqdn: server.cyberiaonline.com
