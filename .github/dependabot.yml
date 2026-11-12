@@ -1,0 +1,37 @@
+version: 2
+
+updates:
+  - package-ecosystem: 'gomod'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '08:00'
+      timezone: 'UTC'
+    open-pull-requests-limit: 10
+    labels:
+      - 'dependencies'
+    groups:
+      go-minor-patch:
+        update-types:
+          - 'minor'
+          - 'patch'
+    commit-message:
+      prefix: 'deps'
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 5
+    labels:
+      - 'dependencies'
+      - 'ci'
+    # The engine generates these workflows: `cyberia release build` overwrites them.
+    exclude-paths:
+      - '.github/workflows/cyberia-server.cd.yml'
+      - '.github/workflows/docker-image.cyberia-server.ci.yml'
+      - '.github/workflows/docker-image.cyberia-server.dev.ci.yml'
+    commit-message:
+      prefix: 'ci(actions)'
