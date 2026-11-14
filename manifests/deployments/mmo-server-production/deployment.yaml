@@ -29,7 +29,7 @@ spec:
                       - hp-envy-iso-ram-rocky9
       containers:
         - name: dd-cyberia-mmo-server-production-blue
-          image: underpost/cyberia-server:v4.0.0
+          image: underpost/cyberia-server:v4.5.0
           imagePullPolicy: Always
           envFrom:
             - secretRef:
