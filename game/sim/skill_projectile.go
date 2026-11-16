@@ -1,17 +1,15 @@
 package sim
 
 import (
-	"math"
-	"math/rand"
 	"time"
 
 	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 )
 
-// executeProjectileSkill is the "projectile" skill handler.
-// It spawns a fast-moving "skill" projectile bot towards the caster's target.
-// Works for players and bots alike: the context names the caster by id.
+// executeProjectileSkill is the "projectile" skill handler. It spawns a
+// "skill" projectile bot that flies straight along the aim of the caster, at
+// any angle. Its facing is the nearest of the eight, for its sprite.
 func (s *Sim) executeProjectileSkill(ctx SkillContext) {
 	casterStats := s.CalculateStats(ctx.CasterID, ctx.MapState)
 
@@ -22,50 +20,19 @@ func (s *Sim) executeProjectileSkill(ctx SkillContext) {
 		}
 	}
 
-	if rand.Float64() >= s.SummonChance(s.projectileSpawnChance, casterStats) {
-		return
-	}
-
 	casterID := ctx.CasterID
 	casterPos := ctx.MapState.Tf(casterID).Pos
-	casterDir := ctx.MapState.Mo(casterID).Direction
-
-	// Calculate direction from caster to target.
-	dx := ctx.Target.X - casterPos.X
-	dy := ctx.Target.Y - casterPos.Y
-	dist := math.Sqrt(dx*dx + dy*dy)
-
-	var projectileDirection world.Direction
-	if dist > 0 {
-		dirX, dirY := dx/dist, dy/dist
-		angle := math.Atan2(dirY, dirX)
-		if angle < 0 {
-			angle += 2 * math.Pi
-		}
-		directionIndex := (int(math.Round(angle/(math.Pi/4))) + 2) % 8
-		projectileDirection = world.Direction(directionIndex)
-	} else {
-		projectileDirection = casterDir
-	}
-
-	// Acquire the lock only if the caller doesn't already hold it.
-	if !ctx.CallerHoldsLock {
-		s.Mu.Lock()
-		defer s.Mu.Unlock()
-	}
+	speed := s.EntityBaseSpeed * s.projectileSpeedMultiplier
+	velocity := world.Vec2{X: ctx.Aim.X * speed, Y: ctx.Aim.Y * speed}
 
 	projectileLifetime := content.SummonLifetime(s.projectileLifetimeMs, casterStats)
 	projectileDims := world.Vec2{X: s.projectileWidth, Y: s.projectileHeight}
 	projectileBaseLife := s.EntityBaseMaxLife
 
-	// Pre-compensate for the first tick's movement so the projectile appears
-	// at the caster's position on the first rendered frame.
-	// dt-based: one-tick pre-displacement so the first replicated frame shows
-	// the projectile at the caster's position rather than one tick downstream.
-	projectileStep := s.EntityBaseSpeed * s.projectileSpeedMultiplier * TickDuration.Seconds()
-	dirX, dirY := getDirectionVector(projectileDirection)
-	spawnX := casterPos.X - (dirX * projectileStep)
-	spawnY := casterPos.Y - (dirY * projectileStep)
+	// One tick back along the flight, so the first replicated frame shows the
+	// projectile at the caster's position.
+	spawnX := casterPos.X - velocity.X*TickDuration.Seconds()
+	spawnY := casterPos.Y - velocity.Y*TickDuration.Seconds()
 
 	var projectileOLs []world.ObjectLayerState
 	for _, itemID := range projectileItemIDs {
@@ -75,13 +42,13 @@ func (s *Sim) executeProjectileSkill(ctx SkillContext) {
 	projectileBot := s.NewEntityID()
 	brain := &world.Brain{
 		ExpiresAt: time.Now().Add(projectileLifetime),
-		// One-shot palette lookup at spawn; sim never re-reads.
+		Velocity:  velocity,
 	}
 
 	ctx.MapState.AddBrain(projectileBot, brain)
 	ctx.MapState.Spawn(projectileBot, world.EntityData{Kind: world.EntityBot}, world.Transform{Pos: world.Vec2{X: spawnX, Y: spawnY}, Size: projectileDims}, world.Appearance{Layers: projectileOLs})
 	ctx.MapState.AddVitals(projectileBot, world.Vitals{MaxLife: projectileBaseLife, Life: projectileBaseLife})
-	ctx.MapState.AddMotion(projectileBot, world.Motion{Direction: projectileDirection})
+	ctx.MapState.AddMotion(projectileBot, world.Motion{Direction: directionFromVector(ctx.Aim.X, ctx.Aim.Y)})
 	ctx.MapState.AddAgent(projectileBot, s.summonAgent(ctx.MapState, content.BehaviorSkill, casterID))
 	ctx.MapState.AddMortal(projectileBot, &world.Mortal{})
 	s.ApplyResistanceStat(projectileBot, ctx.MapState)

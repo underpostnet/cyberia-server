@@ -9,7 +9,7 @@
 //
 //	1. phaseInput       drain queued InputCommand per player
 //	2. phaseLifecycle   respawn timers, despawn expirations
-//	3. phaseSkills      skill projectile collisions
+//	3. phaseSkills      skill projectile collisions, automatic skills
 //	4. phaseAI          bot behaviour decisions (path planning)
 //	5. phaseMovement    integrate positions using tickDuration
 //	6. phaseLoot        player↔drop-token collection + priority validation
@@ -119,6 +119,8 @@ func (s *Sim) applyInputCommand(player *world.Session, mapState *world.MapState,
 	switch cmd.Kind {
 	case world.InputKindPlayerAction:
 		s.handlePlayerActionInput(player, mapState, cmd)
+	case world.InputKindSkillActivate:
+		s.handleSkillActivateInput(player, mapState, cmd)
 	case world.InputKindItemActivation:
 		s.handleItemActivationInput(player, cmd)
 	case world.InputKindPlayerStasis:
@@ -200,16 +202,16 @@ func (s *Sim) PhaseLifecycle(tick uint32, mapState *world.MapState) {
 	s.UpdateTrades(mapState, time.Now())
 }
 
-// PhaseSkills resolves skill projectile collisions and runs the skills of held items for this tick.
+// PhaseSkills resolves skill projectile collisions and runs the automatic skills of held items for this tick.
 func (s *Sim) PhaseSkills(tick uint32, mapState *world.MapState) {
 	_ = tick
 	s.handleSkillCollisions(mapState)
 	for player := range s.PlayersOn(mapState) {
-		s.dispatchHeldSkills(player.ID, mapState)
+		s.runAutomaticSkills(player.ID, mapState)
 	}
 	for id := range mapState.OfKind(world.EntityBot) {
 		if content.BehaviorCollectsLoot(mapState.Ag(id).Behavior) {
-			s.dispatchHeldSkills(id, mapState)
+			s.runAutomaticSkills(id, mapState)
 		}
 	}
 }

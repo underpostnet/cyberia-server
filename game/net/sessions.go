@@ -376,7 +376,7 @@ func (s *GameServer) spawnPlayer(who identity) (*world.Session, bool) {
 		Size: dims,
 	}, world.Appearance{Layers: layers})
 	mapState.AddVitals(playerID, world.Vitals{MaxLife: s.EntityBaseMaxLife})
-	mapState.AddMotion(playerID, world.Motion{Direction: world.NONE, Mode: world.IDLE})
+	mapState.AddMotion(playerID, world.Motion{Direction: world.SpawnFacing, Mode: world.IDLE})
 	lifeRegen := s.PlayerBaseLifeRegenMin + rand.Float64()*(s.PlayerBaseLifeRegenMax-s.PlayerBaseLifeRegenMin)
 	mapState.AddMortal(playerID, &world.Mortal{LifeRegen: lifeRegen})
 	mapState.AddPlayer(playerID)

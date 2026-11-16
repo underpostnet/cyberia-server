@@ -34,7 +34,7 @@ func movementFixture(t *testing.T) (*Sim, *world.MapState, *world.Session) {
 	s.Sessions[player.ID] = player
 	mapState.Spawn(player.ID, world.EntityData{Kind: world.EntityPlayer}, world.Transform{Pos: world.Vec2{X: 1, Y: 1}, Size: world.Vec2{X: 1, Y: 1}}, world.Appearance{})
 	mapState.AddVitals(player.ID, world.Vitals{Life: 100, MaxLife: 100})
-	mapState.AddMotion(player.ID, world.Motion{Direction: world.NONE, Mode: world.IDLE})
+	mapState.AddMotion(player.ID, world.Motion{Direction: world.SpawnFacing, Mode: world.IDLE})
 	mapState.AddMortal(player.ID, &world.Mortal{})
 	mapState.AddPlayer(player.ID)
 
@@ -253,5 +253,39 @@ func TestEquipWearsTheStackInTheSlot(t *testing.T) {
 	tapTick(s, mapState, player, world.InputCommand{Kind: world.InputKindItemActivation, Sequence: 1, ItemID: "sword", Slot: 3, Active: true})
 	if layers := mapState.Ap(player.ID).Layers; layers[0].Active || !layers[1].Active {
 		t.Fatalf("layers = %+v, want only the stack in slot 3 worn", layers)
+	}
+}
+
+func TestAWalkEndsFacingItsLastStep(t *testing.T) {
+	s, ms, player := movementFixture(t)
+	tapTick(s, ms, player, tap(1, 4, 1))
+	for range 60 {
+		s.PhaseMovement(0, ms)
+	}
+	if ms.Mo(player.ID).Mode != world.IDLE || ms.Tf(player.ID).Pos != (world.Vec2{X: 4, Y: 1}) {
+		t.Fatalf("mode=%v pos=%v, want an idle player on the cell", ms.Mo(player.ID).Mode, ms.Tf(player.ID).Pos)
+	}
+	if ms.Mo(player.ID).Direction != world.RIGHT {
+		t.Fatalf("facing = %v, want the facing of the last step", ms.Mo(player.ID).Direction)
+	}
+}
+
+func TestAStopTapEndsTheWalkInPlaceWithoutTurning(t *testing.T) {
+	for _, steps := range []int{2, 4} { // the rounded cell lies behind, then ahead
+		s, ms, player := movementFixture(t)
+		tapTick(s, ms, player, tap(1, 8, 1))
+		for range steps {
+			s.PhaseMovement(0, ms)
+		}
+		at := ms.Tf(player.ID).Pos
+		tapTick(s, ms, player, tap(2, at.X, at.Y))
+		s.PhaseMovement(0, ms)
+		if ms.Mo(player.ID).Mode != world.IDLE || ms.Tf(player.ID).Pos != at || len(player.Path) != 0 {
+			t.Fatalf("after %d steps: mode=%v pos=%v path=%v, want a stop where the player stands",
+				steps, ms.Mo(player.ID).Mode, ms.Tf(player.ID).Pos, player.Path)
+		}
+		if ms.Mo(player.ID).Direction != world.RIGHT {
+			t.Fatalf("after %d steps: facing = %v, want no turn", steps, ms.Mo(player.ID).Direction)
+		}
 	}
 }

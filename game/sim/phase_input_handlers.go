@@ -5,7 +5,8 @@
 // holds s.mu (phaseInput runs inside the simulation tick).
 //
 // What lives here
-//   - Movement / skill dispatch for PLAYER_ACTION taps.
+//   - Movement and tap regeneration for PLAYER_ACTION taps.
+//   - Skill activation for SKILL_ACTIVATE, answered by skill_ack.
 //   - Inventory mutation for ITEM_ACTIVATION (with equipment-rule validation).
 //   - Chat and party requests, applied through the social registry.
 //
@@ -29,7 +30,7 @@ import (
 	"cyberia-server/logx"
 )
 
-// Taps record movement and request cooldown-limited skills.
+// Taps record movement and roll the tap regeneration.
 func (s *Sim) handlePlayerActionInput(player *world.Session, mapState *world.MapState, cmd *world.InputCommand) {
 	if mapState.Vt(player.ID).Ghost() {
 		return
@@ -38,11 +39,31 @@ func (s *Sim) handlePlayerActionInput(player *world.Session, mapState *world.Map
 		return
 	}
 
-	target := world.Vec2{X: cmd.TargetX, Y: cmd.TargetY}
-	s.HandlePlayerTapAction(player, mapState, target)
+	s.handleTapRegen(player.ID, mapState, time.Now())
 
 	player.PendingMove = world.Cell{X: int(math.Round(cmd.TargetX)), Y: int(math.Round(cmd.TargetY))}
 	player.HasPendingMove = true
+}
+
+// handleSkillActivateInput attempts the skill a player names and answers with
+// skill_ack: the outcome, whether the attempt spent the cooldown, the target
+// and the unit vector it took (x, y), the sequence of the input and the
+// cooldown left.
+func (s *Sim) handleSkillActivateInput(player *world.Session, mapState *world.MapState, cmd *world.InputCommand) {
+	result := SkillResult{Outcome: SkillBlocked}
+	if !player.Frozen {
+		aim := SkillAim{Mode: cmd.AimMode, Direction: cmd.Aim, Preferred: cmd.EntityID}
+		result = s.ActivateSkill(player.ID, mapState, cmd.SkillID, aim, time.Now())
+	}
+	world.SendAck(player, "skill_ack", string(result.Outcome), map[string]interface{}{
+		"skillId":   cmd.SkillID,
+		"seq":       cmd.Sequence,
+		"accepted":  result.Accepted(),
+		"targetId":  result.Target,
+		"x":         result.Aim.X,
+		"y":         result.Aim.Y,
+		"readyInMs": world.MsUntil(mapState.Mt(player.ID).NextSkillAt),
+	})
 }
 
 // flushPendingMove re-plans the walk from the newest tap of this tick. Called
@@ -67,6 +88,15 @@ func (s *Sim) flushPendingMove(player *world.Session, mapState *world.MapState) 
 		world.Cell{X: int(math.Round(mapState.Tf(player.ID).Pos.X)), Y: int(math.Round(mapState.Tf(player.ID).Pos.Y))},
 		mapState.GridW(), mapState.GridH())
 	targetPosI := world.ClampCellToGrid(target, mapState.GridW(), mapState.GridH())
+
+	// A tap on the cell the player stands on stops the walk where the player
+	// stands. The facing stays: a stop never turns the player.
+	if startPosI == targetPosI {
+		player.Path = nil
+		player.TargetPos = targetPosI
+		mapState.Mo(player.ID).Mode = world.IDLE
+		return
+	}
 
 	// A repeat of the destination already being walked needs no search. This is
 	// the shape a spam-tapping client takes, and it is also the shape of a held
@@ -113,8 +143,6 @@ func (s *Sim) flushPendingMove(player *world.Session, mapState *world.MapState) 
 		if dist := math.Sqrt(dx*dx + dy*dy); dist > 0 {
 			mapState.Mo(player.ID).Direction = directionFromVector(dx/dist, dy/dist)
 		}
-	} else if startPosI.X == targetPosI.X && startPosI.Y == targetPosI.Y {
-		mapState.Mo(player.ID).Mode = world.IDLE
 	}
 }
 

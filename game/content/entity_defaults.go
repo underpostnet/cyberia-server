@@ -235,9 +235,10 @@ type EquipmentRulesConfig struct {
 	RequireSkin     bool            `json:"requireSkin"`     // require ≥ 1 active skin
 }
 
-// SkillDefinition defines the properties of a single skill logic event
-// associated with a trigger item.
+// SkillDefinition is one skill a trigger item carries: its id, its handler
+// (SkillLogics) and what it shows and summons.
 type SkillDefinition struct {
+	SkillID              string
 	LogicEventID         string
 	Name                 string
 	Description          string

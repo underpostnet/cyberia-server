@@ -1,6 +1,7 @@
 package net
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -13,6 +14,38 @@ func TestParseInputCarriesTheStasisBool(t *testing.T) {
 		cmd, ok := parseInput("player_stasis", &inputPayload{Stasis: want})
 		if !ok || cmd.Kind != world.InputKindPlayerStasis || cmd.Active != want {
 			t.Fatalf("player_stasis %v: got ok=%v %+v", want, ok, cmd)
+		}
+	}
+}
+
+// A skill activation names a skill and one explicit aim: a facing, an auto aim
+// with an optional preferred target, or a finite non-zero direction.
+func TestParseInputValidatesASkillActivation(t *testing.T) {
+	cmd, ok := parseInput("skill_activate", &inputPayload{SkillID: "pulse-shot", Aim: "direction", X: 0.6, Y: -0.8})
+	if !ok || cmd.Kind != world.InputKindSkillActivate || cmd.SkillID != "pulse-shot" || cmd.AimMode != world.AimDirection ||
+		cmd.Aim != (world.Vec2{X: 0.6, Y: -0.8}) {
+		t.Fatalf("direction: ok=%v %+v", ok, cmd)
+	}
+	if cmd, ok := parseInput("skill_activate", &inputPayload{SkillID: "shot", Aim: "auto_target", TargetID: 9}); !ok ||
+		cmd.AimMode != world.AimAuto || cmd.EntityID != 9 {
+		t.Fatalf("auto aim: ok=%v %+v", ok, cmd)
+	}
+	if cmd, ok := parseInput("skill_activate", &inputPayload{SkillID: "shot", Aim: "facing"}); !ok || cmd.AimMode != world.AimFacing {
+		t.Fatalf("facing: ok=%v %+v", ok, cmd)
+	}
+	for name, p := range map[string]*inputPayload{
+		"no skill":            {Aim: "facing"},
+		"no aim":              {SkillID: "shot"},
+		"unknown aim":         {SkillID: "shot", Aim: "mouse"},
+		"long skill":          {SkillID: strings.Repeat("s", 200), Aim: "facing"},
+		"zero direction":      {SkillID: "shot", Aim: "direction"},
+		"facing, a direction": {SkillID: "shot", Aim: "facing", X: 1},
+		"facing, a target":    {SkillID: "shot", Aim: "facing", TargetID: 4},
+		"nan aim":             {SkillID: "shot", Aim: "direction", X: math.NaN()},
+		"infinite aim":        {SkillID: "shot", Aim: "direction", Y: math.Inf(1)},
+	} {
+		if _, ok := parseInput("skill_activate", p); ok {
+			t.Fatalf("%s: must be rejected", name)
 		}
 	}
 }

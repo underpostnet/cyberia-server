@@ -1,120 +1,195 @@
 package sim
 
 import (
+	"math/rand"
+	"time"
+
 	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	"cyberia-server/logx"
 )
 
-// SkillContext carries all information needed by a skill handler.
-// It unifies player and bot execution into a single call signature.
+// SkillContext is what one skill handler runs on. Caller holds s.mu.
 type SkillContext struct {
-	// CasterID is the player or bot that triggered the skill.
 	CasterID world.EntityID
-	// MapState is the map the caster belongs to.
 	MapState *world.MapState
-	// Target is the world-space point the caster acted upon (tap destination).
-	Target world.Vec2
-	// TriggerItemID is the ObjectLayer item that matched the skillConfig entry.
+	// Aim is the unit vector a directional skill flies along.
+	Aim world.Vec2
+	// TriggerItemID is the item that carries the skill.
 	TriggerItemID string
-	// SummonedEntityItemID is the item ID of the entity this skill should spawn
-	// (e.g. "atlas_pistol_mk2_bullet", "hatchet-skill"). Comes from SkillDefinition.
+	// SummonedEntityItemID is the item of the entity the skill spawns.
 	SummonedEntityItemID string
-	// CallerHoldsLock is true when the server mutex is already held by the caller
-	// (e.g. inside the game-loop / updateBots). Skill implementations that need
-	// the lock must check this flag to avoid a deadlock.
-	CallerHoldsLock bool
 }
 
-// SkillHandlerFunc is the signature every skill implementation must satisfy.
-type SkillHandlerFunc func(s *Sim, ctx SkillContext)
-
-// skillRegistry maps logicEventID → handler. New skills only need to add one
-// entry in init.
-var skillRegistry = map[string]SkillHandlerFunc{}
-
-// heldSkillRegistry maps logicEventID → handler the simulation runs every tick on each item an
-// entity holds, active or not. A tap never dispatches these.
-var heldSkillRegistry = map[string]SkillHandlerFunc{}
-
-// registerSkill adds (or replaces) a handler for the given logicEventID.
-func registerSkill(logicEventID string, handler SkillHandlerFunc) {
-	skillRegistry[logicEventID] = handler
+// skillHandler runs one skill logic. chance is the base chance of a manual
+// skill before intelligence; an automatic skill has none. reach is the cells a
+// directional skill flies, the range of its auto aim.
+type skillHandler struct {
+	chance func(s *Sim) float64
+	reach  func(s *Sim, stats content.ComputedStats) float64
+	run    func(s *Sim, ctx SkillContext)
 }
 
-// registerHeldSkill adds (or replaces) a held-item handler for the given logicEventID.
-func registerHeldSkill(logicEventID string, handler SkillHandlerFunc) {
-	heldSkillRegistry[logicEventID] = handler
+// skillHandlers holds the handler of each manual and automatic logic of
+// content.SkillLogics. An event logic runs in its gameplay event: the coin
+// drop runs in the death drops.
+var skillHandlers = map[string]skillHandler{
+	"projectile": {
+		chance: func(s *Sim) float64 { return s.projectileSpawnChance },
+		reach: func(s *Sim, stats content.ComputedStats) float64 {
+			return s.EntityBaseSpeed * s.projectileSpeedMultiplier * content.SummonLifetime(s.projectileLifetimeMs, stats).Seconds()
+		},
+		run: (*Sim).executeProjectileSkill,
+	},
+	"doppelganger": {
+		chance: func(s *Sim) float64 { return s.doppelgangerSpawnChance },
+		run:    (*Sim).executeDoppelgangerSkill,
+	},
+	"zero-waste-auto-consume-heal": {run: (*Sim).executeZeroWasteHeal},
 }
 
-// IsHeldSkill reports whether logicEventID runs on held items instead of on a tap.
-func IsHeldSkill(logicEventID string) bool {
-	_, ok := heldSkillRegistry[logicEventID]
-	return ok
-}
+// skillRoll draws the chance roll of one skill activation.
+var skillRoll = rand.Float64
 
-// SupportsSkill reports whether this server runs a handler for logicEventID.
+// SupportsSkill reports whether this server runs logicEventID.
 func SupportsSkill(logicEventID string) bool {
-	_, tap := skillRegistry[logicEventID]
-	return tap || IsHeldSkill(logicEventID)
+	logic, known := content.SkillLogics[logicEventID]
+	_, handled := skillHandlers[logicEventID]
+	return known && (handled || logic.Activation == content.SkillEvent)
 }
 
-// init wires the built-in skill handlers into the registries.
-func init() {
-	registerSkill("projectile", func(s *Sim, ctx SkillContext) {
-		s.executeProjectileSkill(ctx)
-	})
-	registerSkill("doppelganger", func(s *Sim, ctx SkillContext) {
-		s.executeDoppelgangerSkill(ctx)
-	})
-	registerSkill("coin_drop_or_transaction", func(s *Sim, ctx SkillContext) {
-		// Economy mechanic: every kill scatters the victim's coin stake as a
-		// grid drop (handleBotDeath / handlePlayerDeath → spawnDrops). No
-		// manual action needed.
-	})
-	registerHeldSkill("zero-waste-auto-consume-heal", func(s *Sim, ctx SkillContext) {
-		s.executeZeroWasteHeal(ctx)
-	})
-}
-
-// DispatchSkill routes a single logicEventID to its registered handler.
-// Unknown IDs are logged and silently ignored.
-func (s *Sim) DispatchSkill(logicID string, ctx SkillContext) {
-	handler, ok := skillRegistry[logicID]
-	if !ok {
-		logx.Debugf("Unknown logicEventID '%s' for item '%s'", logicID, ctx.TriggerItemID)
-		return
+// BaseSkillReach is the reach of a directional skill logic with no stat, 0 for
+// a logic that aims at no direction.
+func (s *Sim) BaseSkillReach(logicEventID string) float64 {
+	if reach := skillHandlers[logicEventID].reach; reach != nil {
+		return reach(s, content.ComputedStats{})
 	}
-	handler(s, ctx)
+	return 0
 }
 
-// dispatchSkillsForEntity iterates the entity's active ObjectLayers, looks up
-// matching entries in skillConfig, and dispatches each logicEventID.
-// This replaces the duplicated switch blocks in HandlePlayerTapAction and handleBotSkills.
-func (s *Sim) dispatchSkillsForEntity(casterID world.EntityID, mapState *world.MapState, target world.Vec2, callerHoldsLock bool) {
-	for _, layer := range mapState.Ap(casterID).Layers {
-		if !layer.Active {
-			continue
+// SkillOutcome is the answer of the world to one skill activation.
+type SkillOutcome string
+
+const (
+	SkillCast        SkillOutcome = ""            // the skill ran
+	SkillMisfire     SkillOutcome = "misfire"     // the attempt was valid; its chance roll failed
+	SkillCooldown    SkillOutcome = "cooldown"    // the action cooldown of the caster runs
+	SkillUnavailable SkillOutcome = "unavailable" // no active item of the caster carries the manual skill
+	SkillBlocked     SkillOutcome = "blocked"     // the caster is a ghost or in stasis
+)
+
+// SkillAim is how one activation aims.
+type SkillAim struct {
+	Mode      world.AimMode
+	Direction world.Vec2     // AimDirection: never zero
+	Preferred world.EntityID // AimAuto: the target to keep while it stays a candidate
+}
+
+// SkillResult is the answer to one activation: its outcome, the target an
+// auto aim took (0 for none) and the unit vector a directional skill flew
+// along (zero for a skill that aims at no direction).
+type SkillResult struct {
+	Outcome SkillOutcome
+	Target  world.EntityID
+	Aim     world.Vec2
+}
+
+// Accepted reports whether the attempt spent the action cooldown: a cast or a misfire.
+func (r SkillResult) Accepted() bool { return r.Outcome == SkillCast || r.Outcome == SkillMisfire }
+
+// ActivateSkill attempts the manual skill skillID of a caster. A valid attempt
+// reserves the action cooldown, resolves its aim, and rolls the chance of the
+// skill once; the skill runs on a pass. A refused attempt changes nothing.
+// Caller holds s.mu.
+func (s *Sim) ActivateSkill(id world.EntityID, mapState *world.MapState, skillID string, aim SkillAim, now time.Time) SkillResult {
+	var result SkillResult
+	if mapState.Vt(id).Ghost() {
+		result.Outcome = SkillBlocked
+		return result
+	}
+	trigger, def, ok := s.manualSkill(mapState, id, skillID)
+	if !ok {
+		result.Outcome = SkillUnavailable
+		return result
+	}
+	mortal := mapState.Mt(id)
+	if now.Before(mortal.NextSkillAt) {
+		result.Outcome = SkillCooldown
+		return result
+	}
+	stats := s.CalculateStats(id, mapState)
+	mortal.NextSkillAt = now.Add(s.CalculateActionCooldown(stats))
+	handler := skillHandlers[def.LogicEventID]
+	if content.SkillLogics[def.LogicEventID].Targeting == content.TargetDirection {
+		result.Target, result.Aim = s.resolveAim(mapState, id, aim, handler.reach(s, stats))
+		// An idle caster turns to the facing nearest the cast.
+		if mapState.Mo(id).Mode == world.IDLE && result.Aim != (world.Vec2{}) {
+			mapState.Mo(id).Direction = directionFromVector(result.Aim.X, result.Aim.Y)
 		}
-		if skillDefs, ok := s.SkillConfig[layer.ItemID]; ok {
-			for _, skillDef := range skillDefs {
-				s.DispatchSkill(skillDef.LogicEventID, SkillContext{
-					CasterID:             casterID,
-					MapState:             mapState,
-					Target:               target,
-					TriggerItemID:        layer.ItemID,
-					SummonedEntityItemID: skillDef.SummonedEntityItemID,
-					CallerHoldsLock:      callerHoldsLock,
-				})
+	}
+	if skillRoll() >= s.SummonChance(handler.chance(s), stats) {
+		result.Outcome = SkillMisfire
+		return result
+	}
+	handler.run(s, SkillContext{
+		CasterID:             id,
+		MapState:             mapState,
+		Aim:                  result.Aim,
+		TriggerItemID:        trigger,
+		SummonedEntityItemID: def.SummonedEntityItemID,
+	})
+	result.Outcome = SkillCast
+	return result
+}
+
+// resolveAim is the target an aim takes (0 for none) and the unit vector it
+// flies along, at any angle. An auto aim flies at the center of its target; one
+// with no target in reach, and a facing aim, fly along the facing.
+func (s *Sim) resolveAim(ms *world.MapState, caster world.EntityID, aim SkillAim, reach float64) (world.EntityID, world.Vec2) {
+	switch aim.Mode {
+	case world.AimDirection:
+		return 0, aim.Direction.Unit()
+	case world.AimAuto:
+		if target := s.autoTarget(ms, caster, aim.Preferred, reach); target != 0 {
+			from, to := entityCenter(ms, caster), entityCenter(ms, target)
+			if toward := (world.Vec2{X: to.X - from.X, Y: to.Y - from.Y}).Unit(); toward != (world.Vec2{}) {
+				return target, toward
 			}
 		}
 	}
+	x, y := getDirectionVector(ms.Mo(caster).Direction)
+	return 0, world.Vec2{X: x, Y: y}
 }
 
-// dispatchHeldSkills runs the held-item skills of every item the caster holds, active or not, once
-// per item however many stacks hold it. A handler may spend units, so each item is read from the
-// live layers. Caller holds s.mu.
-func (s *Sim) dispatchHeldSkills(casterID world.EntityID, mapState *world.MapState) {
+// manualSkill finds the manual skill skillID on the active items of a caster,
+// with the item that carries it. Two active items may carry one skill id only
+// with one definition; a conflict refuses the skill.
+func (s *Sim) manualSkill(mapState *world.MapState, id world.EntityID, skillID string) (string, content.SkillDefinition, bool) {
+	var trigger string
+	var found content.SkillDefinition
+	for _, layer := range mapState.Ap(id).Layers {
+		if !layer.Active || layer.Quantity < 1 {
+			continue
+		}
+		for _, def := range s.SkillConfig[layer.ItemID] {
+			if def.SkillID != skillID || content.SkillLogics[def.LogicEventID].Activation != content.SkillManual {
+				continue
+			}
+			if trigger == "" {
+				trigger, found = layer.ItemID, def
+			} else if def.LogicEventID != found.LogicEventID || def.SummonedEntityItemID != found.SummonedEntityItemID {
+				logx.Warnf("[Skills] %s and %s define skill %q two ways; it does not run", trigger, layer.ItemID, skillID)
+				return "", content.SkillDefinition{}, false
+			}
+		}
+	}
+	return trigger, found, trigger != ""
+}
+
+// runAutomaticSkills runs the automatic skills of every item the caster holds,
+// active or not, once per item however many stacks hold it. A handler may
+// spend units, so each item is read from the live layers. Caller holds s.mu.
+func (s *Sim) runAutomaticSkills(casterID world.EntityID, mapState *world.MapState) {
 	ran := make(map[string]bool)
 	for i := 0; i < len(mapState.Ap(casterID).Layers); i++ {
 		layer := mapState.Ap(casterID).Layers[i]
@@ -122,16 +197,16 @@ func (s *Sim) dispatchHeldSkills(casterID world.EntityID, mapState *world.MapSta
 			continue
 		}
 		ran[layer.ItemID] = true
-		for _, skillDef := range s.SkillConfig[layer.ItemID] {
-			if handler, ok := heldSkillRegistry[skillDef.LogicEventID]; ok {
-				handler(s, SkillContext{
-					CasterID:             casterID,
-					MapState:             mapState,
-					TriggerItemID:        layer.ItemID,
-					SummonedEntityItemID: skillDef.SummonedEntityItemID,
-					CallerHoldsLock:      true,
-				})
+		for _, def := range s.SkillConfig[layer.ItemID] {
+			if content.SkillLogics[def.LogicEventID].Activation != content.SkillAutomatic {
+				continue
 			}
+			skillHandlers[def.LogicEventID].run(s, SkillContext{
+				CasterID:             casterID,
+				MapState:             mapState,
+				TriggerItemID:        layer.ItemID,
+				SummonedEntityItemID: def.SummonedEntityItemID,
+			})
 		}
 	}
 }

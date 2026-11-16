@@ -1,6 +1,7 @@
 package world
 
 import (
+	"math"
 	"sync"
 	"time"
 
@@ -9,10 +10,19 @@ import (
 
 // 1. Data Structures & Interfaces
 
-// Vec2 is a 2D quantity in grid units: a position or a size.
+// Vec2 is a 2D quantity in grid units: a position, a size or a direction.
 type Vec2 struct {
 	X float64 `json:"x"`
 	Y float64 `json:"y"`
+}
+
+// Unit is the unit vector along v; zero for a zero v.
+func (v Vec2) Unit() Vec2 {
+	length := math.Hypot(v.X, v.Y)
+	if length == 0 {
+		return Vec2{}
+	}
+	return Vec2{X: v.X / length, Y: v.Y / length}
 }
 
 // Transform is the transform component: the top-left and the size of an
@@ -85,6 +95,7 @@ type Rectangle struct {
 	MinX, MinY, MaxX, MaxY float64
 }
 
+// Direction is the facing of an entity, in the order of content.DirectionVectors.
 type Direction int
 
 const (
@@ -98,6 +109,10 @@ const (
 	UP_LEFT
 	NONE
 )
+
+// SpawnFacing is the facing of a player or a placed bot before its first step.
+// A facing never returns to NONE.
+const SpawnFacing = DOWN
 
 type ObjectLayerMode int
 
@@ -134,7 +149,8 @@ type ComponentMask uint64
 // Mortal is the server-only side table row of an entity that can die (player,
 // bot, resource). Life itself is in MapState.vitals.
 type Mortal struct {
-	NextSkillAt            time.Time
+	NextSkillAt            time.Time // ends the action cooldown a skill activation starts (sim/skill.go)
+	NextRegenAt            time.Time // ends the action cooldown a tap regeneration starts (sim/skill.go)
 	NextConsumeAt          time.Time // ends the cooldown a consumed held item starts (sim/skill_heal.go)
 	BaseMaxLife            float64
 	PreRespawnObjectLayers []ObjectLayerState
@@ -297,8 +313,10 @@ type Brain struct {
 	AggroRange           float64   `json:"aggroRange"`
 	CurrentTargetPlayer  EntityID  `json:"-"` // player ID currently being pursued (if any)
 	LastPursuitTargetPos Cell      `json:"-"` // cached player's last cell to know when to re-path
-	LastAction           time.Time `json:"-"`
 	ExpiresAt            time.Time `json:"-"` // bots with a lifetime will be removed after this time
+	// Velocity is the straight flight of a skill projectile, in cells per
+	// second, fixed at its launch.
+	Velocity Vec2 `json:"-"`
 	// Coins is the canonical flat coin balance — the single source of truth
 	// for all economy operations.  O(1) read/write, never iterates ObjectLayers.
 	// The coin ObjectLayer slot (coinItemID) is kept in sync for inventory
@@ -465,6 +483,15 @@ func SendAck(player *Session, msgType, reason string, fields map[string]interfac
 	fields["ok"] = reason == ""
 	fields["reason"] = reason
 	SendMessage(player, msgType, fields)
+}
+
+// MsUntil is the whole milliseconds left until t, rounded up; 0 once t has passed.
+func MsUntil(t time.Time) int {
+	left := time.Until(t)
+	if left <= 0 {
+		return 0
+	}
+	return int((left + time.Millisecond - 1) / time.Millisecond)
 }
 
 // FrameAt is the client step that tick stands for. 0 before the first consumed event.

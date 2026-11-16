@@ -2168,6 +2168,7 @@ func (x *DefaultObjectLayerState) GetDropChance() float64 {
 
 type SkillDetail struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
+	SkillId              string                 `protobuf:"bytes,5,opt,name=skill_id,json=skillId,proto3" json:"skill_id,omitempty"`                                            // id of the skill, unique in its trigger item; a manual activation names it
 	LogicEventId         string                 `protobuf:"bytes,1,opt,name=logic_event_id,json=logicEventId,proto3" json:"logic_event_id,omitempty"`                           // skill handler key (e.g. "projectile", "doppelganger")
 	Description          string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`                                                   // human-readable skill description shown in the inventory modal
 	SummonedEntityItemId string                 `protobuf:"bytes,3,opt,name=summoned_entity_item_id,json=summonedEntityItemId,proto3" json:"summoned_entity_item_id,omitempty"` // ObjectLayer item ID of the entity summoned by this skill ("$active_skin" = dynamic)
@@ -2204,6 +2205,13 @@ func (x *SkillDetail) ProtoReflect() protoreflect.Message {
 // Deprecated: Use SkillDetail.ProtoReflect.Descriptor instead.
 func (*SkillDetail) Descriptor() ([]byte, []int) {
 	return file_cyberia_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *SkillDetail) GetSkillId() string {
+	if x != nil {
+		return x.SkillId
+	}
+	return ""
 }
 
 func (x *SkillDetail) GetLogicEventId() string {
@@ -7157,8 +7165,9 @@ const file_cyberia_proto_rawDesc = "" +
 	"\bquantity\x18\x03 \x01(\x05R\bquantity\x12$\n" +
 	"\vdrop_chance\x18\x04 \x01(\x01H\x00R\n" +
 	"dropChance\x88\x01\x01B\x0e\n" +
-	"\f_drop_chanceJ\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\vbuff_factorR\x11spawn_interval_ms\"\xa0\x01\n" +
-	"\vSkillDetail\x12$\n" +
+	"\f_drop_chanceJ\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\vbuff_factorR\x11spawn_interval_ms\"\xbb\x01\n" +
+	"\vSkillDetail\x12\x19\n" +
+	"\bskill_id\x18\x05 \x01(\tR\askillId\x12$\n" +
 	"\x0elogic_event_id\x18\x01 \x01(\tR\flogicEventId\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x125\n" +
 	"\x17summoned_entity_item_id\x18\x03 \x01(\tR\x14summonedEntityItemId\x12\x12\n" +

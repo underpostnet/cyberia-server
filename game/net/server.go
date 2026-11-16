@@ -381,12 +381,16 @@ type GameServer struct {
 // SkillMapEntry describes one skill associated with a trigger item,
 // for the init_data JSON payload sent to C clients.
 type SkillMapEntry struct {
+	SkillID              string `json:"skillId"`
 	LogicEventID         string `json:"logicEventId"`
 	Name                 string `json:"name"`
 	Description          string `json:"description"`
 	SummonedEntityItemID string `json:"summonedEntityItemId"`
-	// Held marks a skill the simulation runs by itself on the units an entity holds; a tap never fires it.
-	Held bool `json:"held"`
+	// Activation and Targeting are the logic of the skill: what starts it and what it aims at.
+	Activation string `json:"activation"`
+	Targeting  string `json:"targeting"`
+	// Reach is the cells a directional skill flies with no stat; 0 for any other.
+	Reach float64 `json:"reach"`
 }
 
 // InitPayload — bootstrap message sent once on WebSocket connect.

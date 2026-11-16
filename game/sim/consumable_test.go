@@ -23,7 +23,7 @@ func healingServer(t *testing.T, life float64, stacks ...world.ObjectLayerState)
 		t.Fatal(err)
 	}
 	s.SkillConfig = map[string][]content.SkillDefinition{
-		"gel": {{LogicEventID: "zero-waste-auto-consume-heal", SummonedEntityItemID: "gel"}},
+		"gel": {{SkillID: "dose", LogicEventID: "zero-waste-auto-consume-heal", SummonedEntityItemID: "gel"}},
 	}
 	ms.Vt(player.ID).Life = life
 	ms.Ap(player.ID).Layers = stacks
@@ -114,16 +114,20 @@ func TestOnlyALootCollectingBotHealsFromItsHeldUnits(t *testing.T) {
 	}
 }
 
-// A held skill runs once per item, however many stacks hold it.
-func TestAHeldSkillRunsOncePerItemAcrossItsStacks(t *testing.T) {
+// An automatic skill runs once per item, however many stacks hold it.
+func TestAnAutomaticSkillRunsOncePerItemAcrossItsStacks(t *testing.T) {
 	s, ms, player := healingServer(t, 100, world.ObjectLayerState{ItemID: "gel", Quantity: 1, Slot: 0},
 		world.ObjectLayerState{ItemID: "gel", Quantity: 2, Slot: 4})
 	runs := 0
-	registerHeldSkill("count-runs", func(*Sim, SkillContext) { runs++ })
-	t.Cleanup(func() { delete(heldSkillRegistry, "count-runs") })
+	content.SkillLogics["count-runs"] = content.SkillLogic{Activation: content.SkillAutomatic, Targeting: content.TargetSelf}
+	skillHandlers["count-runs"] = skillHandler{run: func(*Sim, SkillContext) { runs++ }}
+	t.Cleanup(func() {
+		delete(content.SkillLogics, "count-runs")
+		delete(skillHandlers, "count-runs")
+	})
 	s.SkillConfig["gel"] = []content.SkillDefinition{{LogicEventID: "count-runs"}}
 
-	s.dispatchHeldSkills(player.ID, ms)
+	s.runAutomaticSkills(player.ID, ms)
 	if runs != 1 {
 		t.Fatalf("runs = %d, want one per item", runs)
 	}

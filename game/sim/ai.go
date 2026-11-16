@@ -63,19 +63,11 @@ func (s *Sim) updateBots(mapState *world.MapState) {
 		botStats := s.CalculateStats(id, mapState)
 
 		// --- SKILL PROJECTILE BEHAVIOR ---
-		// Skill projectile bots move in a straight line and are removed if they go out of bounds.
+		// A skill projectile flies straight at its launch velocity and goes
+		// when it leaves the map. No other logic moves or turns it.
 		if mapState.Ag(id).Behavior == content.BehaviorSkill {
-			// dt-based integration. entityBaseSpeed is cells/second; one tick
-			// is tickDuration. (The old code used `... / s.fps` which is a
-			// frame-count integration that silently misbehaves when the loop
-			// runs slow or tickRate changes.)
-			projectileStep := s.EntityBaseSpeed * s.projectileSpeedMultiplier * TickDuration.Seconds()
-			// Calculate movement vector from bot's direction
-			dirX, dirY := getDirectionVector(mapState.Mo(id).Direction)
-
-			// Update position
-			mapState.Tf(id).Pos.X += dirX * projectileStep
-			mapState.Tf(id).Pos.Y += dirY * projectileStep
+			mapState.Tf(id).Pos.X += bot.Velocity.X * TickDuration.Seconds()
+			mapState.Tf(id).Pos.Y += bot.Velocity.Y * TickDuration.Seconds()
 
 			// Remove projectile if it goes out of map bounds
 			if mapState.Tf(id).Pos.X < 0 || mapState.Tf(id).Pos.X > float64(mapState.GridW()) ||
@@ -83,7 +75,6 @@ func (s *Sim) updateBots(mapState *world.MapState) {
 				s.Despawn(mapState, id)
 				continue // Skip further processing for this bot
 			}
-			s.handleBotSkills(id, mapState, world.Vec2{X: mapState.Tf(id).Pos.X, Y: mapState.Tf(id).Pos.Y})
 			// For skill projectiles, we don't need to call updateBotPosition or other AI logic
 			// as their movement is simple and direct.
 			continue
@@ -142,13 +133,9 @@ func (s *Sim) updateBots(mapState *world.MapState) {
 					mapState.Mo(id).Direction = directionFromVector(dirX, dirY)
 				}
 
-				// Hostile bots that are idle (not moving) have a chance to use a skill.
+				// Hostile bots that are idle (not moving) attempt a skill.
 				if mapState.Mo(id).Mode == world.IDLE && bot.ExpiresAt.IsZero() {
-					cooldown := s.CalculateActionCooldown(botStats)
-					if time.Since(bot.LastAction) >= cooldown {
-						s.handleBotSkills(id, mapState, mapState.Tf(nearestPlayer.ID).Pos)
-						bot.LastAction = time.Now()
-					}
+					s.castBotSkill(id, mapState, mapState.Tf(nearestPlayer.ID).Pos)
 				}
 
 				// Pursue the player: recompute path if newly acquired or player moved cell
@@ -170,12 +157,7 @@ func (s *Sim) updateBots(mapState *world.MapState) {
 
 							// Skill activation for permanent bots acquiring a player target
 							if bot.ExpiresAt.IsZero() {
-								cooldown := s.CalculateActionCooldown(botStats)
-								if time.Since(bot.LastAction) >= cooldown {
-									s.handleBotSkills(id, mapState, mapState.Tf(nearestPlayer.ID).Pos)
-									bot.LastAction = time.Now()
-								}
-
+								s.castBotSkill(id, mapState, mapState.Tf(nearestPlayer.ID).Pos)
 							}
 						}
 					}
@@ -202,11 +184,7 @@ func (s *Sim) updateBots(mapState *world.MapState) {
 
 							// Skill activation for permanent bots taking a wander "action"
 							if bot.ExpiresAt.IsZero() {
-								cooldown := s.CalculateActionCooldown(botStats)
-								if time.Since(bot.LastAction) >= cooldown {
-									s.handleBotSkills(id, mapState, world.Vec2{X: float64(target.X), Y: float64(target.Y)})
-									bot.LastAction = time.Now()
-								}
+								s.castBotSkill(id, mapState, world.Vec2{X: float64(target.X), Y: float64(target.Y)})
 							}
 						} else {
 							// if we can't path to a target, remain idle until next tick tries again
@@ -232,11 +210,7 @@ func (s *Sim) updateBots(mapState *world.MapState) {
 
 						// Skill activation for permanent bots taking a wander "action"
 						if bot.ExpiresAt.IsZero() {
-							cooldown := s.CalculateActionCooldown(botStats)
-							if time.Since(bot.LastAction) >= cooldown {
-								s.handleBotSkills(id, mapState, world.Vec2{X: float64(target.X), Y: float64(target.Y)})
-								bot.LastAction = time.Now()
-							}
+							s.castBotSkill(id, mapState, world.Vec2{X: float64(target.X), Y: float64(target.Y)})
 						}
 					}
 				}
@@ -265,29 +239,11 @@ func (s *Sim) updateBotPosition(id world.EntityID, mapState *world.MapState, sta
 	}
 }
 
-// getDirectionVector converts a Direction enum to a normalized (dx, dy) vector.
-// This helper is used for calculating projectile trajectories.
+// getDirectionVector is the unit vector of a facing; NONE has none.
 func getDirectionVector(dir world.Direction) (float64, float64) {
-	// Normalize diagonal vectors to maintain consistent speed
-	const diag = 0.70710678118 // 1 / sqrt(2)
-	switch dir {
-	case world.UP:
-		return 0, -1
-	case world.UP_RIGHT:
-		return diag, -diag
-	case world.RIGHT:
-		return 1, 0
-	case world.DOWN_RIGHT:
-		return diag, diag
-	case world.DOWN:
-		return 0, 1
-	case world.DOWN_LEFT:
-		return -diag, diag
-	case world.LEFT:
-		return -1, 0
-	case world.UP_LEFT:
-		return -diag, -diag
-	default: // NONE or any other unexpected direction
+	if dir < world.UP || dir >= world.NONE {
 		return 0, 0
 	}
+	v := content.DirectionVectors[dir]
+	return v[0], v[1]
 }

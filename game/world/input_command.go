@@ -25,7 +25,7 @@ type InputKind uint8
 const (
 	// InputKindUnknown is an event that failed validation: consumed, never applied.
 	InputKindUnknown      InputKind = iota
-	InputKindPlayerAction           // tap move + skill trigger
+	InputKindPlayerAction           // tap move + tap regeneration
 	InputKindItemActivation
 	InputKindPlayerStasis // client modal count > 0 — freeze, else thaw
 	InputKindChat
@@ -61,7 +61,29 @@ const (
 	InputKindMarketBuy     // buy a fixed-price listing
 	InputKindMarketBid     // bid on an auction
 	InputKindMarketCollect // take the pending claims of the market view
+	InputKindSkillActivate // attempt one manual skill of an active item
 )
+
+// AimMode is how a skill activation aims a directional skill.
+type AimMode uint8
+
+const (
+	AimFacing    AimMode = iota // along the facing of the caster
+	AimAuto                     // at the target the world picks, else along the facing
+	AimDirection                // along a direction the player chose
+)
+
+var aimModeWords = [...]string{AimFacing: "facing", AimAuto: "auto_target", AimDirection: "direction"}
+
+// ParseAimMode maps a wire word to its aim mode.
+func ParseAimMode(word string) (AimMode, bool) {
+	for m, w := range aimModeWords {
+		if w == word {
+			return AimMode(m), true
+		}
+	}
+	return 0, false
+}
 
 // ChatChannel is who one chat line reaches.
 type ChatChannel uint8
@@ -96,12 +118,15 @@ type InputCommand struct {
 	// Payload fields — only the ones relevant to Kind are populated.
 	TargetX     float64     // PlayerAction; ItemDrop — the cell, negative at the feet
 	TargetY     float64     // PlayerAction; ItemDrop
+	SkillID     string      // SkillActivate — the skill the player attempts
+	AimMode     AimMode     // SkillActivate — how it aims
+	Aim         Vec2        // SkillActivate — the direction of AimDirection, never zero
 	ItemID      string      // ItemActivation, ShopBuy
 	Slot        int         // ItemActivation — the bag slot of the stack, or -1 for the first stack of ItemID
 	Active      bool        // ItemActivation; PlayerStasis — the stasis bool; PartyReply — accept
 	ChatChannel ChatChannel // Chat
 	Text        string      // Chat; StatusNote — clean, empty clears the note
-	EntityID    EntityID    // Chat direct target; party target; TalkDone, ShopBuy, CraftItem, ItemMove to a vault — the NPC entity
+	EntityID    EntityID    // Chat direct target; party target; TalkDone, ShopBuy, CraftItem, ItemMove to a vault — the NPC entity; SkillActivate — the target an AimAuto prefers
 	DialogCode  string      // TalkDone — the dialogue group the player just read
 	Quantity    int         // ShopBuy — units (clamped server-side)
 	RecipeIndex int         // CraftItem — index into the action's craftRecipes

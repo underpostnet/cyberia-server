@@ -257,6 +257,7 @@ func SkillsFromConfig(entries []*pb.SkillConfigEntry) map[string][]SkillDefiniti
 		triggerID := sc.GetTriggerItemId()
 		for _, sk := range sc.GetSkills() {
 			skills[triggerID] = append(skills[triggerID], SkillDefinition{
+				SkillID:              sk.GetSkillId(),
 				LogicEventID:         sk.GetLogicEventId(),
 				Name:                 sk.GetName(),
 				Description:          sk.GetDescription(),

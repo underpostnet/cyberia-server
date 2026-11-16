@@ -5,17 +5,20 @@ import (
 	"math/rand"
 	"time"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	"cyberia-server/logx"
 )
 
 // directionFromVector maps a movement vector onto one of the eight facings.
 func directionFromVector(dirX, dirY float64) world.Direction {
-	angle := math.Atan2(dirY, dirX)
-	if angle < 0 {
-		angle += 2 * math.Pi
+	best, bestDot := world.UP, math.Inf(-1)
+	for dir, v := range content.DirectionVectors {
+		if dot := dirX*v[0] + dirY*v[1]; dot > bestDot {
+			best, bestDot = world.Direction(dir), dot
+		}
 	}
-	return world.Direction((int(math.Round(angle/(math.Pi/4))) + 2) % 8)
+	return best
 }
 
 // stepAlongPath advances pos toward the head of path by speed*dt cells.
@@ -71,7 +74,6 @@ func (s *Sim) updatePlayerPosition(player *world.Session, mapState *world.MapSta
 	}
 	if len(player.Path) == 0 {
 		mapState.Mo(player.ID).Mode = world.IDLE
-		mapState.Mo(player.ID).Direction = world.NONE
 	}
 }
 

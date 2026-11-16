@@ -353,7 +353,7 @@ func (s *Sim) buildBot(ms *world.MapState, ent *pb.EntityMessage) {
 	ms.AddBrain(id, bot)
 	ms.Spawn(id, world.EntityData{Kind: world.EntityBot}, world.Transform{Pos: startPos, Size: dims}, world.Appearance{Layers: objectLayers})
 	ms.AddVitals(id, world.Vitals{MaxLife: maxLife, Life: maxLife * s.InitialLifeFraction})
-	ms.AddMotion(id, world.Motion{Direction: world.NONE, Mode: world.IDLE})
+	ms.AddMotion(id, world.Motion{Direction: world.SpawnFacing, Mode: world.IDLE})
 	ms.AddAgent(id, world.Agent{Behavior: s.ResolveEntityBehavior("bot", objectLayers)})
 	ms.AddMortal(id, &world.Mortal{BaseMaxLife: maxLife, LifeRegen: lifeRegen, RespawnDuration: content.PlacedRespawnDuration(ent)})
 	s.SetProgression(id, content.NewEntityProgression(int(ent.GetLevel()), true, s.ProgressionConfig()))

@@ -15,19 +15,13 @@ func TestRawTapSpamDoesNotAwardXP(t *testing.T) {
 	m := ms.Mt(p.ID)
 	progression := s.SetProgression(p.ID, content.NewEntityProgression(1, false, s.ProgressionConfig()))
 	for i := uint32(1); i <= 1000; i++ {
-		s.HandlePlayerTapAction(p, ms, world.Vec2{X: 2, Y: 2})
+		s.handlePlayerActionInput(p, ms, &world.InputCommand{TargetX: 2, TargetY: 2})
 	}
 	if progression.XP != 0 || progression.Level != 1 {
 		t.Fatal("raw taps award XP")
 	}
-	if m.NextSkillAt.IsZero() {
-		t.Fatal("skills have no cooldown")
-	}
-	if s.acceptSkillAction(p.ID, ms, m.NextSkillAt.Add(-time.Nanosecond)) {
-		t.Fatal("early skill accepted")
-	}
-	if !s.acceptSkillAction(p.ID, ms, m.NextSkillAt) {
-		t.Fatal("ready skill rejected")
+	if m.NextRegenAt.IsZero() || !m.NextSkillAt.IsZero() {
+		t.Fatal("a tap starts the regeneration cooldown and leaves the skill cooldown")
 	}
 }
 

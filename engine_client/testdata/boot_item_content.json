@@ -36,6 +36,7 @@
         "triggerItemId": "sword",
         "skills": [
           {
+            "skillId": "contract-shot",
             "logicEventId": "projectile",
             "name": "Contract Shot",
             "description": "",

@@ -25,21 +25,25 @@ type OLMeta struct {
 func (s *GameServer) buildSkillMap() map[string][]SkillMapEntry {
 	out := make(map[string][]SkillMapEntry, len(s.SkillConfig))
 	for triggerID, defs := range s.SkillConfig {
-		out[triggerID] = skillEntries(defs)
+		out[triggerID] = s.skillEntries(defs)
 	}
 	return out
 }
 
 // skillEntries is the client shape of the skills of one trigger item; empty when it has none.
-func skillEntries(defs []content.SkillDefinition) []SkillMapEntry {
+func (s *GameServer) skillEntries(defs []content.SkillDefinition) []SkillMapEntry {
 	entries := make([]SkillMapEntry, 0, len(defs))
 	for _, def := range defs {
+		logic := content.SkillLogics[def.LogicEventID]
 		entries = append(entries, SkillMapEntry{
+			SkillID:              def.SkillID,
 			LogicEventID:         def.LogicEventID,
 			Name:                 def.Name,
 			Description:          def.Description,
 			SummonedEntityItemID: def.SummonedEntityItemID,
-			Held:                 sim.IsHeldSkill(def.LogicEventID),
+			Activation:           logic.Activation,
+			Targeting:            logic.Targeting,
+			Reach:                s.BaseSkillReach(def.LogicEventID),
 		})
 	}
 	return entries
@@ -66,7 +70,7 @@ func (s *GameServer) sendObjectLayerChanges(player *world.Session) {
 	if len(changed) > 0 {
 		skills := make(map[string][]SkillMapEntry, len(changed))
 		for itemID := range changed {
-			skills[itemID] = skillEntries(s.SkillConfig[itemID])
+			skills[itemID] = s.skillEntries(s.SkillConfig[itemID])
 		}
 		s.recordDefinitionsShared(len(changed))
 		world.SendMessage(player, "metadata", map[string]any{"objectLayers": olMetadata(changed), "skillMap": skills})
@@ -171,6 +175,8 @@ var inputKinds = map[string]world.InputKind{
 	"market_buy":     world.InputKindMarketBuy,
 	"market_bid":     world.InputKindMarketBid,
 	"market_collect": world.InputKindMarketCollect,
+
+	"skill_activate": world.InputKindSkillActivate,
 }
 
 // inputPayload holds every client event payload field. Each event type fills
@@ -180,8 +186,12 @@ type inputPayload struct {
 	Frame     uint32  `json:"frame"`
 	Timestamp float64 `json:"timestamp"`
 
-	X float64 `json:"x"` // player_action
+	X float64 `json:"x"` // player_action: the cell; skill_activate: the direction of a direction aim
 	Y float64 `json:"y"`
+
+	SkillID  string         `json:"skillId"`  // skill_activate
+	Aim      string         `json:"aim"`      // skill_activate: facing | auto_target | direction
+	TargetID world.EntityID `json:"targetId"` // skill_activate: the target an auto_target aim prefers
 
 	ItemID string `json:"itemId"` // item_active, shop_buy
 	Slot   int    `json:"slot"`   // item_active
@@ -380,6 +390,19 @@ func parseInput(msgType string, p *inputPayload) (world.InputCommand, bool) {
 		}
 		cmd.TargetX = p.X
 		cmd.TargetY = p.Y
+	case world.InputKindSkillActivate:
+		// Only a direction aim carries a direction, and it is never zero; only an
+		// auto aim names a target.
+		mode, known := world.ParseAimMode(p.Aim)
+		direction := world.Vec2{X: p.X, Y: p.Y}
+		if !known || p.SkillID == "" || !sim.ValidIdentifier(p.SkillID) || !sim.ValidTapTarget(p.X, p.Y) ||
+			(mode == world.AimDirection) == (direction == world.Vec2{}) || (mode != world.AimAuto && p.TargetID != 0) {
+			return world.InputCommand{}, false
+		}
+		cmd.SkillID = p.SkillID
+		cmd.AimMode = mode
+		cmd.Aim = direction
+		cmd.EntityID = p.TargetID
 	case world.InputKindItemActivation:
 		if p.ItemID == "" || !sim.ValidIdentifier(p.ItemID) || p.Slot < world.WalletSlot || p.Slot >= content.StorageMaxSlots {
 			return world.InputCommand{}, false

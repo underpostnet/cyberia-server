@@ -194,16 +194,6 @@ func (e *SnapshotEntity) setVitals(v *world.Vitals) {
 	}
 }
 
-// msUntil returns the whole milliseconds left until t, rounded up, or 0 once
-// t has passed.
-func msUntil(t time.Time) int {
-	left := time.Until(t)
-	if left <= 0 {
-		return 0
-	}
-	return int((left + time.Millisecond - 1) / time.Millisecond)
-}
-
 // baseEntity fills the fields every entity carries: its data, transform,
 // motion and active layers. An entity with no motion faces NONE and idles.
 func baseEntity(ms *world.MapState, id world.EntityID) SnapshotEntity {
@@ -474,7 +464,7 @@ func (s *GameServer) snapshotInvites(player *world.Session, now time.Time) []Sna
 	out := make([]SnapshotInvite, 0, len(pending))
 	for _, invite := range pending {
 		from := s.Social.Player(invite.From)
-		out = append(out, SnapshotInvite{FromID: from.ID, FromName: from.DisplayName, ExpiresInMs: msUntil(invite.ExpiresAt)})
+		out = append(out, SnapshotInvite{FromID: from.ID, FromName: from.DisplayName, ExpiresInMs: world.MsUntil(invite.ExpiresAt)})
 	}
 	return out
 }
@@ -484,7 +474,7 @@ func (s *GameServer) snapshotSentInvites(player *world.Session, now time.Time) [
 	pending := s.Social.InvitesFrom(player.PlayerID, now)
 	out := make([]SnapshotSentInvite, 0, len(pending))
 	for _, invite := range pending {
-		out = append(out, SnapshotSentInvite{ToID: s.Social.Player(invite.To).ID, ExpiresInMs: msUntil(invite.ExpiresAt)})
+		out = append(out, SnapshotSentInvite{ToID: s.Social.Player(invite.To).ID, ExpiresInMs: world.MsUntil(invite.ExpiresAt)})
 	}
 	return out
 }
@@ -525,8 +515,8 @@ func (s *GameServer) buildSnapshotSelf(player *world.Session, mapState *world.Ma
 		Frozen:           player.Frozen,
 		MoveSpeed:        s.CalculatePlayerMovementSpeed(stats),
 		ActionCooldownMs: int(s.CalculateActionCooldown(stats) / time.Millisecond),
-		ActionReadyInMs:  msUntil(mapState.Mt(player.ID).NextSkillAt),
-		ConsumeReadyInMs: msUntil(mapState.Mt(player.ID).NextConsumeAt),
+		ActionReadyInMs:  world.MsUntil(mapState.Mt(player.ID).NextSkillAt),
+		ConsumeReadyInMs: world.MsUntil(mapState.Mt(player.ID).NextConsumeAt),
 	}
 	if d := player.Durable; player.AccountID != "" && d.Durability != persist.Saved {
 		self.Durability, self.UnsavedMs = d.Durability, d.UnsavedFor.Milliseconds()

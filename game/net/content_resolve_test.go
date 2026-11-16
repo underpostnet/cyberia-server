@@ -245,7 +245,7 @@ func gunner(source *fakeSource) persist.State {
 	source.layers["gun"] = layer("gun", "cid-gun", "weapon")
 	source.layers["bullet"] = layer("bullet", "cid-bullet", "skill")
 	source.skills = map[string][]content.SkillDefinition{
-		"gun": {{LogicEventID: "projectile", Name: "Shot", SummonedEntityItemID: "bullet"}},
+		"gun": {{SkillID: "shot", LogicEventID: "projectile", Name: "Shot", SummonedEntityItemID: "bullet"}},
 	}
 	return persist.State{
 		Bag:      []persist.Stack{{ItemID: "gun", CID: "cid-gun", Quantity: 1, Slot: 0, Active: true}},
@@ -292,7 +292,7 @@ func TestATravelerFiresTheSkillOfAnItemThisWorldDoesNotWarm(t *testing.T) {
 	}
 	srv.game.Mu.Lock()
 	sim.ThawPlayer(player)
-	srv.game.HandlePlayerTapAction(player, ms, world.Vec2{X: 12, Y: 9})
+	result := srv.game.ActivateSkill(player.ID, ms, "shot", sim.SkillAim{Mode: world.AimDirection, Direction: world.Vec2{X: 1}}, time.Now())
 	var bullets int
 	for id := range ms.IDs() {
 		for _, l := range ms.Ap(id).Layers {
@@ -302,8 +302,8 @@ func TestATravelerFiresTheSkillOfAnItemThisWorldDoesNotWarm(t *testing.T) {
 		}
 	}
 	srv.game.Mu.Unlock()
-	if bullets != 1 {
-		t.Fatalf("a tap fires the resolved projectile and spawns one bullet, got %d", bullets)
+	if result.Outcome != sim.SkillCast || bullets != 1 {
+		t.Fatalf("an activation casts the resolved projectile and spawns one bullet, got %+v and %d", result, bullets)
 	}
 	if source.callsOf("gun") != 1 || source.callsOf("bullet") != 0 {
 		t.Fatalf("one fetch carries the gun and what its skill summons: %v", source.calls)
@@ -317,7 +317,7 @@ func TestAWorldHoldsTheItemWhoseContentItCannotRunAndRunsNoneOfIt(t *testing.T) 
 		reason string
 	}{
 		{"a handler this server does not run", func(f *fakeSource) {
-			f.skills["gun"] = []content.SkillDefinition{{LogicEventID: "teleport", SummonedEntityItemID: "bullet"}}
+			f.skills["gun"] = []content.SkillDefinition{{SkillID: "warp", LogicEventID: "teleport", SummonedEntityItemID: "bullet"}}
 		}, persist.HeldUnsupported},
 		{"content of another release", func(f *fakeSource) { f.release = "r9" }, persist.HeldIncompatible},
 		{"a summon the engine cannot carry", func(f *fakeSource) { delete(f.layers, "bullet") }, persist.HeldUnknown},
@@ -382,7 +382,7 @@ func TestAReloadRunsTheSkillTheReleaseOfTheWorldDefines(t *testing.T) {
 	waitFor(t, "the client to register", func() bool { return srv.clientCount() == 1 })
 
 	source.mu.Lock()
-	source.skills["gun"] = []content.SkillDefinition{{LogicEventID: "projectile", Name: "Burst", SummonedEntityItemID: "bullet"}}
+	source.skills["gun"] = []content.SkillDefinition{{SkillID: "burst", LogicEventID: "projectile", Name: "Burst", SummonedEntityItemID: "bullet"}}
 	source.mu.Unlock()
 	srv.game.RefreshResolvedContent(context.Background())
 	srv.game.Mu.Lock()

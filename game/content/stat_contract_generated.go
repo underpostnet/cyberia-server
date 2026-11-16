@@ -117,3 +117,27 @@ const StatusNoteMaxRunes = 80
 // IdentityPreviewPath names an identity preview by the ordered CIDs of its layers.
 const IdentityPreviewPath = "/api/v1/cyberia-player/appearance/v1/"
 const IdentityPreviewMaxLayers = 20
+
+// What starts a skill, and what a skill aims at.
+const (
+	SkillManual     = "manual"
+	SkillAutomatic  = "automatic"
+	SkillEvent      = "event"
+	TargetDirection = "direction"
+	TargetSelf      = "self"
+	TargetNone      = "none"
+)
+
+// SkillLogic is how the world runs one skill handler: what starts it and what it aims at.
+type SkillLogic struct{ Activation, Targeting string }
+
+// SkillLogics is the logic of each skill handler content may name.
+var SkillLogics = map[string]SkillLogic{
+	"projectile":                   {Activation: SkillManual, Targeting: TargetDirection},
+	"coin_drop_or_transaction":     {Activation: SkillEvent, Targeting: TargetNone},
+	"doppelganger":                 {Activation: SkillManual, Targeting: TargetSelf},
+	"zero-waste-auto-consume-heal": {Activation: SkillAutomatic, Targeting: TargetSelf},
+}
+
+// DirectionVectors is the unit vector of each facing, in direction enum order; y grows down.
+var DirectionVectors = [8][2]float64{{0, -1}, {0.7071067811865475, -0.7071067811865475}, {1, 0}, {0.7071067811865475, 0.7071067811865475}, {0, 1}, {-0.7071067811865475, 0.7071067811865475}, {-1, 0}, {-0.7071067811865475, -0.7071067811865475}}

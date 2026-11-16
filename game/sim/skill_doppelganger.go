@@ -1,33 +1,21 @@
 package sim
 
 import (
-	"math/rand"
 	"time"
 
 	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 )
 
-// executeDoppelgangerSkill is the "doppelganger" skill handler.
-// It has a chance to spawn a temporary, wandering clone of the caster.
-// Works for players and bots alike: the context names the caster by id.
+// executeDoppelgangerSkill is the "doppelganger" skill handler. It spawns a
+// temporary, wandering clone of the caster, a player or a bot.
 func (s *Sim) executeDoppelgangerSkill(ctx SkillContext) {
 	casterStats := s.CalculateStats(ctx.CasterID, ctx.MapState)
-
-	if rand.Float64() >= s.SummonChance(s.doppelgangerSpawnChance, casterStats) {
-		return
-	}
 
 	casterID := ctx.CasterID
 	casterPos := ctx.MapState.Tf(casterID).Pos
 	casterDims := ctx.MapState.Tf(casterID).Size
 	casterLayers := ctx.MapState.Ap(casterID).Layers
-
-	// Acquire the lock only if the caller doesn't already hold it.
-	if !ctx.CallerHoldsLock {
-		s.Mu.Lock()
-		defer s.Mu.Unlock()
-	}
 
 	botLifetime := content.SummonLifetime(s.doppelgangerLifetimeMs, casterStats)
 

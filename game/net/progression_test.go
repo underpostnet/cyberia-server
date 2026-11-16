@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cyberia-server/game/content"
+	"cyberia-server/game/sim"
 	"cyberia-server/game/world"
 	"cyberia-server/game/world/worldtest"
 	pb "cyberia-server/gen/proto"
@@ -69,8 +70,8 @@ func TestSnapshotCarriesProgressionAndSignedBreakdown(t *testing.T) {
 	}
 }
 
-// The snapshot carries the time left on the shared action cooldown. A tap
-// starts it; it reads 0 once the next tap fires skills again.
+// The snapshot carries the time left on the skill action cooldown. An
+// activation starts it, a misfire too; it reads 0 once the next one can run.
 func TestSnapshotActionReadyInFollowsTheSkillGate(t *testing.T) {
 	s := NewGameServer()
 	s.EntityBaseSpeed = 5
@@ -82,13 +83,17 @@ func TestSnapshotActionReadyInFollowsTheSkillGate(t *testing.T) {
 	*mapState.Tf(player.ID) = world.Transform{Pos: world.Vec2{X: 1, Y: 1}, Size: world.Vec2{X: 1, Y: 1}}
 	mapState.Vt(player.ID).Life, mapState.Vt(player.ID).MaxLife = 100, 100
 	mapState.AddMotion(player.ID, world.Motion{Direction: world.NONE, Mode: world.IDLE})
+	mapState.Ap(player.ID).Layers = []world.ObjectLayerState{{ItemID: "gun", Active: true, Quantity: 1}}
+	s.SkillConfig = map[string][]content.SkillDefinition{"gun": {{SkillID: "shot", LogicEventID: "projectile"}}}
 
 	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready != 0 {
-		t.Fatalf("actionReadyInMs = %d before any tap, want 0", ready)
+		t.Fatalf("actionReadyInMs = %d before any activation, want 0", ready)
 	}
-	s.HandlePlayerTapAction(player, mapState, world.Vec2{X: 2, Y: 2})
+	if result := s.ActivateSkill(player.ID, mapState, "shot", sim.SkillAim{Mode: world.AimFacing}, time.Now()); result.Outcome != sim.SkillMisfire {
+		t.Fatalf("an activation with no chance = %+v, want a misfire", result)
+	}
 	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready <= 0 || ready > 500 {
-		t.Fatalf("actionReadyInMs = %d after a tap, want 1..500", ready)
+		t.Fatalf("actionReadyInMs = %d after an activation, want 1..500", ready)
 	}
 	mapState.Mt(player.ID).NextSkillAt = time.Now().Add(-time.Millisecond)
 	if ready := s.buildSnapshotSelf(player, mapState).ActionReadyInMs; ready != 0 {

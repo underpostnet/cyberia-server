@@ -3,6 +3,7 @@ package net
 import (
 	"testing"
 
+	"cyberia-server/game/content"
 	"cyberia-server/game/world"
 	pb "cyberia-server/gen/proto"
 )
@@ -50,16 +51,20 @@ func TestResourceSpawnedFromInstanceConfigCarriesTheOverriddenItem(t *testing.T)
 	}
 }
 
-func TestTheSkillMapMarksOnlyAHeldSkill(t *testing.T) {
+func TestTheSkillMapCarriesTheIdAndTheLogicOfEachSkill(t *testing.T) {
 	s := NewGameServer()
 	if err := s.ApplyInstanceConfig(&pb.InstanceConfig{SkillConfig: []*pb.SkillConfigEntry{
-		{TriggerItemId: "gel", Skills: []*pb.SkillDetail{{LogicEventId: "zero-waste-auto-consume-heal", SummonedEntityItemId: "gel"}}},
-		{TriggerItemId: "pistol", Skills: []*pb.SkillDetail{{LogicEventId: "projectile", SummonedEntityItemId: "bullet"}}},
+		{TriggerItemId: "gel", Skills: []*pb.SkillDetail{{SkillId: "dose", LogicEventId: "zero-waste-auto-consume-heal", SummonedEntityItemId: "gel"}}},
+		{TriggerItemId: "pistol", Skills: []*pb.SkillDetail{{SkillId: "shot", LogicEventId: "projectile", SummonedEntityItemId: "bullet"}}},
 	}}); err != nil {
 		t.Fatal(err)
 	}
 	skills := s.buildSkillMap()
-	if !skills["gel"][0].Held || skills["pistol"][0].Held {
-		t.Fatalf("skill map = %+v, want only the zero-waste heal held", skills)
+	dose, shot := skills["gel"][0], skills["pistol"][0]
+	if dose.SkillID != "dose" || dose.Activation != content.SkillAutomatic || dose.Targeting != content.TargetSelf {
+		t.Fatalf("the heal = %+v, want an automatic skill on the holder", dose)
+	}
+	if shot.SkillID != "shot" || shot.Activation != content.SkillManual || shot.Targeting != content.TargetDirection {
+		t.Fatalf("the shot = %+v, want a manual directional skill", shot)
 	}
 }
